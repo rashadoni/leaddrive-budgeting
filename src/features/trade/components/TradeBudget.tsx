@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Wallet } from "lucide-react";
+import { Download, Wallet } from "lucide-react";
 
 interface Pool {
   id: string;
@@ -111,6 +111,12 @@ export function TradeBudget() {
           <Wallet className="h-4 w-4" /> {t("title")}
         </h2>
         <div className="flex items-center gap-2 text-sm">
+          <a
+            href={`/api/trade/budget/export?year=${year}`}
+            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
+          >
+            <Download className="h-3 w-3" /> XLSX
+          </a>
           <select
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}

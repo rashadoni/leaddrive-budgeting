@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { ReceiptText } from "lucide-react";
+import { Download, ReceiptText } from "lucide-react";
 
 interface SpendType {
   id: string;
@@ -117,9 +117,17 @@ export function TradeSpend() {
 
   return (
     <section className="rounded-lg border p-4">
-      <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
-        <ReceiptText className="h-4 w-4" /> {t("title")}
-      </h2>
+      <div className="mb-1 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <ReceiptText className="h-4 w-4" /> {t("title")}
+        </h2>
+        <a
+          href="/api/trade/spend/export"
+          className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
+        >
+          <Download className="h-3 w-3" /> XLSX
+        </a>
+      </div>
       <p className="mb-3 text-xs text-muted-foreground">{t("hint")}</p>
 
       {error && <p className="mb-2 text-sm text-destructive">{error}</p>}

@@ -4306,6 +4306,9 @@
         "actual": "Actual",
         "available": "Available"
       }
+    },
+    "calendar": {
+      "title": "Promo calendar"
     }
   }
 }

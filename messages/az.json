@@ -4306,6 +4306,9 @@
         "actual": "Fakt",
         "available": "Əlçatan"
       }
+    },
+    "calendar": {
+      "title": "Promo-təqvim"
     }
   }
 }

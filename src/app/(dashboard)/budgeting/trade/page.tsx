@@ -5,6 +5,7 @@ import { TradeAlertInbox } from "@/features/trade/components/TradeAlertInbox"
 import { TradeBudget } from "@/features/trade/components/TradeBudget"
 import { TradePacing } from "@/features/trade/components/TradePacing"
 import { TradeSpend } from "@/features/trade/components/TradeSpend"
+import { TradeCalendar } from "@/features/trade/components/TradeCalendar"
 
 export async function generateMetadata() {
   const t = await getTranslations("trade")
@@ -21,6 +22,7 @@ export default async function TradePage() {
       </header>
       <TradePacing />
       <TradeAlertInbox />
+      <TradeCalendar />
       <TradeSpend />
       <TradeBudget />
       <TradeCampaigns />
