@@ -147,6 +147,17 @@ per RLS_RUNBOOK §1.
 
 ## Progress log
 
+- 2026-07-07 — **S3 wave 7 — users + terminal collection/context (130 wrapped).**
+  Clean-wrapped: users/[id]/role, users/[id]/active (findFirst + conditional
+  last-admin count + update in separate scope txns; awaited audit stays on the
+  global client), users/[id]/access (findFirst + level-1 company validation +
+  update), users/[id]/password-reset (findFirst scope, bcrypt.hash OUTSIDE the
+  tx, update scope), terminal/layouts (GET findMany + POST upsert), terminal/
+  strategic-context/[companyCode] (company + org settings reads in one scope tx;
+  org read skipped when the company is missing). No new opt-outs. 6 handler
+  tests gained the withOrgScope mock. Scan: 130 wrapped / 26 clean / 12
+  opted-out / 11 unwrapped (all import + onboarding). Gates: tsc 0; users +
+  terminal suites 60; RLS leak 10/10.
 - 2026-07-07 — **S3 wave 6 — admin + telemetry + terminal + cron (124 wrapped).**
   Clean-wrapped: admin/ai-usage (getDailyUsage/getMonthlyUsage gained an
   `opts.prisma` tx param — both aggregates run in one scope tx; the last30

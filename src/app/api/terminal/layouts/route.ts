@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import {
@@ -46,17 +46,19 @@ export async function GET(request: NextRequest) {
   )
   if (rateLimitError) return rateLimitError
 
-  const layouts = await prisma.userLayoutPreference.findMany({
-    where: { userId: session.userId, organizationId: session.orgId },
-    select: {
-      id: true,
-      name: true,
-      sizes: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-    orderBy: { updatedAt: "desc" },
-  })
+  const layouts = await withOrgScope(session.orgId, (tx) =>
+    tx.userLayoutPreference.findMany({
+      where: { userId: session.userId, organizationId: session.orgId },
+      select: {
+        id: true,
+        name: true,
+        sizes: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: "desc" },
+    }),
+  )
 
   return NextResponse.json({ layouts })
 }
@@ -125,23 +127,25 @@ export async function POST(request: NextRequest) {
   // the simplest type-safe way and round-trips through plain JSON values
   // (the same form Prisma will store anyway).
   const sizesJson: Prisma.InputJsonValue = JSON.parse(JSON.stringify(sizes))
-  const layout = await prisma.userLayoutPreference.upsert({
-    where: { userId_name: { userId: session.userId, name } },
-    create: {
-      organizationId: session.orgId,
-      userId: session.userId,
-      name,
-      sizes: sizesJson,
-    },
-    update: { sizes: sizesJson },
-    select: {
-      id: true,
-      name: true,
-      sizes: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  })
+  const layout = await withOrgScope(session.orgId, (tx) =>
+    tx.userLayoutPreference.upsert({
+      where: { userId_name: { userId: session.userId, name } },
+      create: {
+        organizationId: session.orgId,
+        userId: session.userId,
+        name,
+        sizes: sizesJson,
+      },
+      update: { sizes: sizesJson },
+      select: {
+        id: true,
+        name: true,
+        sizes: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+  )
 
   return NextResponse.json({ layout }, { status: 200 })
 }

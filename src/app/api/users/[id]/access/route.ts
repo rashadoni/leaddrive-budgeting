@@ -11,7 +11,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+// Stage 3 RLS — `prisma` kept for the awaited audit write.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 
@@ -53,10 +55,12 @@ export async function PATCH(
 
   // Verify target user belongs to caller's org. 404 mirrors cross-tenant
   // pattern used elsewhere — never confirm existence.
-  const target = await prisma.user.findFirst({
-    where: { id: targetUserId, organizationId: orgId },
-    select: { id: true, email: true, allowedSubGroupIds: true },
-  })
+  const target = await withOrgScope(orgId, (tx) =>
+    tx.user.findFirst({
+      where: { id: targetUserId, organizationId: orgId },
+      select: { id: true, email: true, allowedSubGroupIds: true },
+    }),
+  )
   if (!target) {
     return NextResponse.json({ error: "User not found" }, { status: 404 })
   }
@@ -64,14 +68,16 @@ export async function PATCH(
   // Validate each id is a sub-group (level=1) in the same org. Rejects
   // unknown IDs, cross-tenant IDs, and leaf operational rows.
   if (incomingIds.length > 0) {
-    const valid = await prisma.company.findMany({
-      where: {
-        organizationId: orgId,
-        id: { in: incomingIds },
-        parentCompanyId: null,
-      },
-      select: { id: true },
-    })
+    const valid = await withOrgScope(orgId, (tx) =>
+      tx.company.findMany({
+        where: {
+          organizationId: orgId,
+          id: { in: incomingIds },
+          parentCompanyId: null,
+        },
+        select: { id: true },
+      }),
+    )
     type Row = (typeof valid)[number]
     const validSet = new Set((valid as Row[]).map((c) => c.id))
     const invalid = incomingIds.filter((id) => !validSet.has(id))
@@ -85,10 +91,12 @@ export async function PATCH(
     }
   }
 
-  await prisma.user.update({
-    where: { id: targetUserId },
-    data: { allowedSubGroupIds: incomingIds },
-  })
+  await withOrgScope(orgId, (tx) =>
+    tx.user.update({
+      where: { id: targetUserId },
+      data: { allowedSubGroupIds: incomingIds },
+    }),
+  )
 
   await logAuditEvent(prisma, {
     organizationId: orgId,

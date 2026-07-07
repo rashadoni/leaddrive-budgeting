@@ -11,7 +11,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+// Stage 3 RLS — `prisma` kept for the awaited audit write.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 
@@ -57,10 +59,12 @@ export async function PATCH(
   }
   const newRole: AllowedRole = body.role
 
-  const target = await prisma.user.findFirst({
-    where: { id: targetUserId, organizationId: orgId },
-    select: { id: true, email: true, role: true },
-  })
+  const target = await withOrgScope(orgId, (tx) =>
+    tx.user.findFirst({
+      where: { id: targetUserId, organizationId: orgId },
+      select: { id: true, email: true, role: true },
+    }),
+  )
   if (!target) {
     return NextResponse.json({ error: "User not found" }, { status: 404 })
   }
@@ -89,14 +93,16 @@ export async function PATCH(
   // Last-admin guard: if demoting an admin, ensure at least one other
   // active admin remains. Otherwise the org loses admin control.
   if (target.role === "admin" && newRole !== "admin") {
-    const otherAdmins = await prisma.user.count({
-      where: {
-        organizationId: orgId,
-        role: "admin",
-        isActive: true,
-        id: { not: targetUserId },
-      },
-    })
+    const otherAdmins = await withOrgScope(orgId, (tx) =>
+      tx.user.count({
+        where: {
+          organizationId: orgId,
+          role: "admin",
+          isActive: true,
+          id: { not: targetUserId },
+        },
+      }),
+    )
     if (otherAdmins === 0) {
       return NextResponse.json(
         {
@@ -109,10 +115,12 @@ export async function PATCH(
     }
   }
 
-  await prisma.user.update({
-    where: { id: targetUserId },
-    data: { role: newRole },
-  })
+  await withOrgScope(orgId, (tx) =>
+    tx.user.update({
+      where: { id: targetUserId },
+      data: { role: newRole },
+    }),
+  )
 
   await logAuditEvent(prisma, {
     organizationId: orgId,

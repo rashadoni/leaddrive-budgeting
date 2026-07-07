@@ -8,7 +8,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+// Stage 3 RLS — `prisma` kept for the awaited audit write.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 
@@ -45,10 +47,12 @@ export async function PATCH(
   }
   const newActive = body.isActive
 
-  const target = await prisma.user.findFirst({
-    where: { id: targetUserId, organizationId: orgId },
-    select: { id: true, email: true, role: true, isActive: true },
-  })
+  const target = await withOrgScope(orgId, (tx) =>
+    tx.user.findFirst({
+      where: { id: targetUserId, organizationId: orgId },
+      select: { id: true, email: true, role: true, isActive: true },
+    }),
+  )
   if (!target) {
     return NextResponse.json({ error: "User not found" }, { status: 404 })
   }
@@ -69,14 +73,16 @@ export async function PATCH(
 
   // Last-active-admin guard.
   if (target.role === "admin" && newActive === false) {
-    const otherActiveAdmins = await prisma.user.count({
-      where: {
-        organizationId: orgId,
-        role: "admin",
-        isActive: true,
-        id: { not: targetUserId },
-      },
-    })
+    const otherActiveAdmins = await withOrgScope(orgId, (tx) =>
+      tx.user.count({
+        where: {
+          organizationId: orgId,
+          role: "admin",
+          isActive: true,
+          id: { not: targetUserId },
+        },
+      }),
+    )
     if (otherActiveAdmins === 0) {
       return NextResponse.json(
         {
@@ -89,10 +95,12 @@ export async function PATCH(
     }
   }
 
-  await prisma.user.update({
-    where: { id: targetUserId },
-    data: { isActive: newActive },
-  })
+  await withOrgScope(orgId, (tx) =>
+    tx.user.update({
+      where: { id: targetUserId },
+      data: { isActive: newActive },
+    }),
+  )
 
   await logAuditEvent(prisma, {
     organizationId: orgId,

@@ -14,7 +14,7 @@
  * Auth: viewer (read-only operational dashboard widget).
  */
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 
 interface LandParcel {
@@ -53,9 +53,20 @@ export async function GET(
   const { companyCode } = await params
   const decodedCode = decodeURIComponent(companyCode)
 
-  const company = await prisma.company.findFirst({
-    where: { organizationId: session.orgId, code: decodedCode },
-    select: { id: true, code: true, name: true, level: true, settings: true },
+  // Stage 3 RLS — company + org settings reads in one scope tx.
+  const { company, org } = await withOrgScope(session.orgId, async (tx) => {
+    const company = await tx.company.findFirst({
+      where: { organizationId: session.orgId, code: decodedCode },
+      select: { id: true, code: true, name: true, level: true, settings: true },
+    })
+    // Skip the org read when the company is missing (404 below).
+    const org = company
+      ? await tx.organization.findUnique({
+          where: { id: session.orgId },
+          select: { settings: true },
+        })
+      : null
+    return { company, org }
   })
   if (!company) {
     return NextResponse.json(
@@ -63,11 +74,6 @@ export async function GET(
       { status: 404 },
     )
   }
-
-  const org = await prisma.organization.findUnique({
-    where: { id: session.orgId },
-    select: { settings: true },
-  })
 
   const compSettings = (company.settings ?? {}) as Record<string, unknown>
   const orgSettings = (org?.settings ?? {}) as Record<string, unknown>

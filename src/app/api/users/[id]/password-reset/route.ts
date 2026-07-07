@@ -8,7 +8,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+// Stage 3 RLS — `prisma` kept for the awaited audit write.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import bcrypt from "bcryptjs"
@@ -33,20 +35,26 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid user id" }, { status: 400 })
   }
 
-  const target = await prisma.user.findFirst({
-    where: { id: targetUserId, organizationId: orgId },
-    select: { id: true, email: true },
-  })
+  const target = await withOrgScope(orgId, (tx) =>
+    tx.user.findFirst({
+      where: { id: targetUserId, organizationId: orgId },
+      select: { id: true, email: true },
+    }),
+  )
   if (!target) {
     return NextResponse.json({ error: "User not found" }, { status: 404 })
   }
 
+  // bcrypt.hash is CPU-bound (~100ms) — run it OUTSIDE the tx so the scope
+  // tx isn't held open during hashing.
   const tempPassword = randomBytes(9).toString("base64url")
   const passwordHash = await bcrypt.hash(tempPassword, 10)
-  await prisma.user.update({
-    where: { id: targetUserId },
-    data: { passwordHash },
-  })
+  await withOrgScope(orgId, (tx) =>
+    tx.user.update({
+      where: { id: targetUserId },
+      data: { passwordHash },
+    }),
+  )
 
   await logAuditEvent(prisma, {
     organizationId: orgId,
