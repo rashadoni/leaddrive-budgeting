@@ -1,6 +1,9 @@
 # RLS Enforcement Flip — Phase 5.2 Stage 3 (pre-Mars gate)
 
-**Status:** in progress (started 2026-07-07). Owner: Claude, ship/cut: Rashad.
+**Status:** S3 route-wrapping COMPLETE 2026-07-07 — scanner shows **0 unwrapped**
+(132 wrapped / 26 clean / 21 justified opt-outs). Enforcement is NOT yet live:
+it activates only at the S5 env-flip (global client → app role) + S6 (prod role
+provisioning, Rashad's action). Owner: Claude, ship/cut: Rashad.
 **Design provenance:** Codex-architect was UNAVAILABLE (ChatGPT-plan usage limit
 until 2026-07-11); per the global protocol this plan was designed inline against
 the LOCKED ADR-RLS Round-2 verdict (explicit `withOrgScope` per route — do not
