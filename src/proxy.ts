@@ -14,7 +14,12 @@ import { LOCALE_COOKIE_NAME } from "@/i18n/routing"
 // deploy/smoke-test.sh. The route is rate-limited (10/min/IP) and writes only
 // a telemetry row — no data exposure. Mirrors the nginx public exception +
 // docs/AUTH_GATE_AUDIT.md.
-const publicPaths = ["/login", "/api/auth", "/api/telemetry/guide-view"]
+// R4 (2026-07-07): /api/cron/* is session-less by design — every cron
+// route enforces its own `Authorization: Bearer $CRON_SECRET` gate
+// (503 when unconfigured, 401 on mismatch), so the middleware must let
+// the VM crontab curl through. Without this the trade-digest cron was
+// 401'd HERE before its own auth ever ran.
+const publicPaths = ["/login", "/api/auth", "/api/telemetry/guide-view", "/api/cron"]
 
 // Rate limit tiers for budget mutation endpoints.
 // First matching rule wins. Keyed by org id so quota is per-tenant.
