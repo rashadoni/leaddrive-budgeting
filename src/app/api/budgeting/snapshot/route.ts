@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 /**
  * GET /api/budgeting/snapshot?planId=X&at=ISO_TIMESTAMP
@@ -66,8 +66,11 @@ export async function GET(req: NextRequest) {
 
   const atDate = new Date(at)
 
+  // Stage 3 RLS — all reads (raw changelog query + current lines/actuals)
+  // in one org-scoped tx; the pure reconstruction stays in the closure.
+  return withOrgScope(orgId, async (tx) => {
   // 1. Get changelog entries at or before the given timestamp (changed entities)
-  const latestEntries = await prisma.$queryRaw<ChangeLogRow[]>`
+  const latestEntries = await tx.$queryRaw<ChangeLogRow[]>`
     SELECT DISTINCT ON ("entityId")
       "entityId", "entityType", "action", "snapshot", "createdAt"
     FROM budget_change_logs
@@ -111,16 +114,14 @@ export async function GET(req: NextRequest) {
 
   // 2. Fetch ALL current lines and actuals for this plan
   //    Lines that were never changed = their current state IS historical state
-  const [currentLines, currentActuals] = await Promise.all([
-    prisma.budgetLine.findMany({
-      // Phase 8 fix: honor soft-delete — live lines only.
-      where: { planId, organizationId: orgId, deletedAt: null },
-      include: { account: { select: { code: true, name: true } } },
-    }),
-    prisma.budgetActual.findMany({
-      where: { planId, organizationId: orgId },
-    }),
-  ])
+  const currentLines = await tx.budgetLine.findMany({
+    // Phase 8 fix: honor soft-delete — live lines only.
+    where: { planId, organizationId: orgId, deletedAt: null },
+    include: { account: { select: { code: true, name: true } } },
+  })
+  const currentActuals = await tx.budgetActual.findMany({
+    where: { planId, organizationId: orgId },
+  })
 
   // 3. Merge: changelog lines override, unchanged lines use current state
   const lines: BudgetLineSnapshot[] = [...snapshotLines]
@@ -146,6 +147,7 @@ export async function GET(req: NextRequest) {
       lines, actuals, forecasts, analytics, reconstructedAt: at,
       changedEntityIds: [...changedLineIds, ...changedActualIds],
     },
+  })
   })
 }
 

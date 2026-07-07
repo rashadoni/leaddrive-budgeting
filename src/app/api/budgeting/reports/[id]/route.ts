@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const updateReportSchema = z.object({
   name: z.string().min(1).max(500).optional(),
@@ -36,9 +36,11 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await params
-  const report = await prisma.savedBudgetReport.findFirst({
-    where: { id, organizationId: orgId },
-  })
+  const report = await withOrgScope(orgId, (tx) =>
+    tx.savedBudgetReport.findFirst({
+      where: { id, organizationId: orgId },
+    }),
+  )
   if (!report) return NextResponse.json({ error: "Report not found" }, { status: 404 })
 
   return NextResponse.json({ success: true, data: report })
@@ -63,12 +65,13 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 })
   }
 
-  const existing = await prisma.savedBudgetReport.findFirst({
-    where: { id, organizationId: orgId },
-  })
-  if (!existing) return NextResponse.json({ error: "Report not found" }, { status: 404 })
+  const report = await withOrgScope(orgId, async (tx) => {
+    const existing = await tx.savedBudgetReport.findFirst({
+      where: { id, organizationId: orgId },
+    })
+    if (!existing) return null
 
-  const report = await prisma.savedBudgetReport.update({
+    return tx.savedBudgetReport.update({
     where: { id },
     data: {
       ...(data.name !== undefined ? { name: data.name } : {}),
@@ -86,7 +89,9 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       ...(data.computedFields !== undefined ? { computedFields: data.computedFields ?? Prisma.JsonNull } : {}),
       ...(data.isShared !== undefined ? { isShared: data.isShared } : {}),
     },
+    })
   })
+  if (!report) return NextResponse.json({ error: "Report not found" }, { status: 404 })
 
   return NextResponse.json({ success: true, data: report })
 }
@@ -100,9 +105,11 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
   // even if the prior `findFirst` guard is removed/refactored a future
   // attacker can't delete another org's report by id alone. `deleteMany`
   // returns count=0 silently for cross-tenant — desired no-leak behavior.
-  const result = await prisma.savedBudgetReport.deleteMany({
-    where: { id, organizationId: orgId },
-  })
+  const result = await withOrgScope(orgId, (tx) =>
+    tx.savedBudgetReport.deleteMany({
+      where: { id, organizationId: orgId },
+    }),
+  )
   if (result.count === 0) {
     return NextResponse.json({ error: "Report not found" }, { status: 404 })
   }

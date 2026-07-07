@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
+// Stage 3 RLS — `prisma` kept ONLY for lockedResponse's 423-audit.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
 import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
@@ -25,11 +27,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid year" }, { status: 400 })
   }
 
-  const entries = await prisma.salesForecast.findMany({
-    where: { organizationId: orgId, year },
-    include: { budgetDept: { select: { id: true, key: true, label: true } } },
-    orderBy: [{ budgetDept: { sortOrder: "asc" } }, { month: "asc" }],
-  })
+  const entries = await withOrgScope(orgId, (tx) =>
+    tx.salesForecast.findMany({
+      where: { organizationId: orgId, year },
+      include: { budgetDept: { select: { id: true, key: true, label: true } } },
+      orderBy: [{ budgetDept: { sortOrder: "asc" } }, { month: "asc" }],
+    }),
+  )
 
   return NextResponse.json({ success: true, data: entries })
 }
@@ -57,21 +61,26 @@ export async function POST(req: NextRequest) {
 
   const { year, entries } = data
 
-  // Phase L8 — period-lock gate (year-scoped forecast).
-  const lock = await getActivePeriodLock(prisma, orgId, String(year))
-  if (lock)
-    return lockedResponse(lock, {
-      prisma,
-      orgId,
-      userId: null,
-      route: "POST /api/budgeting/sales-forecast",
-    })
+  // Stage 3 RLS — lock check + upsert batch in one org-scoped tx (the
+  // former $transaction([array]) becomes a sequential loop inside it).
+  // 60s timeout covers realistic payloads; the zod 5000 cap is theoretical.
+  return withOrgScope(
+    orgId,
+    async (tx) => {
+      // Phase L8 — period-lock gate (year-scoped forecast).
+      const lock = await getActivePeriodLock(tx, orgId, String(year))
+      if (lock)
+        return lockedResponse(lock, {
+          prisma,
+          orgId,
+          userId: null,
+          route: "POST /api/budgeting/sales-forecast",
+        })
 
-  const results = await prisma.$transaction(
-    entries
-      .filter((e) => e.departmentId && e.month >= 1 && e.month <= 12)
-      .map((e) =>
-        prisma.salesForecast.upsert({
+      const valid = entries.filter((e) => e.departmentId && e.month >= 1 && e.month <= 12)
+      let count = 0
+      for (const e of valid) {
+        await tx.salesForecast.upsert({
           where: {
             organizationId_departmentId_year_month: {
               organizationId: orgId,
@@ -90,8 +99,11 @@ export async function POST(req: NextRequest) {
             notes: e.notes || null,
           },
         })
-      )
-  )
+        count++
+      }
 
-  return NextResponse.json({ success: true, count: results.length }, { status: 201 })
+      return NextResponse.json({ success: true, count }, { status: 201 })
+    },
+    { timeoutMs: 60_000 },
+  )
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const updateTemplateSchema = z.object({
   name: z.string().min(1).max(500).optional(),
@@ -41,7 +41,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { name, description, lineType, lineSubtype, defaultAmount, unitPrice, unitCost, quantity, costModelKey, department, isActive } = data
 
-  const template = await prisma.budgetDirectionTemplate.update({
+  const template = await withOrgScope(orgId, (tx) =>
+    tx.budgetDirectionTemplate.update({
     where: { id, organizationId: orgId },
     data: {
       ...(name !== undefined && { name: name.trim() }),
@@ -56,7 +57,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       ...(department !== undefined && { department: department || null }),
       ...(isActive !== undefined && { isActive }),
     },
-  })
+    }),
+  )
 
   return NextResponse.json({ data: template })
 }
@@ -66,9 +68,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const { id } = await params
 
-  await prisma.budgetDirectionTemplate.delete({
-    where: { id, organizationId: orgId },
-  })
+  await withOrgScope(orgId, (tx) =>
+    tx.budgetDirectionTemplate.delete({
+      where: { id, organizationId: orgId },
+    }),
+  )
 
   return NextResponse.json({ data: null })
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { currentBakuYear } from "@/lib/risk/periods"
 
 const MONTH_NAMES = ["Yan", "Fev", "Mar", "Apr", "May", "İyn", "İyl", "Avq", "Sen", "Okt", "Noy", "Dek"]
@@ -16,20 +16,23 @@ export async function GET(req: NextRequest) {
   // never read; the monthly plan figures come from SalesForecast +
   // ExpenseForecast below, and the facts from BudgetActual.)
 
+  // Stage 3 RLS — all reads in one org-scoped tx; monthly aggregation
+  // (pure) stays in the closure.
+  return withOrgScope(orgId, async (tx) => {
   // Get actual amounts
-  const budgetActuals = await prisma.budgetActual.findMany({
+  const budgetActuals = await tx.budgetActual.findMany({
     where: { organizationId: orgId, plan: { year } },
     select: { lineType: true, actualAmount: true, expenseDate: true, department: true },
   })
 
   // Get sales forecasts for planned revenue by month
-  const salesForecasts = await prisma.salesForecast.findMany({
+  const salesForecasts = await tx.salesForecast.findMany({
     where: { organizationId: orgId, year },
     include: { budgetDept: { select: { label: true } } },
   })
 
   // Get expense forecasts for planned expenses by month
-  const expenseForecasts = await prisma.expenseForecast.findMany({
+  const expenseForecasts = await tx.expenseForecast.findMany({
     where: { organizationId: orgId, year },
     include: { budgetCostType: { select: { label: true } } },
   })
@@ -99,5 +102,6 @@ export async function GET(req: NextRequest) {
         netFact: totalRevenueFact - totalExpenseFact,
       },
     },
+  })
   })
 }

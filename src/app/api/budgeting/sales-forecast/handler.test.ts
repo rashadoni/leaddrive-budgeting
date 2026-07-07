@@ -19,6 +19,9 @@ const { prismaMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
+vi.mock("@/lib/db/with-org-scope", () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+}))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET, POST } from "./route"
@@ -135,7 +138,7 @@ describe("POST /api/budgeting/sales-forecast", () => {
     expect(res.status).toBe(400)
   })
 
-  it("201 happy path bulk upsert in $transaction", async () => {
+  it("201 happy path bulk upsert (sequential in the withOrgScope tx)", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "editor" })
     const res = await POST(
       makeRequest("/api/budgeting/sales-forecast", {
@@ -150,6 +153,9 @@ describe("POST /api/budgeting/sales-forecast", () => {
       }),
     )
     expect(res.status).toBe(201)
-    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1)
+    // Stage 3 RLS — the former $transaction([array]) is now a sequential
+    // upsert loop inside the withOrgScope tx (one upsert per valid entry).
+    expect(prismaMock.salesForecast.upsert).toHaveBeenCalledTimes(2)
+    expect((await res.json()).count).toBe(2)
   })
 })
