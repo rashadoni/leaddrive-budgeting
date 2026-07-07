@@ -4,7 +4,6 @@
 // strip, colored by status. The most recognizable artifact of the trade
 // marketing profession.
 
-import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { CalendarRange } from "lucide-react";
 
@@ -27,25 +26,12 @@ const BAR_CLASSES: Record<string, string> = {
   cancelled: "bg-slate-200 text-slate-500 line-through",
 };
 
-export function TradeCalendar() {
+// R7 — presentational: campaigns arrive from TradeCampaigns (single
+// fetch per tab instead of two identical ones).
+export function TradeCalendar({ campaigns }: { campaigns: Campaign[] | null }) {
   const t = useTranslations("trade.calendar");
   const tm = useTranslations("trade.campaigns.status");
-  const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const year = new Date().getUTCFullYear();
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/trade/campaigns");
-      const data = await res.json();
-      setCampaigns(data.campaigns as Campaign[]);
-    } catch {
-      setCampaigns([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const visible = (campaigns ?? []).filter((c) => {
     const s = new Date(c.startDate);

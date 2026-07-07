@@ -39,7 +39,16 @@ interface Summary {
 
 const fmt = (n: number) => n.toLocaleString("az-AZ", { maximumFractionDigits: 0 });
 
-const EMPTY_FORM = { entryKind: "actual", spendTypeId: "", entryDate: "", amount: "", note: "", campaignId: "", channelId: "" };
+const emptyForm = () => ({
+  entryKind: "actual",
+  spendTypeId: "",
+  // R6 — a posting is almost always "today"; empty date was a needless step.
+  entryDate: new Date().toISOString().slice(0, 10),
+  amount: "",
+  note: "",
+  campaignId: "",
+  channelId: "",
+});
 
 export function TradeSpend() {
   const t = useTranslations("trade.spend");
@@ -48,7 +57,7 @@ export function TradeSpend() {
   const [types, setTypes] = useState<SpendType[]>([]);
   const [campaigns, setCampaigns] = useState<{ id: string; code: string; name: string }[]>([]);
   const [channelOptions, setChannelOptions] = useState<{ id: string; name: string }[]>([]);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(emptyForm());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,7 +108,7 @@ export function TradeSpend() {
         setError(String(data.error ?? res.status));
         return;
       }
-      setForm(EMPTY_FORM);
+      setForm(emptyForm());
       void load();
     } finally {
       setBusy(false);
@@ -108,6 +117,8 @@ export function TradeSpend() {
 
   const voidEntry = useCallback(
     async (id: string) => {
+      // R6 — void is one click away from changing month totals.
+      if (!window.confirm(t("voidConfirm"))) return;
       setBusy(true);
       try {
         await fetch(`/api/trade/spend/${id}/void`, { method: "POST" });
@@ -116,7 +127,7 @@ export function TradeSpend() {
         setBusy(false);
       }
     },
-    [load],
+    [load, t],
   );
 
   return (

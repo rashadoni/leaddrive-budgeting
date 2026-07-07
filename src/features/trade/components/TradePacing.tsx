@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Gauge, RefreshCw } from "lucide-react";
+import { SkeletonBlock } from "./SkeletonBlock";
 
 interface PacingResult {
   elapsedShare: number;
@@ -125,25 +126,25 @@ export function TradePacing() {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {!loaded ? (
-        <p className="text-sm text-muted-foreground">…</p>
+        <SkeletonBlock lines={4} />
       ) : !result ? (
         <p className="text-sm text-muted-foreground">{t("empty")}</p>
       ) : (
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <div>
-              <div className="mb-1 flex justify-between text-xs">
+              <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
                 <span className="text-muted-foreground">{t("monthElapsed")}</span>
-                <span className="font-medium tabular-nums">
+                <span className="shrink-0 whitespace-nowrap text-right font-medium tabular-nums">
                   {Math.round(result.elapsedShare * 100)}%
                 </span>
               </div>
               {bar(result.elapsedShare * 100, "bg-slate-400")}
             </div>
             <div>
-              <div className="mb-1 flex justify-between text-xs">
+              <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
                 <span className="text-muted-foreground">{t("spendProgress")}</span>
-                <span className="font-medium tabular-nums">
+                <span className="shrink-0 whitespace-nowrap text-right font-medium tabular-nums">
                   {result.spendProgressPct != null ? `${result.spendProgressPct}%` : "—"}
                 </span>
               </div>
@@ -153,9 +154,9 @@ export function TradePacing() {
               )}
             </div>
             <div>
-              <div className="mb-1 flex justify-between text-xs">
+              <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
                 <span className="text-muted-foreground">{t("salesProgress")}</span>
-                <span className="font-medium tabular-nums">
+                <span className="shrink-0 whitespace-nowrap text-right font-medium tabular-nums">
                   {result.math.salesActualMtd ? `${result.salesProgressPct}%` : t("awaitingFeed")}
                 </span>
               </div>
@@ -211,31 +212,35 @@ export function TradePacing() {
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {channels.map((c) => (
                   <div key={c.grainKey} className="rounded-md border p-2">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-semibold">{c.name}</span>
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <span className="min-w-0 truncate text-xs font-semibold" title={c.name}>
+                        {c.name}
+                      </span>
                       <span
-                        className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase ${RISK_CLASSES[c.result.riskStatus]}`}
+                        className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase ${RISK_CLASSES[c.result.riskStatus]}`}
                       >
                         {t(`risk.${c.result.riskStatus}`)}
                       </span>
                     </div>
-                    <div className="grid grid-cols-3 gap-1 text-[10px] text-muted-foreground">
-                      <div>
-                        {t("cascade.budget")}
-                        <div className="text-xs font-medium tabular-nums text-foreground">
+                    {/* R6 — column layout with explicit gaps so the three
+                        figures can never visually merge at narrow widths. */}
+                    <div className="grid grid-cols-3 gap-x-3 text-[10px] text-muted-foreground">
+                      <div className="min-w-0">
+                        <div className="truncate">{t("cascade.budget")}</div>
+                        <div className="truncate text-xs font-medium tabular-nums text-foreground">
                           {fmt(c.result.math.budgetMonth)}
                         </div>
                       </div>
-                      <div>
-                        {t("controlShort")}
-                        <div className="text-xs font-medium tabular-nums text-foreground">
+                      <div className="min-w-0 border-l border-border/60 pl-3">
+                        <div className="truncate">{t("controlShort")}</div>
+                        <div className="truncate text-xs font-medium tabular-nums text-foreground">
                           {fmt(c.result.math.controlSpendMtd)}
                         </div>
                       </div>
-                      <div>
-                        {t("forecastShort")}
+                      <div className="min-w-0 border-l border-border/60 pl-3">
+                        <div className="truncate">{t("forecastShort")}</div>
                         <div
-                          className={`text-xs font-medium tabular-nums ${
+                          className={`truncate text-xs font-medium tabular-nums ${
                             (c.result.forecastBudgetVariancePct ?? 0) > 0 ? "text-rose-600" : "text-foreground"
                           }`}
                         >

@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { BellRing, Check } from "lucide-react";
+import { SkeletonBlock } from "./SkeletonBlock";
 
 interface TradeAlert {
   id: string;
@@ -90,7 +91,7 @@ export function TradeAlertInbox() {
       </h2>
       {error && <p className="text-sm text-destructive">{error}</p>}
       {open === null ? (
-        <p className="text-sm text-muted-foreground">…</p>
+        <SkeletonBlock lines={2} />
       ) : open.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("empty")}</p>
       ) : (

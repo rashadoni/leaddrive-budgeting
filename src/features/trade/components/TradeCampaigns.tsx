@@ -7,6 +7,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Megaphone, Plus } from "lucide-react";
+import { SkeletonBlock } from "./SkeletonBlock";
+import { TradeCalendar } from "./TradeCalendar";
 
 interface CampaignScope {
   id: string;
@@ -140,6 +142,8 @@ export function TradeCampaigns() {
     `${n.toLocaleString("az-AZ", { maximumFractionDigits: 0 })} ${cur}`;
 
   return (
+    <>
+    <TradeCalendar campaigns={campaigns} />
     <section className="rounded-lg border p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-semibold">
@@ -242,7 +246,7 @@ export function TradeCampaigns() {
       )}
 
       {campaigns === null ? (
-        <p className="text-sm text-muted-foreground">…</p>
+        <SkeletonBlock lines={3} />
       ) : campaigns.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("empty")}</p>
       ) : (
@@ -339,5 +343,6 @@ export function TradeCampaigns() {
         </div>
       )}
     </section>
+    </>
   );
 }

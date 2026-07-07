@@ -4282,7 +4282,8 @@
       "void": "Ləğv et",
       "colType": "Xərc növü",
       "fieldCampaign": "Kampaniya",
-      "fieldChannel": "Kanal"
+      "fieldChannel": "Kanal",
+      "voidConfirm": "Yazılış ləğv edilsin? Bu, ayın yekunlarını dəyişəcək."
     },
     "pacing": {
       "title": "Gündəlik pacing",

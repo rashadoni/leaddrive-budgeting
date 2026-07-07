@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Download, Wallet } from "lucide-react";
+import { SkeletonBlock } from "./SkeletonBlock";
 
 interface Pool {
   id: string;
@@ -276,7 +277,7 @@ export function TradeBudget() {
       {error && <p className="mb-2 text-sm text-destructive">{error}</p>}
 
       {pools === null ? (
-        <p className="text-sm text-muted-foreground">…</p>
+        <SkeletonBlock lines={5} />
       ) : pools.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("empty")}</p>
       ) : (

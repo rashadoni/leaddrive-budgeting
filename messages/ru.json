@@ -4282,7 +4282,8 @@
       "void": "Сторно",
       "colType": "Вид затрат",
       "fieldCampaign": "Кампания",
-      "fieldChannel": "Канал"
+      "fieldChannel": "Канал",
+      "voidConfirm": "Сторнировать проводку? Это изменит итоги месяца."
     },
     "pacing": {
       "title": "Дневной pacing",
