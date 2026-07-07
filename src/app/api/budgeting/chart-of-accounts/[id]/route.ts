@@ -33,7 +33,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { requireRole, isAuthError } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { enforceRateLimit } from "@/lib/rate-limit"
 import { logAuditEvent } from "@/lib/audit/log"
 
@@ -89,61 +89,66 @@ export async function PUT(
     return NextResponse.json({ error: "Invalid request" }, { status: 400 })
   }
 
-  // Read prior state BEFORE update so audit metadata captures `from`.
-  // Cross-tenant guard via composite where (rejects sibling-org reads).
-  const prior = await prisma.chartOfAccount.findFirst({
-    where: { id, organizationId: session.orgId },
-    select: { code: true, name: true, role: true },
-  })
-  if (!prior) {
-    return NextResponse.json({ error: "Account not found" }, { status: 404 })
-  }
-
-  // Cross-tenant guard: composite where-clause rejects sibling-org rewrites.
-  // updateMany returns count=0 when no row matches (vs update which throws),
-  // letting us return 404 cleanly without try/catch.
-  const result = await prisma.chartOfAccount.updateMany({
-    where: { id, organizationId: session.orgId },
-    data: { role: parsed.role },
-  })
-
-  if (result.count === 0) {
-    // Race: row deleted between findFirst and updateMany — surface as 404.
-    return NextResponse.json({ error: "Account not found" }, { status: 404 })
-  }
-
-  // Re-read to return current row state (Prisma updateMany doesn't return
-  // the row).
-  const account = await prisma.chartOfAccount.findUnique({ where: { id } })
-
-  // Audit emit — Pattern A1 (await + auditStale surface). Skip if no-op
-  // (e.g. PUT with the same role); otherwise the audit log fills with
-  // identical-from/to noise.
-  let auditStale = false
-  if (prior.role !== parsed.role) {
-    const auditResult = await logAuditEvent(prisma, {
-      organizationId: session.orgId,
-      actorUserId: session.userId,
-      event: {
-        action: "coa_role_change",
-        entityType: "ChartOfAccount",
-        entityId: id,
-        metadata: {
-          accountCode: prior.code,
-          accountName: prior.name,
-          from: prior.role,
-          to: parsed.role,
-        },
-      },
-      context: {
-        route: `PUT /api/budgeting/chart-of-accounts/${id}`,
-      },
+  const orgId = session.orgId
+  // Stage 3 RLS — prior-read, guarded update, re-read and audit in one
+  // org-scoped tx (audit is awaited here, so it rides the tx).
+  return withOrgScope(orgId, async (tx) => {
+    // Read prior state BEFORE update so audit metadata captures `from`.
+    // Cross-tenant guard via composite where (rejects sibling-org reads).
+    const prior = await tx.chartOfAccount.findFirst({
+      where: { id, organizationId: orgId },
+      select: { code: true, name: true, role: true },
     })
-    if (!auditResult.ok) auditStale = true
-  }
+    if (!prior) {
+      return NextResponse.json({ error: "Account not found" }, { status: 404 })
+    }
 
-  return NextResponse.json(
-    auditStale ? { account, updated: true, auditStale: true } : { account, updated: true },
-    { status: 200 },
-  )
+    // Cross-tenant guard: composite where-clause rejects sibling-org rewrites.
+    // updateMany returns count=0 when no row matches (vs update which throws),
+    // letting us return 404 cleanly without try/catch.
+    const result = await tx.chartOfAccount.updateMany({
+      where: { id, organizationId: orgId },
+      data: { role: parsed.role },
+    })
+
+    if (result.count === 0) {
+      // Race: row deleted between findFirst and updateMany — surface as 404.
+      return NextResponse.json({ error: "Account not found" }, { status: 404 })
+    }
+
+    // Re-read to return current row state (Prisma updateMany doesn't return
+    // the row). Under RLS the id-only lookup is still org-filtered by policy.
+    const account = await tx.chartOfAccount.findUnique({ where: { id } })
+
+    // Audit emit — Pattern A1 (await + auditStale surface). Skip if no-op
+    // (e.g. PUT with the same role); otherwise the audit log fills with
+    // identical-from/to noise.
+    let auditStale = false
+    if (prior.role !== parsed.role) {
+      const auditResult = await logAuditEvent(tx, {
+        organizationId: orgId,
+        actorUserId: session.userId,
+        event: {
+          action: "coa_role_change",
+          entityType: "ChartOfAccount",
+          entityId: id,
+          metadata: {
+            accountCode: prior.code,
+            accountName: prior.name,
+            from: prior.role,
+            to: parsed.role,
+          },
+        },
+        context: {
+          route: `PUT /api/budgeting/chart-of-accounts/${id}`,
+        },
+      })
+      if (!auditResult.ok) auditStale = true
+    }
+
+    return NextResponse.json(
+      auditStale ? { account, updated: true, auditStale: true } : { account, updated: true },
+      { status: 200 },
+    )
+  })
 }

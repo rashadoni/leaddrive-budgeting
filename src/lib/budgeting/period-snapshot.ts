@@ -169,7 +169,9 @@ export async function computePeriodHashes(
  * but we DO allow multiple rows per period (re-sign on unlock+relock).
  */
 export async function createPeriodSnapshot(
-  prisma: PrismaClient,
+  // Stage 3 RLS — accept TransactionClient too so period-locks POST
+  // threads its withOrgScope tx (computePeriodHashes already does).
+  prisma: PrismaClient | Prisma.TransactionClient,
   orgId: string,
   period: string,
   signedBy: string,

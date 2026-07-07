@@ -32,6 +32,10 @@ const { prismaMock, auditMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
+// Stage 3 RLS — route wraps DB access in withOrgScope; hand the mock straight to the callback so the handler test stays DB-free.
+vi.mock("@/lib/db/with-org-scope", () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+}))
 vi.mock("@/lib/audit/log", async () => {
   const actual = await vi.importActual<typeof import("@/lib/audit/log")>("@/lib/audit/log")
   return {

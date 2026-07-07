@@ -106,6 +106,22 @@ Canonical pattern: `docs/RLS_PATTERN_EXAMPLE.md`. Additions for this flip:
 ## Progress log
 
 - 2026-07-07 — plan written; S0 started.
+- 2026-07-07 — **S2 write-wave (user-scoped to high-value financial writes).**
+  Wrapped: `lines/[id]`, `actuals/[id]`, `lines/count`, `balance-sheet/[id]`,
+  `cash-flow/[id]`, `chart-of-accounts` + `[id]`, `sections` + `[id]`,
+  `plans/[id]` (GET/PUT/DELETE — the full approval-workflow PUT in one tx;
+  loadAndCompute + createNotification are platform stubs today), `period-locks`
+  (GET/POST/DELETE — snapshot + audit in-tx). Threaded `tx` through the local
+  lock/bypass helpers and loosened 3 shared libs to accept `TransactionClient`:
+  `createPeriodSnapshot`, the `import-helpers` audit trio (`logBudgetPlanApprove`
+  etc.). **import-csv** (deprecated bulk importer, up to 50k row-creates) is
+  `rls-scan-ignore` + switched to `prismaAdmin` — a 50k-row loop can't run in
+  one interactive tx and the route is pending removal; app-layer org filters
+  preserved. Coverage 33 → 46 wrapped + 1 opted-out; 106 unwrapped remain
+  (read routes + non-budgeting domains → Sonnet loop / later waves). Gates:
+  tsc 0; full vitest 6298; RLS integration 10/10. Read routes + the plans
+  sub-routes (comments/versions/diff/apply-templates/restore/companies/purge/
+  create-version) still unwrapped — flagged by the scanner, not hidden.
 - 2026-07-07 — **S0 + S1 SHIPPED.** S0: `prisma-app.ts` (RLS-enforced client,
   test-env guard so unit tests keep their mocked client, boot-time role
   assertion), `withOrgScope` default → app client + `timeoutMs`/`maxWaitMs`

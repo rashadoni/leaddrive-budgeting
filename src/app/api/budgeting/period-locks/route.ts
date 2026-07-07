@@ -26,7 +26,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { requireAuth, requireRole, isAuthError } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { enforceRateLimit } from "@/lib/rate-limit"
 import { getLogger } from "@/lib/log"
 
@@ -70,25 +70,25 @@ export async function GET(req: NextRequest) {
   if (!session.orgId) {
     return NextResponse.json({ error: "User has no organization" }, { status: 403 })
   }
-  const org = await prisma.organization.findUnique({
-    where: { id: session.orgId },
-    select: { lockedPeriods: true },
-  })
-  if (!org) {
-    return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-  }
-  const locks = parseLockedPeriods(org.lockedPeriods)
+  const orgId = session.orgId
+  // Stage 3 RLS — org + snapshot reads in one org-scoped tx.
+  const result = await withOrgScope(orgId, async (tx) => {
+    const org = await tx.organization.findUnique({
+      where: { id: orgId },
+      select: { lockedPeriods: true },
+    })
+    if (!org) return null
+    const locks = parseLockedPeriods(org.lockedPeriods)
 
-  // Financial-truth-infra Phase L10 — enrich each lock with its latest
-  // PeriodSnapshot row (signed-off hash + aggregates) so the admin
-  // periods page can show "Revenue 50.6M, signed by X on Y" alongside
-  // the lock entry. One findFirst per locked period — at typical 20-30
-  // locked periods per org this is cheap; if it ever becomes hot we
-  // can batch via findMany + groupBy in-memory.
-  const snapshots = await Promise.all(
-    locks.map(async (lock) => {
-      const snap = await prisma.periodSnapshot.findFirst({
-        where: { organizationId: session.orgId!, period: lock.period },
+    // Financial-truth-infra Phase L10 — enrich each lock with its latest
+    // PeriodSnapshot row (signed-off hash + aggregates) so the admin
+    // periods page can show "Revenue 50.6M, signed by X on Y" alongside
+    // the lock entry. Sequential findFirst per period (tx serializes on
+    // one connection — no Promise.all parallelism inside an interactive tx).
+    const snapshots: Array<{ period: string; snapshot: unknown }> = []
+    for (const lock of locks) {
+      const snap = await tx.periodSnapshot.findFirst({
+        where: { organizationId: orgId, period: lock.period },
         orderBy: { signedAt: "desc" },
         select: {
           id: true,
@@ -99,14 +99,18 @@ export async function GET(req: NextRequest) {
           aggregates: true,
         },
       })
-      return { period: lock.period, snapshot: snap }
-    }),
-  )
+      snapshots.push({ period: lock.period, snapshot: snap })
+    }
+    return { locks, snapshots }
+  })
+  if (!result) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 404 })
+  }
   const snapshotByPeriod = Object.fromEntries(
-    snapshots.map((s) => [s.period, s.snapshot]),
+    result.snapshots.map((s) => [s.period, s.snapshot]),
   )
 
-  return NextResponse.json({ locks, snapshots: snapshotByPeriod })
+  return NextResponse.json({ locks: result.locks, snapshots: snapshotByPeriod })
 }
 
 export async function POST(req: NextRequest) {
@@ -139,75 +143,87 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 })
   }
 
-  const org = await prisma.organization.findUnique({
-    where: { id: session.orgId },
-    select: { id: true, lockedPeriods: true },
-  })
-  if (!org) {
-    return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-  }
-
-  const currentLocks = parseLockedPeriods(org.lockedPeriods)
+  const orgId = session.orgId
   const newLock: LockedPeriod = {
     period: parsed.period,
     lockedAt: new Date().toISOString(),
     lockedBy: session.userId,
     reason: parsed.reason,
   }
-  const nextLocks = addPeriodLock(currentLocks, newLock)
 
-  // addPeriodLock is idempotent — re-add returns input unchanged. Detect
-  // the no-op so the API can return 200 + isNew=false for the UI to surface
-  // "already locked since ..." instead of a misleading 201.
-  const wasNew = nextLocks.length !== currentLocks.length
-
-  await prisma.organization.update({
-    where: { id: org.id },
-    data: { lockedPeriods: nextLocks as unknown as Prisma.InputJsonValue },
-  })
-
-  // Financial-truth-infra Phase E.1 — when a period is newly locked,
-  // also persist an immutable PeriodSnapshot (SHA-256 of all IV +
-  // BudgetLine rows scoped to that period). Lets later recomputes
-  // prove they haven't silently drifted from the signed-off numbers.
-  // Failure here is non-fatal — the lock itself succeeded; we just
-  // surface `snapshotStale: true` so the admin UI flags the gap.
-  let snapshotStale = false
-  if (wasNew) {
-    try {
-      const { createPeriodSnapshot } = await import("@/lib/budgeting/period-snapshot")
-      await createPeriodSnapshot(prisma, session.orgId, parsed.period, session.userId, parsed.reason ?? null)
-    } catch (e) {
-      log.error("snapshot create failed", {
-        period: parsed.period,
-        err: e instanceof Error ? e.message : String(e),
+  // Stage 3 RLS — org read, lock update, snapshot + audit in one
+  // org-scoped tx (snapshot hashing reads IV + BudgetLine, so give it
+  // headroom over the 5s default).
+  const outcome = await withOrgScope(
+    orgId,
+    async (tx) => {
+      const org = await tx.organization.findUnique({
+        where: { id: orgId },
+        select: { id: true, lockedPeriods: true },
       })
-      snapshotStale = true
-    }
-  }
+      if (!org) return { notFound: true as const }
 
-  // Audit emission — awaited (compliance-grade). On audit failure, surface
-  // `auditStale: true` in the response so the admin UI can show a soft warning.
-  let auditStale = false
-  if (wasNew) {
-    const auditResult = await logAuditEvent(prisma, {
-      organizationId: session.orgId,
-      actorUserId: session.userId,
-      event: {
-        action: "period_lock_add",
-        entityType: "Organization",
-        entityId: org.id,
-        metadata: {
-          period: parsed.period,
-          reason: parsed.reason,
-        },
-      },
-      context: buildAuditContext({
-        route: "/api/budgeting/period-locks",
-        userAgent: req.headers.get("user-agent") ?? undefined,
-      }),
-    })
-    if (!auditResult.ok) auditStale = true
+      const currentLocks = parseLockedPeriods(org.lockedPeriods)
+      const nextLocks = addPeriodLock(currentLocks, newLock)
+
+      // addPeriodLock is idempotent — re-add returns input unchanged. Detect
+      // the no-op so the API can return 200 + isNew=false for the UI to surface
+      // "already locked since ..." instead of a misleading 201.
+      const wasNew = nextLocks.length !== currentLocks.length
+
+      await tx.organization.update({
+        where: { id: org.id },
+        data: { lockedPeriods: nextLocks as unknown as Prisma.InputJsonValue },
+      })
+
+      // Financial-truth-infra Phase E.1 — when a period is newly locked,
+      // also persist an immutable PeriodSnapshot (SHA-256 of all IV +
+      // BudgetLine rows scoped to that period). Failure is non-fatal — the
+      // lock committed; surface `snapshotStale` so the admin UI flags it.
+      let snapshotStale = false
+      if (wasNew) {
+        try {
+          const { createPeriodSnapshot } = await import("@/lib/budgeting/period-snapshot")
+          await createPeriodSnapshot(tx, orgId, parsed.period, session.userId, parsed.reason ?? null)
+        } catch (e) {
+          log.error("snapshot create failed", {
+            period: parsed.period,
+            err: e instanceof Error ? e.message : String(e),
+          })
+          snapshotStale = true
+        }
+      }
+
+      // Audit emission — awaited (compliance-grade).
+      let auditStale = false
+      if (wasNew) {
+        const auditResult = await logAuditEvent(tx, {
+          organizationId: orgId,
+          actorUserId: session.userId,
+          event: {
+            action: "period_lock_add",
+            entityType: "Organization",
+            entityId: org.id,
+            metadata: {
+              period: parsed.period,
+              reason: parsed.reason,
+            },
+          },
+          context: buildAuditContext({
+            route: "/api/budgeting/period-locks",
+            userAgent: req.headers.get("user-agent") ?? undefined,
+          }),
+        })
+        if (!auditResult.ok) auditStale = true
+      }
+
+      return { wasNew, nextLocks, snapshotStale, auditStale }
+    },
+    { timeoutMs: 20_000 },
+  )
+
+  if ("notFound" in outcome) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 404 })
   }
 
   const responseBody: {
@@ -216,13 +232,13 @@ export async function POST(req: NextRequest) {
     auditStale?: boolean
     snapshotStale?: boolean
   } = {
-    lock: findLockForPeriod(nextLocks, parsed.period) ?? newLock,
-    isNew: wasNew,
+    lock: findLockForPeriod(outcome.nextLocks, parsed.period) ?? newLock,
+    isNew: outcome.wasNew,
   }
-  if (auditStale) responseBody.auditStale = true
-  if (snapshotStale) responseBody.snapshotStale = true
+  if (outcome.auditStale) responseBody.auditStale = true
+  if (outcome.snapshotStale) responseBody.snapshotStale = true
 
-  return NextResponse.json(responseBody, { status: wasNew ? 201 : 200 })
+  return NextResponse.json(responseBody, { status: outcome.wasNew ? 201 : 200 })
 }
 
 export async function DELETE(req: NextRequest) {
@@ -255,59 +271,67 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 })
   }
 
-  const org = await prisma.organization.findUnique({
-    where: { id: session.orgId },
-    select: { id: true, lockedPeriods: true },
-  })
-  if (!org) {
-    return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-  }
-
-  const currentLocks = parseLockedPeriods(org.lockedPeriods)
-  const removedLock = findLockForPeriod(currentLocks, parsed.period)
-  const nextLocks = removePeriodLock(currentLocks, parsed.period)
-
-  // removePeriodLock is idempotent — non-existent removal is no-op.
-  const wasRemoved = nextLocks.length !== currentLocks.length
-
-  if (wasRemoved) {
-    await prisma.organization.update({
-      where: { id: org.id },
-      data: { lockedPeriods: nextLocks as unknown as Prisma.InputJsonValue },
+  const orgId = session.orgId
+  // Stage 3 RLS — org read, lock removal + audit in one org-scoped tx.
+  const outcome = await withOrgScope(orgId, async (tx) => {
+    const org = await tx.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, lockedPeriods: true },
     })
-  }
+    if (!org) return { notFound: true as const }
 
-  let auditStale = false
-  if (wasRemoved && removedLock) {
-    const auditResult = await logAuditEvent(prisma, {
-      organizationId: session.orgId,
-      actorUserId: session.userId,
-      event: {
-        action: "period_lock_remove",
-        entityType: "Organization",
-        entityId: org.id,
-        metadata: {
-          period: parsed.period,
-          removedLock: {
-            lockedAt: removedLock.lockedAt,
-            lockedBy: removedLock.lockedBy,
-            reason: removedLock.reason,
+    const currentLocks = parseLockedPeriods(org.lockedPeriods)
+    const removedLock = findLockForPeriod(currentLocks, parsed.period)
+    const nextLocks = removePeriodLock(currentLocks, parsed.period)
+
+    // removePeriodLock is idempotent — non-existent removal is no-op.
+    const wasRemoved = nextLocks.length !== currentLocks.length
+
+    if (wasRemoved) {
+      await tx.organization.update({
+        where: { id: org.id },
+        data: { lockedPeriods: nextLocks as unknown as Prisma.InputJsonValue },
+      })
+    }
+
+    let auditStale = false
+    if (wasRemoved && removedLock) {
+      const auditResult = await logAuditEvent(tx, {
+        organizationId: orgId,
+        actorUserId: session.userId,
+        event: {
+          action: "period_lock_remove",
+          entityType: "Organization",
+          entityId: org.id,
+          metadata: {
+            period: parsed.period,
+            removedLock: {
+              lockedAt: removedLock.lockedAt,
+              lockedBy: removedLock.lockedBy,
+              reason: removedLock.reason,
+            },
           },
         },
-      },
-      context: buildAuditContext({
-        route: "/api/budgeting/period-locks",
-        userAgent: req.headers.get("user-agent") ?? undefined,
-      }),
-    })
-    if (!auditResult.ok) auditStale = true
+        context: buildAuditContext({
+          route: "/api/budgeting/period-locks",
+          userAgent: req.headers.get("user-agent") ?? undefined,
+        }),
+      })
+      if (!auditResult.ok) auditStale = true
+    }
+
+    return { wasRemoved, auditStale }
+  })
+
+  if ("notFound" in outcome) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 404 })
   }
 
   const responseBody: { period: string; removed: boolean; auditStale?: boolean } = {
     period: parsed.period,
-    removed: wasRemoved,
+    removed: outcome.wasRemoved,
   }
-  if (auditStale) responseBody.auditStale = true
+  if (outcome.auditStale) responseBody.auditStale = true
 
   return NextResponse.json(responseBody, { status: 200 })
 }

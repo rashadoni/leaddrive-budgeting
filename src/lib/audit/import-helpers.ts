@@ -17,7 +17,11 @@
  *    callers (renders as italic "system" in `AuditFeed`).
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, Prisma } from '@prisma/client';
+
+// Stage 3 RLS — audit helpers only forward to logAuditEvent (which
+// accepts a tx), so callers wrapped in withOrgScope can thread the tx.
+type AuditDb = PrismaClient | Prisma.TransactionClient;
 import {
   logAuditEvent,
   buildAuditContext,
@@ -57,7 +61,7 @@ export interface ImportBudgetCreateArgs {
  * because legacy plans pre-Turn-25 didn't always have it.
  */
 export async function logBudgetPlanCreate(
-  prisma: PrismaClient,
+  prisma: AuditDb,
   args: {
     organizationId: string;
     actorUserId: string | null;
@@ -91,7 +95,7 @@ export async function logBudgetPlanCreate(
  * audit consumers can distinguish first-approval vs approve-after-reject.
  */
 export async function logBudgetPlanApprove(
-  prisma: PrismaClient,
+  prisma: AuditDb,
   args: {
     organizationId: string;
     actorUserId: string | null;
@@ -120,7 +124,7 @@ export async function logBudgetPlanApprove(
 }
 
 export async function logImportBudgetCreate(
-  prisma: PrismaClient,
+  prisma: AuditDb,
   args: ImportBudgetCreateArgs,
 ): Promise<LogAuditEventResult> {
   return logAuditEvent(prisma, {

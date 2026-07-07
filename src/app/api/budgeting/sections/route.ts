@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId, requireRole } from "@/lib/api-auth"
+// Stage 3 RLS — `prisma` kept ONLY for lockedResponse's 423-audit; data
+// access rides the withOrgScope tx.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
@@ -19,10 +22,13 @@ export async function GET(req: NextRequest) {
   const planId = req.nextUrl.searchParams.get("planId")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
-  const sections = await prisma.budgetSection.findMany({
-    where: { planId, organizationId: orgId },
-    orderBy: { sortOrder: "asc" },
-  })
+  // Stage 3 RLS — read in the org-scoped tx.
+  const sections = await withOrgScope(orgId, (tx) =>
+    tx.budgetSection.findMany({
+      where: { planId, organizationId: orgId },
+      orderBy: { sortOrder: "asc" },
+    }),
+  )
 
   return NextResponse.json({ success: true, data: sections })
 }
@@ -52,30 +58,33 @@ export async function POST(req: NextRequest) {
 
   const { planId, name, sectionType, sortOrder } = data
 
-  // Phase 7.G Turn LXVIII (Phase 4.2 fan-out). Verify plan belongs to caller's
-  // org (cross-tenant guard) and check period-lock. Org-membership check is
-  // load-bearing here — without it a viewer-promoted-to-manager could touch
-  // other orgs' sections via guessable planId.
-  const plan = await prisma.budgetPlan.findFirst({
-    where: { id: planId, organizationId: orgId },
-    select: { id: true, periodType: true, year: true, month: true, quarter: true },
-  })
-  if (!plan) {
-    return NextResponse.json({ error: "Plan not found in this organization" }, { status: 404 })
-  }
-  const periodKey = derivePeriodKey(plan)
-  const lock = await getActivePeriodLock(prisma, orgId, periodKey)
-  if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/sections" })
+  // Stage 3 RLS — plan check, lock check and create in one org-scoped tx.
+  return withOrgScope(orgId, async (tx) => {
+    // Phase 7.G Turn LXVIII (Phase 4.2 fan-out). Verify plan belongs to caller's
+    // org (cross-tenant guard) and check period-lock. Org-membership check is
+    // load-bearing here — without it a viewer-promoted-to-manager could touch
+    // other orgs' sections via guessable planId.
+    const plan = await tx.budgetPlan.findFirst({
+      where: { id: planId, organizationId: orgId },
+      select: { id: true, periodType: true, year: true, month: true, quarter: true },
+    })
+    if (!plan) {
+      return NextResponse.json({ error: "Plan not found in this organization" }, { status: 404 })
+    }
+    const periodKey = derivePeriodKey(plan)
+    const lock = await getActivePeriodLock(tx, orgId, periodKey)
+    if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/sections" })
 
-  const section = await prisma.budgetSection.create({
-    data: {
-      organizationId: orgId,
-      planId,
-      name,
-      sectionType: sectionType || "expense",
-      sortOrder: sortOrder ?? 0,
-    },
-  })
+    const section = await tx.budgetSection.create({
+      data: {
+        organizationId: orgId,
+        planId,
+        name,
+        sectionType: sectionType || "expense",
+        sortOrder: sortOrder ?? 0,
+      },
+    })
 
-  return NextResponse.json({ success: true, data: section }, { status: 201 })
+    return NextResponse.json({ success: true, data: section }, { status: 201 })
+  })
 }

@@ -1,7 +1,15 @@
+// rls-scan-ignore: DEPRECATED bulk importer (replacedBy /api/import/ai-auto-multi).
+// Its per-row loop creates up to 50k budget_actuals — that cannot run inside a
+// single interactive withOrgScope tx (timeout + long lock hold), and the route
+// is pending removal. It therefore uses the explicit `prismaAdmin` (BYPASSRLS)
+// client with per-query `organizationId` filters (app-layer scoping preserved),
+// which survives the Stage-3 env-flip without a risky giant transaction. When
+// the route is deleted this marker goes with it.
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId, getSession } from "@/lib/api-auth"
-import { prisma, logBudgetChange } from "@/lib/prisma"
+import { logBudgetChange } from "@/lib/prisma"
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import { deriveMonthIndex } from "@/lib/budgeting/derive-month-index"

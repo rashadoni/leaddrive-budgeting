@@ -43,6 +43,11 @@ const { prismaMock, costModelMock, notifMock } = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
+// Stage 3 RLS — GET/PUT/DELETE wrap DB access in withOrgScope; hand the
+// mock straight to the callback so the handler test stays DB-free.
+vi.mock('@/lib/db/with-org-scope', () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+}));
 vi.mock('@/lib/cost-model/db', () => costModelMock);
 vi.mock('@/lib/notifications', () => notifMock);
 
