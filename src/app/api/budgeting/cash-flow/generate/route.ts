@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId, getSession } from "@/lib/api-auth"
+// Stage 3 RLS — `prisma` kept ONLY for lockedResponse's 423-audit.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import type { CashFlowEntry } from "@prisma/client"
@@ -36,13 +38,18 @@ export async function POST(req: NextRequest) {
 
   const { year, planId } = data
 
+  // Stage 3 RLS — the whole destructive regen (lock check, deleteMany,
+  // per-plan projection loop, alert regen) in ONE org-scoped tx — now
+  // atomic (was a bare deleteMany-then-recreate). 60s: a year of CF entries.
+  return withOrgScope(
+    orgId,
+    async (tx) => {
   // Phase 7.G Turn LXVIII (Phase 4.2 fan-out). Period-lock guard. cash-flow
   // regeneration is destructive (deleteMany before recreate) and spans the
   // ENTIRE year + every plan within it. Reject if the year itself is locked
-  // OR if any plan's narrower period (Q/M) is locked — both flavours block
-  // since regen would silently overwrite locked-period entries.
+  // OR if any plan's narrower period (Q/M) is locked.
   // Load plans BEFORE deleteMany so a 423 doesn't leak an incomplete state.
-  const plans = await prisma.budgetPlan.findMany({
+  const plans = await tx.budgetPlan.findMany({
     where: { organizationId: orgId, year, isRolling: false },
   })
   const yearKey = String(year)
@@ -50,11 +57,11 @@ export async function POST(req: NextRequest) {
     derivePeriodKey(p),
   )
   const periodKeysToCheck: string[] = Array.from(new Set([yearKey, ...planPeriodKeys]))
-  const lock = await findFirstActiveLockInPeriods(prisma, orgId, periodKeysToCheck)
+  const lock = await findFirstActiveLockInPeriods(tx, orgId, periodKeysToCheck)
   if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/cash-flow/generate" })
 
   // Clear old generated entries for this year before regenerating
-  await prisma.cashFlowEntry.deleteMany({
+  await tx.cashFlowEntry.deleteMany({
     where: { organizationId: orgId, year, source: "budget_line" },
   })
 
@@ -65,7 +72,7 @@ export async function POST(req: NextRequest) {
   // PARTIAL company import doesn't suppress other companies' projections (P2).
   const actualKeys = new Set(
     (
-      await prisma.cashFlowEntry.findMany({
+      await tx.cashFlowEntry.findMany({
         where: { organizationId: orgId, year, isProjected: false, deletedAt: null },
         select: { companyId: true, month: true },
         distinct: ["companyId", "month"],
@@ -77,7 +84,7 @@ export async function POST(req: NextRequest) {
   let skippedActualCells = 0
 
   for (const plan of plans) {
-    const lines = await prisma.budgetLine.findMany({
+    const lines = await tx.budgetLine.findMany({
       // deletedAt:null (2026-05-31): project CF from LIVE budget lines only —
       // archived lines would inject phantom cash flows into the projection.
       where: { planId: plan.id, organizationId: orgId, deletedAt: null },
@@ -104,7 +111,7 @@ export async function POST(req: NextRequest) {
           skippedActualCells++
           continue // this company's actuals already cover this (company, month)
         }
-        await prisma.cashFlowEntry.create({
+        await tx.cashFlowEntry.create({
           data: {
             organizationId: orgId,
             year: plan.year,
@@ -136,12 +143,12 @@ export async function POST(req: NextRequest) {
   // defensively wrapped in try/catch for a possibly-absent Invoice model.
 
   // 3. Clear old alerts for this year before regenerating
-  await prisma.cashFlowAlert.deleteMany({
+  await tx.cashFlowAlert.deleteMany({
     where: { organizationId: orgId, year },
   })
 
   // 4. Generate alerts for negative closing balances
-  const entries = await prisma.cashFlowEntry.findMany({
+  const entries = await tx.cashFlowEntry.findMany({
     // deletedAt:null (2026-05-31): balance/alerts off LIVE entries only —
     // archived rows would distort closing balances and fire false alerts.
     where: { organizationId: orgId, year, deletedAt: null },
@@ -157,12 +164,12 @@ export async function POST(req: NextRequest) {
 
     if (balance < 0) {
       // Check if alert already exists
-      const existingAlert = await prisma.cashFlowAlert.findFirst({
+      const existingAlert = await tx.cashFlowAlert.findFirst({
         where: { organizationId: orgId, year, month: m, alertType: "negative_balance", isResolved: false },
       })
 
       if (!existingAlert) {
-        await prisma.cashFlowAlert.create({
+        await tx.cashFlowAlert.create({
           data: {
             organizationId: orgId,
             year,
@@ -183,4 +190,7 @@ export async function POST(req: NextRequest) {
     skippedActualCells,
     year,
   })
+    },
+    { timeoutMs: 60_000 },
+  )
 }

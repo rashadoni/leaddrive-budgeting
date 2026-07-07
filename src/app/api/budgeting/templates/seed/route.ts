@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { getOrgId } from "@/lib/api-auth"
 
 const TEMPLATE_PACKS = {
@@ -52,34 +52,37 @@ export async function POST(req: NextRequest) {
 
   const { pack } = await req.json().catch(() => ({ pack: "all" }))
 
-  const existing = await prisma.budgetDirectionTemplate.count({ where: { organizationId: orgId } })
-
-  let created = 0
   const packs = pack === "all" ? Object.values(TEMPLATE_PACKS) : TEMPLATE_PACKS[pack as keyof typeof TEMPLATE_PACKS] ? [TEMPLATE_PACKS[pack as keyof typeof TEMPLATE_PACKS]] : []
 
-  for (const p of packs) {
-    for (const t of p.templates) {
-      // Skip if template with same name + lineType already exists
-      const exists = await prisma.budgetDirectionTemplate.findFirst({
-        where: { organizationId: orgId, name: t.name, lineType: t.lineType },
-      })
-      if (exists) continue
+  // Stage 3 RLS — count + de-dupe + seed loop in one org-scoped tx.
+  const created = await withOrgScope(orgId, async (tx) => {
+    const existing = await tx.budgetDirectionTemplate.count({ where: { organizationId: orgId } })
+    let created = 0
+    for (const p of packs) {
+      for (const t of p.templates) {
+        // Skip if template with same name + lineType already exists
+        const exists = await tx.budgetDirectionTemplate.findFirst({
+          where: { organizationId: orgId, name: t.name, lineType: t.lineType },
+        })
+        if (exists) continue
 
-      await prisma.budgetDirectionTemplate.create({
-        data: {
-          organizationId: orgId,
-          name: t.name,
-          lineType: t.lineType,
-          lineSubtype: (t as any).lineSubtype ?? null,
-          defaultAmount: t.defaultAmount,
-          costModelKey: (t as any).costModelKey ?? null,
-          sortOrder: t.sortOrder + (existing + created),
-          isActive: true,
-        },
-      })
-      created++
+        await tx.budgetDirectionTemplate.create({
+          data: {
+            organizationId: orgId,
+            name: t.name,
+            lineType: t.lineType,
+            lineSubtype: (t as any).lineSubtype ?? null,
+            defaultAmount: t.defaultAmount,
+            costModelKey: (t as any).costModelKey ?? null,
+            sortOrder: t.sortOrder + (existing + created),
+            isActive: true,
+          },
+        })
+        created++
+      }
     }
-  }
+    return created
+  })
 
   return NextResponse.json({ success: true, created })
 }

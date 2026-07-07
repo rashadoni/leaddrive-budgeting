@@ -1,8 +1,16 @@
+// rls-scan-ignore: AI-narration route — a long-lived SSE stream with an
+// LLM tool-use loop (runTool fires DB reads AFTER the handler returns, over
+// minutes). A single interactive withOrgScope tx is architecturally
+// impossible here (5s tx timeout, and the tx would have to span the whole
+// stream). It is READ-ONLY and scoped by explicit organizationId/planId, so
+// it uses the BYPASSRLS `prismaAdmin` client (route + its collectSectionContext
+// / runTool libs) — app-layer org scoping preserved. Survives the Stage-3
+// env-flip without a giant transaction.
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import type Anthropic from "@anthropic-ai/sdk"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { AI_MODEL, getAnthropicClient, hasAnthropicKey } from "@/lib/ai/client"
 import { buildKickoffUserMessage, buildSystemPrompt } from "@/lib/ai/prompts"
 import { collectSectionContext, type Section } from "@/lib/ai/section-context"

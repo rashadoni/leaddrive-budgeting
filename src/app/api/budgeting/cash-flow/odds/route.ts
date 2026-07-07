@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { currentBakuYear } from "@/lib/risk/periods"
 import type { CashFlowEntry } from "@prisma/client"
 
@@ -17,19 +17,22 @@ export async function GET(req: NextRequest) {
   // deletedAt:null REQUIRED (2026-05-31): same soft-delete archive pattern
   // as the cash-flow overview GET — without it the ODDS statement sums
   // superseded rows, inflating Operating/Investing/Financing totals ~2×.
-  const entries = await prisma.cashFlowEntry.findMany({
-    where: { organizationId: orgId, year, deletedAt: null },
-    orderBy: [{ month: "asc" }],
-    include: { account: { select: { code: true, name: true } } },
-  })
-
-  let compareEntries: typeof entries = []
-  if (compareYear) {
-    compareEntries = await prisma.cashFlowEntry.findMany({
-      where: { organizationId: orgId, year: parseInt(compareYear), deletedAt: null },
+  // Stage 3 RLS — reads in the org-scoped tx; ODDS aggregation is pure.
+  const { entries, compareEntries } = await withOrgScope(orgId, async (tx) => {
+    const entries = await tx.cashFlowEntry.findMany({
+      where: { organizationId: orgId, year, deletedAt: null },
+      orderBy: [{ month: "asc" }],
       include: { account: { select: { code: true, name: true } } },
     })
-  }
+    let compareEntries: typeof entries = []
+    if (compareYear) {
+      compareEntries = await tx.cashFlowEntry.findMany({
+        where: { organizationId: orgId, year: parseInt(compareYear), deletedAt: null },
+        include: { account: { select: { code: true, name: true } } },
+      })
+    }
+    return { entries, compareEntries }
+  })
 
   // Group by activity type
   const activities = ["operating", "investing", "financing"] as const

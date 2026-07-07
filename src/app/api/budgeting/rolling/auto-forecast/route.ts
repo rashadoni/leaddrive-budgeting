@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId, getSession } from "@/lib/api-auth"
+// Stage 3 RLS — `prisma` kept ONLY for lockedResponse's 423-audit.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeysForMonths } from "@/lib/budgeting/period-lock-http"
 
@@ -35,13 +37,18 @@ export async function POST(req: NextRequest) {
 
   const { planId, lookbackMonths = 6 } = data
 
-  const plan = await prisma.budgetPlan.findFirst({
+  // Stage 3 RLS — reads, lock check and the regression-forecast upsert
+  // loop in one org-scoped tx (30s: categories × forecast months).
+  return withOrgScope(
+    orgId,
+    async (tx) => {
+  const plan = await tx.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId },
   })
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 
   // Get recent actuals grouped by category + month
-  const actuals = await prisma.budgetActual.findMany({
+  const actuals = await tx.budgetActual.findMany({
     where: { planId, organizationId: orgId },
     orderBy: { createdAt: "desc" },
   })
@@ -61,7 +68,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Get forecast months
-  const forecastMonths = await prisma.rollingForecastMonth.findMany({
+  const forecastMonths = await tx.rollingForecastMonth.findMany({
     where: { planId, organizationId: orgId, status: "forecast" },
     orderBy: [{ year: "asc" }, { month: "asc" }],
   })
@@ -76,7 +83,7 @@ export async function POST(req: NextRequest) {
     forecastMonths.map((m: { year: number; month: number }) => ({ year: m.year, month: m.month })),
   )
   const afLock = await findFirstActiveLockInPeriods(
-    prisma,
+    tx,
     orgId,
     Array.from(new Set([planKey, ...monthKeys])),
   )
@@ -118,7 +125,7 @@ export async function POST(req: NextRequest) {
       const fm = forecastMonths[i]
       const projected = Math.max(0, a + b * (n + i))
 
-      await prisma.budgetForecastEntry.upsert({
+      await tx.budgetForecastEntry.upsert({
         where: {
           planId_year_month_category_lineType: {
             planId,
@@ -148,4 +155,7 @@ export async function POST(req: NextRequest) {
     forecastEntriesCreated: created,
     categoriesProcessed: byCategory.size,
   })
+    },
+    { timeoutMs: 30_000 },
+  )
 }

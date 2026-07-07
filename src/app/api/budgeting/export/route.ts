@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
@@ -125,12 +125,15 @@ export async function GET(req: NextRequest) {
   const planId = req.nextUrl.searchParams.get("planId")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
-  const [plan, lines, manualActuals, forecastEntries] = await Promise.all([
-    prisma.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } }),
-    prisma.budgetLine.findMany({ where: { planId, organizationId: orgId, deletedAt: null }, orderBy: { sortOrder: "asc" }, include: { account: { select: { code: true, name: true } } } }),
-    prisma.budgetActual.findMany({ where: { planId, organizationId: orgId }, orderBy: { createdAt: "asc" } }),
-    prisma.budgetForecastEntry.findMany({ where: { planId, organizationId: orgId }, orderBy: [{ year: "asc" }, { month: "asc" }] }),
-  ])
+  // Stage 3 RLS — DB reads in the org-scoped tx; the heavy ExcelJS
+  // workbook build runs OUTSIDE the tx (pure CPU, no DB).
+  const [plan, lines, manualActuals, forecastEntries] = await withOrgScope(orgId, async (tx) => {
+    const plan = await tx.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } })
+    const lines = await tx.budgetLine.findMany({ where: { planId, organizationId: orgId, deletedAt: null }, orderBy: { sortOrder: "asc" }, include: { account: { select: { code: true, name: true } } } })
+    const manualActuals = await tx.budgetActual.findMany({ where: { planId, organizationId: orgId }, orderBy: { createdAt: "asc" } })
+    const forecastEntries = await tx.budgetForecastEntry.findMany({ where: { planId, organizationId: orgId }, orderBy: [{ year: "asc" }, { month: "asc" }] })
+    return [plan, lines, manualActuals, forecastEntries] as const
+  })
 
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 

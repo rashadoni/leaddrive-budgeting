@@ -12,7 +12,11 @@
 
 import type Anthropic from "@anthropic-ai/sdk"
 import type { Prisma } from "@prisma/client"
-import { prisma } from "@/lib/prisma"
+// Stage 3 RLS — AI drill-down tools for the SSE ai-analytics route.
+// Read-only, scoped by explicit organizationId; BYPASSRLS admin client
+// (a single withOrgScope tx can't span an LLM tool-loop). See the route's
+// rls-scan-ignore note.
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 
 export type ToolName = "get_monthly_breakdown" | "get_account_drill"
 

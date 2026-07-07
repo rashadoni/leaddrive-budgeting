@@ -148,6 +148,21 @@ per RLS_RUNBOOK §1.
 ## Progress log
 
 - 2026-07-07 — plan written; S0 started.
+- 2026-07-07 — **S2 slice 10 — BUDGETING DOMAIN FULLY ENFORCED (88 wrapped).**
+  Wrapped the last budgeting routes: export + sales-forecast/export (heavy
+  ExcelJS build kept OUTSIDE the tx — only DB reads scoped), templates/seed,
+  cash-flow/{alerts,generate,odds}, matrix-seed (inner interactive $transaction
+  folded into the scope tx), sync-actuals, snapshot-actuals, rolling/auto-forecast.
+  cash-flow/generate's destructive deleteMany-then-recreate is now ATOMIC in one
+  tx. **ai-analytics** is `rls-scan-ignore` #2 — an SSE stream + LLM tool-loop
+  (runTool fires DB reads AFTER the handler returns, over minutes) can't live in
+  one interactive tx; read-only + orgId-scoped, so the route AND its
+  `section-context.ts` / `tools.ts` libs switched to `prismaAdmin`. Scan: 88
+  wrapped / 26 clean / 2 opted-out (import-csv + ai-analytics) / 63 unwrapped
+  (all NON-budgeting now). Gates: tsc 0; budgeting suites 557; full vitest 6298;
+  RLS leak 10/10. **Every /api/budgeting/* + /api/trade/* route is RLS-enforced.**
+  Remaining 63 = companies/indicators/scenarios/onboarding/analytics/cron/admin/
+  users/me/market/intel/recompute/queue/telemetry/events/… before S5.
 - 2026-07-07 — **S2 budgeting slices 7–9 (Opus, "продолжай").** 78 wrapped total
   (was 62). Slice 7: analytics (whole ~800-line aggregation GET), templates,
   reports. Slice 8: templates/[id], reports/[id], sales-forecast (+$transaction

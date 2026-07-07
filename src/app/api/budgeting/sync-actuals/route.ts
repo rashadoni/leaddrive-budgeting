@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId, requireRole, isAuthError } from "@/lib/api-auth"
+// Stage 3 RLS — `prisma` kept ONLY for lockedResponse's 423-audit.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
@@ -41,80 +43,80 @@ export async function POST(req: NextRequest) {
 
   const { planId } = data
 
-  const [plan, lines] = await Promise.all([
-    prisma.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } }),
-    prisma.budgetLine.findMany({ where: { planId, organizationId: orgId, isAutoActual: true, deletedAt: null }, include: { account: { select: { code: true, name: true } } } }),
-  ])
+  // Stage 3 RLS — reads, lock check and the per-line upsert loop in one
+  // org-scoped tx (loadAndCompute is a stub; loop bounded by auto-actual
+  // line count).
+  return withOrgScope(
+    orgId,
+    async (tx) => {
+      const plan = await tx.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } })
+      const lines = await tx.budgetLine.findMany({ where: { planId, organizationId: orgId, isAutoActual: true, deletedAt: null }, include: { account: { select: { code: true, name: true } } } })
 
-  if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
+      if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 
-  if (lines.length === 0) {
-    return NextResponse.json({ success: true, data: { synced: 0 } })
-  }
+      if (lines.length === 0) {
+        return NextResponse.json({ success: true, data: { synced: 0 } })
+      }
 
-  const costModel = await loadAndCompute(orgId).catch(() => null)
-  if (!costModel) {
-    return NextResponse.json({ error: "Cost model unavailable" }, { status: 503 })
-  }
+      const costModel = await loadAndCompute(orgId).catch(() => null)
+      if (!costModel) {
+        return NextResponse.json({ error: "Cost model unavailable" }, { status: 503 })
+      }
 
-  const { year, month } = currentBakuYearMonth()
-  const currentDate = `${year}-${String(month).padStart(2, "0")}-01`
+      const { year, month } = currentBakuYearMonth()
+      const currentDate = `${year}-${String(month).padStart(2, "0")}-01`
 
-  // Phase 7.G Turn LXIX (Phase 4.2 bulk-mutation gate). sync-actuals
-  // writes/updates actuals at the CURRENT month. Lock check covers
-  // both the plan's period (annual/quarterly/monthly) AND the current
-  // month's containing periods (year/quarter/month). Any matched lock
-  // rejects — we never want auto-sync to bleed into a closed period.
-  const periodsToCheck = Array.from(
-    new Set([derivePeriodKey(plan), ...containingPeriodKeys(year, month)]),
+      // Bulk-mutation period-lock gate (current month + plan period).
+      const periodsToCheck = Array.from(
+        new Set([derivePeriodKey(plan), ...containingPeriodKeys(year, month)]),
+      )
+      const syncLock = await findFirstActiveLockInPeriods(tx, orgId, periodsToCheck)
+      if (syncLock) return lockedResponse(syncLock, { prisma, orgId, userId, route: "POST /api/budgeting/sync-actuals" })
+
+      let synced = 0
+
+      for (const line of lines) {
+        if (!line.costModelKey) continue
+        const amount = resolveCostModelKey(costModel, line.costModelKey)
+        if (amount <= 0) continue
+
+        // Upsert: find existing actual for this account.code+month or create new
+        const lineAccountCode = (line as any).account?.code ?? ""
+        const existing = await tx.budgetActual.findFirst({
+          where: {
+            planId,
+            organizationId: orgId,
+            category: lineAccountCode,
+            description: { startsWith: "auto-sync:" },
+          },
+        })
+
+        const monthIndex = month - 1
+        if (existing) {
+          await tx.budgetActual.update({
+            where: { id: existing.id },
+            data: { actualAmount: amount, expenseDate: currentDate, monthIndex },
+          })
+        } else {
+          await tx.budgetActual.create({
+            data: {
+              organizationId: orgId,
+              planId,
+              category: lineAccountCode,
+              department: line.department,
+              lineType: line.lineType,
+              actualAmount: amount,
+              expenseDate: currentDate,
+              monthIndex,
+              description: `auto-sync: ${line.costModelKey}`,
+            },
+          })
+        }
+        synced++
+      }
+
+      return NextResponse.json({ success: true, data: { synced } })
+    },
+    { timeoutMs: 30_000 },
   )
-  const syncLock = await findFirstActiveLockInPeriods(prisma, orgId, periodsToCheck)
-  if (syncLock) return lockedResponse(syncLock, { prisma, orgId, userId, route: "POST /api/budgeting/sync-actuals" })
-
-  let synced = 0
-
-  for (const line of lines) {
-    if (!line.costModelKey) continue
-    const amount = resolveCostModelKey(costModel, line.costModelKey)
-    if (amount <= 0) continue
-
-    // Upsert: find existing actual for this account.code+month or create new
-    const lineAccountCode = (line as any).account?.code ?? ""
-    const existing = await prisma.budgetActual.findFirst({
-      where: {
-        planId,
-        organizationId: orgId,
-        category: lineAccountCode,
-        description: { startsWith: "auto-sync:" },
-      },
-    })
-
-    // Phase 3.1 v1.2 — stamp monthIndex (0-indexed) so VarianceTab
-    // sparkline can attribute the actual to its month. `month` is
-    // 1-indexed from `currentBakuYearMonth()`, hence -1.
-    const monthIndex = month - 1
-    if (existing) {
-      await prisma.budgetActual.update({
-        where: { id: existing.id },
-        data: { actualAmount: amount, expenseDate: currentDate, monthIndex },
-      })
-    } else {
-      await prisma.budgetActual.create({
-        data: {
-          organizationId: orgId,
-          planId,
-          category: lineAccountCode,
-          department: line.department,
-          lineType: line.lineType,
-          actualAmount: amount,
-          expenseDate: currentDate,
-          monthIndex,
-          description: `auto-sync: ${line.costModelKey}`,
-        },
-      })
-    }
-    synced++
-  }
-
-  return NextResponse.json({ success: true, data: { synced } })
 }

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import type { Prisma, BudgetLine } from "@prisma/client"
 import { getOrgId, getSession } from "@/lib/api-auth"
+// Stage 3 RLS — `prisma` kept ONLY for lockedResponse's 423-audit.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { resolvePatternForDept } from "@/lib/budgeting/cost-model-map"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
@@ -117,19 +119,22 @@ export async function POST(req: NextRequest) {
 
   const { planId, includeRevenue = true, includeExpenses = true } = data
 
-  const plan = await prisma.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } })
+  // Stage 3 RLS — plan check, lock, master reads and the whole line-seed
+  // (the former inner interactive $transaction) collapse into ONE
+  // org-scoped tx. 30s: cartesian product of costTypes × departments +
+  // ~30 OpEx rows, each with a resolve-or-create-account upsert.
+  return withOrgScope(
+    orgId,
+    async (tx) => {
+  const plan = await tx.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } })
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 
-  // Phase 7.G Turn LXIX architect Round-1 ⚠️ closure — period-lock guard.
-  // matrix-seed creates dozens of budgetLine rows across the cartesian
-  // product of costTypes × departments + ~30 OpEx rows in one $transaction.
-  const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(plan))
+  // Period-lock guard.
+  const lock = await getActivePeriodLock(tx, orgId, derivePeriodKey(plan))
   if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/matrix-seed" })
 
-  const [costTypes, departments] = await Promise.all([
-    prisma.budgetCostType.findMany({ where: { organizationId: orgId, isActive: true }, orderBy: { sortOrder: "asc" } }),
-    prisma.budgetDepartment.findMany({ where: { organizationId: orgId, isActive: true }, orderBy: { sortOrder: "asc" } }),
-  ])
+  const costTypes = await tx.budgetCostType.findMany({ where: { organizationId: orgId, isActive: true }, orderBy: { sortOrder: "asc" } })
+  const departments = await tx.budgetDepartment.findMany({ where: { organizationId: orgId, isActive: true }, orderBy: { sortOrder: "asc" } })
 
   if (costTypes.length === 0) {
     // CXLIII: error includes both English fallback (for non-i18n callers)
@@ -246,11 +251,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Create COGS + Revenue lines, then expense groups with parent-child.
-  // resolveOrCreateAccountId upserts the ChartOfAccount (role='unknown' for
-  // later admin reclassification) inside the same tx — atomic with the line
-  // insert. A shared coaCache makes it one upsert per distinct code.
-  const created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  // Create COGS + Revenue lines, then expense groups with parent-child —
+  // all on the scope `tx` (resolveOrCreateAccountId upserts the CoA inside
+  // the same tx; a shared coaCache makes it one upsert per distinct code).
+  const created = await (async () => {
     const coaCache = createCoACache()
 
     // 1. COGS + Revenue lines (flat). Sequential so the shared cache
@@ -317,10 +321,13 @@ export async function POST(req: NextRequest) {
     }
 
     return [...flatLines, ...expenseLines]
-  })
+  })()
 
   return NextResponse.json({
     success: true,
     data: { count: created.length, lines: created },
   }, { status: 201 })
+    },
+    { timeoutMs: 30_000 },
+  )
 }

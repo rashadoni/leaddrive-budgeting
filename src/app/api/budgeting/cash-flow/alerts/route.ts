@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { currentBakuYear } from "@/lib/risk/periods"
 
 const resolveAlertSchema = z.object({
@@ -15,10 +15,12 @@ export async function GET(req: NextRequest) {
 
   const year = parseInt(req.nextUrl.searchParams.get("year") || currentBakuYear())
 
-  const alerts = await prisma.cashFlowAlert.findMany({
-    where: { organizationId: orgId, year, isResolved: false },
-    orderBy: [{ month: "asc" }],
-  })
+  const alerts = await withOrgScope(orgId, (tx) =>
+    tx.cashFlowAlert.findMany({
+      where: { organizationId: orgId, year, isResolved: false },
+      orderBy: [{ month: "asc" }],
+    }),
+  )
 
   return NextResponse.json(alerts)
 }
@@ -47,10 +49,12 @@ export async function POST(req: NextRequest) {
 
   const { alertId } = data
 
-  await prisma.cashFlowAlert.updateMany({
-    where: { id: alertId, organizationId: orgId },
-    data: { isResolved: true },
-  })
+  await withOrgScope(orgId, (tx) =>
+    tx.cashFlowAlert.updateMany({
+      where: { id: alertId, organizationId: orgId },
+      data: { isResolved: true },
+    }),
+  )
 
   return NextResponse.json({ success: true })
 }

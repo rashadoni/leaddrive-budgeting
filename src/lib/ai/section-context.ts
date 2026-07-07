@@ -4,7 +4,11 @@
  * power the visible UI tabs so the AI sees exactly the numbers the user sees.
  */
 
-import { prisma } from "@/lib/prisma"
+// Stage 3 RLS — AI-narration read helper for the SSE ai-analytics route
+// (a single withOrgScope tx can't span an LLM stream). Read-only, scoped
+// by explicit organizationId; uses the BYPASSRLS admin client so it keeps
+// working after the env-flip.
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import {
   deriveRoleFromCode,
   isContraRevenueCode,

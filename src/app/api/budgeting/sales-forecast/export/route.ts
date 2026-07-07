@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
 import ExcelJS from "exceljs"
 
@@ -12,13 +12,16 @@ export async function GET(req: NextRequest) {
 
   const year = Number(req.nextUrl.searchParams.get("year") || currentBakuYearNumber())
 
-  const departments = await prisma.budgetDepartment.findMany({
-    where: { organizationId: orgId, hasRevenue: true, isActive: true },
-    orderBy: { sortOrder: "asc" },
-  })
-
-  const entries = await prisma.salesForecast.findMany({
-    where: { organizationId: orgId, year },
+  // Stage 3 RLS — DB reads in the org-scoped tx; workbook build outside.
+  const { departments, entries } = await withOrgScope(orgId, async (tx) => {
+    const departments = await tx.budgetDepartment.findMany({
+      where: { organizationId: orgId, hasRevenue: true, isActive: true },
+      orderBy: { sortOrder: "asc" },
+    })
+    const entries = await tx.salesForecast.findMany({
+      where: { organizationId: orgId, year },
+    })
+    return { departments, entries }
   })
 
   // Build lookup: departmentId → month → amount

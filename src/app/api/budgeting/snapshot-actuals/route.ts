@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId, getSession } from "@/lib/api-auth"
+// Stage 3 RLS — `prisma` kept ONLY for lockedResponse's 423-audit.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
 import { getLogger } from "@/lib/log"
@@ -44,10 +46,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Cost model not available" }, { status: 500 })
     }
 
+    // Stage 3 RLS — plan reads, lock check and the per-plan snapshot loop
+    // in one org-scoped tx (loadAndCompute above is a stub; loops bounded
+    // by plan × auto-actual-line count).
+    return withOrgScope(
+      orgId,
+      async (tx) => {
     // Find plans to process — needed for the lock check below.
     const plans = planId
-      ? await prisma.budgetPlan.findMany({ where: { id: planId, organizationId: orgId } })
-      : await prisma.budgetPlan.findMany({ where: { organizationId: orgId, status: { in: ["draft", "approved"] } } })
+      ? await tx.budgetPlan.findMany({ where: { id: planId, organizationId: orgId } })
+      : await tx.budgetPlan.findMany({ where: { organizationId: orgId, status: { in: ["draft", "approved"] } } })
 
     // Phase 7.G Turn LXIX (Phase 4.2 bulk-mutation gate). snapshot-actuals
     // writes actuals at `targetMonth` for each plan — a mutation into the
@@ -67,7 +75,7 @@ export async function POST(req: NextRequest) {
       ? containingPeriodKeys(tYear, tMonth)
       : []
     const periodsToCheck = Array.from(new Set([...planPeriodKeys, ...monthContainerKeys]))
-    const snapLock = await findFirstActiveLockInPeriods(prisma, orgId, periodsToCheck)
+    const snapLock = await findFirstActiveLockInPeriods(tx, orgId, periodsToCheck)
     if (snapLock) return lockedResponse(snapLock, { prisma, orgId, userId, route: "POST /api/budgeting/snapshot-actuals" })
 
     // Phase 8 D3 (2026-05-29) — removed a dead `prisma.costModelSnapshot
@@ -86,7 +94,7 @@ export async function POST(req: NextRequest) {
 
     for (const plan of plans) {
       // Get auto-actual lines for this plan
-      const autoLines = await prisma.budgetLine.findMany({
+      const autoLines = await tx.budgetLine.findMany({
         where: { planId: plan.id, organizationId: orgId, isAutoActual: true, deletedAt: null },
         include: { account: { select: { code: true, name: true } } },
       })
@@ -96,7 +104,7 @@ export async function POST(req: NextRequest) {
 
         // Check if BudgetActual already exists for this month+account.code+plan
         const lineAccountCode = (line as any).account?.code ?? ""
-        const existing = await prisma.budgetActual.findFirst({
+        const existing = await tx.budgetActual.findFirst({
           where: {
             planId: plan.id,
             organizationId: orgId,
@@ -118,7 +126,7 @@ export async function POST(req: NextRequest) {
         // Create BudgetActual record (Phase 3.1 v1.2 — stamp monthIndex
         // from targetMonth so the variance sparkline overlay attributes
         // this snapshot to the correct calendar month).
-        await prisma.budgetActual.create({
+        await tx.budgetActual.create({
           data: {
             organizationId: orgId,
             planId: plan.id,
@@ -139,6 +147,9 @@ export async function POST(req: NextRequest) {
       success: true,
       data: { month: targetMonth, created, skipped, plans: plans.length },
     })
+      },
+      { timeoutMs: 30_000 },
+    )
   } catch (error) {
     log.error("Snapshot actuals error", {
       err: error instanceof Error ? error.message : String(error),

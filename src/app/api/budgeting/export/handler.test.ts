@@ -23,6 +23,9 @@ const { prismaMock, loadAndComputeMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
+vi.mock("@/lib/db/with-org-scope", () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+}))
 vi.mock("@/lib/cost-model/db", () => ({
   loadAndCompute: loadAndComputeMock,
 }))
