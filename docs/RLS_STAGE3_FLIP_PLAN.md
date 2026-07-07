@@ -103,9 +103,56 @@ Canonical pattern: `docs/RLS_PATTERN_EXAMPLE.md`. Additions for this flip:
 7. **Migrations** keep a non-enforced role (entrypoint uses superuser URL) —
    `prisma migrate deploy` must never run as `budgetpro_app`.
 
+## Mechanical recipe for the remaining route wraps (Sonnet-loop ready)
+
+The pattern is now proven across every shape (simple read, config CRUD,
+helper-threading, approval workflow, deprecated-bulk). Remaining routes are
+mechanical. For each `route.ts` flagged by `node scripts/rls-coverage-scan.mjs`:
+
+1. **Import:** replace `import { prisma } from "@/lib/prisma"` with
+   `import { withOrgScope } from "@/lib/db/with-org-scope"`. If the file also
+   uses `logBudgetChange` or `lockedResponse`'s `{ prisma }` audit, KEEP
+   `import { prisma, logBudgetChange } from "@/lib/prisma"` — those stay on the
+   global client (fire-and-forget must outlive the tx).
+2. **Wrap each handler's DB section** in `return withOrgScope(orgId, async (tx) => { ... })`
+   (or `const x = await withOrgScope(orgId, (tx) => tx.model.findMany(...))` for
+   a single call). Auth + zod parse + rate-limit stay OUTSIDE the wrap (no DB).
+3. **Inside the closure use ONLY `tx.*`** — never `prisma.*` (mixed = leak surface).
+   Collapse any route-internal `prisma.$transaction(fn)` INTO the scope tx.
+4. **Helpers that take a client** (`getActivePeriodLock`, `findFirstActiveLockInPeriods`,
+   `consumeApprovalRequest`, `claimApprovalRequest`, `logAuditEvent`, `createPeriodSnapshot`,
+   the `import-helpers` audit trio) already accept a `TransactionClient` — pass `tx`.
+   Local `findActiveLockForPlan`-style helpers: add a leading `tx: Db` param
+   (`type Db = Prisma.TransactionClient`) and thread it.
+5. **Long DB work** (multi-month loops, snapshot hashing): pass `{ timeoutMs: 15_000–30_000 }`.
+   **Bulk loops that can't fit one interactive tx** (e.g. 1000s of row-creates):
+   do NOT wrap — mark `// rls-scan-ignore: <reason>` at the top and switch to
+   `import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"` (keep explicit
+   `organizationId` filters). NEVER wrap non-DB slow work (LLM/file-parse) in a tx.
+6. **Handler test:** add right after the `vi.mock("@/lib/prisma", …)` line:
+   ```ts
+   vi.mock("@/lib/db/with-org-scope", () => ({
+     withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+   }))
+   ```
+   (match the file's quote style + the prismaMock identifier).
+7. **Gate per sub-batch:** `rm -rf .next/dev/types; npx tsc --noEmit` (filter to touched
+   files) → `npx vitest run <touched dirs>` → commit. Full-suite sweep + the RLS leak
+   test (`DATABASE_URL_APP=… RLS_INTEGRATION=1 npx vitest run src/lib/db/rls-leak.integration.test.ts`)
+   before the wave's deploy. `node scripts/rls-coverage-scan.mjs` tracks the count down.
+
+**Do NOT flip the runtime default (S5) until the scanner shows 0 unwrapped** (only
+`clean` + justified `opted out`). S6 (prod role provisioning) is the user's action
+per RLS_RUNBOOK §1.
+
 ## Progress log
 
 - 2026-07-07 — plan written; S0 started.
+- 2026-07-07 — **S2 config-CRUD slice.** Wrapped `departments`, `cost-types`,
+  `product-lines`, `exchange-rates` (GET/POST/PUT/DELETE — simple CRUD, no helper
+  threading). 50 wrapped total. tsc 0; 40 config-route tests green. Mechanical
+  recipe (above) written so the ~39 remaining budgeting routes + non-budgeting
+  domains can finish on a bounded Sonnet loop.
 - 2026-07-07 — **S2 write-wave (user-scoped to high-value financial writes).**
   Wrapped: `lines/[id]`, `actuals/[id]`, `lines/count`, `balance-sheet/[id]`,
   `cash-flow/[id]`, `chart-of-accounts` + `[id]`, `sections` + `[id]`,
