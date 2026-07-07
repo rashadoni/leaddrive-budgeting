@@ -148,6 +148,19 @@ per RLS_RUNBOOK §1.
 ## Progress log
 
 - 2026-07-07 — plan written; S0 started.
+- 2026-07-07 — **S2 budgeting read/write slices 4–6 (Opus, per user "продолжи на опус").**
+  62 wrapped total (was 50). Slice 4: availability, assumptions, pnl (whole
+  aggregation), cogs (loadCogsRows threaded) — + `resolveCompanyFilter` loosened
+  to tx, `getCompanyScope` → `prismaAdmin` (auth-adjacent shared RBAC resolver;
+  prisma-admin gained the vitest guard). Slice 5: category-mapping,
+  department-owners, csv-template, financial-variable (writes in tx,
+  recomputeAfterDataChange after commit). Slice 6: integrations, sales-budget
+  (loadSalesRows threaded), expense-forecast + rolling (bulk loops sequential-
+  in-tx, 60s timeout — realistic payloads small; zod caps are theoretical). 90
+  unwrapped remain (ai-analytics/analytics, cash-flow sub-routes, sales-forecast,
+  snapshot/sync-actuals, templates, reports, rolling/auto-forecast, plans/[id]
+  sub-routes + non-budgeting domains). Gates each slice: tsc 0; full vitest 6298;
+  RLS leak 10/10.
 - 2026-07-07 — **S2 config-CRUD slice.** Wrapped `departments`, `cost-types`,
   `product-lines`, `exchange-rates` (GET/POST/PUT/DELETE — simple CRUD, no helper
   threading). 50 wrapped total. tsc 0; 40 config-route tests green. Mechanical
