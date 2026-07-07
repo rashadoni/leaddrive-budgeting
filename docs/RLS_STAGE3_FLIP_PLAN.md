@@ -147,6 +147,22 @@ per RLS_RUNBOOK §1.
 
 ## Progress log
 
+- 2026-07-07 — **S3 wave 3 — scenarios + operational-facts + indicator-disclosures
+  (106 wrapped).** Clean-wrapped: scenarios (list/create), scenarios/[id]
+  (GET/PATCH/DELETE — lookup+mutate in one scope tx, null→404), scenarios/signals
+  (3 feed reads folded into one tx; pure detectSignals + i18n after),
+  scenarios/[id]/narrative (single scenario read scoped; AI runCrisisBrief runs
+  after, no DB), indicator-disclosures (list + POST company/history/upsert scoped,
+  audit+recompute fire-and-forget OUTSIDE), indicator-disclosures/[id] (findFirst+
+  delete atomic in scope tx), operational-facts (GET list scoped; POST guard+history
+  read tx then upsert tx; getCompanyScope stays on admin; recompute after),
+  operational-facts/[id] (lookup+delete atomic), operational-facts/import/template
+  (placeholder-company read scoped). `rls-scan-ignore` #3 **scenarios/[id]/simulate**
+  (drivers-mode `createPrismaDataSource` simulator + optional AI Crisis Brief can't
+  fit one 5s tx → prismaAdmin, read-only) and #4 **operational-facts/import**
+  (DEPRECATED bulk upsert-loop, 1000+ rows, replacedBy AI Import → prismaAdmin).
+  9 handler tests gained the `withOrgScope` mock. Scan: 106 wrapped / 26 clean /
+  4 opted-out / 43 unwrapped. Gates: tsc 0; full vitest 6298; RLS leak 10/10.
 - 2026-07-07 — plan written; S0 started.
 - 2026-07-07 — **S2 slice 10 — BUDGETING DOMAIN FULLY ENFORCED (88 wrapped).**
   Wrapped the last budgeting routes: export + sales-forecast/export (heavy

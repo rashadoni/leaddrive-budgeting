@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import * as XLSX from "xlsx"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import {
   OPERATIONAL_METRIC_RULES,
@@ -43,11 +43,15 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  const co = await prisma.company.findFirst({
-    where: { organizationId: session.orgId, isActive: true, role: "operational" },
-    select: { code: true },
-    orderBy: { sortOrder: "asc" },
-  })
+  // Stage 3 RLS — the placeholder-company read in a scope tx; the xlsx
+  // template build below is pure and runs after.
+  const co = await withOrgScope(session.orgId, (tx) =>
+    tx.company.findFirst({
+      where: { organizationId: session.orgId, isActive: true, role: "operational" },
+      select: { code: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+  )
   const companyCode = co?.code ?? "AAC-MAIN"
 
   const today = new Date()

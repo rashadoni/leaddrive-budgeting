@@ -17,7 +17,9 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+// Stage 3 RLS — `prisma` kept for the fire-and-forget audit only.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireAuth, requireRole, isAuthError } from "@/lib/api-auth"
 import { getLogger } from "@/lib/log"
 
@@ -105,21 +107,25 @@ export async function GET(req: NextRequest) {
     ...(scope.ids != null ? { companyId: { in: Array.from(scope.ids) } } : {}),
   }
 
-  const rows = await prisma.operationalFact.findMany({
-    where,
-    orderBy: [{ date: "desc" }, { metric: "asc" }],
-    take: 500,
-    select: {
-      id: true,
-      companyId: true,
-      metric: true,
-      date: true,
-      value: true,
-      unit: true,
-      source: true,
-      createdAt: true,
-    },
-  })
+  // Stage 3 RLS — the list read in an org-scoped tx (getCompanyScope above
+  // is auth-adjacent and stays on the admin client).
+  const rows = await withOrgScope(session.orgId, (tx) =>
+    tx.operationalFact.findMany({
+      where,
+      orderBy: [{ date: "desc" }, { metric: "asc" }],
+      take: 500,
+      select: {
+        id: true,
+        companyId: true,
+        metric: true,
+        date: true,
+        value: true,
+        unit: true,
+        source: true,
+        createdAt: true,
+      },
+    }),
+  )
 
   return NextResponse.json({ rows })
 }
@@ -147,15 +153,6 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Cross-tenant guard — confirm the company belongs to the caller's org.
-  const company = await prisma.company.findFirst({
-    where: { id: body.companyId, organizationId: session.orgId },
-    select: { id: true },
-  })
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 })
-  }
-
   const rule = getOperationalRule(body.metric)
   if (!rule) {
     return NextResponse.json(
@@ -164,15 +161,27 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Historical mean for anomaly check — last 12 months of the same
-  // company + metric. Skipped when the table has < 3 rows (anomaly
+  // Stage 3 RLS — cross-tenant guard + anomaly-baseline read in one
+  // org-scoped tx. Historical mean uses the last 12 months of the same
+  // company + metric; skipped when the table has < 3 rows (anomaly
   // detection needs a baseline to be useful).
-  const history = await prisma.operationalFact.findMany({
-    where: { organizationId: session.orgId, companyId: body.companyId, metric: body.metric },
-    orderBy: { date: "desc" },
-    take: 12,
-    select: { value: true },
+  const { company, history } = await withOrgScope(session.orgId, async (tx) => {
+    const company = await tx.company.findFirst({
+      where: { id: body.companyId, organizationId: session.orgId },
+      select: { id: true },
+    })
+    const history = await tx.operationalFact.findMany({
+      where: { organizationId: session.orgId, companyId: body.companyId, metric: body.metric },
+      orderBy: { date: "desc" },
+      take: 12,
+      select: { value: true },
+    })
+    return { company, history }
   })
+  if (!company) {
+    return NextResponse.json({ error: "Company not found" }, { status: 404 })
+  }
+
   const historicalMean =
     history.length >= 3
       ? history.reduce((a: number, r: { value: number }) => a + r.value, 0) /
@@ -205,57 +214,61 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Upsert by (companyId, metric, date) — calling POST on an existing
-  // row updates it rather than throwing P2002. Mirrors the
-  // CFO-friendly "edit-in-place" semantic the inline grid expects.
-  const existing = await prisma.operationalFact.findFirst({
-    where: {
-      organizationId: session.orgId,
-      companyId: body.companyId,
-      metric: body.metric,
-      date: new Date(body.date),
-    },
-    select: { id: true, value: true },
-  })
+  // Stage 3 RLS — upsert by (companyId, metric, date) in one org-scoped
+  // tx. Calling POST on an existing row updates it rather than throwing
+  // P2002. Mirrors the CFO-friendly "edit-in-place" semantic the inline
+  // grid expects. Audit + recompute below run AFTER on the global client.
+  const { row, existing } = await withOrgScope(session.orgId, async (tx) => {
+    const existing = await tx.operationalFact.findFirst({
+      where: {
+        organizationId: session.orgId,
+        companyId: body.companyId,
+        metric: body.metric,
+        date: new Date(body.date),
+      },
+      select: { id: true, value: true },
+    })
 
-  const row = existing
-    ? await prisma.operationalFact.update({
-        where: { id: existing.id },
-        data: {
-          value: body.value,
-          unit: body.unit,
-          source: body.sourceNote ?? "manual",
-        },
-        select: {
-          id: true,
-          companyId: true,
-          metric: true,
-          date: true,
-          value: true,
-          unit: true,
-          source: true,
-        },
-      })
-    : await prisma.operationalFact.create({
-        data: {
-          organizationId: session.orgId,
-          companyId: body.companyId,
-          metric: body.metric,
-          date: new Date(body.date),
-          value: body.value,
-          unit: body.unit,
-          source: body.sourceNote ?? "manual",
-        },
-        select: {
-          id: true,
-          companyId: true,
-          metric: true,
-          date: true,
-          value: true,
-          unit: true,
-          source: true,
-        },
-      })
+    const row = existing
+      ? await tx.operationalFact.update({
+          where: { id: existing.id },
+          data: {
+            value: body.value,
+            unit: body.unit,
+            source: body.sourceNote ?? "manual",
+          },
+          select: {
+            id: true,
+            companyId: true,
+            metric: true,
+            date: true,
+            value: true,
+            unit: true,
+            source: true,
+          },
+        })
+      : await tx.operationalFact.create({
+          data: {
+            organizationId: session.orgId,
+            companyId: body.companyId,
+            metric: body.metric,
+            date: new Date(body.date),
+            value: body.value,
+            unit: body.unit,
+            source: body.sourceNote ?? "manual",
+          },
+          select: {
+            id: true,
+            companyId: true,
+            metric: true,
+            date: true,
+            value: true,
+            unit: true,
+            source: true,
+          },
+        })
+    return { row, existing }
+  })
 
   // Audit event — fire-and-forget; a failure here must not roll the
   // mutation back. Recorded inputs include companyId + metric + date so

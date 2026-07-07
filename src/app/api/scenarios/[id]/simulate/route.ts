@@ -14,8 +14,15 @@
  *   period  — optional; defaults to currentBakuYear() (e.g. "2026")
  */
 
+// rls-scan-ignore: read-only live-simulation route. Its drivers-mode drives
+// a `createPrismaDataSource`-backed simulator that issues its own reads AND
+// an optional Anthropic "Crisis Brief" (runCrisisBrief) — neither fits inside
+// one 5s interactive withOrgScope tx. It is READ-ONLY and orgId-scoped, so it
+// uses the BYPASSRLS `prismaAdmin` client (passed into createPrismaDataSource,
+// so the simulator reads are admin too) — app-layer org scoping preserved,
+// survives the Stage-3 env-flip without a giant transaction.
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prismaAdmin as prisma } from '@/lib/db/prisma-admin'
 import { requireAuth, isAuthError } from '@/lib/api-auth'
 import { currentBakuYear } from '@/lib/risk/periods'
 import {

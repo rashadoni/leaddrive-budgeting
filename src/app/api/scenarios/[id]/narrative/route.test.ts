@@ -6,6 +6,12 @@ vi.mock('@/lib/api-auth', () => ({
 }))
 const findFirst = vi.fn()
 vi.mock('@/lib/prisma', () => ({ prisma: { scenario: { findFirst: (...a: unknown[]) => findFirst(...a) } } }))
+// Stage 3 RLS — the scenario read runs inside withOrgScope; hand a tx that
+// routes to the same mocked delegate.
+vi.mock('@/lib/db/with-org-scope', () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+    fn({ scenario: { findFirst: (...a: unknown[]) => findFirst(...a) } }),
+}))
 const runCrisisBrief = vi.fn()
 vi.mock('@/lib/risk/scenario-narrative', () => ({ runCrisisBrief: (...a: unknown[]) => runCrisisBrief(...a) }))
 let keyPresent = true

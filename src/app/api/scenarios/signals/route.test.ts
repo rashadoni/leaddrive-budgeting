@@ -14,6 +14,16 @@ vi.mock('@/lib/prisma', () => ({
     intelItem: { findMany: (...a: unknown[]) => newsFindMany(...a) },
   },
 }))
+// Stage 3 RLS — the three feed reads run inside withOrgScope; hand a tx that
+// routes to the same mocked delegates.
+vi.mock('@/lib/db/with-org-scope', () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+    fn({
+      currencyRateHistory: { findMany: (...a: unknown[]) => fxFindMany(...a) },
+      intelDataPoint: { findMany: (...a: unknown[]) => intelFindMany(...a) },
+      intelItem: { findMany: (...a: unknown[]) => newsFindMany(...a) },
+    }),
+}))
 
 import { GET } from './route'
 

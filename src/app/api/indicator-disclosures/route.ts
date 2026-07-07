@@ -16,7 +16,10 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+// Stage 3 RLS — `prisma` kept for the fire-and-forget audit + recompute
+// (both must outlive the write tx).
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireAuth, requireRole, isAuthError } from "@/lib/api-auth"
 import { getLogger } from "@/lib/log"
 
@@ -80,9 +83,11 @@ export async function GET(req: NextRequest) {
     session.role,
   )
 
-  const rows = await prisma.indicatorDisclosure.findMany({
+  const orgId = session.orgId
+  const rows = await withOrgScope(orgId, (tx) =>
+    tx.indicatorDisclosure.findMany({
     where: {
-      organizationId: session.orgId,
+      organizationId: orgId,
       ...(parsed.data.companyId ? { companyId: parsed.data.companyId } : {}),
       ...(parsed.data.indicatorCode
         ? { indicatorCode: parsed.data.indicatorCode }
@@ -106,7 +111,8 @@ export async function GET(req: NextRequest) {
       enteredAt: true,
       updatedAt: true,
     },
-  })
+    }),
+  )
 
   return NextResponse.json({ rows })
 }
@@ -134,10 +140,13 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const company = await prisma.company.findFirst({
-    where: { id: body.companyId, organizationId: session.orgId },
-    select: { id: true },
-  })
+  const orgId = session.orgId
+  const company = await withOrgScope(orgId, (tx) =>
+    tx.company.findFirst({
+      where: { id: body.companyId, organizationId: orgId },
+      select: { id: true },
+    }),
+  )
   if (!company) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
@@ -154,16 +163,18 @@ export async function POST(req: NextRequest) {
 
   // Historical mean — across all disclosure rows for this (co,
   // indicator). 3-row floor mirrors the operational-facts route.
-  const history = await prisma.indicatorDisclosure.findMany({
-    where: {
-      organizationId: session.orgId,
-      companyId: body.companyId,
-      indicatorCode: body.indicatorCode,
-    },
-    orderBy: { period: "desc" },
-    take: 12,
-    select: { value: true },
-  })
+  const history = await withOrgScope(orgId, (tx) =>
+    tx.indicatorDisclosure.findMany({
+      where: {
+        organizationId: orgId,
+        companyId: body.companyId,
+        indicatorCode: body.indicatorCode,
+      },
+      orderBy: { period: "desc" },
+      take: 12,
+      select: { value: true },
+    }),
+  )
   const historicalMean =
     history.length >= 3
       ? history.reduce((a: number, r: { value: number }) => a + r.value, 0) /
@@ -192,7 +203,10 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const existing = await prisma.indicatorDisclosure.findUnique({
+  // Stage 3 RLS — upsert in the org-scoped tx; the fire-and-forget audit +
+  // recompute below run AFTER on the global client (must outlive the tx).
+  const { row, existing } = await withOrgScope(orgId, async (tx) => {
+  const existing = await tx.indicatorDisclosure.findUnique({
     where: {
       companyId_indicatorCode_period: {
         companyId: body.companyId,
@@ -204,7 +218,7 @@ export async function POST(req: NextRequest) {
   })
 
   const row = existing
-    ? await prisma.indicatorDisclosure.update({
+    ? await tx.indicatorDisclosure.update({
         where: { id: existing.id },
         data: {
           value: body.value,
@@ -225,9 +239,9 @@ export async function POST(req: NextRequest) {
           updatedAt: true,
         },
       })
-    : await prisma.indicatorDisclosure.create({
+    : await tx.indicatorDisclosure.create({
         data: {
-          organizationId: session.orgId,
+          organizationId: orgId,
           companyId: body.companyId,
           indicatorCode: body.indicatorCode,
           period: body.period,
@@ -249,9 +263,11 @@ export async function POST(req: NextRequest) {
           updatedAt: true,
         },
       })
+    return { row, existing }
+  })
 
   void logAuditEvent(prisma, {
-    organizationId: session.orgId,
+    organizationId: orgId,
     actorUserId: session.userId,
     event: {
       action: existing

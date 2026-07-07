@@ -8,7 +8,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+// Stage 3 RLS — `prisma` kept for the fire-and-forget audit + recompute.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent } from "@/lib/audit/log"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
@@ -35,16 +37,24 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid id" }, { status: 400 })
   }
 
-  const existing = await prisma.indicatorDisclosure.findFirst({
-    where: { id, organizationId: session.orgId },
-    select: {
-      id: true,
-      companyId: true,
-      indicatorCode: true,
-      period: true,
-      value: true,
-      unit: true,
-    },
+  const orgId = session.orgId
+  // Stage 3 RLS — lookup + delete in one org-scoped tx; the fire-and-forget
+  // audit + recompute below run AFTER on the global client.
+  const existing = await withOrgScope(orgId, async (tx) => {
+    const found = await tx.indicatorDisclosure.findFirst({
+      where: { id, organizationId: orgId },
+      select: {
+        id: true,
+        companyId: true,
+        indicatorCode: true,
+        period: true,
+        value: true,
+        unit: true,
+      },
+    })
+    if (!found) return null
+    await tx.indicatorDisclosure.delete({ where: { id: found.id } })
+    return found
   })
   if (!existing) {
     return NextResponse.json(
@@ -53,10 +63,8 @@ export async function DELETE(
     )
   }
 
-  await prisma.indicatorDisclosure.delete({ where: { id: existing.id } })
-
   void logAuditEvent(prisma, {
-    organizationId: session.orgId,
+    organizationId: orgId,
     actorUserId: session.userId,
     event: {
       action: "indicator_disclosure_delete",

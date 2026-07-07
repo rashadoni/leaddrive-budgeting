@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { getTranslations } from 'next-intl/server'
-import { prisma } from '@/lib/prisma'
+import { withOrgScope } from '@/lib/db/with-org-scope'
 import { requireAuth, isAuthError } from '@/lib/api-auth'
 import { detectSignals, detectNewsSignals, type NewsItem, type SignalTranslator } from '@/lib/risk/scenario-signals'
 import { FEED_STALE_DAYS, type FeedSnapshot } from '@/lib/risk/scenario-feed-context'
@@ -24,31 +24,35 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'User has no organization' }, { status: 403 })
   }
 
+  const orgId = session.orgId
   const newsCutoff = new Date(Date.now() - NEWS_WINDOW_DAYS * 86_400_000)
-  const [fxRows, intelRows, newsRows] = await Promise.all([
-    prisma.currencyRateHistory.findMany({
-      where: { organizationId: session.orgId, currencyCode: 'USD' },
+  // Stage 3 RLS — the three feed reads in one org-scoped tx; signal
+  // detection (pure) + i18n run after.
+  const { fxRows, intelRows, newsRows } = await withOrgScope(orgId, async (tx) => {
+    const fxRows = await tx.currencyRateHistory.findMany({
+      where: { organizationId: orgId, currencyCode: 'USD' },
       orderBy: [{ currencyCode: 'asc' }, { rateDate: 'desc' }],
       distinct: ['currencyCode'],
       select: { currencyCode: true, rate: true, rateDate: true },
-    }),
-    prisma.intelDataPoint.findMany({
+    })
+    const intelRows = await tx.intelDataPoint.findMany({
       where: {
-        organizationId: session.orgId,
+        organizationId: orgId,
         OR: [{ metric: { in: INTEL_METRICS } }, { metric: { endsWith: 'RAINFALL_MM_14D_FCST' } }],
       },
       orderBy: [{ metric: 'asc' }, { datetime: 'desc' }],
       distinct: ['metric'],
       select: { metric: true, value: true, datetime: true },
-    }),
+    })
     // Phase 3b — recent materially-negative news for the news-trigger detector.
-    prisma.intelItem.findMany({
-      where: { organizationId: session.orgId, sentimentScore: { lte: -0.3 }, publishedAt: { not: null, gte: newsCutoff } },
+    const newsRows = await tx.intelItem.findMany({
+      where: { organizationId: orgId, sentimentScore: { lte: -0.3 }, publishedAt: { not: null, gte: newsCutoff } },
       orderBy: { publishedAt: 'desc' },
       take: 40,
       select: { title: true, sourceLabel: true, sentimentScore: true, industryTags: true, companyTags: true, publishedAt: true },
-    }),
-  ])
+    })
+    return { fxRows, intelRows, newsRows }
+  })
 
   const nowMs = Date.now()
   const staleMs = FEED_STALE_DAYS * 86_400_000

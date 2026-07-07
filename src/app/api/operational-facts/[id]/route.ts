@@ -8,7 +8,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+// Stage 3 RLS — `prisma` kept for the fire-and-forget audit only.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent } from "@/lib/audit/log"
 import { recomputeAfterDataChange } from "@/lib/recompute/recompute-on-change"
@@ -35,16 +37,23 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid id" }, { status: 400 })
   }
 
-  const existing = await prisma.operationalFact.findFirst({
-    where: { id, organizationId: session.orgId },
-    select: {
-      id: true,
-      companyId: true,
-      metric: true,
-      date: true,
-      value: true,
-      unit: true,
-    },
+  // Stage 3 RLS — lookup + delete in one org-scoped tx; the fire-and-forget
+  // audit + recompute below run AFTER on the global client.
+  const existing = await withOrgScope(session.orgId, async (tx) => {
+    const found = await tx.operationalFact.findFirst({
+      where: { id, organizationId: session.orgId },
+      select: {
+        id: true,
+        companyId: true,
+        metric: true,
+        date: true,
+        value: true,
+        unit: true,
+      },
+    })
+    if (!found) return null
+    await tx.operationalFact.delete({ where: { id: found.id } })
+    return found
   })
   if (!existing) {
     // 404 not 200 — silent "already-deleted" hides bugs.
@@ -53,8 +62,6 @@ export async function DELETE(
       { status: 404 },
     )
   }
-
-  await prisma.operationalFact.delete({ where: { id: existing.id } })
 
   void logAuditEvent(prisma, {
     organizationId: session.orgId,

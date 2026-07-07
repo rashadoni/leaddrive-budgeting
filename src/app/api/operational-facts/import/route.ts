@@ -21,9 +21,15 @@
  *   POST manager+ (the same gate as the single-row create endpoint)
  */
 
+// rls-scan-ignore: DEPRECATED bulk-import route (replacedBy /api/import/
+// ai-auto-multi). It streams an xlsx parse then a per-row upsert loop that
+// can run to 1000+ rows — too large for a single 5s interactive withOrgScope
+// tx, and per-row audits are fire-and-forget. Writes are org-scoped in code;
+// it runs on the BYPASSRLS `prismaAdmin` client and is slated for removal, so
+// it is intentionally excluded from the Stage-3 wrap.
 import { NextRequest, NextResponse } from "next/server"
 import * as XLSX from "xlsx"
-import { prisma } from "@/lib/prisma"
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent } from "@/lib/audit/log"
 import { getLogger } from "@/lib/log"

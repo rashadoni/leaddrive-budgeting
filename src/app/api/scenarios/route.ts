@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
+import { withOrgScope } from '@/lib/db/with-org-scope';
 import { requireAuth, requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit';
 import { getLogger } from '@/lib/log';
@@ -41,14 +41,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'User has no organization' }, { status: 403 });
   }
 
+  const orgId = session.orgId;
   try {
-    const scenarios = await prisma.scenario.findMany({
-      where: {
-        organizationId: session.orgId,
-        isActive: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const scenarios = await withOrgScope(orgId, (tx) =>
+      tx.scenario.findMany({
+        where: { organizationId: orgId, isActive: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
 
     return NextResponse.json(scenarios);
   } catch (error: unknown) {
@@ -90,11 +90,13 @@ export async function POST(request: NextRequest) {
   }
 
   const { code, nameEn, nameRu, nameAz, description, overrides, isActive } = parsed.data;
+  const orgId = session.orgId;
 
   try {
-    const scenario = await prisma.scenario.create({
+    const scenario = await withOrgScope(orgId, (tx) =>
+      tx.scenario.create({
       data: {
-        organizationId: session.orgId,
+        organizationId: orgId,
         code,
         nameEn,
         nameRu: nameRu ?? null,
@@ -103,7 +105,8 @@ export async function POST(request: NextRequest) {
         overrides,
         isActive,
       },
-    });
+      }),
+    );
     return NextResponse.json(scenario, { status: 201 });
   } catch (e: unknown) {
     if (

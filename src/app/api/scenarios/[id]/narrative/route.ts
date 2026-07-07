@@ -9,7 +9,7 @@
  * narrative failure never breaks the already-rendered brief.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { withOrgScope } from '@/lib/db/with-org-scope'
 import { requireAuth, isAuthError } from '@/lib/api-auth'
 import { hasAnthropicKey } from '@/lib/ai/client'
 import { aiErrorBody } from '@/lib/ai/ai-error'
@@ -34,10 +34,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const { id } = await params
-  const scenario = await prisma.scenario.findFirst({
-    where: { id, organizationId: session.orgId, isActive: true },
-    select: { code: true, nameEn: true },
-  })
+  const orgId = session.orgId
+  // Stage 3 RLS — the single scenario read in a scope tx; the AI narrative
+  // (runCrisisBrief) touches no DB and runs after.
+  const scenario = await withOrgScope(orgId, (tx) =>
+    tx.scenario.findFirst({
+      where: { id, organizationId: orgId, isActive: true },
+      select: { code: true, nameEn: true },
+    }),
+  )
   if (!scenario) {
     return NextResponse.json({ error: 'Scenario not found' }, { status: 404 })
   }

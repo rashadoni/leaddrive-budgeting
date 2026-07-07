@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
+import { withOrgScope } from '@/lib/db/with-org-scope';
 import { requireAuth, requireRole, isAuthError } from '@/lib/api-auth';
 import { ScenarioOverridesSchema } from '@/lib/risk/scenario-overrides-schema';
 
@@ -29,10 +29,13 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
   }
 
   const { id } = await params;
+  const orgId = session.orgId;
 
-  const scenario = await prisma.scenario.findFirst({
-    where: { id, organizationId: session.orgId },
-  });
+  const scenario = await withOrgScope(orgId, (tx) =>
+    tx.scenario.findFirst({
+      where: { id, organizationId: orgId },
+    }),
+  );
 
   if (!scenario) {
     return NextResponse.json({ error: 'Scenario not found' }, { status: 404 });
@@ -67,18 +70,21 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     );
   }
 
-  // Tenant-scope lookup before update (prevents cross-tenant IDOR)
-  const existing = await prisma.scenario.findFirst({
-    where: { id, organizationId: session.orgId },
+  const orgId = session.orgId;
+  // Stage 3 RLS — tenant-scope lookup + update in one org-scoped tx.
+  const updated = await withOrgScope(orgId, async (tx) => {
+    const existing = await tx.scenario.findFirst({
+      where: { id, organizationId: orgId },
+    });
+    if (!existing) return null;
+    return tx.scenario.update({
+      where: { id },
+      data: parsed.data,
+    });
   });
-  if (!existing) {
+  if (!updated) {
     return NextResponse.json({ error: 'Scenario not found' }, { status: 404 });
   }
-
-  const updated = await prisma.scenario.update({
-    where: { id },
-    data: parsed.data,
-  });
 
   return NextResponse.json(updated);
 }
@@ -96,18 +102,23 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
   }
 
   const { id } = await params;
+  const orgId = session.orgId;
 
-  const existing = await prisma.scenario.findFirst({
-    where: { id, organizationId: session.orgId },
+  // Stage 3 RLS — lookup + soft-delete in one org-scoped tx.
+  const ok = await withOrgScope(orgId, async (tx) => {
+    const existing = await tx.scenario.findFirst({
+      where: { id, organizationId: orgId },
+    });
+    if (!existing) return false;
+    await tx.scenario.update({
+      where: { id },
+      data: { isActive: false },
+    });
+    return true;
   });
-  if (!existing) {
+  if (!ok) {
     return NextResponse.json({ error: 'Scenario not found' }, { status: 404 });
   }
-
-  await prisma.scenario.update({
-    where: { id },
-    data: { isActive: false },
-  });
 
   return NextResponse.json({ deleted: true, id });
 }
