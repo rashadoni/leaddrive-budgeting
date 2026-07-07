@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import * as XLSX from "xlsx"
 import { requireRole, isAuthError } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { summarizeLedger } from "@/lib/trade/ledger"
 
 export async function GET(request: NextRequest) {
@@ -20,35 +20,40 @@ export async function GET(request: NextRequest) {
   const year = Number(request.nextUrl.searchParams.get("year") ?? now.getUTCFullYear())
   const month = Number(request.nextUrl.searchParams.get("month") ?? now.getUTCMonth() + 1)
 
-  const entries = await prisma.tradeSpendLedger.findMany({
-    where: { organizationId: session.orgId, year, month, voidedAt: null },
-    orderBy: { entryDate: "asc" },
-    select: {
-      entryDate: true,
-      entryKind: true,
-      amount: true,
-      currencyCode: true,
-      sourceDocument: true,
-      createdBy: true,
-      spendType: { select: { id: true, key: true, label: true, accrualMethod: true } },
-      campaignId: true,
-      channelId: true,
-    },
-  })
-  const channels = await prisma.tradeChannel.findMany({
-    where: { organizationId: session.orgId },
-    select: { id: true, name: true },
+  const orgId = session.orgId
+  // Stage 3 RLS — reads in the org-scoped tx (XLSX build stays outside).
+  const { entries, channels, campaigns, users } = await withOrgScope(orgId, async (tx) => {
+    const entries = await tx.tradeSpendLedger.findMany({
+      where: { organizationId: orgId, year, month, voidedAt: null },
+      orderBy: { entryDate: "asc" },
+      select: {
+        entryDate: true,
+        entryKind: true,
+        amount: true,
+        currencyCode: true,
+        sourceDocument: true,
+        createdBy: true,
+        spendType: { select: { id: true, key: true, label: true, accrualMethod: true } },
+        campaignId: true,
+        channelId: true,
+      },
+    })
+    const channels = await tx.tradeChannel.findMany({
+      where: { organizationId: orgId },
+      select: { id: true, name: true },
+    })
+    const campaigns = await tx.tradeCampaign.findMany({
+      where: { organizationId: orgId, id: { in: [...new Set(entries.map((e) => e.campaignId).filter((v): v is string => !!v))] } },
+      select: { id: true, name: true },
+    })
+    const users = await tx.user.findMany({
+      where: { id: { in: [...new Set(entries.map((e) => e.createdBy))] }, organizationId: orgId },
+      select: { id: true, name: true, email: true },
+    })
+    return { entries, channels, campaigns, users }
   })
   const channelNameById = new Map(channels.map((c) => [c.id, c.name]))
-  const campaigns = await prisma.tradeCampaign.findMany({
-    where: { organizationId: session.orgId, id: { in: [...new Set(entries.map((e) => e.campaignId).filter((v): v is string => !!v))] } },
-    select: { id: true, name: true },
-  })
   const campaignName = new Map(campaigns.map((c) => [c.id, c.name]))
-  const users = await prisma.user.findMany({
-    where: { id: { in: [...new Set(entries.map((e) => e.createdBy))] }, organizationId: session.orgId },
-    select: { id: true, name: true, email: true },
-  })
   const userName = new Map(users.map((u) => [u.id, u.name || u.email]))
 
   // R9 — localized headers (?lang=en|ru|az; body labels stay data-driven).

@@ -10,8 +10,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit } from "@/lib/rate-limit"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { computePacing, type PacingInput } from "@/lib/trade/pacing"
+// (global prisma import removed — all access via withOrgScope tx)
 import { CHANNEL_GRAIN_PREFIX, parseChannelGrain } from "@/lib/trade/budget"
 import {
   buildPacingInput,
@@ -36,32 +37,37 @@ export async function GET(request: NextRequest) {
   if (!session.orgId) {
     return NextResponse.json({ ok: false, error: "User has no organization" }, { status: 403 })
   }
+  const orgId = session.orgId
   const { year, month, period } = parsePeriod(request.nextUrl.searchParams.get("period"))
 
-  const snapshot = await prisma.tradePacingSnapshot.findFirst({
-    where: { organizationId: session.orgId, period, grainKey: ORG_GRAIN },
-    orderBy: { asOfDate: "desc" },
-  })
-  const { cascade } = await buildPacingInput(prisma, session.orgId, year, month)
+  // Stage 3 RLS — reads in the org-scoped tx.
+  const { snapshot, cascade, latestByGrain, channelRows } = await withOrgScope(orgId, async (tx) => {
+    const snapshot = await tx.tradePacingSnapshot.findFirst({
+      where: { organizationId: orgId, period, grainKey: ORG_GRAIN },
+      orderBy: { asOfDate: "desc" },
+    })
+    const { cascade } = await buildPacingInput(tx, orgId, year, month)
 
-  const channelSnaps = await prisma.tradePacingSnapshot.findMany({
-    where: {
-      organizationId: session.orgId,
-      period,
-      grainKey: { startsWith: CHANNEL_GRAIN_PREFIX },
-    },
-    orderBy: { asOfDate: "desc" },
-  })
-  const latestByGrain = new Map<string, (typeof channelSnaps)[number]>()
-  for (const s of channelSnaps) {
-    if (!latestByGrain.has(s.grainKey)) latestByGrain.set(s.grainKey, s)
-  }
-  const channelIds = [...latestByGrain.keys()]
-    .map((g) => parseChannelGrain(g))
-    .filter((v): v is string => !!v)
-  const channelRows = await prisma.tradeChannel.findMany({
-    where: { id: { in: channelIds }, organizationId: session.orgId },
-    select: { id: true, name: true },
+    const channelSnaps = await tx.tradePacingSnapshot.findMany({
+      where: {
+        organizationId: orgId,
+        period,
+        grainKey: { startsWith: CHANNEL_GRAIN_PREFIX },
+      },
+      orderBy: { asOfDate: "desc" },
+    })
+    const latestByGrain = new Map<string, (typeof channelSnaps)[number]>()
+    for (const s of channelSnaps) {
+      if (!latestByGrain.has(s.grainKey)) latestByGrain.set(s.grainKey, s)
+    }
+    const channelIds = [...latestByGrain.keys()]
+      .map((g) => parseChannelGrain(g))
+      .filter((v): v is string => !!v)
+    const channelRows = await tx.tradeChannel.findMany({
+      where: { id: { in: channelIds }, organizationId: orgId },
+      select: { id: true, name: true },
+    })
+    return { snapshot, cascade, latestByGrain, channelRows }
   })
   const channelName = new Map(channelRows.map((c) => [c.id, c.name]))
   const channels = [...latestByGrain.entries()].map(([grainKey, snap]) => ({
@@ -97,7 +103,11 @@ export async function POST(request: NextRequest) {
   if (rateLimitError) return rateLimitError
 
   const { year, month, period } = parsePeriod(request.nextUrl.searchParams.get("period"))
-  const outcome = await recomputeTradePacing(prisma, orgId, year, month)
+  // Stage 3 RLS — recompute runs in an org-scoped tx (15s: org + every
+  // channel grain, snapshot upserts + alert sync).
+  const outcome = await withOrgScope(orgId, (tx) => recomputeTradePacing(tx, orgId, year, month), {
+    timeoutMs: 15_000,
+  })
 
   return NextResponse.json({
     ok: true,

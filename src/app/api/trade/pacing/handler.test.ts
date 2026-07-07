@@ -19,6 +19,11 @@ const { prismaMock, recomputeMock, buildInputMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
+// Stage 3 RLS — routes wrap DB access in withOrgScope; the mock hands the
+// prismaMock straight to the callback so handler tests stay DB-free.
+vi.mock("@/lib/db/with-org-scope", () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+}))
 vi.mock("@/lib/trade/pacing-recompute", () => ({
   recomputeTradePacing: recomputeMock,
   buildPacingInput: buildInputMock,

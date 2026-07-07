@@ -11,7 +11,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { ZodError } from "zod"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit } from "@/lib/rate-limit"
+// Stage 3 RLS — the global client is kept ONLY for lockedResponse's
+// fire-and-forget 423-audit (must not ride the scoped tx: it can commit
+// before the void write fires). All data access goes through the
+// withOrgScope tx.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { spendEntrySchema, summarizeLedger } from "@/lib/trade/ledger"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
@@ -45,40 +50,43 @@ export async function GET(request: NextRequest) {
   const year = Number(request.nextUrl.searchParams.get("year") ?? now.getUTCFullYear())
   const month = Number(request.nextUrl.searchParams.get("month") ?? now.getUTCMonth() + 1)
 
-  const entries = await prisma.tradeSpendLedger.findMany({
-    where: { organizationId: session.orgId, year, month, voidedAt: null },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-    select: ENTRY_SELECT,
-  })
+  const orgId = session.orgId
+  // Stage 3 RLS — reads in the org-scoped tx.
+  const { withNames, summary } = await withOrgScope(orgId, async (tx) => {
+    const entries = await tx.tradeSpendLedger.findMany({
+      where: { organizationId: orgId, year, month, voidedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      select: ENTRY_SELECT,
+    })
 
-  // T5 (audit §1.9) — accountability: resolve poster names for the UI.
-  const userIds = [...new Set(entries.map((e) => e.createdBy))]
-  const channelIds = [...new Set(entries.map((e) => e.channelId).filter((v): v is string => !!v))]
-  const [users, channels] = await Promise.all([
-    prisma.user.findMany({
-      where: { id: { in: userIds }, organizationId: session.orgId },
+    // T5 (audit §1.9) — accountability: resolve poster names for the UI.
+    const userIds = [...new Set(entries.map((e) => e.createdBy))]
+    const channelIds = [...new Set(entries.map((e) => e.channelId).filter((v): v is string => !!v))]
+    const users = await tx.user.findMany({
+      where: { id: { in: userIds }, organizationId: orgId },
       select: { id: true, name: true, email: true },
-    }),
-    prisma.tradeChannel.findMany({
-      where: { id: { in: channelIds }, organizationId: session.orgId },
+    })
+    const channels = await tx.tradeChannel.findMany({
+      where: { id: { in: channelIds }, organizationId: orgId },
       select: { id: true, name: true },
-    }),
-  ])
-  const nameById = new Map(users.map((u) => [u.id, u.name || u.email]))
-  const channelNameById = new Map(channels.map((c) => [c.id, c.name]))
-  const withNames = entries.map((e) => ({
-    ...e,
-    createdByName: nameById.get(e.createdBy) ?? e.createdBy,
-    channelName: e.channelId ? (channelNameById.get(e.channelId) ?? null) : null,
-  }))
+    })
+    const nameById = new Map(users.map((u) => [u.id, u.name || u.email]))
+    const channelNameById = new Map(channels.map((c) => [c.id, c.name]))
+    const withNames = entries.map((e) => ({
+      ...e,
+      createdByName: nameById.get(e.createdBy) ?? e.createdBy,
+      channelName: e.channelId ? (channelNameById.get(e.channelId) ?? null) : null,
+    }))
+    return { withNames, summary: summarizeLedger(entries) }
+  })
 
   return NextResponse.json({
     ok: true,
     year,
     month,
     entries: withNames,
-    summary: summarizeLedger(entries),
+    summary,
   })
 }
 
@@ -106,112 +114,118 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 })
   }
 
-  // Spend type + optional campaign must belong to this org.
-  const spendType = await prisma.tradeSpendType.findFirst({
-    where: { id: parsed.spendTypeId, organizationId: orgId, isActive: true },
-    select: { id: true, key: true },
-  })
-  if (!spendType) {
-    return NextResponse.json({ ok: false, error: "Spend type not found" }, { status: 404 })
-  }
-  if (parsed.campaignId) {
-    const campaign = await prisma.tradeCampaign.findFirst({
-      where: { id: parsed.campaignId, organizationId: orgId, deletedAt: null },
-      select: { id: true, status: true },
-    })
-    if (!campaign) {
-      return NextResponse.json({ ok: false, error: "Campaign not found" }, { status: 404 })
-    }
-    // Codex review #2 — real money (accrued/actual) only against an
-    // APPROVED campaign; plan postings (commitments) may reference a
-    // campaign still moving through approval.
-    const allowed =
-      parsed.entryKind === "plan"
-        ? ["draft", "pending_approval", "approved"]
-        : ["approved"]
-    if (!allowed.includes(campaign.status)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Campaign in status "${campaign.status}" cannot take ${parsed.entryKind} postings`,
-        },
-        { status: 409 },
-      )
-    }
-  }
-  if (parsed.channelId) {
-    const channel = await prisma.tradeChannel.findFirst({
-      where: { id: parsed.channelId, organizationId: orgId, deletedAt: null },
-      select: { id: true },
-    })
-    if (!channel) {
-      return NextResponse.json({ ok: false, error: "Channel not found" }, { status: 404 })
-    }
-  }
-
   const entryDate = new Date(parsed.entryDate + "T00:00:00Z")
 
-  // T4 (audit §1.4) — a posting into a CFO-locked period gets 423, same
-  // contract as every other financial mutation on the platform.
-  const lock = await findFirstActiveLockInPeriods(
-    prisma,
-    orgId,
-    containingPeriodKeys(entryDate.getUTCFullYear(), entryDate.getUTCMonth() + 1),
-  )
-  if (lock) {
-    return lockedResponse(lock, {
-      prisma,
-      orgId,
-      userId: session.userId,
-      route: "POST /api/trade/spend",
+  // Stage 3 RLS — guards, lock check, create, recompute and audit run in
+  // ONE org-scoped tx (atomic: a posting and its snapshot can't diverge).
+  return withOrgScope(orgId, async (tx) => {
+    // Spend type + optional campaign must belong to this org.
+    const spendType = await tx.tradeSpendType.findFirst({
+      where: { id: parsed.spendTypeId, organizationId: orgId, isActive: true },
+      select: { id: true, key: true },
     })
-  }
+    if (!spendType) {
+      return NextResponse.json({ ok: false, error: "Spend type not found" }, { status: 404 })
+    }
+    if (parsed.campaignId) {
+      const campaign = await tx.tradeCampaign.findFirst({
+        where: { id: parsed.campaignId, organizationId: orgId, deletedAt: null },
+        select: { id: true, status: true },
+      })
+      if (!campaign) {
+        return NextResponse.json({ ok: false, error: "Campaign not found" }, { status: 404 })
+      }
+      // Codex review #2 — real money (accrued/actual) only against an
+      // APPROVED campaign; plan postings (commitments) may reference a
+      // campaign still moving through approval.
+      const allowed =
+        parsed.entryKind === "plan"
+          ? ["draft", "pending_approval", "approved"]
+          : ["approved"]
+      if (!allowed.includes(campaign.status)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Campaign in status "${campaign.status}" cannot take ${parsed.entryKind} postings`,
+          },
+          { status: 409 },
+        )
+      }
+    }
+    if (parsed.channelId) {
+      const channel = await tx.tradeChannel.findFirst({
+        where: { id: parsed.channelId, organizationId: orgId, deletedAt: null },
+        select: { id: true },
+      })
+      if (!channel) {
+        return NextResponse.json({ ok: false, error: "Channel not found" }, { status: 404 })
+      }
+    }
 
-  const entry = await prisma.tradeSpendLedger.create({
-    data: {
-      organizationId: orgId,
-      entryKind: parsed.entryKind,
-      spendTypeId: parsed.spendTypeId,
-      campaignId: parsed.campaignId ?? null,
-      channelId: parsed.channelId ?? null,
-      entryDate,
-      year: entryDate.getUTCFullYear(),
-      month: entryDate.getUTCMonth() + 1,
-      amount: parsed.amount,
-      sourceDocument: parsed.note ?? null,
-      createdBy: session.userId,
-    },
-    select: ENTRY_SELECT,
-  })
+    // T4 (audit §1.4) — a posting into a CFO-locked period gets 423, same
+    // contract as every other financial mutation on the platform.
+    const lock = await findFirstActiveLockInPeriods(
+      tx,
+      orgId,
+      containingPeriodKeys(entryDate.getUTCFullYear(), entryDate.getUTCMonth() + 1),
+    )
+    if (lock) {
+      // 423-audit rides the GLOBAL client (fire-and-forget must survive
+      // this tx ending).
+      return lockedResponse(lock, {
+        prisma,
+        orgId,
+        userId: session.userId,
+        route: "POST /api/trade/spend",
+      })
+    }
 
-  // R1 — the dashboard must never show yesterday's picture: recompute
-  // pacing snapshots + alerts for the affected month in the same request.
-  await recomputeTradePacing(prisma, orgId, entryDate.getUTCFullYear(), entryDate.getUTCMonth() + 1)
-
-  // R8 — every manual posting leaves an audit-trail row (best-effort,
-  // never reverses the write; platform contract).
-  await logAuditEvent(prisma, {
-    organizationId: orgId,
-    actorUserId: session.userId,
-    event: {
-      action: "trade_spend_entry",
-      entityType: "TradeSpendLedger",
-      entityId: entry.id,
-      metadata: {
-        op: "post",
+    const entry = await tx.tradeSpendLedger.create({
+      data: {
+        organizationId: orgId,
         entryKind: parsed.entryKind,
+        spendTypeId: parsed.spendTypeId,
+        campaignId: parsed.campaignId ?? null,
+        channelId: parsed.channelId ?? null,
+        entryDate,
+        year: entryDate.getUTCFullYear(),
+        month: entryDate.getUTCMonth() + 1,
         amount: parsed.amount,
-        spendTypeKey: spendType.key,
-        entryDate: parsed.entryDate,
-        ...(parsed.campaignId ? { campaignId: parsed.campaignId } : {}),
-        ...(parsed.channelId ? { channelId: parsed.channelId } : {}),
+        sourceDocument: parsed.note ?? null,
+        createdBy: session.userId,
       },
-    },
-    context: buildAuditContext({
-      route: "POST /api/trade/spend",
-      userAgent: request.headers.get("user-agent") ?? undefined,
-    }),
-  })
+      select: ENTRY_SELECT,
+    })
 
-  return NextResponse.json({ ok: true, entry }, { status: 201 })
+    // R1 — the dashboard must never show yesterday's picture: recompute
+    // pacing snapshots + alerts for the affected month in the same request.
+    await recomputeTradePacing(tx, orgId, entryDate.getUTCFullYear(), entryDate.getUTCMonth() + 1)
+
+    // R8 — every manual posting leaves an audit-trail row (best-effort,
+    // never reverses the write; platform contract).
+    await logAuditEvent(tx, {
+      organizationId: orgId,
+      actorUserId: session.userId,
+      event: {
+        action: "trade_spend_entry",
+        entityType: "TradeSpendLedger",
+        entityId: entry.id,
+        metadata: {
+          op: "post",
+          entryKind: parsed.entryKind,
+          amount: parsed.amount,
+          spendTypeKey: spendType.key,
+          entryDate: parsed.entryDate,
+          ...(parsed.campaignId ? { campaignId: parsed.campaignId } : {}),
+          ...(parsed.channelId ? { channelId: parsed.channelId } : {}),
+        },
+      },
+      context: buildAuditContext({
+        route: "POST /api/trade/spend",
+        userAgent: request.headers.get("user-agent") ?? undefined,
+      }),
+    })
+
+    return NextResponse.json({ ok: true, entry }, { status: 201 })
+  })
 }

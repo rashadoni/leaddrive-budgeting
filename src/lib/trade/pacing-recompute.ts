@@ -4,7 +4,12 @@
 // fired automatically after every ledger posting/void so the dashboard
 // never shows yesterday's picture ("правда на 15-е число" contract).
 
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+
+// Stage 3 RLS (2026-07-07) — the client parameter is TransactionClient
+// so routes can pass the withOrgScope tx (a full PrismaClient satisfies
+// the type structurally; cron/seed callers keep passing prismaAdmin).
+type DbClient = Prisma.TransactionClient;
 import { computePacing, type PacingInput } from "./pacing";
 import { summarizeLedger, buildSpendCascade, type SpendCascade } from "./ledger";
 import { CHANNEL_GRAIN_PREFIX, parseChannelGrain } from "./budget";
@@ -23,7 +28,7 @@ export interface GrainPacing {
 }
 
 export async function buildPacingInput(
-  prisma: PrismaClient,
+  prisma: DbClient,
   orgId: string,
   year: number,
   month: number,
@@ -86,7 +91,7 @@ export interface RecomputeOutcome {
 
 /** Recompute org + channel snapshots for (year, month) and sync alerts. */
 export async function recomputeTradePacing(
-  prisma: PrismaClient,
+  prisma: DbClient,
   orgId: string,
   year: number,
   month: number

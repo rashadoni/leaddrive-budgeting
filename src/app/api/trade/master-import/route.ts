@@ -24,7 +24,7 @@ import * as XLSX from "xlsx"
 import { createHash } from "crypto"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 import { logAuditEvent } from "@/lib/audit/log"
 import {
@@ -158,28 +158,6 @@ export async function POST(request: NextRequest) {
   }
 
   const fileHash = createHash("sha256").update(buf).digest("hex")
-  const existing = await prisma.tradeImportBatch.findUnique({
-    where: {
-      organizationId_kind_sourceSystem_fileHash: {
-        organizationId: orgId,
-        kind,
-        sourceSystem: "file",
-        fileHash,
-      },
-    },
-    select: { id: true, status: true, appliedAt: true },
-  })
-  if (existing && existing.status === "applied") {
-    return NextResponse.json({
-      ok: true,
-      mode,
-      kind,
-      alreadyImported: true,
-      batchId: existing.id,
-      appliedAt: existing.appliedAt?.toISOString() ?? null,
-    })
-  }
-
   const plan = deriveDimensionPlan(kind, parsed.rows)
   const counts: ApplyCounts = {
     created: 0,
@@ -189,8 +167,26 @@ export async function POST(request: NextRequest) {
     placeholderRepsCreated: 0,
   }
 
-  const batchId = await prisma.$transaction(
+  // Stage 3 RLS — idempotency check, apply and audit run in ONE
+  // org-scoped tx (same 60s/10s bounds the old $transaction had; the
+  // xlsx parse happened above, OUTSIDE the tx).
+  const applied = await withOrgScope(
+    orgId,
     async (tx) => {
+      const existing = await tx.tradeImportBatch.findUnique({
+        where: {
+          organizationId_kind_sourceSystem_fileHash: {
+            organizationId: orgId,
+            kind,
+            sourceSystem: "file",
+            fileHash,
+          },
+        },
+        select: { id: true, status: true, appliedAt: true },
+      })
+      if (existing && existing.status === "applied") {
+        return { alreadyImported: true as const, batchId: existing.id, appliedAt: existing.appliedAt }
+      }
       // 1. Dimensions referenced by the rows (create-if-missing; existing
       //    codes keep their current name — renames go through a UI, not a
       //    side effect of an import).
@@ -426,21 +422,33 @@ export async function POST(request: NextRequest) {
         },
         select: { id: true },
       })
-      return batch.id
+
+      await logAuditEvent(tx, {
+        organizationId: orgId,
+        actorUserId: session.userId,
+        event: {
+          action: "trade_import_apply",
+          entityType: "TradeImportBatch",
+          entityId: batch.id,
+          metadata: { kind, sourceFile: filename, rowCount: parsed.rows.length, ...counts },
+        },
+      })
+
+      return { alreadyImported: false as const, batchId: batch.id }
     },
-    { timeout: 60_000, maxWait: 10_000 },
+    { timeoutMs: 60_000, maxWaitMs: 10_000 },
   )
 
-  await logAuditEvent(prisma, {
-    organizationId: orgId,
-    actorUserId: session.userId,
-    event: {
-      action: "trade_import_apply",
-      entityType: "TradeImportBatch",
-      entityId: batchId,
-      metadata: { kind, sourceFile: filename, rowCount: parsed.rows.length, ...counts },
-    },
-  })
+  if (applied.alreadyImported) {
+    return NextResponse.json({
+      ok: true,
+      mode,
+      kind,
+      alreadyImported: true,
+      batchId: applied.batchId,
+      appliedAt: applied.appliedAt?.toISOString() ?? null,
+    })
+  }
 
-  return NextResponse.json({ ok: true, mode, kind, batchId, rowCount: parsed.rows.length, counts })
+  return NextResponse.json({ ok: true, mode, kind, batchId: applied.batchId, rowCount: parsed.rows.length, counts })
 }

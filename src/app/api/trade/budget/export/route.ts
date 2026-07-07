@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import * as XLSX from "xlsx"
 import { requireRole, isAuthError } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 export async function GET(request: NextRequest) {
   const session = await requireRole(request, "viewer")
@@ -16,10 +16,14 @@ export async function GET(request: NextRequest) {
   }
   const year = Number(request.nextUrl.searchParams.get("year") ?? new Date().getUTCFullYear())
 
-  const pools = await prisma.tradeBudgetPool.findMany({
-    where: { organizationId: session.orgId, year, grainKey: "org" },
-    orderBy: { month: "asc" },
-  })
+  const orgId = session.orgId
+  // Stage 3 RLS — read in the org-scoped tx (XLSX build stays outside).
+  const pools = await withOrgScope(orgId, (tx) =>
+    tx.tradeBudgetPool.findMany({
+      where: { organizationId: orgId, year, grainKey: "org" },
+      orderBy: { month: "asc" },
+    }),
+  )
 
   const lang = (["en", "ru", "az"].includes(request.nextUrl.searchParams.get("lang") ?? "")
     ? request.nextUrl.searchParams.get("lang")

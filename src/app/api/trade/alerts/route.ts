@@ -4,7 +4,7 @@
  */
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, isAuthError } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const ALERT_SELECT = {
   id: true,
@@ -27,20 +27,23 @@ export async function GET(request: NextRequest) {
   }
   const orgId = session.orgId
 
-  const [open, resolved] = await Promise.all([
-    prisma.alert.findMany({
+  // Stage 3 RLS — reads run in the org-scoped tx (sequential: an
+  // interactive tx serializes queries on one connection anyway).
+  const { open, resolved } = await withOrgScope(orgId, async (tx) => {
+    const open = await tx.alert.findMany({
       where: { organizationId: orgId, domain: "trade", resolvedAt: null },
       orderBy: [{ severity: "asc" }, { triggeredAt: "desc" }],
       take: 100,
       select: ALERT_SELECT,
-    }),
-    prisma.alert.findMany({
+    })
+    const resolved = await tx.alert.findMany({
       where: { organizationId: orgId, domain: "trade", resolvedAt: { not: null } },
       orderBy: { resolvedAt: "desc" },
       take: 20,
       select: ALERT_SELECT,
-    }),
-  ])
+    })
+    return { open, resolved }
+  })
 
   return NextResponse.json({ ok: true, open, resolved })
 }

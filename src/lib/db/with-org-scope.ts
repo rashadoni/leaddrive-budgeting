@@ -26,6 +26,7 @@
  */
 
 import { prisma as defaultPrisma } from "@/lib/prisma"
+import { getPrismaApp } from "@/lib/db/prisma-app"
 import type { Prisma, PrismaClient } from "@prisma/client"
 import { getLogger } from "@/lib/log"
 
@@ -42,12 +43,19 @@ interface WithOrgScopeOpts {
   bypass?: boolean
   /**
    * Override the Prisma client used for the transaction.
-   * Defaults to the global `prisma` singleton. Pass a non-superuser
-   * PrismaClient (e.g. backed by DATABASE_URL_APP) to exercise real
-   * RLS enforcement in integration tests — the dev DATABASE_URL typically
-   * connects as a superuser with BYPASSRLS which silently skips policies.
+   * Defaults to the RLS-enforced app client (DATABASE_URL_APP). Pass an
+   * explicit client to exercise a specific role in integration tests.
    */
   client?: PrismaClient
+  /**
+   * Stage 3 — interactive-tx timeout override (ms). Prisma's default is
+   * 5000, too tight for multi-month derive/recompute loops. Use for
+   * routes doing bounded-but-long DB work; NEVER to accommodate non-DB
+   * slow work (LLM calls, file parses) — split those out of the scope.
+   */
+  timeoutMs?: number
+  /** Pool-acquire wait override (ms; Prisma default 2000). */
+  maxWaitMs?: number
 }
 
 export async function withOrgScope<T>(
@@ -55,7 +63,11 @@ export async function withOrgScope<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
   opts: WithOrgScopeOpts = {},
 ): Promise<T> {
-  const prisma = opts.client ?? defaultPrisma
+  // Stage 3 (2026-07-07) — default flipped from the global superuser
+  // client to the RLS-ENFORCED app client (DATABASE_URL_APP). Falls
+  // back to the global client when the app URL is unset (dev machines
+  // mid-rollout / prod pre-provisioning) — see prisma-app.ts.
+  const prisma = opts.client ?? getPrismaApp()
   if (!organizationId || organizationId.trim() === "") {
     throw new Error("withOrgScope: organizationId is required")
   }
@@ -76,6 +88,13 @@ export async function withOrgScope<T>(
     )
   }
 
+  const txOptions =
+    opts.timeoutMs || opts.maxWaitMs
+      ? {
+          ...(opts.timeoutMs ? { timeout: opts.timeoutMs } : {}),
+          ...(opts.maxWaitMs ? { maxWait: opts.maxWaitMs } : {}),
+        }
+      : undefined
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.$executeRawUnsafe(
       `SET LOCAL "app.organization_id" = '${organizationId}'`,
@@ -93,7 +112,7 @@ export async function withOrgScope<T>(
       await tx.$executeRawUnsafe(`SET LOCAL "app.bypass_rls" = 'true'`)
     }
     return fn(tx)
-  })
+  }, txOptions)
 }
 
 // Re-export the Tx type for callers that want to type their fn arg.

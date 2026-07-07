@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, isAuthError } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { buildDefaultSpendTypeRows } from "@/lib/trade/spend-types"
 
 export async function POST(request: NextRequest) {
@@ -14,11 +14,15 @@ export async function POST(request: NextRequest) {
   if (!session.orgId) {
     return NextResponse.json({ ok: false, error: "User has no organization" }, { status: 403 })
   }
+  const orgId = session.orgId
 
-  const result = await prisma.tradeSpendType.createMany({
-    data: buildDefaultSpendTypeRows(session.orgId),
-    skipDuplicates: true,
-  })
+  // Stage 3 RLS — seed write runs in the org-scoped tx.
+  const result = await withOrgScope(orgId, (tx) =>
+    tx.tradeSpendType.createMany({
+      data: buildDefaultSpendTypeRows(orgId),
+      skipDuplicates: true,
+    }),
+  )
 
   return NextResponse.json({ ok: true, created: result.count })
 }

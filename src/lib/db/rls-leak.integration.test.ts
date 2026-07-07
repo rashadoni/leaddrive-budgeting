@@ -178,4 +178,58 @@ describeIntegration("RLS cross-tenant leak (Phase 5.2 safety net)", () => {
     );
     expect(result).toHaveLength(2);
   });
+
+  // ── Phase 5.2 Stage 3 (2026-07-07) — Trade Tower tables ────────────
+  // Mars Overseas' data lives here; the pre-Mars gate is these tables
+  // NOT leaking between tenants.
+
+  it("withOrgScope(orgA.id) returns ONLY orgA's trade_budget_pools (Stage 3)", async () => {
+    const result = await withOrgScope(fixture.orgA.id, async (tx) => {
+      return tx.tradeBudgetPool.findMany({
+        where: { year: 2026, month: 1, grainKey: "org" },
+        select: { id: true, organizationId: true },
+      });
+    }, scopeOpts);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(fixture.tradePoolA.id);
+    expect(result[0].organizationId).toBe(fixture.orgA.id);
+  });
+
+  it("withOrgScope(orgA.id) returns ONLY orgA's trade_spend_ledger rows (Stage 3)", async () => {
+    const result = await withOrgScope(fixture.orgA.id, async (tx) => {
+      return tx.tradeSpendLedger.findMany({
+        where: { sourceDocument: { startsWith: "__RLS_LEAK_TEST_" } },
+        select: { id: true, organizationId: true },
+      });
+    }, scopeOpts);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(fixture.tradeLedgerA.id);
+    expect(result[0].organizationId).toBe(fixture.orgA.id);
+  });
+
+  it("cross-org WRITE into trade_spend_ledger is REJECTED by WITH CHECK (Stage 3)", async () => {
+    // A route bug posting orgB's ledger row while scoped to orgA must
+    // fail loudly at the DB layer, not silently insert.
+    await expect(
+      withOrgScope(fixture.orgA.id, async (tx) => {
+        const spendType = await tx.tradeSpendLedger.findFirst({
+          where: { organizationId: fixture.orgA.id },
+          select: { spendTypeId: true },
+        });
+        return tx.tradeSpendLedger.create({
+          data: {
+            organizationId: fixture.orgB.id, // ← cross-org write attempt
+            entryKind: "actual",
+            spendTypeId: spendType!.spendTypeId,
+            entryDate: new Date(Date.UTC(2026, 0, 16)),
+            year: 2026,
+            month: 1,
+            amount: 999,
+            sourceDocument: "__RLS_LEAK_TEST_CROSS_WRITE",
+            createdBy: "system",
+          },
+        });
+      }, scopeOpts),
+    ).rejects.toThrow();
+  });
 });

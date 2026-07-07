@@ -21,6 +21,13 @@ vi.mock("@/lib/prisma", () => ({
     $transaction: (fn: unknown) => txMock(fn),
   },
 }));
+// Stage 3 — withOrgScope defaults to the RLS-enforced app client. Pin the
+// mock so a DATABASE_URL_APP in the runner's shell can't leak a real
+// PrismaClient into these unit tests.
+vi.mock("@/lib/db/prisma-app", async () => {
+  const { prisma } = await import("@/lib/prisma");
+  return { getPrismaApp: () => prisma, prismaApp: prisma };
+});
 
 import { withOrgScope } from "./with-org-scope";
 

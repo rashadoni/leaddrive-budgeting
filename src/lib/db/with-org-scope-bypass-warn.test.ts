@@ -24,6 +24,11 @@ vi.mock("@/lib/prisma", () => ({
     },
   },
 }))
+// Stage 3 — pin the app-client mock (same reason as with-org-scope.test.ts).
+vi.mock("@/lib/db/prisma-app", async () => {
+  const { prisma } = await import("@/lib/prisma")
+  return { getPrismaApp: () => prisma, prismaApp: prisma }
+})
 
 import { withOrgScope } from "./with-org-scope"
 

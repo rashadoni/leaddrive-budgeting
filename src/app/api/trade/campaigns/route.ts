@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { ZodError } from "zod"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit } from "@/lib/rate-limit"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import {
   campaignCreateSchema,
   campaignCodeFromName,
@@ -46,27 +46,32 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "User has no organization" }, { status: 403 })
   }
 
-  const campaigns = await prisma.tradeCampaign.findMany({
-    where: { organizationId: session.orgId, deletedAt: null },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-    select: CAMPAIGN_SELECT,
-  })
+  const orgId = session.orgId
+  // Stage 3 RLS — reads in the org-scoped tx.
+  const { campaigns, ledger } = await withOrgScope(orgId, async (tx) => {
+    const campaigns = await tx.tradeCampaign.findMany({
+      where: { organizationId: orgId, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: CAMPAIGN_SELECT,
+    })
 
-  // T1 (audit §1.2) — per-campaign spend rollup from campaign-tagged
-  // ledger postings, so the card answers spent/remaining, not just plan.
-  const ledger = await prisma.tradeSpendLedger.findMany({
-    where: {
-      organizationId: session.orgId,
-      voidedAt: null,
-      campaignId: { in: campaigns.map((c) => c.id) },
-    },
-    select: {
-      campaignId: true,
-      entryKind: true,
-      amount: true,
-      spendType: { select: { id: true, key: true, label: true, accrualMethod: true } },
-    },
+    // T1 (audit §1.2) — per-campaign spend rollup from campaign-tagged
+    // ledger postings, so the card answers spent/remaining, not just plan.
+    const ledger = await tx.tradeSpendLedger.findMany({
+      where: {
+        organizationId: orgId,
+        voidedAt: null,
+        campaignId: { in: campaigns.map((c) => c.id) },
+      },
+      select: {
+        campaignId: true,
+        entryKind: true,
+        amount: true,
+        spendType: { select: { id: true, key: true, label: true, accrualMethod: true } },
+      },
+    })
+    return { campaigns, ledger }
   })
   const rollups = rollupCampaignSpend(ledger)
   const withSpend = campaigns.map((c) => {
@@ -109,7 +114,9 @@ export async function POST(request: NextRequest) {
 
   const code = parsed.code ?? campaignCodeFromName(parsed.name)
   try {
-    const campaign = await prisma.tradeCampaign.create({
+    // Stage 3 RLS — create runs in the org-scoped tx.
+    const campaign = await withOrgScope(orgId, (tx) =>
+      tx.tradeCampaign.create({
       data: {
         organizationId: orgId,
         code,
@@ -132,7 +139,8 @@ export async function POST(request: NextRequest) {
         },
       },
       select: CAMPAIGN_SELECT,
-    })
+      }),
+    )
     return NextResponse.json({ ok: true, campaign }, { status: 201 })
   } catch (e) {
     // P2002 = (organizationId, code) unique collision.

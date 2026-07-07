@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, isAuthError } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 export async function GET(request: NextRequest) {
   const session = await requireRole(request, "viewer")
@@ -17,37 +17,42 @@ export async function GET(request: NextRequest) {
   const orgId = session.orgId
   const live = { organizationId: orgId, deletedAt: null } as const
 
-  const [regions, channelRows, reps, outlets, skus, spendTypes, batches] = await Promise.all([
-    prisma.tradeRegion.count({ where: live }),
-    prisma.tradeChannel.findMany({
-      where: { ...live, isActive: true },
-      orderBy: { name: "asc" },
-      select: { id: true, code: true, name: true, channelType: true },
-    }),
-    prisma.tradeSalesRep.count({ where: live }),
-    prisma.tradeOutlet.count({ where: live }),
-    prisma.tradeSku.count({ where: live }),
-    prisma.tradeSpendType.findMany({
-      where: { organizationId: orgId },
-      orderBy: { sortOrder: "asc" },
-      select: { id: true, key: true, label: true, accrualMethod: true, isActive: true },
-    }),
-    prisma.tradeImportBatch.findMany({
-      where: { organizationId: orgId },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      select: {
-        id: true,
-        kind: true,
-        sourceFile: true,
-        status: true,
-        rowCount: true,
-        totals: true,
-        createdAt: true,
-        appliedAt: true,
-      },
-    }),
-  ])
+  // Stage 3 RLS — all reads in one org-scoped tx (sequential by design).
+  const [regions, channelRows, reps, outlets, skus, spendTypes, batches] = await withOrgScope(
+    orgId,
+    async (tx) => {
+      const regions = await tx.tradeRegion.count({ where: live })
+      const channelRows = await tx.tradeChannel.findMany({
+        where: { ...live, isActive: true },
+        orderBy: { name: "asc" },
+        select: { id: true, code: true, name: true, channelType: true },
+      })
+      const reps = await tx.tradeSalesRep.count({ where: live })
+      const outlets = await tx.tradeOutlet.count({ where: live })
+      const skus = await tx.tradeSku.count({ where: live })
+      const spendTypes = await tx.tradeSpendType.findMany({
+        where: { organizationId: orgId },
+        orderBy: { sortOrder: "asc" },
+        select: { id: true, key: true, label: true, accrualMethod: true, isActive: true },
+      })
+      const batches = await tx.tradeImportBatch.findMany({
+        where: { organizationId: orgId },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          kind: true,
+          sourceFile: true,
+          status: true,
+          rowCount: true,
+          totals: true,
+          createdAt: true,
+          appliedAt: true,
+        },
+      })
+      return [regions, channelRows, reps, outlets, skus, spendTypes, batches] as const
+    },
+  )
 
   return NextResponse.json({
     ok: true,

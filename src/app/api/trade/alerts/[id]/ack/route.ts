@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, isAuthError } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole(request, "manager")
@@ -14,11 +14,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ ok: false, error: "User has no organization" }, { status: 403 })
   }
   const { id } = await params
+  const orgId = session.orgId
 
-  const updated = await prisma.alert.updateMany({
-    where: { id, organizationId: session.orgId, domain: "trade", acknowledgedAt: null },
-    data: { acknowledgedAt: new Date(), acknowledgedBy: session.userId },
-  })
+  // Stage 3 RLS — write runs in the org-scoped tx.
+  const updated = await withOrgScope(orgId, (tx) =>
+    tx.alert.updateMany({
+      where: { id, organizationId: orgId, domain: "trade", acknowledgedAt: null },
+      data: { acknowledgedAt: new Date(), acknowledgedBy: session.userId },
+    }),
+  )
   if (updated.count === 0) {
     return NextResponse.json(
       { ok: false, error: "Alert not found or already acknowledged" },

@@ -16,7 +16,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit } from "@/lib/rate-limit"
+// Stage 3 RLS — global client retained ONLY for lockedResponse's
+// fire-and-forget 423-audit; data access rides the withOrgScope tx.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { planChannelAllocations, CHANNEL_GRAIN_PREFIX } from "@/lib/trade/budget"
 import { spreadMonthlyPlan } from "@/lib/trade/pacing"
 import { recomputeTradePacing } from "@/lib/trade/pacing-recompute"
@@ -63,132 +66,141 @@ export async function PUT(request: NextRequest) {
   }
   const { year, month } = parsed
 
-  // R2 — the channel split of a CFO-locked month is frozen too.
-  const lock = await findFirstActiveLockInPeriods(prisma, orgId, containingPeriodKeys(year, month))
-  if (lock) {
-    return lockedResponse(lock, {
-      prisma,
-      orgId,
-      userId: session.userId,
-      route: "PUT /api/trade/budget/allocations",
-    })
-  }
+  // Stage 3 RLS — lock check, validation reads, split rewrite and pacing
+  // recompute in ONE org-scoped tx.
+  return withOrgScope(
+    orgId,
+    async (tx) => {
+      // R2 — the channel split of a CFO-locked month is frozen too.
+      const lock = await findFirstActiveLockInPeriods(tx, orgId, containingPeriodKeys(year, month))
+      if (lock) {
+        return lockedResponse(lock, {
+          prisma,
+          orgId,
+          userId: session.userId,
+          route: "PUT /api/trade/budget/allocations",
+        })
+      }
 
-  const orgPool = await prisma.tradeBudgetPool.findUnique({
-    where: {
-      organizationId_year_month_grainKey: { organizationId: orgId, year, month, grainKey: "org" },
-    },
-    select: { budgetAmount: true },
-  })
-  if (!orgPool) {
-    return NextResponse.json(
-      { ok: false, error: "Derive the org budget for this month first" },
-      { status: 409 },
-    )
-  }
+      const orgPool = await tx.tradeBudgetPool.findUnique({
+        where: {
+          organizationId_year_month_grainKey: { organizationId: orgId, year, month, grainKey: "org" },
+        },
+        select: { budgetAmount: true },
+      })
+      if (!orgPool) {
+        return NextResponse.json(
+          { ok: false, error: "Derive the org budget for this month first" },
+          { status: 409 },
+        )
+      }
 
-  const channels = await prisma.tradeChannel.findMany({
-    where: { organizationId: orgId, isActive: true, deletedAt: null },
-    select: { id: true },
-  })
-  const { plans, errors } = planChannelAllocations(
-    orgPool.budgetAmount,
-    parsed.allocations,
-    new Set(channels.map((c) => c.id)),
-  )
-  if (errors.length > 0) {
-    return NextResponse.json({ ok: false, error: "Allocation validation failed", errors }, { status: 400 })
-  }
+      const channels = await tx.tradeChannel.findMany({
+        where: { organizationId: orgId, isActive: true, deletedAt: null },
+        select: { id: true },
+      })
+      const { plans, errors } = planChannelAllocations(
+        orgPool.budgetAmount,
+        parsed.allocations,
+        new Set(channels.map((c) => c.id)),
+      )
+      if (errors.length > 0) {
+        return NextResponse.json(
+          { ok: false, error: "Allocation validation failed", errors },
+          { status: 400 },
+        )
+      }
 
-  const keepGrains = new Set(plans.map((p) => p.grainKey))
-  await prisma.$transaction(async (tx) => {
-    // Clear channel pools not present in this split (and their plan-daily).
-    const stale = await tx.tradeBudgetPool.findMany({
-      where: {
-        organizationId: orgId,
-        year,
-        month,
-        grainKey: { startsWith: CHANNEL_GRAIN_PREFIX },
-        NOT: { grainKey: { in: [...keepGrains] } },
-      },
-      select: { grainKey: true },
-    })
-    if (stale.length > 0) {
-      await tx.tradeBudgetPool.deleteMany({
+      const keepGrains = new Set(plans.map((p) => p.grainKey))
+      // Clear channel pools not present in this split (and their plan-daily).
+      const stale = await tx.tradeBudgetPool.findMany({
         where: {
           organizationId: orgId,
           year,
           month,
-          grainKey: { in: stale.map((s) => s.grainKey) },
+          grainKey: { startsWith: CHANNEL_GRAIN_PREFIX },
+          NOT: { grainKey: { in: [...keepGrains] } },
         },
+        select: { grainKey: true },
       })
-      await tx.tradePlanDaily.deleteMany({
-        where: {
-          organizationId: orgId,
-          year,
-          month,
-          grainKey: { in: stale.map((s) => s.grainKey) },
-        },
-      })
-    }
+      if (stale.length > 0) {
+        await tx.tradeBudgetPool.deleteMany({
+          where: {
+            organizationId: orgId,
+            year,
+            month,
+            grainKey: { in: stale.map((s) => s.grainKey) },
+          },
+        })
+        await tx.tradePlanDaily.deleteMany({
+          where: {
+            organizationId: orgId,
+            year,
+            month,
+            grainKey: { in: stale.map((s) => s.grainKey) },
+          },
+        })
+      }
 
-    for (const p of plans) {
-      await tx.tradeBudgetPool.upsert({
-        where: {
-          organizationId_year_month_grainKey: {
+      for (const p of plans) {
+        await tx.tradeBudgetPool.upsert({
+          where: {
+            organizationId_year_month_grainKey: {
+              organizationId: orgId,
+              year,
+              month,
+              grainKey: p.grainKey,
+            },
+          },
+          create: {
             organizationId: orgId,
             year,
             month,
             grainKey: p.grainKey,
+            salesPlanAmount: 0, // no channel-level sales plan yet (Mars answers pending)
+            budgetPct: p.allocationPct, // ALLOCATION % while salesPlanAmount=0
+            budgetAmount: p.budgetAmount,
           },
-        },
-        create: {
-          organizationId: orgId,
-          year,
-          month,
-          grainKey: p.grainKey,
-          salesPlanAmount: 0, // no channel-level sales plan yet (Mars answers pending)
-          budgetPct: p.allocationPct, // ALLOCATION % while salesPlanAmount=0
-          budgetAmount: p.budgetAmount,
-        },
-        update: { budgetPct: p.allocationPct, budgetAmount: p.budgetAmount },
-      })
-      await tx.tradePlanDaily.deleteMany({
-        where: { organizationId: orgId, year, month, grainKey: p.grainKey },
-      })
-      const budgetSpread = spreadMonthlyPlan(year, month, p.budgetAmount)
-      await tx.tradePlanDaily.createMany({
-        data: budgetSpread.map((d) => ({
-          organizationId: orgId,
-          date: new Date(Date.UTC(year, month - 1, d.day)),
-          year,
-          month,
-          grainKey: p.grainKey,
-          plannedSalesAmount: 0,
-          plannedTradeBudgetAmount: d.amount,
-          workingDayWeight: d.weight,
-        })),
-      })
-    }
-  })
+          update: { budgetPct: p.allocationPct, budgetAmount: p.budgetAmount },
+        })
+        await tx.tradePlanDaily.deleteMany({
+          where: { organizationId: orgId, year, month, grainKey: p.grainKey },
+        })
+        const budgetSpread = spreadMonthlyPlan(year, month, p.budgetAmount)
+        await tx.tradePlanDaily.createMany({
+          data: budgetSpread.map((d) => ({
+            organizationId: orgId,
+            date: new Date(Date.UTC(year, month - 1, d.day)),
+            year,
+            month,
+            grainKey: p.grainKey,
+            plannedSalesAmount: 0,
+            plannedTradeBudgetAmount: d.amount,
+            workingDayWeight: d.weight,
+          })),
+        })
+      }
 
-  // Codex review #3 — a new split changes channel-grain risk right away.
-  await recomputeTradePacing(prisma, orgId, year, month)
+      // Codex review #3 — a new split changes channel-grain risk right away.
+      await recomputeTradePacing(tx, orgId, year, month)
 
-  const pools = await prisma.tradeBudgetPool.findMany({
-    where: { organizationId: orgId, year, month, grainKey: { startsWith: CHANNEL_GRAIN_PREFIX } },
-    orderBy: { grainKey: "asc" },
-    select: { grainKey: true, budgetPct: true, budgetAmount: true },
-  })
-  const allocated = pools.reduce((s, p) => s + p.budgetAmount, 0)
-  return NextResponse.json({
-    ok: true,
-    year,
-    month,
-    pools,
-    allocated: Math.round(allocated * 100) / 100,
-    unallocated: Math.round((orgPool.budgetAmount - allocated) * 100) / 100,
-  })
+      const pools = await tx.tradeBudgetPool.findMany({
+        where: { organizationId: orgId, year, month, grainKey: { startsWith: CHANNEL_GRAIN_PREFIX } },
+        orderBy: { grainKey: "asc" },
+        select: { grainKey: true, budgetPct: true, budgetAmount: true },
+      })
+      const allocated = pools.reduce((s, p) => s + p.budgetAmount, 0)
+      return NextResponse.json({
+        ok: true,
+        year,
+        month,
+        pools,
+        allocated: Math.round(allocated * 100) / 100,
+        unallocated: Math.round((orgPool.budgetAmount - allocated) * 100) / 100,
+      })
+    },
+    { timeoutMs: 15_000 },
+  )
 }
 
 /** Convenience: GET current month's split. */
@@ -202,28 +214,31 @@ export async function GET(request: NextRequest) {
   const year = Number(request.nextUrl.searchParams.get("year") ?? now.getUTCFullYear())
   const month = Number(request.nextUrl.searchParams.get("month") ?? now.getUTCMonth() + 1)
 
-  const [orgPool, channelPools] = await Promise.all([
-    prisma.tradeBudgetPool.findUnique({
+  const readOrgId = session.orgId
+  // Stage 3 RLS — reads in the org-scoped tx.
+  const [orgPool, channelPools] = await withOrgScope(readOrgId, async (tx) => {
+    const orgPool = await tx.tradeBudgetPool.findUnique({
       where: {
         organizationId_year_month_grainKey: {
-          organizationId: session.orgId,
+          organizationId: readOrgId,
           year,
           month,
           grainKey: "org",
         },
       },
       select: { budgetAmount: true },
-    }),
-    prisma.tradeBudgetPool.findMany({
+    })
+    const channelPools = await tx.tradeBudgetPool.findMany({
       where: {
-        organizationId: session.orgId,
+        organizationId: readOrgId,
         year,
         month,
         grainKey: { startsWith: CHANNEL_GRAIN_PREFIX },
       },
       select: { grainKey: true, budgetPct: true, budgetAmount: true },
-    }),
-  ])
+    })
+    return [orgPool, channelPools] as const
+  })
   const allocated = channelPools.reduce((s, p) => s + p.budgetAmount, 0)
   return NextResponse.json({
     ok: true,

@@ -52,6 +52,13 @@ export interface MultiOrgFixture {
   budgetChangeB: { id: string };
   approvalA: { id: string };
   approvalB: { id: string };
+  // Phase 5.2 Stage 3 (2026-07-07) — Trade Tower leak rows (the tables
+  // Mars Overseas will live in): one budget pool + one ledger posting
+  // per org.
+  tradePoolA: { id: string };
+  tradePoolB: { id: string };
+  tradeLedgerA: { id: string };
+  tradeLedgerB: { id: string };
 }
 
 export async function cleanupMultiOrg(prisma: PrismaClient): Promise<void> {
@@ -87,6 +94,16 @@ export async function cleanupMultiOrg(prisma: PrismaClient): Promise<void> {
     },
   });
   await prisma.budgetPlan.deleteMany({
+    where: { organizationId: { in: ids } },
+  });
+  // Phase 5.2 Stage 3 — trade-tier teardown (ledger references spendType).
+  await prisma.tradeSpendLedger.deleteMany({
+    where: { organizationId: { in: ids } },
+  });
+  await prisma.tradeSpendType.deleteMany({
+    where: { organizationId: { in: ids } },
+  });
+  await prisma.tradeBudgetPool.deleteMany({
     where: { organizationId: { in: ids } },
   });
   await prisma.company.deleteMany({
@@ -285,6 +302,86 @@ export async function seedMultiOrg(prisma: PrismaClient): Promise<MultiOrgFixtur
     }),
   ]);
 
+  // ── Phase 5.2 Stage 3 (2026-07-07) — Trade Tower leak rows ─────────
+  const [tradePoolA, tradePoolB] = await Promise.all([
+    prisma.tradeBudgetPool.create({
+      data: {
+        organizationId: orgA.id,
+        year: 2026,
+        month: 1,
+        grainKey: "org",
+        salesPlanAmount: 1000,
+        budgetPct: 5,
+        budgetAmount: 50,
+      },
+      select: { id: true },
+    }),
+    prisma.tradeBudgetPool.create({
+      data: {
+        organizationId: orgB.id,
+        year: 2026,
+        month: 1,
+        grainKey: "org",
+        salesPlanAmount: 2000,
+        budgetPct: 5,
+        budgetAmount: 100,
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  const [spendTypeA, spendTypeB] = await Promise.all([
+    prisma.tradeSpendType.create({
+      data: {
+        organizationId: orgA.id,
+        key: `${PREFIX}manual`,
+        label: `${PREFIX}manual`,
+        accrualMethod: "manual",
+      },
+      select: { id: true },
+    }),
+    prisma.tradeSpendType.create({
+      data: {
+        organizationId: orgB.id,
+        key: `${PREFIX}manual`,
+        label: `${PREFIX}manual`,
+        accrualMethod: "manual",
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  const [tradeLedgerA, tradeLedgerB] = await Promise.all([
+    prisma.tradeSpendLedger.create({
+      data: {
+        organizationId: orgA.id,
+        entryKind: "actual",
+        spendTypeId: spendTypeA.id,
+        entryDate: new Date(Date.UTC(2026, 0, 15)),
+        year: 2026,
+        month: 1,
+        amount: 10,
+        sourceDocument: `${PREFIX}A`,
+        createdBy: "system",
+      },
+      select: { id: true },
+    }),
+    prisma.tradeSpendLedger.create({
+      data: {
+        organizationId: orgB.id,
+        entryKind: "actual",
+        spendTypeId: spendTypeB.id,
+        entryDate: new Date(Date.UTC(2026, 0, 15)),
+        year: 2026,
+        month: 1,
+        amount: 20,
+        sourceDocument: `${PREFIX}B`,
+        createdBy: "system",
+      },
+      select: { id: true },
+    }),
+  ]);
+
   return {
     orgA,
     orgB,
@@ -299,5 +396,9 @@ export async function seedMultiOrg(prisma: PrismaClient): Promise<MultiOrgFixtur
     budgetChangeB,
     approvalA,
     approvalB,
+    tradePoolA,
+    tradePoolB,
+    tradeLedgerA,
+    tradeLedgerB,
   };
 }
