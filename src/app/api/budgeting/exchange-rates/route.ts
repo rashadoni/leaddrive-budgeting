@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const createRateSchema = z.object({
   currencyCode: z.string().min(1).max(10),
@@ -21,16 +21,18 @@ export async function GET(req: NextRequest) {
   const where: any = { organizationId: orgId }
   if (currencyCode) where.currencyCode = currencyCode
 
-  const rates = await prisma.currencyRateHistory.findMany({
-    where,
-    orderBy: { rateDate: "desc" },
-    take: limit,
-  })
-
-  // Also get current currencies for reference
-  const currencies = await prisma.currency.findMany({
-    where: { organizationId: orgId },
-    orderBy: { code: "asc" },
+  const { rates, currencies } = await withOrgScope(orgId, async (tx) => {
+    const rates = await tx.currencyRateHistory.findMany({
+      where,
+      orderBy: { rateDate: "desc" },
+      take: limit,
+    })
+    // Also get current currencies for reference
+    const currencies = await tx.currency.findMany({
+      where: { organizationId: orgId },
+      orderBy: { code: "asc" },
+    })
+    return { rates, currencies }
   })
 
   return NextResponse.json({ rates, currencies })
@@ -60,19 +62,22 @@ export async function POST(req: NextRequest) {
 
   const { currencyCode, rate, rateDate } = data
 
-  const entry = await prisma.currencyRateHistory.create({
-    data: {
-      organizationId: orgId,
-      currencyCode,
-      rate: parseFloat(String(rate)),
-      rateDate: rateDate ? new Date(rateDate) : new Date(),
-    },
-  })
+  const entry = await withOrgScope(orgId, async (tx) => {
+    const entry = await tx.currencyRateHistory.create({
+      data: {
+        organizationId: orgId,
+        currencyCode,
+        rate: parseFloat(String(rate)),
+        rateDate: rateDate ? new Date(rateDate) : new Date(),
+      },
+    })
 
-  // Also update the Currency table's exchangeRate for convenience
-  await prisma.currency.updateMany({
-    where: { organizationId: orgId, code: currencyCode },
-    data: { exchangeRate: parseFloat(String(rate)) },
+    // Also update the Currency table's exchangeRate for convenience
+    await tx.currency.updateMany({
+      where: { organizationId: orgId, code: currencyCode },
+      data: { exchangeRate: parseFloat(String(rate)) },
+    })
+    return entry
   })
 
   return NextResponse.json(entry, { status: 201 })

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 /**
  * Phase 7.G Turn LXII — Zod-validated POST body (audit C1 closure).
@@ -33,11 +33,13 @@ export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const lines = await prisma.productLine.findMany({
-    where: { organizationId: orgId },
-    include: { salesBudgetLines: true, costComponents: true },
-    orderBy: { sortOrder: "asc" },
-  })
+  const lines = await withOrgScope(orgId, (tx) =>
+    tx.productLine.findMany({
+      where: { organizationId: orgId },
+      include: { salesBudgetLines: true, costComponents: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+  )
   return NextResponse.json(lines)
 }
 
@@ -66,8 +68,10 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const line = await prisma.productLine.create({
-    data: { ...parsed.data, organizationId: orgId },
-  })
+  const line = await withOrgScope(orgId, (tx) =>
+    tx.productLine.create({
+      data: { ...parsed.data, organizationId: orgId },
+    }),
+  )
   return NextResponse.json(line, { status: 201 })
 }

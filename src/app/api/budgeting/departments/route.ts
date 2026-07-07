@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId, requireRole } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const createDeptSchema = z.object({
   key: z.string().min(1).max(100),
@@ -29,10 +29,12 @@ export async function GET(req: NextRequest) {
 
   const includeInactive = req.nextUrl.searchParams.get("includeInactive") === "true"
 
-  const departments = await prisma.budgetDepartment.findMany({
-    where: { organizationId: orgId, ...(includeInactive ? {} : { isActive: true }) },
-    orderBy: { sortOrder: "asc" },
-  })
+  const departments = await withOrgScope(orgId, (tx) =>
+    tx.budgetDepartment.findMany({
+      where: { organizationId: orgId, ...(includeInactive ? {} : { isActive: true }) },
+      orderBy: { sortOrder: "asc" },
+    }),
+  )
 
   return NextResponse.json({ success: true, data: departments })
 }
@@ -63,26 +65,29 @@ export async function POST(req: NextRequest) {
 
   const { key, label, serviceKey, hasRevenue, color, sortOrder } = data
 
-  const existing = await prisma.budgetDepartment.findUnique({
-    where: { organizationId_key: { organizationId: orgId, key } },
-  })
-  if (existing) {
-    return NextResponse.json({ error: `Department with key "${key}" already exists` }, { status: 409 })
-  }
+  const result = await withOrgScope(orgId, async (tx) => {
+    const existing = await tx.budgetDepartment.findUnique({
+      where: { organizationId_key: { organizationId: orgId, key } },
+    })
+    if (existing) {
+      return NextResponse.json({ error: `Department with key "${key}" already exists` }, { status: 409 })
+    }
 
-  const department = await prisma.budgetDepartment.create({
-    data: {
-      organizationId: orgId,
-      key,
-      label,
-      serviceKey: serviceKey || null,
-      hasRevenue: hasRevenue ?? true,
-      color: color || null,
-      sortOrder: sortOrder ?? 0,
-    },
-  })
+    const department = await tx.budgetDepartment.create({
+      data: {
+        organizationId: orgId,
+        key,
+        label,
+        serviceKey: serviceKey || null,
+        hasRevenue: hasRevenue ?? true,
+        color: color || null,
+        sortOrder: sortOrder ?? 0,
+      },
+    })
 
-  return NextResponse.json({ success: true, data: department }, { status: 201 })
+    return NextResponse.json({ success: true, data: department }, { status: 201 })
+  })
+  return result
 }
 
 export async function PUT(req: NextRequest) {
@@ -110,10 +115,12 @@ export async function PUT(req: NextRequest) {
 
   const { id, ...updates } = data
 
-  const department = await prisma.budgetDepartment.update({
-    where: { id, organizationId: orgId },
-    data: updates,
-  })
+  const department = await withOrgScope(orgId, (tx) =>
+    tx.budgetDepartment.update({
+      where: { id, organizationId: orgId },
+      data: updates,
+    }),
+  )
 
   return NextResponse.json({ success: true, data: department })
 }
@@ -128,10 +135,12 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
 
   // Soft-delete: deactivate instead of removing (preserves FK references)
-  const department = await prisma.budgetDepartment.update({
-    where: { id, organizationId: orgId },
-    data: { isActive: false },
-  })
+  const department = await withOrgScope(orgId, (tx) =>
+    tx.budgetDepartment.update({
+      where: { id, organizationId: orgId },
+      data: { isActive: false },
+    }),
+  )
 
   return NextResponse.json({ success: true, data: department })
 }
