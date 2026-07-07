@@ -28,7 +28,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/prisma';
+// rls-scan-ignore: staged multi-entity apply (maxDuration 120). Commits several
+// entities' sheets through the production import handlers then
+// runRecomputeForCompanies — nested transactions + recompute can't fit one 5s
+// interactive withOrgScope tx. orgId-scoped in code; runs on BYPASSRLS `prismaAdmin`.
+import { prismaAdmin as prisma } from '@/lib/db/prisma-admin';
 import { requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit';
 import { getLogger } from '@/lib/log';

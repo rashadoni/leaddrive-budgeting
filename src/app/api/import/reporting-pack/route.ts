@@ -17,12 +17,19 @@
  * Postgres on the internal docker network, so the monthly pack is imported by
  * uploading it here — no SSH, no CLI, no direct DB access.
  */
+// rls-scan-ignore: admin-only monthly reporting-pack import (maxDuration 300).
+// runReportingPackImport writes every entity through the audited production
+// handlers inside its OWN prisma.$transaction, then onAfterApply fires
+// runRecomputeForCompanies — neither fits a single 5s interactive withOrgScope
+// tx (nested interactive tx is disallowed). Every query is orgId-scoped in
+// code; it runs on the BYPASSRLS `prismaAdmin` client (passed into the importer
+// + recompute).
 import { NextRequest, NextResponse } from "next/server"
 import * as XLSX from "xlsx"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { aiErrorBody } from "@/lib/ai/ai-error"
-import { prisma } from "@/lib/prisma"
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { runReportingPackImport } from "@/lib/onboarding/adapters/reporting-pack-importer"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
 import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"

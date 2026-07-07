@@ -54,7 +54,12 @@ import {
 import {
   affectedIndicatorsForDataType,
 } from "@/lib/onboarding/ai-import/datatype-indicator-map"
-import { prisma } from "@/lib/prisma"
+// rls-scan-ignore: admin-only AI Auto Import classifier (maxDuration 120). The
+// entity/org reads feed an Anthropic sheet-classifier LLM call, and the LLM
+// budget helpers (checkBudget/recordUsage) read+write aITokenUsage — none fit
+// one 5s interactive withOrgScope tx. Classify-only (apply=true → 501) and
+// orgId-scoped in code, so it runs on the BYPASSRLS `prismaAdmin` client.
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 // 120s, not 60: a real 26MB / 29-sheet workbook took 57s end-to-end (≈10s

@@ -35,7 +35,11 @@ import { getApprovedTemplate } from "@/lib/onboarding/ai-mapper/template-store"
 import { findEntityColumn, findCodeColumn, extractEntityValues } from "@/lib/onboarding/ai-mapper/entity-split"
 import { resolveEntityCompanies, looksLikeEliminationBU } from "@/lib/onboarding/ai-mapper/entity-resolve"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
-import { prisma } from "@/lib/prisma"
+// rls-scan-ignore: AI Data Mapper analyze (maxDuration 60). Reads org companies
+// to hint an Anthropic sheet-mapping LLM call, then stages the proposal — the
+// LLM round-trip can't live in one 5s interactive withOrgScope tx. orgId-scoped
+// in code; runs on the BYPASSRLS `prismaAdmin` client.
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 export const maxDuration = 60

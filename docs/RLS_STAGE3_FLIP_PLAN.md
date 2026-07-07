@@ -147,6 +147,21 @@ per RLS_RUNBOOK §1.
 
 ## Progress log
 
+- 2026-07-07 — **S3 wave 8 — import + onboarding → SCANNER SHOWS 0 UNWRAPPED. 🎯**
+  Clean-wrapped: import/entity-aliases (org settings + company reads in one scope
+  tx; org.update in another), onboarding/import/staging/[id] (findFirst + lazy-
+  expire updateMany in scope; the awaited transition audit stays on the global
+  client). Nine rls-scan-ignore additions — every one a heavy AI-classifier or
+  bulk multi-table apply that runs its own transactions + recompute and can't fit
+  one 5s interactive tx, all admin-only + orgId-scoped in code → prismaAdmin:
+  import/reporting-pack, import/ai-auto, import/ai-auto-multi (1214-line mega
+  route), onboarding/import/analyze, analyze-multi, budget, staging/[id]/apply,
+  apply-multi, apply-multi-entity. 1 handler test gained the withOrgScope mock.
+  **Scan: 132 wrapped / 26 clean / 21 opted-out / 0 UNWRAPPED.** Every
+  org-data-touching route is now either RLS-enforced-when-flipped (withOrgScope)
+  or an explicitly-justified BYPASSRLS opt-out. Gates: tsc 0; full vitest 6298;
+  RLS leak 10/10. **S4 coverage goal met — ready for S5 env-flip.** The scanner's
+  `--enforce` gate can now be wired into CI to block new unwrapped routes.
 - 2026-07-07 — **S3 wave 7 — users + terminal collection/context (130 wrapped).**
   Clean-wrapped: users/[id]/role, users/[id]/active (findFirst + conditional
   last-admin count + update in separate scope txns; awaited audit stays on the

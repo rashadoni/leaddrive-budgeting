@@ -74,7 +74,13 @@ import {
   affectedIndicatorsForDataType,
   type DataTypeImpact,
 } from "@/lib/onboarding/ai-import/datatype-indicator-map"
-import { prisma } from "@/lib/prisma"
+// rls-scan-ignore: admin-only multi-file AI Auto Import (maxDuration 300). It
+// runs an Anthropic sheet-classifier over each file THEN commits a bulk
+// multi-file, multi-entity import (runMultiFileImport — its own transactions +
+// production handlers) + recompute + IFRS audit. Nested interactive
+// transactions are disallowed and the LLM + apply can't fit one 5s tx. Every
+// query is orgId-scoped in code; it runs on the BYPASSRLS `prismaAdmin` client.
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 
 // 300s (not 120) — a real 3-file AI import measured 119.2s end-to-end, i.e.
 // 0.8s under the old ceiling. Multi-file batches legitimately run long; match

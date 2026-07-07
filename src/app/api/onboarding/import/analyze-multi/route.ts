@@ -27,7 +27,11 @@ import { extractMapperInput } from "@/lib/onboarding/ai-mapper/extract"
 import { runMapper } from "@/lib/onboarding/ai-mapper/mapper"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
 import type { MappingProposal, SourceColumn } from "@/lib/onboarding/ai-mapper/types"
-import { prisma } from "@/lib/prisma"
+// rls-scan-ignore: AI Data Mapper multi-file analyze (maxDuration 120). Reads
+// org companies to hint an Anthropic sheet-mapping LLM call across N files, then
+// stages proposals — the LLM round-trips can't fit one 5s interactive
+// withOrgScope tx. orgId-scoped in code; runs on the BYPASSRLS `prismaAdmin`.
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 export const maxDuration = 120

@@ -28,7 +28,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import * as XLSX from "xlsx"
 import { Prisma } from "@prisma/client"
-import { prisma } from "@/lib/prisma"
+// rls-scan-ignore: onboarding budget import (maxDuration 60). Commits a bulk
+// budget-line write then runRecomputeForCompanies — the recompute is too heavy
+// for one 5s interactive withOrgScope tx, and the import helpers manage their
+// own transactions. orgId-scoped in code; runs on the BYPASSRLS `prismaAdmin`.
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { getLogger } from "@/lib/log"

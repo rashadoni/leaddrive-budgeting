@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { requireRole, isAuthError } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import {
   isEliminationLikeEntityValue,
   normalizeEntityAlias,
@@ -58,17 +58,19 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const [org, companies] = await Promise.all([
-    prisma.organization.findUnique({
+  // Stage 3 RLS — org settings + company list in one scope tx.
+  const { org, companies } = await withOrgScope(session.orgId, async (tx) => {
+    const org = await tx.organization.findUnique({
       where: { id: session.orgId },
       select: { settings: true },
-    }),
-    prisma.company.findMany({
+    })
+    const companies = await tx.company.findMany({
       where: { organizationId: session.orgId, status: { not: "archived" } },
       select: { code: true, name: true, level: true },
       orderBy: [{ level: "asc" }, { code: "asc" }],
-    }),
-  ])
+    })
+    return { org, companies }
+  })
 
   return NextResponse.json({
     ok: true,
@@ -106,17 +108,19 @@ export async function PUT(request: NextRequest) {
     )
   }
 
-  const [org, companies] = await Promise.all([
-    prisma.organization.findUnique({
+  // Stage 3 RLS — org settings + company list in one scope tx.
+  const { org, companies } = await withOrgScope(session.orgId, async (tx) => {
+    const org = await tx.organization.findUnique({
       where: { id: session.orgId },
       select: { settings: true },
-    }),
-    prisma.company.findMany({
+    })
+    const companies = await tx.company.findMany({
       where: { organizationId: session.orgId, status: { not: "archived" } },
       select: { code: true, name: true, level: true },
       orderBy: [{ level: "asc" }, { code: "asc" }],
-    }),
-  ])
+    })
+    return { org, companies }
+  })
   if (!org) {
     return NextResponse.json(
       { ok: false, error: "Organization not found" },
@@ -132,10 +136,12 @@ export async function PUT(request: NextRequest) {
       ...currentSettings,
       entityAliases: aliases,
     }
-    await prisma.organization.update({
-      where: { id: session.orgId },
-      data: { settings: nextSettings as Prisma.InputJsonValue },
-    })
+    await withOrgScope(session.orgId, (tx) =>
+      tx.organization.update({
+        where: { id: session.orgId },
+        data: { settings: nextSettings as Prisma.InputJsonValue },
+      }),
+    )
     return NextResponse.json({
       ok: true,
       aliases,

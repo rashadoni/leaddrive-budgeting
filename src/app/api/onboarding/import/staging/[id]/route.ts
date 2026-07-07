@@ -13,7 +13,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+// Stage 3 RLS — `prisma` kept for the awaited lazy-expire audit write.
 import { prisma } from '@/lib/prisma';
+import { withOrgScope } from '@/lib/db/with-org-scope';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 
 export async function GET(
@@ -31,7 +33,8 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid staging id' }, { status: 400 });
   }
 
-  const staging = await prisma.importStaging.findFirst({
+  const staging = await withOrgScope(session.orgId, (tx) =>
+    tx.importStaging.findFirst({
     where: { id, organizationId: session.orgId },
     select: {
       id: true,
@@ -46,7 +49,8 @@ export async function GET(
       expiresAt: true,
       appliedAt: true,
     },
-  });
+    }),
+  );
   if (!staging) {
     // 404 — not 403 — to avoid leaking that the id exists in another org.
     return NextResponse.json({ error: 'Staging not found' }, { status: 404 });
@@ -64,10 +68,12 @@ export async function GET(
     // GETs don't all UPDATE the same row N times (WAL noise, no logical
     // bug). updateMany returns count=0 silently if another reader won the
     // flip first — that's fine; we still return 410.
-    const flipResult = await prisma.importStaging.updateMany({
-      where: { id: staging.id, status: 'pending' },
-      data: { status: 'expired' },
-    });
+    const flipResult = await withOrgScope(session.orgId, (tx) =>
+      tx.importStaging.updateMany({
+        where: { id: staging.id, status: 'pending' },
+        data: { status: 'expired' },
+      }),
+    );
     // Phase 7.F (Turn 11) — log the lazy-expire transition only when
     // THIS reader was the one to flip the row (count===1). Concurrent
     // readers losing the race must not double-log.
