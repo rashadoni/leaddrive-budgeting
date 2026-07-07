@@ -11,6 +11,8 @@ import { enforceRateLimit } from "@/lib/rate-limit"
 import { prisma } from "@/lib/prisma"
 import { applyPoolPatch } from "@/lib/trade/budget"
 import { spreadMonthlyPlan } from "@/lib/trade/pacing"
+import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
+import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 
 const RATE_LIMIT = { name: "trade-budget-patch", max: 30, windowMs: 60_000 }
 
@@ -62,6 +64,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       { ok: false, error: "Channel pools are managed via /api/trade/budget/allocations" },
       { status: 409 },
     )
+  }
+
+  // R2 — a CFO-locked month's budget cannot be repriced.
+  const lock = await findFirstActiveLockInPeriods(
+    prisma,
+    orgId,
+    containingPeriodKeys(pool.year, pool.month),
+  )
+  if (lock) {
+    return lockedResponse(lock, {
+      prisma,
+      orgId,
+      userId: session.userId,
+      route: "PATCH /api/trade/budget/[id]",
+    })
   }
 
   const next = applyPoolPatch(pool, parsed)

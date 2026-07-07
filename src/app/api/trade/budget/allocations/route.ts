@@ -19,6 +19,8 @@ import { enforceRateLimit } from "@/lib/rate-limit"
 import { prisma } from "@/lib/prisma"
 import { planChannelAllocations, CHANNEL_GRAIN_PREFIX } from "@/lib/trade/budget"
 import { spreadMonthlyPlan } from "@/lib/trade/pacing"
+import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
+import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 
 const RATE_LIMIT = { name: "trade-budget-allocations", max: 30, windowMs: 60_000 }
 
@@ -59,6 +61,17 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 })
   }
   const { year, month } = parsed
+
+  // R2 — the channel split of a CFO-locked month is frozen too.
+  const lock = await findFirstActiveLockInPeriods(prisma, orgId, containingPeriodKeys(year, month))
+  if (lock) {
+    return lockedResponse(lock, {
+      prisma,
+      orgId,
+      userId: session.userId,
+      route: "PUT /api/trade/budget/allocations",
+    })
+  }
 
   const orgPool = await prisma.tradeBudgetPool.findUnique({
     where: {

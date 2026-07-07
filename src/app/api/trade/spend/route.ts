@@ -15,6 +15,7 @@ import { prisma } from "@/lib/prisma"
 import { spendEntrySchema, summarizeLedger } from "@/lib/trade/ledger"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
+import { recomputeTradePacing } from "@/lib/trade/pacing-recompute"
 
 const RATE_LIMIT = { name: "trade-spend-post", max: 60, windowMs: 60_000 }
 
@@ -165,6 +166,10 @@ export async function POST(request: NextRequest) {
     },
     select: ENTRY_SELECT,
   })
+
+  // R1 — the dashboard must never show yesterday's picture: recompute
+  // pacing snapshots + alerts for the affected month in the same request.
+  await recomputeTradePacing(prisma, orgId, entryDate.getUTCFullYear(), entryDate.getUTCMonth() + 1)
 
   return NextResponse.json({ ok: true, entry }, { status: 201 })
 }

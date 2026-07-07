@@ -17,6 +17,8 @@ import { enforceRateLimit } from "@/lib/rate-limit"
 import { prisma } from "@/lib/prisma"
 import { planPoolUpserts } from "@/lib/trade/budget"
 import { spreadMonthlyPlan } from "@/lib/trade/pacing"
+import { parseLockedPeriods, findLockForPeriod } from "@/lib/budgeting/period-lock"
+import { containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 
 const RATE_LIMIT = { name: "trade-budget-derive", max: 20, windowMs: 60_000 }
 
@@ -102,7 +104,19 @@ export async function POST(request: NextRequest) {
     select: { month: true, budgetPct: true, budgetAmount: true, isManualAmount: true },
   })
 
-  const upserts = planPoolUpserts(salesByMonth, existing, parsed.defaultPct)
+  const allUpserts = planPoolUpserts(salesByMonth, existing, parsed.defaultPct)
+
+  // R2 (audit round 2) — CFO-locked months are skipped, not rewritten:
+  // a year re-derive must never touch a closed period.
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { lockedPeriods: true },
+  })
+  const locks = parseLockedPeriods(org?.lockedPeriods)
+  const isMonthLocked = (m: number) =>
+    containingPeriodKeys(year, m).some((k) => findLockForPeriod(locks, k) != null)
+  const skippedLocked = allUpserts.filter((u) => isMonthLocked(u.month)).map((u) => u.month)
+  const upserts = allUpserts.filter((u) => !isMonthLocked(u.month))
 
   const pools = await prisma.$transaction(async (tx) => {
     for (const u of upserts) {
@@ -163,6 +177,7 @@ export async function POST(request: NextRequest) {
     year,
     derived: upserts.filter((u) => u.action !== "keep_manual").length,
     keptManual: upserts.filter((u) => u.action === "keep_manual").length,
+    skippedLocked,
     pools,
   })
 }

@@ -7,6 +7,7 @@ import { requireRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
+import { recomputeTradePacing } from "@/lib/trade/pacing-recompute"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole(request, "manager")
@@ -44,6 +45,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   })
   if (voided.count === 0) {
     return NextResponse.json({ ok: false, error: "Entry not found or already voided" }, { status: 404 })
+  }
+
+  // R1 — voids change the month's totals; refresh snapshots + alerts.
+  if (target) {
+    await recomputeTradePacing(prisma, session.orgId, target.year, target.month)
   }
   return NextResponse.json({ ok: true })
 }
