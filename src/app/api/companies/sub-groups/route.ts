@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 
 export async function GET(request: NextRequest) {
@@ -20,20 +20,23 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const subGroups = await prisma.company.findMany({
-    where: {
-      organizationId: session.orgId,
-      parentCompanyId: null,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      _count: { select: { children: true } },
-    },
-    orderBy: { sortOrder: "asc" },
-  })
+  // Stage 3 RLS — read in the org-scoped tx.
+  const subGroups = await withOrgScope(session.orgId, (tx) =>
+    tx.company.findMany({
+      where: {
+        organizationId: session.orgId,
+        parentCompanyId: null,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        _count: { select: { children: true } },
+      },
+      orderBy: { sortOrder: "asc" },
+    }),
+  )
 
   type Row = (typeof subGroups)[number]
   return NextResponse.json({

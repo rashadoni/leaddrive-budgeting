@@ -12,7 +12,7 @@
  *        routes; cross-tenant ids return 404 (existence-leak guard).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { withOrgScope } from "@/lib/db/with-org-scope";
 import { requireRole, isAuthError } from "@/lib/api-auth";
 import { getCompanyScope } from "@/lib/rbac/company-scope";
 import { checkOnboardingCompleteness } from "@/lib/onboarding/completeness-checker";
@@ -37,10 +37,12 @@ export async function GET(
   const { id } = await params;
   const period = req.nextUrl.searchParams.get("period") ?? "2026";
 
-  const company = await prisma.company.findFirst({
-    where: { id, organizationId: session.orgId },
-    select: { id: true },
-  });
+  const company = await withOrgScope(session.orgId, (tx) =>
+    tx.company.findFirst({
+      where: { id, organizationId: session.orgId },
+      select: { id: true },
+    }),
+  );
   if (!company) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 });
   }
@@ -50,7 +52,10 @@ export async function GET(
   }
 
   try {
-    const report = await checkOnboardingCompleteness(prisma, id, period);
+    // Stage 3 RLS — the checker runs inside the org-scoped tx (it takes a TransactionClient).
+    const report = await withOrgScope(session.orgId, (tx) =>
+      checkOnboardingCompleteness(tx, id, period),
+    );
     return NextResponse.json(report);
   } catch (error) {
     log.error("onboarding-check failed", {

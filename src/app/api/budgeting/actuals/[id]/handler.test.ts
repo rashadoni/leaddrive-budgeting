@@ -30,6 +30,11 @@ vi.mock("@/lib/prisma", () => ({
   prisma: prismaMock,
   logBudgetChange: vi.fn(),
 }))
+// Stage 3 RLS — route wraps DB access in withOrgScope; hand the mock
+// straight to the callback so the handler test stays DB-free.
+vi.mock("@/lib/db/with-org-scope", () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+}))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { PUT, DELETE } from "./route"

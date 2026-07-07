@@ -17,7 +17,10 @@
  * after a re-import.
  */
 
-import type { PrismaClient } from "@prisma/client";
+// Stage 3 RLS — accept a TransactionClient so callers can run the checker inside a
+// withOrgScope tx (a full PrismaClient is also assignable to this type). The checker
+// only uses model delegates, never $transaction, so the narrower type is sufficient.
+import type { Prisma } from "@prisma/client";
 
 export type SectionStatus = "missing" | "partial" | "complete" | "n_a";
 
@@ -67,7 +70,7 @@ const COMPLETE: Omit<SectionResult, "rowCount"> & { rowCount?: never } = {
  * the percentage down.
  */
 export async function checkOnboardingCompleteness(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   companyId: string,
   period: string = "2026",
 ): Promise<CompletenessReport> {

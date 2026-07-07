@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getSession } from "@/lib/api-auth"
+// Stage 3 RLS — `prisma` kept ONLY for lockedResponse's fire-and-forget
+// 423-audit + logBudgetChange (both must outlive the scoped tx); all
+// data access rides the withOrgScope tx client.
 import { prisma, logBudgetChange } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import { consumeApprovalRequest, claimApprovalRequest } from "@/lib/budgeting/approval-request"
-import type { ApprovalRequestType } from "@prisma/client"
+import type { Prisma, ApprovalRequestType } from "@prisma/client"
+
+type Db = Prisma.TransactionClient
 
 /**
  * Phase 7.G Turn LXVIII follow-up — period-lock check helper for [id]
@@ -18,14 +24,14 @@ import type { ApprovalRequestType } from "@prisma/client"
  * Phase 7.G Turn LXIX cleanup: `lockedResponse` migrated to shared
  * `period-lock-http.ts` (was inline 3 times, now centralized).
  */
-async function findActiveLockForPlan(orgId: string, planId: string) {
-  const plan = await prisma.budgetPlan.findFirst({
+async function findActiveLockForPlan(tx: Db, orgId: string, planId: string) {
+  const plan = await tx.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId },
     select: { periodType: true, year: true, month: true, quarter: true },
   })
   if (!plan) return null
   const periodKey = derivePeriodKey(plan)
-  return getActivePeriodLock(prisma, orgId, periodKey)
+  return getActivePeriodLock(tx, orgId, periodKey)
 }
 
 /**
@@ -39,6 +45,7 @@ async function findActiveLockForPlan(orgId: string, planId: string) {
  * Turn LXXII architect ⚠️ #1 closure — `expectedPlanId` threaded through.
  */
 async function resolveBypass(
+  tx: Db,
   req: NextRequest,
   orgId: string,
   userId: string,
@@ -48,7 +55,7 @@ async function resolveBypass(
 ) {
   const id = req.nextUrl.searchParams.get("approvalRequestId")
   if (!id) return null
-  return consumeApprovalRequest(prisma, {
+  return consumeApprovalRequest(tx, {
     requestId: id,
     orgId,
     userId,
@@ -103,35 +110,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // 2.1 dropped BudgetLine.category (→ accountId FK); writing it 500'd.
   const { department, lineType, lineSubtype, plannedAmount, forecastAmount, unitPrice, unitCost, quantity, costModelKey, isAutoActual, notes, parentId } = data
 
-  // Fetch old state for change log + planId for bypass scope check
-  const line = await prisma.budgetLine.findFirst({ where: { id, organizationId: orgId } })
-
-  // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass for [id] PUT).
-  // Pass line.planId as expectedPlanId so bypass refuses cross-plan reuse
-  // (Turn LXXII architect ⚠️ #1 closure).
-  const bypassRequest = userId && line
-    ? await resolveBypass(req, orgId, userId, "budget_line_update", id, line.planId)
-    : null
-
-  if (bypassRequest) {
-    const claimed = await claimApprovalRequest(prisma, bypassRequest.id)
-    if (!claimed) {
-      return NextResponse.json(
-        { error: "Approval request already used by a concurrent mutation" },
-        { status: 409 },
-      )
-    }
-  }
-
-  if (line && !bypassRequest) {
-    const plan = await prisma.budgetPlan.findFirst({ where: { id: line.planId }, select: { status: true } })
-    if (plan?.status === "approved") {
-      return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
-    }
-    const lock = await findActiveLockForPlan(orgId, line.planId)
-    if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "PUT /api/budgeting/lines/[id]" })
-  }
-
   if (plannedAmount !== undefined && Number(plannedAmount) < 0) {
     return NextResponse.json({ error: "Amount cannot be negative" }, { status: 400 })
   }
@@ -139,43 +117,76 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Forecast amount cannot be negative" }, { status: 400 })
   }
 
-  const result = await prisma.budgetLine.updateMany({
-    where: { id, organizationId: orgId },
-    data: {
-      ...(department !== undefined && { department }),
-      ...(lineType !== undefined && { lineType }),
-      ...(lineSubtype !== undefined && { lineSubtype: lineSubtype || null }),
-      ...(plannedAmount !== undefined && { plannedAmount: Number(plannedAmount) }),
-      ...(forecastAmount !== undefined && { forecastAmount: forecastAmount != null ? Number(forecastAmount) : null }),
-      ...(unitPrice !== undefined && { unitPrice: unitPrice != null ? Number(unitPrice) : null }),
-      ...(unitCost !== undefined && { unitCost: unitCost != null ? Number(unitCost) : null }),
-      ...(quantity !== undefined && { quantity: quantity != null ? Number(quantity) : null }),
-      ...(costModelKey !== undefined && { costModelKey: costModelKey || null }),
-      ...(isAutoActual !== undefined && { isAutoActual: Boolean(isAutoActual) }),
-      ...(notes !== undefined && { notes }),
-      ...(parentId !== undefined && { parentId: parentId || null }),
-    },
-  })
+  // Stage 3 RLS — read/bypass/lock-check/write in one org-scoped tx.
+  return withOrgScope(orgId, async (tx) => {
+    // Fetch old state for change log + planId for bypass scope check
+    const line = await tx.budgetLine.findFirst({ where: { id, organizationId: orgId } })
 
-  if (result.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass for [id] PUT).
+    // Pass line.planId as expectedPlanId so bypass refuses cross-plan reuse
+    // (Turn LXXII architect ⚠️ #1 closure).
+    const bypassRequest = userId && line
+      ? await resolveBypass(tx, req, orgId, userId, "budget_line_update", id, line.planId)
+      : null
 
-  const updated = await prisma.budgetLine.findFirst({ where: { id, organizationId: orgId } })
-
-  if (updated && line) {
-    // Log each changed field
-    const fields = ["department", "lineType", "lineSubtype", "plannedAmount", "forecastAmount", "unitPrice", "unitCost", "quantity", "costModelKey", "isAutoActual", "notes", "parentId"] as const
-    for (const f of fields) {
-      const oldVal = (line as any)[f]
-      const newVal = (updated as any)[f]
-      if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
-        logBudgetChange({ orgId, planId: line.planId, entityType: "line", entityId: id, action: "update", field: f, oldValue: oldVal, newValue: newVal, snapshot: updated })
+    if (bypassRequest) {
+      const claimed = await claimApprovalRequest(tx, bypassRequest.id)
+      if (!claimed) {
+        return NextResponse.json(
+          { error: "Approval request already used by a concurrent mutation" },
+          { status: 409 },
+        )
       }
     }
-  }
 
-  // appliedAt was already stamped atomically via claimApprovalRequest above.
+    if (line && !bypassRequest) {
+      const plan = await tx.budgetPlan.findFirst({ where: { id: line.planId }, select: { status: true } })
+      if (plan?.status === "approved") {
+        return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
+      }
+      const lock = await findActiveLockForPlan(tx, orgId, line.planId)
+      if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "PUT /api/budgeting/lines/[id]" })
+    }
 
-  return NextResponse.json({ success: true, data: updated })
+    const result = await tx.budgetLine.updateMany({
+      where: { id, organizationId: orgId },
+      data: {
+        ...(department !== undefined && { department }),
+        ...(lineType !== undefined && { lineType }),
+        ...(lineSubtype !== undefined && { lineSubtype: lineSubtype || null }),
+        ...(plannedAmount !== undefined && { plannedAmount: Number(plannedAmount) }),
+        ...(forecastAmount !== undefined && { forecastAmount: forecastAmount != null ? Number(forecastAmount) : null }),
+        ...(unitPrice !== undefined && { unitPrice: unitPrice != null ? Number(unitPrice) : null }),
+        ...(unitCost !== undefined && { unitCost: unitCost != null ? Number(unitCost) : null }),
+        ...(quantity !== undefined && { quantity: quantity != null ? Number(quantity) : null }),
+        ...(costModelKey !== undefined && { costModelKey: costModelKey || null }),
+        ...(isAutoActual !== undefined && { isAutoActual: Boolean(isAutoActual) }),
+        ...(notes !== undefined && { notes }),
+        ...(parentId !== undefined && { parentId: parentId || null }),
+      },
+    })
+
+    if (result.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+    const updated = await tx.budgetLine.findFirst({ where: { id, organizationId: orgId } })
+
+    if (updated && line) {
+      // Log each changed field (logBudgetChange stays on the global client —
+      // fire-and-forget must outlive this tx).
+      const fields = ["department", "lineType", "lineSubtype", "plannedAmount", "forecastAmount", "unitPrice", "unitCost", "quantity", "costModelKey", "isAutoActual", "notes", "parentId"] as const
+      for (const f of fields) {
+        const oldVal = (line as any)[f]
+        const newVal = (updated as any)[f]
+        if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+          logBudgetChange({ orgId, planId: line.planId, entityType: "line", entityId: id, action: "update", field: f, oldValue: oldVal, newValue: newVal, snapshot: updated })
+        }
+      }
+    }
+
+    // appliedAt was already stamped atomically via claimApprovalRequest above.
+
+    return NextResponse.json({ success: true, data: updated })
+  })
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -186,38 +197,41 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const { id } = await params
 
-  // Fetch full state before deletion for change log + planId for bypass scope check
-  const lineToDelete = await prisma.budgetLine.findFirst({ where: { id, organizationId: orgId } })
+  // Stage 3 RLS — read/bypass/lock-check/delete in one org-scoped tx.
+  return withOrgScope(orgId, async (tx) => {
+    // Fetch full state before deletion for change log + planId for bypass scope check
+    const lineToDelete = await tx.budgetLine.findFirst({ where: { id, organizationId: orgId } })
 
-  // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass for [id] DELETE).
-  const bypassRequest = userId && lineToDelete
-    ? await resolveBypass(req, orgId, userId, "budget_line_delete", id, lineToDelete.planId)
-    : null
+    // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass for [id] DELETE).
+    const bypassRequest = userId && lineToDelete
+      ? await resolveBypass(tx, req, orgId, userId, "budget_line_delete", id, lineToDelete.planId)
+      : null
 
-  if (bypassRequest) {
-    const claimed = await claimApprovalRequest(prisma, bypassRequest.id)
-    if (!claimed) {
-      return NextResponse.json(
-        { error: "Approval request already used by a concurrent mutation" },
-        { status: 409 },
-      )
+    if (bypassRequest) {
+      const claimed = await claimApprovalRequest(tx, bypassRequest.id)
+      if (!claimed) {
+        return NextResponse.json(
+          { error: "Approval request already used by a concurrent mutation" },
+          { status: 409 },
+        )
+      }
     }
-  }
 
-  if (lineToDelete && !bypassRequest) {
-    const plan = await prisma.budgetPlan.findFirst({ where: { id: lineToDelete.planId }, select: { status: true } })
-    if (plan?.status === "approved") {
-      return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
+    if (lineToDelete && !bypassRequest) {
+      const plan = await tx.budgetPlan.findFirst({ where: { id: lineToDelete.planId }, select: { status: true } })
+      if (plan?.status === "approved") {
+        return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
+      }
+      const lock = await findActiveLockForPlan(tx, orgId, lineToDelete.planId)
+      if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "DELETE /api/budgeting/lines/[id]" })
     }
-    const lock = await findActiveLockForPlan(orgId, lineToDelete.planId)
-    if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "DELETE /api/budgeting/lines/[id]" })
-  }
 
-  await prisma.budgetLine.deleteMany({ where: { id, organizationId: orgId } })
+    await tx.budgetLine.deleteMany({ where: { id, organizationId: orgId } })
 
-  if (lineToDelete) {
-    logBudgetChange({ orgId, planId: lineToDelete.planId, entityType: "line", entityId: id, action: "delete", oldValue: lineToDelete })
-  }
+    if (lineToDelete) {
+      logBudgetChange({ orgId, planId: lineToDelete.planId, entityType: "line", entityId: id, action: "delete", oldValue: lineToDelete })
+    }
 
-  return NextResponse.json({ success: true, data: null })
+    return NextResponse.json({ success: true, data: null })
+  })
 }

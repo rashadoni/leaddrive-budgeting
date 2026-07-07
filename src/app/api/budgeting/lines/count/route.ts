@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 export async function GET(req: NextRequest) {
   const session = await getSession(req)
@@ -24,9 +24,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "planId required" }, { status: 400 })
   }
 
-  const count = await prisma.budgetLine.count({
-    // Phase 8 fix: honor soft-delete — count only live lines.
-    where: { planId, organizationId: session.orgId, deletedAt: null },
-  })
+  const orgId = session.orgId
+  // Stage 3 RLS — read in the org-scoped tx.
+  const count = await withOrgScope(orgId, (tx) =>
+    tx.budgetLine.count({
+      // Phase 8 fix: honor soft-delete — count only live lines.
+      where: { planId, organizationId: orgId, deletedAt: null },
+    }),
+  )
   return NextResponse.json({ count })
 }
