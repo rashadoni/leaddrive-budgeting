@@ -147,6 +147,25 @@ per RLS_RUNBOOK §1.
 
 ## Progress log
 
+- 2026-07-07 — **S3 wave 6 — admin + telemetry + terminal + cron (124 wrapped).**
+  Clean-wrapped: admin/ai-usage (getDailyUsage/getMonthlyUsage gained an
+  `opts.prisma` tx param — both aggregates run in one scope tx; the last30
+  findMany isolated in its OWN scope tx + try/catch so a missing-table throw
+  still degrades to []), admin/compliance/finding (findFirst load + company.update
+  persist in two scope txns around the pure finding-mutation logic),
+  admin/indicator-health (IV findMany), admin/source-latest (intelDataPoint
+  findMany), terminal/layouts/[name] (GET findUnique + DELETE deleteMany —
+  user-scoped, org context added by the tx). Five rls-scan-ignore additions:
+  admin/data-archive (maxDuration 120 archive/reset orchestrator — per-company
+  helpers each open their own $transaction + recompute; nested interactive tx
+  infeasible → prismaAdmin), admin/drift (read-only dashboard whose freshness
+  helpers read shared reference tables → prismaAdmin), telemetry/guide-view
+  (anonymous null-org beacon writes can't be expressed via withOrgScope →
+  prismaAdmin), cron/refresh-feeds + cron/trade-digest (CRON_SECRET jobs that
+  span ALL orgs — a single scope pins one org → prismaAdmin). 3 handler tests
+  gained the withOrgScope mock. Scan: 124 wrapped / 26 clean / 12 opted-out /
+  17 unwrapped (all import + onboarding now). Gates: tsc 0; full vitest 6298;
+  RLS leak 10/10.
 - 2026-07-07 — **S3 wave 5 — intel domain (119 wrapped, NO new opt-outs).**
   Clean-wrapped: intel (keyset findMany), intel/[id]/dismiss (findFirst +
   dedup-append update atomic; idempotent no-op returns unchanged row),

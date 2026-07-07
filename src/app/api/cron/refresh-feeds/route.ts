@@ -21,8 +21,14 @@
  *      around 10s (too short for ingest + recompute → upgrade, or keep using
  *      the manual "Запустить impact-scan" button).
  */
+// rls-scan-ignore: CRON_SECRET-authed scheduled job that legitimately spans
+// ALL organizations (enumerateActiveOrgs → per-org ingest + recompute + Org
+// settings heartbeat). A single withOrgScope pins ONE org context, so a
+// cross-org cron can't use it; runRecomputeForCompanies is also too heavy for
+// one 5s tx. Runs on the BYPASSRLS `prismaAdmin` client (passed into the
+// helpers too) — org isolation is inherent in each per-org loop iteration.
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { getLogger } from "@/lib/log"
 import { enumerateActiveOrgs } from "@/lib/intel/scheduler-bootstrap"
 import { ingestCommodityData } from "@/lib/intel/commodity/ingest"

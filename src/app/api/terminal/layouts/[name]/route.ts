@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { validateLayoutName } from "@/features/terminal/lib/layout-sizes"
 
@@ -41,16 +41,18 @@ export async function GET(
     return NextResponse.json({ error: "Invalid layout name" }, { status: 400 })
   }
 
-  const layout = await prisma.userLayoutPreference.findUnique({
-    where: { userId_name: { userId: session.userId, name } },
-    select: {
-      id: true,
-      name: true,
-      sizes: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  })
+  const layout = await withOrgScope(session.orgId, (tx) =>
+    tx.userLayoutPreference.findUnique({
+      where: { userId_name: { userId: session.userId, name } },
+      select: {
+        id: true,
+        name: true,
+        sizes: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+  )
   if (!layout) {
     return NextResponse.json({ error: "Layout not found" }, { status: 404 })
   }
@@ -87,13 +89,15 @@ export async function DELETE(
   // than throwing P2025. Compose the org-scope into the where clause as
   // defense-in-depth, even though the (userId, name) compound unique
   // already handles the cross-tenant case.
-  const result = await prisma.userLayoutPreference.deleteMany({
-    where: {
-      userId: session.userId,
-      organizationId: session.orgId,
-      name,
-    },
-  })
+  const result = await withOrgScope(session.orgId, (tx) =>
+    tx.userLayoutPreference.deleteMany({
+      where: {
+        userId: session.userId,
+        organizationId: session.orgId,
+        name,
+      },
+    }),
+  )
   if (result.count === 0) {
     return NextResponse.json({ error: "Layout not found" }, { status: 404 })
   }

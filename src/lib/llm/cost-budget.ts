@@ -25,6 +25,7 @@
  * - Worst case: budget over-spend by a fraction of one cycle
  */
 
+import { Prisma } from "@prisma/client"
 import { prisma as defaultPrisma } from "@/lib/prisma"
 import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 
@@ -76,11 +77,17 @@ function emptyStats(): UsageStats {
 
 /** Get aggregated daily usage for an org+date.
  *  Reads Prisma `AITokenUsage` (primary), falls back to in-memory map. */
-export async function getDailyUsage(orgId: string, date: Date = new Date()): Promise<UsageStats> {
+export async function getDailyUsage(
+  orgId: string,
+  date: Date = new Date(),
+  // Stage 3 RLS — accept a scope tx so the caller can read under withOrgScope.
+  opts: { prisma?: typeof defaultPrisma | Prisma.TransactionClient } = {},
+): Promise<UsageStats> {
+  const prisma = opts.prisma ?? defaultPrisma
   const dateStr = date.toISOString().slice(0, 10)
   return await tryPrismaThenFallback<UsageStats>(
     async () => {
-      const row = await defaultPrisma.aITokenUsage.findUnique({
+      const row = await prisma.aITokenUsage.findUnique({
         where: {
           organizationId_date: { organizationId: orgId, date: dateStr },
         },
@@ -110,12 +117,18 @@ export async function getDailyUsage(orgId: string, date: Date = new Date()): Pro
 
 /** Get aggregated monthly usage by summing all daily entries within month.
  *  Reads Prisma (sums via aggregate), falls back to in-memory scan. */
-export async function getMonthlyUsage(orgId: string, date: Date = new Date()): Promise<UsageStats> {
+export async function getMonthlyUsage(
+  orgId: string,
+  date: Date = new Date(),
+  // Stage 3 RLS — accept a scope tx so the caller can read under withOrgScope.
+  opts: { prisma?: typeof defaultPrisma | Prisma.TransactionClient } = {},
+): Promise<UsageStats> {
+  const prisma = opts.prisma ?? defaultPrisma
   const month = monthKeyOf(date) // YYYY-MM
   return await tryPrismaThenFallback<UsageStats>(
     async () => {
       // Prisma string startsWith filter — efficient with the (orgId, date desc) index
-      const rows = await defaultPrisma.aITokenUsage.findMany({
+      const rows = await prisma.aITokenUsage.findMany({
         where: {
           organizationId: orgId,
           date: { startsWith: month },

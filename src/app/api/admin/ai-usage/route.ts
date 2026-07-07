@@ -15,7 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import {
   getDailyUsage,
@@ -33,10 +33,13 @@ export async function GET(req: NextRequest) {
   const orgId = session.orgId
   const today = new Date()
 
-  const [todayStats, mtdStats] = await Promise.all([
-    getDailyUsage(orgId, today),
-    getMonthlyUsage(orgId, today),
-  ])
+  // Stage 3 RLS — both aggregates read aITokenUsage; run them in one scope tx
+  // (sequential inside the interactive tx).
+  const { todayStats, mtdStats } = await withOrgScope(orgId, async (tx) => {
+    const todayStats = await getDailyUsage(orgId, today, { prisma: tx })
+    const mtdStats = await getMonthlyUsage(orgId, today, { prisma: tx })
+    return { todayStats, mtdStats }
+  })
 
   // Trend: last 30 days. Read directly from Prisma so we get a contiguous
   // series including zero-usage days (returned as missing rows; we fill
@@ -54,16 +57,20 @@ export async function GET(req: NextRequest) {
   }
   // try/catch catches both a synchronous TypeError (stale Prisma client where
   // aITokenUsage is undefined) and any rejected-promise DB error — degrade to [].
+  // Isolated in its own scope tx + try/catch so a missing-table / stale-client
+  // throw still degrades to an empty last30 series (the tx rejects, we swallow).
   let rows: UsageRow[] = []
   try {
-    rows = (await prisma.aITokenUsage.findMany({
-      where: {
-        organizationId: orgId,
-        date: { gte: thirtyDaysAgoStr, lte: todayStr },
-      },
-      orderBy: { date: "asc" },
-      select: { date: true, tokensIn: true, tokensOut: true, calls: true },
-    })) as UsageRow[]
+    rows = (await withOrgScope(orgId, (tx) =>
+      tx.aITokenUsage.findMany({
+        where: {
+          organizationId: orgId,
+          date: { gte: thirtyDaysAgoStr, lte: todayStr },
+        },
+        orderBy: { date: "asc" },
+        select: { date: true, tokensIn: true, tokensOut: true, calls: true },
+      }),
+    )) as UsageRow[]
   } catch {
     // stale client, missing table, or transient DB error — last30 series stays []
   }

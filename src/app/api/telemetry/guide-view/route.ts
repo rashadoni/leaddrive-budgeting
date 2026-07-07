@@ -18,8 +18,14 @@
  * table. Beacon failures are never reported back to the user (the
  * /guide page renders regardless of telemetry status).
  */
+// rls-scan-ignore: unauthenticated-allowed /guide page-view beacon. It writes
+// a single guide_views row with organizationId=null for ANONYMOUS traffic — a
+// case withOrgScope (which requires a cuid-shaped orgId + a matching RLS org
+// context) cannot express. The write must succeed for both anon and
+// authenticated callers, so it runs on the BYPASSRLS `prismaAdmin` client; org
+// attribution comes from the session when present.
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { getSession } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { getLogger } from "@/lib/log"

@@ -27,7 +27,7 @@
  * Auth: admin role.
  */
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 
 /** Map missing-variable name → human remediation guidance. */
@@ -173,18 +173,20 @@ export async function GET(req: NextRequest) {
   // Their historical IVs stay in DB (reversible) but should disappear
   // from the gaps table — otherwise this surface still shows 600+
   // "unknown" entries that will never resolve.
-  const rows = await prisma.indicatorValue.findMany({
-    where: {
-      organizationId: orgId,
-      indicator: { isActive: true },
-    },
-    select: {
-      status: true,
-      inputs: true,
-      indicator: { select: { code: true, nameEn: true, nameRu: true, nameAz: true } },
-      company: { select: { code: true } },
-    },
-  })
+  const rows = await withOrgScope(orgId, (tx) =>
+    tx.indicatorValue.findMany({
+      where: {
+        organizationId: orgId,
+        indicator: { isActive: true },
+      },
+      select: {
+        status: true,
+        inputs: true,
+        indicator: { select: { code: true, nameEn: true, nameRu: true, nameAz: true } },
+        company: { select: { code: true } },
+      },
+    }),
+  )
 
   // ── Summary counts ────────────────────────────────────────────
   const summary = {

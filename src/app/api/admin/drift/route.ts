@@ -11,8 +11,15 @@
  *
  * Admin-only.
  */
+// rls-scan-ignore: admin-only drift/freshness dashboard (read-only). It reads
+// org audit events + companies + IndicatorValue AND drives the reference-data
+// freshness helpers (resolveFreshnessSources / checkReferenceFreshness) which
+// read shared/cross-source reference tables via the prisma client they're
+// handed. Rather than thread a scope tx through the freshness internals (which
+// touch shared reference data), it runs read-only on the BYPASSRLS
+// `prismaAdmin` client — every query is orgId-scoped in code.
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin";
 import { requireRole, isAuthError } from "@/lib/api-auth";
 import { checkReferenceFreshness, resolveFreshnessSources } from "@/lib/intel/freshness";
 

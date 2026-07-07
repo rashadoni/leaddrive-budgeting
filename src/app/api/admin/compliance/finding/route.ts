@@ -25,7 +25,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { requireRole, isAuthError } from "@/lib/api-auth";
-import { prisma } from "@/lib/prisma";
+import { withOrgScope } from "@/lib/db/with-org-scope";
 
 const VALID_ACTIONS = new Set([
   "close",
@@ -157,11 +157,16 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  // Load company + verify org membership + settings shape
-  const company = await prisma.company.findFirst({
-    where: { id: companyId, organizationId: session.orgId },
-    select: { id: true, code: true, settings: true },
-  });
+  // Load company + verify org membership + settings shape. Stage 3 RLS — the
+  // load + the persist below each run in their own org-scoped tx (the pure
+  // finding-mutation logic in between needs no DB).
+  const orgId = session.orgId;
+  const company = await withOrgScope(orgId, (tx) =>
+    tx.company.findFirst({
+      where: { id: companyId, organizationId: orgId },
+      select: { id: true, code: true, settings: true },
+    }),
+  );
   if (!company) {
     return NextResponse.json(
       { ok: false, error: "Company not found in this organization" },
@@ -241,20 +246,22 @@ export async function PATCH(req: NextRequest) {
     completedPct: total > 0 ? Math.round((completedCount / total) * 100) : 0,
   };
 
-  // Persist
-  await prisma.company.update({
-    where: { id: companyId },
-    data: {
-      settings: {
-        ...settings,
-        auditFindings: {
-          ...auditBlock,
-          items,
-          summary,
-        },
-      } as unknown as Prisma.InputJsonValue,
-    },
-  });
+  // Persist. Stage 3 RLS — scope tx.
+  await withOrgScope(orgId, (tx) =>
+    tx.company.update({
+      where: { id: companyId },
+      data: {
+        settings: {
+          ...settings,
+          auditFindings: {
+            ...auditBlock,
+            items,
+            summary,
+          },
+        } as unknown as Prisma.InputJsonValue,
+      },
+    }),
+  );
 
   return NextResponse.json({
     ok: true,

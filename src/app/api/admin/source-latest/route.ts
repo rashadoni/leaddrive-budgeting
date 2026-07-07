@@ -9,7 +9,7 @@
  * number (or honestly "no data") instead of a frozen illustration.
  */
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { DATA_SOURCES_CATALOG } from "@/lib/intel/sources-catalog"
 
@@ -35,17 +35,19 @@ export async function GET(req: NextRequest) {
     metric: s.sampleLatest.metric,
   }))
 
-  const points = await prisma.intelDataPoint.findMany({
-    where: { organizationId: session.orgId, OR: pairs },
-    select: {
-      sourceCode: true,
-      metric: true,
-      value: true,
-      unit: true,
-      datetime: true,
-    },
-    orderBy: { datetime: "desc" },
-  })
+  const points = await withOrgScope(session.orgId, (tx) =>
+    tx.intelDataPoint.findMany({
+      where: { organizationId: session.orgId, OR: pairs },
+      select: {
+        sourceCode: true,
+        metric: true,
+        value: true,
+        unit: true,
+        datetime: true,
+      },
+      orderBy: { datetime: "desc" },
+    }),
+  )
 
   // First row per `sourceCode:metric` is the latest (desc order).
   const latest: Record<string, SourceLatest> = {}

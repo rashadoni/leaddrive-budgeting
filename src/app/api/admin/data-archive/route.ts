@@ -33,8 +33,16 @@
  * with a `mode` discriminator keeps the surface small and lets a
  * future "undo last archive" feature share validation.
  */
+// rls-scan-ignore: admin-only archive/restore/reset orchestrator (maxDuration
+// 120). It fans out per-company through archiveRows / restoreRows /
+// resetCompanyImportData / archiveOrgOrphanBudgetLines — each opening its OWN
+// prisma.$transaction — plus runRecomputeForCompanies. Nested interactive
+// transactions aren't allowed and the recompute can't live in one 5s tx, so a
+// single withOrgScope is architecturally infeasible. Every query is
+// orgId-scoped in code; it runs on the BYPASSRLS `prismaAdmin` client (passed
+// into the helpers too).
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { getLogger } from "@/lib/log"
 
