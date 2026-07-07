@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
 import { getOrgId, getSession, requireRole, isAuthError } from "@/lib/api-auth"
+// Stage 3 RLS — `prisma` kept ONLY for lockedResponse's 423-audit.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeysForMonths, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
@@ -86,11 +88,18 @@ export async function POST(req: NextRequest) {
     pm++
     if (pm > 12) { pm = 1; py++ }
   }
-  const rollLock = await findFirstActiveLockInPeriods(prisma, orgId, containingPeriodKeysForMonths(targetMonths))
+
+  // Stage 3 RLS — lock check + plan create + budget-line clone + forecast
+  // seed in one org-scoped tx. 60s timeout: the clone is bounded by the
+  // source plan's line count (large plans exist; loadAndCompute is a stub).
+  return withOrgScope(
+    orgId,
+    async (tx) => {
+  const rollLock = await findFirstActiveLockInPeriods(tx, orgId, containingPeriodKeysForMonths(targetMonths))
   if (rollLock) return lockedResponse(rollLock, { prisma, orgId, userId, route: "POST /api/budgeting/rolling" })
 
   // Create rolling plan
-  const plan = await prisma.budgetPlan.create({
+  const plan = await tx.budgetPlan.create({
     data: {
       organizationId: orgId,
       name,
@@ -112,16 +121,16 @@ export async function POST(req: NextRequest) {
     m++
     if (m > 12) { m = 1; y++ }
   }
-  await prisma.rollingForecastMonth.createMany({ data: monthEntries })
+  await tx.rollingForecastMonth.createMany({ data: monthEntries })
 
   // Auto-populate: clone budget lines from existing plan
-  const sourcePlan = await prisma.budgetPlan.findFirst({
+  const sourcePlan = await tx.budgetPlan.findFirst({
     where: { organizationId: orgId, id: { not: plan.id }, isRolling: false },
     orderBy: { createdAt: "asc" },
   })
 
   if (sourcePlan) {
-    const sourceLines: BudgetLineWithAccount[] = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id, deletedAt: null }, include: { account: { select: { code: true, name: true } } } })
+    const sourceLines: BudgetLineWithAccount[] = await tx.budgetLine.findMany({ where: { planId: sourcePlan.id, deletedAt: null }, include: { account: { select: { code: true, name: true } } } })
 
     // Clone parent lines first, then children with mapped parentId
     const parentLines = sourceLines.filter((sl: BudgetLineWithAccount) => !sl.parentId)
@@ -129,7 +138,7 @@ export async function POST(req: NextRequest) {
     const idMapping = new Map<string, string>()
 
     for (const sl of parentLines) {
-      const created = await prisma.budgetLine.create({
+      const created = await tx.budgetLine.create({
         data: {
           organizationId: orgId, planId: plan.id,
           department: sl.department, lineType: sl.lineType,
@@ -150,7 +159,7 @@ export async function POST(req: NextRequest) {
 
     for (const sl of childLines) {
       const newParentId = sl.parentId ? idMapping.get(sl.parentId) ?? null : null
-      await prisma.budgetLine.create({
+      await tx.budgetLine.create({
         data: {
           organizationId: orgId, planId: plan.id,
           department: sl.department, lineType: sl.lineType,
@@ -170,7 +179,7 @@ export async function POST(req: NextRequest) {
   // Auto-populate: fill forecast entries from cost model for all 12 months
   try {
     const costModel = await loadAndCompute(orgId)
-    const lines: BudgetLineWithAccount[] = await prisma.budgetLine.findMany({ where: { planId: plan.id, deletedAt: null }, include: { account: { select: { code: true, name: true } } } })
+    const lines: BudgetLineWithAccount[] = await tx.budgetLine.findMany({ where: { planId: plan.id, deletedAt: null }, include: { account: { select: { code: true, name: true } } } })
     const forecastEntries: ForecastCreateInput[] = []
 
     for (const line of lines) {
@@ -215,7 +224,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (forecastEntries.length > 0) {
-      await prisma.budgetForecastEntry.createMany({ data: forecastEntries })
+      await tx.budgetForecastEntry.createMany({ data: forecastEntries })
     }
   } catch (e) {
     // Cost model may not exist for this org — plan still created, just without forecasts
@@ -226,6 +235,9 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ success: true, data: plan }, { status: 201 })
+    },
+    { timeoutMs: 60_000 },
+  )
 }
 
 // PATCH — close or reopen a rolling forecast month.
@@ -261,7 +273,9 @@ export async function PATCH(req: NextRequest) {
 
   const { planId, year, month, action = "close" } = patchData
 
-  const plan = await prisma.budgetPlan.findFirst({
+  // Stage 3 RLS — the whole close/reopen roll-forward in one org-scoped tx.
+  return withOrgScope(orgId, async (tx) => {
+  const plan = await tx.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId, isRolling: true },
   })
   if (!plan) return NextResponse.json({ error: "Rolling plan not found" }, { status: 404 })
@@ -275,18 +289,18 @@ export async function PATCH(req: NextRequest) {
   // gate on org-level locks because the action also creates/deletes
   // forecast entries (rolling roll-forward / rollback), which are real
   // mutations into the org's budget data.
-  const patchLock = await findFirstActiveLockInPeriods(prisma, orgId, containingPeriodKeys(year, month))
+  const patchLock = await findFirstActiveLockInPeriods(tx, orgId, containingPeriodKeys(year, month))
   if (patchLock) return lockedResponse(patchLock, { prisma, orgId, userId: session.userId, route: "PATCH /api/budgeting/rolling" })
 
   if (action === "reopen") {
     // Reopen: set month back to forecast
-    const updated = await prisma.rollingForecastMonth.update({
+    const updated = await tx.rollingForecastMonth.update({
       where: { planId_year_month: { planId, year, month } },
       data: { status: "forecast", lockedAt: null },
     })
 
     // Remove the last forecast month (reverse of close adding a month)
-    const allMonths = await prisma.rollingForecastMonth.findMany({
+    const allMonths = await tx.rollingForecastMonth.findMany({
       where: { planId, organizationId: orgId },
       orderBy: [{ year: "asc" }, { month: "asc" }],
     })
@@ -294,10 +308,10 @@ export async function PATCH(req: NextRequest) {
       const lastMonth = allMonths[allMonths.length - 1]
       if (lastMonth.status === "forecast") {
         // Delete forecast entries for this month
-        await prisma.budgetForecastEntry.deleteMany({
+        await tx.budgetForecastEntry.deleteMany({
           where: { planId, year: lastMonth.year, month: lastMonth.month },
         })
-        await prisma.rollingForecastMonth.delete({
+        await tx.rollingForecastMonth.delete({
           where: { planId_year_month: { planId, year: lastMonth.year, month: lastMonth.month } },
         })
       }
@@ -307,13 +321,13 @@ export async function PATCH(req: NextRequest) {
   }
 
   // Close the month
-  const updated = await prisma.rollingForecastMonth.update({
+  const updated = await tx.rollingForecastMonth.update({
     where: { planId_year_month: { planId, year, month } },
     data: { status: "actual", lockedAt: new Date() },
   })
 
   // Add a new month at the end (true rolling behavior)
-  const allMonths = await prisma.rollingForecastMonth.findMany({
+  const allMonths = await tx.rollingForecastMonth.findMany({
     where: { planId, organizationId: orgId },
     orderBy: [{ year: "asc" }, { month: "asc" }],
   })
@@ -322,20 +336,20 @@ export async function PATCH(req: NextRequest) {
   let nextMonth = last.month + 1
   if (nextMonth > 12) { nextMonth = 1; nextYear++ }
 
-  const exists = await prisma.rollingForecastMonth.findUnique({
+  const exists = await tx.rollingForecastMonth.findUnique({
     where: { planId_year_month: { planId, year: nextYear, month: nextMonth } },
   })
   if (!exists) {
-    await prisma.rollingForecastMonth.create({
+    await tx.rollingForecastMonth.create({
       data: { organizationId: orgId, planId, year: nextYear, month: nextMonth, status: "forecast" },
     })
 
     // Copy forecast entries from an existing month for the new month
-    const sampleForecasts = await prisma.budgetForecastEntry.findMany({
+    const sampleForecasts = await tx.budgetForecastEntry.findMany({
       where: { planId, organizationId: orgId, year: allMonths[0].year, month: allMonths[0].month },
     })
     if (sampleForecasts.length > 0) {
-      await prisma.budgetForecastEntry.createMany({
+      await tx.budgetForecastEntry.createMany({
         data: sampleForecasts.map((f: BudgetForecastEntryRow) => ({
           organizationId: orgId,
           planId,
@@ -350,6 +364,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   return NextResponse.json({ success: true, data: updated })
+  })
 }
 
 // GET — get rolling forecast data (blended actuals + forecast)
@@ -360,28 +375,30 @@ export async function GET(req: NextRequest) {
   const planId = req.nextUrl.searchParams.get("planId")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
-  const plan = await prisma.budgetPlan.findFirst({
+  // Stage 3 RLS — all rolling reads in one org-scoped tx.
+  return withOrgScope(orgId, async (tx) => {
+  const plan = await tx.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId, isRolling: true },
   })
   if (!plan) return NextResponse.json({ error: "Rolling plan not found" }, { status: 404 })
 
-  const months = await prisma.rollingForecastMonth.findMany({
+  const months = await tx.rollingForecastMonth.findMany({
     where: { planId, organizationId: orgId },
     orderBy: [{ year: "asc" }, { month: "asc" }],
   })
 
   // Get actuals and forecast entries for these months
-  const lines = await prisma.budgetLine.findMany({
+  const lines = await tx.budgetLine.findMany({
     where: { planId, organizationId: orgId, deletedAt: null },
   })
 
   // Pull actuals from ALL plans in the org (not just rolling plan)
   // so Q1/Q2 actuals automatically appear in rolling view
-  const actuals = await prisma.budgetActual.findMany({
+  const actuals = await tx.budgetActual.findMany({
     where: { organizationId: orgId },
   })
 
-  const forecasts = await prisma.budgetForecastEntry.findMany({
+  const forecasts = await tx.budgetForecastEntry.findMany({
     where: { planId, organizationId: orgId },
   })
 
@@ -432,5 +449,6 @@ export async function GET(req: NextRequest) {
     months: blended,
     lineCount: lines.length,
     ...totals,
+  })
   })
 }

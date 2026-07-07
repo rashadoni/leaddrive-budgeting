@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const createIntegrationSchema = z.object({
   provider: z.string().min(1).max(100),
@@ -20,11 +20,13 @@ export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const integrations = await prisma.accountingIntegration.findMany({
-    where: { organizationId: orgId },
-    include: { imports: { take: 5, orderBy: { createdAt: "desc" } } },
-    orderBy: { createdAt: "desc" },
-  })
+  const integrations = await withOrgScope(orgId, (tx) =>
+    tx.accountingIntegration.findMany({
+      where: { organizationId: orgId },
+      include: { imports: { take: 5, orderBy: { createdAt: "desc" } } },
+      orderBy: { createdAt: "desc" },
+    }),
+  )
 
   return NextResponse.json(integrations)
 }
@@ -53,15 +55,17 @@ export async function POST(req: NextRequest) {
 
   const { provider, name, config, categoryMapping } = data
 
-  const integration = await prisma.accountingIntegration.create({
-    data: {
-      organizationId: orgId,
-      provider,
-      name,
-      config: (config || {}) as Prisma.InputJsonValue,
-      categoryMapping: (categoryMapping || {}) as Prisma.InputJsonValue,
-    },
-  })
+  const integration = await withOrgScope(orgId, (tx) =>
+    tx.accountingIntegration.create({
+      data: {
+        organizationId: orgId,
+        provider,
+        name,
+        config: (config || {}) as Prisma.InputJsonValue,
+        categoryMapping: (categoryMapping || {}) as Prisma.InputJsonValue,
+      },
+    }),
+  )
 
   return NextResponse.json(integration, { status: 201 })
 }
@@ -90,9 +94,11 @@ export async function DELETE(req: NextRequest) {
 
   const { id } = delData
 
-  await prisma.accountingIntegration.deleteMany({
-    where: { id, organizationId: orgId },
-  })
+  await withOrgScope(orgId, (tx) =>
+    tx.accountingIntegration.deleteMany({
+      where: { id, organizationId: orgId },
+    }),
+  )
 
   return NextResponse.json({ success: true })
 }

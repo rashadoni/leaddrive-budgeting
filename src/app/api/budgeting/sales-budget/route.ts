@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
+import type { Prisma } from "@prisma/client"
 import { getOrgId } from "@/lib/api-auth"
+// Stage 3 RLS — `prisma` kept for lockedResponse 423-audit + the
+// Awaited<ReturnType<...>> row-type helper below; data access rides tx.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import { isContraRevenueCode } from "@/lib/budgeting/coa-role"
+
+type Db = Prisma.TransactionClient
 
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
@@ -14,7 +20,9 @@ export async function GET(req: NextRequest) {
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
   const compare = searchParams.get("compare") === "1"
 
-  const current = await loadSalesRows(orgId, planId)
+  // Stage 3 RLS — all sales-budget reads in one org-scoped tx.
+  return withOrgScope(orgId, async (tx) => {
+  const current = await loadSalesRows(tx, orgId, planId)
   if (!compare) {
     if (current.source) {
       return NextResponse.json({
@@ -26,19 +34,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(current.lines)
   }
 
-  const activePlan = await prisma.budgetPlan.findFirst({
+  const activePlan = await tx.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId, deletedAt: null },
     select: { id: true, name: true, year: true, kind: true },
   })
   if (!activePlan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 
   const counterpartKind = activePlan.kind === "budget" ? "actual" : "budget"
-  const counterpartPlan = await prisma.budgetPlan.findFirst({
+  const counterpartPlan = await tx.budgetPlan.findFirst({
     where: { organizationId: orgId, year: activePlan.year, kind: counterpartKind, deletedAt: null },
     orderBy: { createdAt: "asc" },
     select: { id: true, name: true, year: true, kind: true },
   })
-  const counterpart = counterpartPlan ? await loadSalesRows(orgId, counterpartPlan.id) : null
+  const counterpart = counterpartPlan ? await loadSalesRows(tx, orgId, counterpartPlan.id) : null
   const budgetRows = activePlan.kind === "budget" ? current : counterpart
   const actualRows = activePlan.kind === "actual" ? current : counterpart
 
@@ -62,6 +70,7 @@ export async function GET(req: NextRequest) {
       ],
     },
   })
+  })
 }
 
 type SalesRows = Awaited<ReturnType<typeof prisma.salesBudgetLine.findMany>>
@@ -75,19 +84,19 @@ type SalesRow = SalesRows[number] | {
   source: "budget_lines"
 }
 
-async function loadSalesRows(orgId: string, planId: string): Promise<{
+async function loadSalesRows(tx: Db, orgId: string, planId: string): Promise<{
   lines: SalesRow[]
   source?: "budget_lines"
   fallbackReason?: string
 }> {
-  const lines = await prisma.salesBudgetLine.findMany({
+  const lines = await tx.salesBudgetLine.findMany({
     where: { organizationId: orgId, planId },
     include: { productLine: true },
     orderBy: [{ productLine: { sortOrder: "asc" } }, { month: "asc" }],
   })
   if (lines.length > 0) return { lines }
 
-  const fallbackLines = await prisma.budgetLine.findMany({
+  const fallbackLines = await tx.budgetLine.findMany({
     where: { organizationId: orgId, planId, lineType: "revenue", deletedAt: null },
     select: {
       id: true,
@@ -169,45 +178,53 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     )
   }
-  const plan = await prisma.budgetPlan.findFirst({
-    where: { id: planId, organizationId: orgId },
-    select: { id: true, periodType: true, year: true, month: true, quarter: true },
-  })
-  if (!plan) {
-    return NextResponse.json({ error: "Plan not found in this organization" }, { status: 404 })
-  }
-  const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(plan))
-  if (lock)
-    return lockedResponse(lock, {
-      prisma,
-      orgId,
-      userId: null,
-      route: "POST /api/budgeting/sales-budget",
-    })
-
-  // Support bulk upsert
-  if (Array.isArray(body)) {
-    const results = await Promise.all(
-      body.map((item: any) =>
-        prisma.salesBudgetLine.upsert({
-          where: {
-            planId_productLineId_year_month: {
-              planId: item.planId,
-              productLineId: item.productLineId,
-              year: item.year,
-              month: item.month,
-            },
-          },
-          update: { quantity: item.quantity, unitPrice: item.unitPrice, amount: item.amount, notes: item.notes },
-          create: { ...item, organizationId: orgId },
+  // Stage 3 RLS — lock check + upsert batch in one org-scoped tx.
+  return withOrgScope(
+    orgId,
+    async (tx) => {
+      const plan = await tx.budgetPlan.findFirst({
+        where: { id: planId, organizationId: orgId },
+        select: { id: true, periodType: true, year: true, month: true, quarter: true },
+      })
+      if (!plan) {
+        return NextResponse.json({ error: "Plan not found in this organization" }, { status: 404 })
+      }
+      const lock = await getActivePeriodLock(tx, orgId, derivePeriodKey(plan))
+      if (lock)
+        return lockedResponse(lock, {
+          prisma,
+          orgId,
+          userId: null,
+          route: "POST /api/budgeting/sales-budget",
         })
-      )
-    )
-    return NextResponse.json(results, { status: 201 })
-  }
 
-  const line = await prisma.salesBudgetLine.create({
-    data: { ...body, organizationId: orgId },
-  })
-  return NextResponse.json(line, { status: 201 })
+      // Support bulk upsert (sequential inside the tx).
+      if (Array.isArray(body)) {
+        const results = []
+        for (const item of body as any[]) {
+          results.push(
+            await tx.salesBudgetLine.upsert({
+              where: {
+                planId_productLineId_year_month: {
+                  planId: item.planId,
+                  productLineId: item.productLineId,
+                  year: item.year,
+                  month: item.month,
+                },
+              },
+              update: { quantity: item.quantity, unitPrice: item.unitPrice, amount: item.amount, notes: item.notes },
+              create: { ...item, organizationId: orgId },
+            }),
+          )
+        }
+        return NextResponse.json(results, { status: 201 })
+      }
+
+      const line = await tx.salesBudgetLine.create({
+        data: { ...body, organizationId: orgId },
+      })
+      return NextResponse.json(line, { status: 201 })
+    },
+    { timeoutMs: 15_000 },
+  )
 }
