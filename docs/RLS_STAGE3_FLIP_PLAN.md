@@ -148,6 +148,18 @@ per RLS_RUNBOOK §1.
 ## Progress log
 
 - 2026-07-07 — plan written; S0 started.
+- 2026-07-07 — **S2 budgeting slices 7–9 (Opus, "продолжай").** 78 wrapped total
+  (was 62). Slice 7: analytics (whole ~800-line aggregation GET), templates,
+  reports. Slice 8: templates/[id], reports/[id], sales-forecast (+$transaction
+  array → sequential), snapshot ($queryRaw in tx), cash-flow/plan-fact. Slice 9:
+  ALL 8 `plans/[id]/*` sub-routes (comments, versions, restore, companies, diff,
+  purge [13-table cascade → sequential, RLS hardens the planId-only deletes],
+  create-version, apply-templates). **The plans domain + core budgeting reads are
+  fully enforced now.** 74 unwrapped remain (ai-analytics, cash-flow/{alerts,
+  generate,odds}, export, matrix-seed, sales-forecast/export, snapshot-actuals,
+  sync-actuals, templates/seed, rolling/auto-forecast + non-budgeting domains:
+  companies/indicators/scenarios/onboarding/analytics/cron/admin/users/me/…).
+  Gates each slice: tsc 0; full vitest 6298; RLS leak 10/10.
 - 2026-07-07 — **S2 budgeting read/write slices 4–6 (Opus, per user "продолжи на опус").**
   62 wrapped total (was 50). Slice 4: availability, assumptions, pnl (whole
   aggregation), cogs (loadCogsRows threaded) — + `resolveCompanyFilter` loosened
