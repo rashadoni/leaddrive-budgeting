@@ -1,9 +1,13 @@
 # RLS Enforcement Flip — Phase 5.2 Stage 3 (pre-Mars gate)
 
-**Status:** S3 route-wrapping COMPLETE 2026-07-07 — scanner shows **0 unwrapped**
-(132 wrapped / 26 clean / 21 justified opt-outs). Enforcement is NOT yet live:
-it activates only at the S5 env-flip (global client → app role) + S6 (prod role
-provisioning, Rashad's action). Owner: Claude, ship/cut: Rashad.
+**Status:** ✅ **COMPLETE — RLS ENFORCED ON PRODUCTION 2026-07-08.** S3
+route-wrapping shows 0 unwrapped (132 wrapped / 26 clean / 21 justified
+opt-outs); S5-prep routed all non-scoped writes off the default client; S6
+provisioned `budgetpro_app` (NOBYPASSRLS) + `budgetpro_admin` (BYPASSRLS) on
+prod and pointed the runtime at the restricted role. Prod now boots
+`RLS-enforced client active as "budgetpro_app" (no bypass)`; DB-layer isolation
+verified (app role: no scope → 0 rows, with scope → own rows only). Owner:
+Claude (design+code) + Codex (prod exec) + Rashad (ship/cut).
 **Design provenance:** Codex-architect was UNAVAILABLE (ChatGPT-plan usage limit
 until 2026-07-11); per the global protocol this plan was designed inline against
 the LOCKED ADR-RLS Round-2 verdict (explicit `withOrgScope` per route — do not
@@ -150,6 +154,26 @@ per RLS_RUNBOOK §1.
 
 ## Progress log
 
+- 2026-07-08 — **S6 DONE — RLS ENFORCED ON PRODUCTION. 🔒** Codex ran the
+  prod flip per `docs/RLS_S6_PROD_FLIP_TASK.md` (agent is classifier-blocked
+  from SSH+BYPASSRLS grants). Provisioned `budgetpro_admin` (bypassrls=t) +
+  `budgetpro_app` (bypassrls=f); added `DATABASE_URL_APP`/`_ADMIN` (@db:5432) to
+  `/opt/budgetpro/.env.production`; recreated the app container. Evidence: boot
+  log `RLS-enforced client active as "budgetpro_app" (no bypass)` (no more
+  "DATABASE_URL_APP not set"); under the app role `rolbypassrls=f`,
+  `companies` = 0 without scope / 7 with `SET app.organization_id`; HTTP smoke
+  8/8; UI smoke — login OK, `/budgeting/terminal` rendered non-empty real data
+  (ui_cells=436, api_companies=7, api_matrix_cells=117 all valued, 0 console
+  errors, 0 5xx). No rollback needed. **Real bug fixed en route** (commit
+  `9f56aa2d`): the role-provision SQL had CREATE ROLE inside `DO $$…$$`, where
+  psql `:'password'` vars DON'T interpolate (dollar-quoted → skipped by the psql
+  lexer) → the password never reached the role. Rewrote both scripts to
+  `SELECT format(...) WHERE NOT EXISTS(...) \gexec` + unconditional ALTER ROLE
+  (idempotent, interpolates outside dollar-quotes). Prod originals backed up as
+  `scripts/sql/*.bak-20260708073557`. **Every /api route now runs through an
+  RLS-enforced app role on prod; a forgotten `withOrgScope` fails loud (0 rows)
+  instead of leaking.** Remaining (human): rotate the demo `Admin123!` before
+  Mars gets access; optional CI `rls-coverage-scan --enforce` gate.
 - 2026-07-08 — **S5-prep committed + DEV-flip validated (then reverted) + S5-prep DEPLOYED to prod.**
   Prep for the default-client flip: `logAuditEvent` + `runRecomputeForCompanies`
   auto-route by client kind — a scope tx is used directly, the full PrismaClient
