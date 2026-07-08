@@ -1,8 +1,8 @@
 # Phase 0.7 closure (2026-05-26) — CI pipeline.
 #
 # Mirrors the local pre-commit gate (secret scan + tsc + M7 scanner)
-# and adds the broader suite (vitest + next build) that pre-commit
-# deliberately skips for latency reasons.
+# and adds the broader suite (vitest + next build + RLS coverage gate)
+# that pre-commit deliberately skips for latency reasons.
 #
 # Intentionally NOT here yet:
 # - Playwright E2E: needs Postgres + dev server + LLM keys; will be a
@@ -56,6 +56,15 @@ jobs:
 
       - name: TypeScript check
         run: npx tsc --noEmit
+
+      - name: RLS coverage gate
+        # Phase 5.2 lock-in: fail the build if any `src/app/api/**/route.ts`
+        # reads/writes org-scoped Prisma delegates OUTSIDE `withOrgScope` and
+        # isn't a justified `// rls-scan-ignore:` opt-out, or uses a raw
+        # `SET "app.*"` without LOCAL. Keeps the enforced-RLS surface at 0
+        # unwrapped so a forgotten scope can't merge + silently leak on prod.
+        # Report-only locally: `node scripts/rls-coverage-scan.mjs`.
+        run: node scripts/rls-coverage-scan.mjs --enforce
 
       # Lint deliberately skipped: Next.js 16 removed `next lint`, and the
       # project has no standalone eslint config yet. Re-enable once
