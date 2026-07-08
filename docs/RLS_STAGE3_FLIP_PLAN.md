@@ -164,11 +164,16 @@ per RLS_RUNBOOK §1.
   rotate-admin-password) failed on prod — added `COPY scripts` + `COPY
   node_modules/bcryptjs` + global `tsx@4` to the Dockerfile runtime stage
   (commit `dbc01e55`; also fixes the long-broken first-deploy create-admin step).
-  (3) Rotated the demo `Admin123!` admin login (`admin@fo.az`) to a strong
-  generated secret via the new org-agnostic `scripts/rotate-admin-password.ts`
-  (finds by email, updates the hash by id — no org-slug footgun); verified old
-  `Admin123!` now rejected (session null). New secret delivered out-of-band (not
-  in any transcript/file in git). **Phase 5.2 RLS is fully closed out on prod.**
+  (3) Shipped the new org-agnostic `scripts/rotate-admin-password.ts` (finds by
+  email, updates the hash by id — no org-slug footgun) and validated it
+  end-to-end on prod: rotated `admin@fo.az` (org FO Holding) to a strong
+  generated secret, verified old `Admin123!` rejected — **then, at the user's
+  request, reset it BACK to `Admin123!`** for pre-onboarding dev convenience
+  (verified `Admin123!` logs in again). **Phase 5.2 RLS is fully closed out on
+  prod.** ⚠️ **Open credential gate: prod admin login is currently the weak demo
+  `Admin123!`; re-rotate before the 2nd tenant (Mars Overseas) gets access —
+  `docker compose --env-file .env.production exec -T -e ADMIN_EMAIL=admin@fo.az
+  -e ADMIN_PASSWORD=<strong> app npx tsx scripts/rotate-admin-password.ts`.**
 - 2026-07-08 — **S6 DONE — RLS ENFORCED ON PRODUCTION. 🔒** Codex ran the
   prod flip per `docs/RLS_S6_PROD_FLIP_TASK.md` (agent is classifier-blocked
   from SSH+BYPASSRLS grants). Provisioned `budgetpro_admin` (bypassrls=t) +
