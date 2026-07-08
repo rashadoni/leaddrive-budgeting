@@ -33,21 +33,17 @@
 \set ON_ERROR_STOP true
 
 -- Skip role creation when it already exists (idempotent for re-runs).
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'budgetpro_admin') THEN
-    EXECUTE format(
-      'CREATE ROLE budgetpro_admin LOGIN BYPASSRLS PASSWORD %L',
-      :'admin_password'
-    );
-  ELSE
-    -- Ensure the attribute is set even if the role pre-existed without it.
-    ALTER ROLE budgetpro_admin BYPASSRLS;
-    -- Don't rotate the password on idempotent re-runs unless the caller
-    -- explicitly passes a new one (use the dedicated rotate-password
-    -- script for that).
-  END IF;
-END $$;
+SELECT format(
+  'CREATE ROLE budgetpro_admin LOGIN BYPASSRLS PASSWORD %L',
+  :'admin_password'
+)
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'budgetpro_admin')
+\gexec
+
+-- Ensure the attribute is set even if the role pre-existed without it.
+ALTER ROLE budgetpro_admin BYPASSRLS;
+-- Don't rotate the password on idempotent re-runs unless the caller explicitly
+-- passes a new one (use the dedicated rotate-password script for that).
 
 -- Grant database + schema privileges. The role inherits the same
 -- table-level rights as the app role — RLS is the only differentiator.

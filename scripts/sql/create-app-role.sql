@@ -32,19 +32,16 @@
 \set ON_ERROR_STOP true
 
 -- Idempotent: create only if missing; never silently flip BYPASSRLS on.
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'budgetpro_app') THEN
-    EXECUTE format(
-      'CREATE ROLE budgetpro_app LOGIN NOBYPASSRLS PASSWORD %L',
-      :'app_password'
-    );
-  ELSE
-    -- Defensive: ensure the role can NEVER bypass RLS even if it pre-existed
-    -- with the attribute set (a misconfigured app role would leak cross-org).
-    ALTER ROLE budgetpro_app NOBYPASSRLS;
-  END IF;
-END $$;
+SELECT format(
+  'CREATE ROLE budgetpro_app LOGIN NOBYPASSRLS PASSWORD %L',
+  :'app_password'
+)
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'budgetpro_app')
+\gexec
+
+-- Defensive: ensure the role can NEVER bypass RLS even if it pre-existed
+-- with the attribute set (a misconfigured app role would leak cross-org).
+ALTER ROLE budgetpro_app NOBYPASSRLS;
 
 -- Same table/schema privileges as the app needs; RLS policies (not GRANTs)
 -- are what scope rows to the caller's org.
