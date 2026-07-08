@@ -150,6 +150,30 @@ per RLS_RUNBOOK §1.
 
 ## Progress log
 
+- 2026-07-08 — **S5-prep committed + DEV-flip validated (then reverted) + S5-prep DEPLOYED to prod.**
+  Prep for the default-client flip: `logAuditEvent` + `runRecomputeForCompanies`
+  auto-route by client kind — a scope tx is used directly, the full PrismaClient
+  (fire-forget audit / post-tx recompute, outside any scope) routes through the
+  BYPASSRLS `prismaAdmin` (fixes all 24 audit + 7 recompute call sites centrally,
+  in-tx atomicity preserved). `auth.ts` → prismaAdmin (users read pre-org-context,
+  risk #1). `cost-budget` getDaily/getMonthly/recordUsage + 8 cross-cutting write
+  helpers (crawler, commodity-ingest, breach-persist, board-deck narration,
+  intel-context, proposal/explainer/impact caches) default → prismaAdmin
+  (behaviour-preserving — already ran on the BYPASSRLS superuser with orgId in
+  keys). `getSession`/`requireAuth` read the JWT, not the DB → request path
+  unaffected. Committed `9fdfc91c`; gates tsc 0 / vitest 6298 / RLS leak 10/10.
+  **DEV env-flip soak** (DATABASE_URL → budgetpro_app, reversible via .env.s5-backup):
+  server booted 2s, /login 200, ZERO log errors. Under the real `budgetpro_app`
+  role: super/bypassrls = f/f; NO scope → `companies`=0 (RLS hides all); WITH
+  `SET app.organization_id` → 8 own-org rows; cross-org → 0. Auth callback ran
+  clean (users read via admin, correct rejection — "login bricked" risk #1
+  DISPROVEN). `budgetpro_admin` bypassrls=t. **Dev flip then REVERTED** (user:
+  "не надо на локалке, переходи на прод"). One gap: authenticated HTTP click-
+  through not run (dev password rotated off the Admin123! default). S5-prep
+  DEPLOYED to prod (`9fdfc91c`, /login 200) — behaviour-preserving there (roles
+  unset → superuser fallback; prod still logs "DATABASE_URL_APP not set"). **Prod
+  enforcement flip (S6) is now teed up — see runbook below; it is Rashad's action
+  (BYPASSRLS grant + /opt/budgetpro/.env edit, classifier-blocked for the agent).**
 - 2026-07-07 — **S3 wave 8 — import + onboarding → SCANNER SHOWS 0 UNWRAPPED. 🎯**
   Clean-wrapped: import/entity-aliases (org settings + company reads in one scope
   tx; org.update in another), onboarding/import/staging/[id] (findFirst + lazy-
