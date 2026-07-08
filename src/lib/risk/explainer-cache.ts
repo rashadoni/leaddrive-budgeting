@@ -25,7 +25,7 @@
  */
 
 import { createHash } from "node:crypto"
-import { prisma as defaultPrisma } from "@/lib/prisma"
+import { prismaAdmin } from "@/lib/db/prisma-admin"
 import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 import {
   runExplainer,
@@ -112,7 +112,7 @@ export async function getOrCreateExplanation(
   if (!opts.bypassCache) {
     const entry = await tryPrismaThenFallback<CachedEntry | undefined>(
       async () => {
-        const row = await defaultPrisma.varianceExplanation.findUnique({
+        const row = await prismaAdmin.varianceExplanation.findUnique({
           where: {
             organizationId_indicatorValueId_language_promptVersion_snapshotHash: {
               organizationId: opts.orgId,
@@ -148,7 +148,7 @@ export async function getOrCreateExplanation(
   // ── WRITE path: Prisma upsert + in-memory mirror ───────────────────
   await tryPrismaThenFallback<void>(
     async () => {
-      await defaultPrisma.varianceExplanation.upsert({
+      await prismaAdmin.varianceExplanation.upsert({
         where: {
           organizationId_indicatorValueId_language_promptVersion_snapshotHash: {
             organizationId: opts.orgId,

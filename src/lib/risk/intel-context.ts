@@ -24,6 +24,7 @@
 
 import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 import { prisma as defaultPrisma } from "@/lib/prisma"
+import { prismaAdmin } from "@/lib/db/prisma-admin"
 import { getInMemoryDataPoints } from "@/lib/intel/commodity"
 import type { CommodityDataPoint } from "@/lib/intel/commodity"
 
@@ -144,7 +145,7 @@ export async function buildIntelContext(
   const now = opts.now ?? new Date()
   const windowMs = opts.windowMs ?? INTEL_CONTEXT_WINDOW_MS
   const cutoff = new Date(now.getTime() - windowMs)
-  const prisma = opts.prisma ?? defaultPrisma
+  const prisma = opts.prisma ?? prismaAdmin
 
   const rows = await tryPrismaThenFallback<
     Array<Pick<CommodityDataPoint, "sourceCode" | "metric" | "datetime" | "value" | "unit">>

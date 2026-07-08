@@ -33,6 +33,7 @@ import type { Language } from '@/lib/ai/prompts';
 // became `undefined` at runtime — caught by failing tests.
 import { Prisma } from '@prisma/client';
 import type { AuditAction, PrismaClient } from '@prisma/client';
+import { prismaAdmin } from '@/lib/db/prisma-admin';
 import { getLogger } from '@/lib/log';
 
 const logger = getLogger('lib:audit');
@@ -849,9 +850,19 @@ export type LogAuditEventResult =
 // audit_events RLS migration applies). Existing callsites passing
 // `prisma` keep working unchanged.
 export async function logAuditEvent(
-  prisma: PrismaClient | Prisma.TransactionClient,
+  client: PrismaClient | Prisma.TransactionClient,
   args: LogAuditEventArgs,
 ): Promise<LogAuditEventResult> {
+  // Phase 5.2 S5 RLS — audits emitted OUTSIDE a withOrgScope tx (fire-and-forget
+  // on the global PrismaClient) must write via the BYPASSRLS `prismaAdmin`, else
+  // the audit_events WITH CHECK (needs `app.organization_id`) fails once the
+  // default client flips to the non-superuser app role. In-tx audits (passed a
+  // scope tx that already has `SET LOCAL app.organization_id`) keep using the tx
+  // for atomicity. A TransactionClient lacks `$transaction`; PrismaClient has it.
+  const prisma: PrismaClient | Prisma.TransactionClient =
+    typeof (client as { $transaction?: unknown }).$transaction === "function"
+      ? prismaAdmin
+      : client;
   try {
     if (!args.organizationId) {
       // Defensive — types should already enforce this, but a CLI script

@@ -27,6 +27,7 @@ import type { PrismaClient } from '@prisma/client';
 import { getAnthropicClient, AI_MODEL } from '@/lib/ai/client';
 import { extractJsonFromText } from '@/lib/onboarding/ai-mapper/json-extract';
 import { prisma as defaultPrisma } from '@/lib/prisma';
+import { prismaAdmin } from "@/lib/db/prisma-admin"
 import { runSentimentBatch } from './sentiment';
 import type { IntelCrawlInput, IntelCrawlResult, IntelOutputLanguage } from './types';
 import {
@@ -341,7 +342,7 @@ export async function runIntelCrawl(
   // 8K covers a 10-item feed with full summaries + tags; below that
   // RU/AZ output truncates (per `feedback_llm_max_tokens.md`).
   const maxTokens = opts.maxTokens ?? 8192;
-  const prismaClient = opts.prisma ?? (defaultPrisma as unknown as CrawlerPrisma);
+  const prismaClient = opts.prisma ?? (prismaAdmin as unknown as CrawlerPrisma);
 
   const errors: string[] = [];
 

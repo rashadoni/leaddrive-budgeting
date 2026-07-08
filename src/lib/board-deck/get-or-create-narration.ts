@@ -36,6 +36,7 @@
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/prisma";
+import { prismaAdmin } from "@/lib/db/prisma-admin"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log";
 import { getLogger } from "@/lib/log";
 
@@ -141,7 +142,7 @@ export async function getOrCreateNarration(
   opts: GetOrCreateNarrationOptions = {},
 ): Promise<NarrationOutput | null> {
   const prismaClient =
-    opts.prisma ?? (defaultPrisma as unknown as PrismaSurface);
+    opts.prisma ?? (prismaAdmin as unknown as PrismaSurface);
   const runImpl = opts.runNarrationImpl ?? runNarration;
   const ttl = opts.ttlMs ?? NARRATION_CACHE_TTL_MS;
   const now = opts.now ?? (() => new Date());

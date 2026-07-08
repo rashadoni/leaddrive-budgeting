@@ -19,6 +19,7 @@
  */
 
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { prismaAdmin } from '@/lib/db/prisma-admin';
 import {
   createPrismaDataSource,
   recomputeIndicator,
@@ -137,12 +138,23 @@ export async function runRecomputeForCompanies(
   // wrapped in `withOrgScope` (BullMQ recompute-processor) pick up
   // `app.organization_id` at the DB layer. PrismaClient still works
   // for legacy / CLI call sites (historical-backfill, smoke scripts).
-  prisma: PrismaClient | Prisma.TransactionClient,
+  client: PrismaClient | Prisma.TransactionClient,
   organizationId: string,
   affected: RecomputeAffected[],
   logger: RecomputeTriggerLogger = {},
   options: RunRecomputeOptions = {},
 ): Promise<RunRecomputeResult> {
+  // Phase 5.2 S5 RLS — resolve the write client. A scope tx (BullMQ processor
+  // / in-tx callers) has `SET LOCAL app.organization_id` live, so use it
+  // directly. The global PrismaClient (post-mutation route call sites, OUTSIDE
+  // any withOrgScope tx) is routed through the BYPASSRLS `prismaAdmin` — the
+  // IndicatorValue / AlertEvent / audit writes below would otherwise fail the
+  // RLS WITH CHECK once the default client flips to the non-superuser app role.
+  // A TransactionClient lacks `$transaction`; the full PrismaClient has it.
+  const prisma: PrismaClient | Prisma.TransactionClient =
+    typeof (client as { $transaction?: unknown }).$transaction === "function"
+      ? prismaAdmin
+      : client;
   if (affected.length === 0) return { ...EMPTY_RESULT };
 
   // Group affected companies by year so the per-year `period` string

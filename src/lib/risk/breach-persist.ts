@@ -24,6 +24,7 @@
 
 import { Prisma } from "@prisma/client"
 import { prisma as defaultPrisma } from "@/lib/prisma"
+import { prismaAdmin } from "@/lib/db/prisma-admin"
 import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 import type { ForecastedBreach } from "./breach-forecaster"
 
@@ -52,7 +53,7 @@ export async function getPredictiveBreaches(
   // inside withOrgScope (the SET LOCAL app.organization_id applies).
   opts: { prisma?: typeof defaultPrisma | Prisma.TransactionClient } = {},
 ): Promise<Array<ForecastedBreach & { organizationId: string; computedAt: Date }>> {
-  const prisma = opts.prisma ?? defaultPrisma
+  const prisma = opts.prisma ?? prismaAdmin
   const minBandRank: Record<"low" | "medium" | "high", number> = { low: 0, medium: 1, high: 2 }
 
   return await tryPrismaThenFallback<Array<ForecastedBreach & { organizationId: string; computedAt: Date }>>(
@@ -145,7 +146,7 @@ export async function evaluateAndPersistBreaches(
   breaches: ForecastedBreach[],
   opts: { prisma?: typeof defaultPrisma } = {},
 ): Promise<PersistResult> {
-  const prisma = opts.prisma ?? defaultPrisma
+  const prisma = opts.prisma ?? prismaAdmin
   const errors: string[] = []
   let written = 0
   const computedAt = new Date()
@@ -231,7 +232,7 @@ export async function clearBreaches(
   filter: { period?: string; companyId?: string; indicatorCode?: string } = {},
   opts: { prisma?: typeof defaultPrisma } = {},
 ): Promise<number> {
-  const prisma = opts.prisma ?? defaultPrisma
+  const prisma = opts.prisma ?? prismaAdmin
 
   return await tryPrismaThenFallback<number>(
     async () => {

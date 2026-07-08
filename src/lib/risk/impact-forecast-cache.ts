@@ -18,7 +18,7 @@
  *   - Default → round to 2 decimals
  */
 import { createHash } from "node:crypto"
-import { prisma as defaultPrisma } from "@/lib/prisma"
+import { prismaAdmin } from "@/lib/db/prisma-admin"
 import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 import {
   runImpactForecast,
@@ -111,7 +111,7 @@ export async function getOrCreateImpactForecast(
   if (!opts.bypassCache) {
     const entry = await tryPrismaThenFallback<CachedEntry | undefined>(
       async () => {
-        const row = await defaultPrisma.feedImpactForecast.findUnique({
+        const row = await prismaAdmin.feedImpactForecast.findUnique({
           where: {
             organizationId_triggerMetric_triggerValueRounded_affectedCompanyId_language_promptVersion_snapshotHash:
               {
@@ -155,7 +155,7 @@ export async function getOrCreateImpactForecast(
 
   await tryPrismaThenFallback<void>(
     async () => {
-      await defaultPrisma.feedImpactForecast.upsert({
+      await prismaAdmin.feedImpactForecast.upsert({
         where: {
           organizationId_triggerMetric_triggerValueRounded_affectedCompanyId_language_promptVersion_snapshotHash:
             {

@@ -27,6 +27,11 @@
 
 import { Prisma } from "@prisma/client"
 import { prisma as defaultPrisma } from "@/lib/prisma"
+// Phase 5.2 S5 RLS — ai_token_usage is RLS-covered and metering happens OUTSIDE
+// any withOrgScope tx, so the default write/read client here is the BYPASSRLS
+// `prismaAdmin` (queries always carry organizationId). Callers inside a scope
+// tx can still pass their tx via `opts.prisma`.
+import { prismaAdmin } from "@/lib/db/prisma-admin"
 import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 
 const DEFAULT_DAILY_TOKEN_CAP = 500_000
@@ -83,7 +88,7 @@ export async function getDailyUsage(
   // Stage 3 RLS — accept a scope tx so the caller can read under withOrgScope.
   opts: { prisma?: typeof defaultPrisma | Prisma.TransactionClient } = {},
 ): Promise<UsageStats> {
-  const prisma = opts.prisma ?? defaultPrisma
+  const prisma = opts.prisma ?? prismaAdmin
   const dateStr = date.toISOString().slice(0, 10)
   return await tryPrismaThenFallback<UsageStats>(
     async () => {
@@ -123,7 +128,7 @@ export async function getMonthlyUsage(
   // Stage 3 RLS — accept a scope tx so the caller can read under withOrgScope.
   opts: { prisma?: typeof defaultPrisma | Prisma.TransactionClient } = {},
 ): Promise<UsageStats> {
-  const prisma = opts.prisma ?? defaultPrisma
+  const prisma = opts.prisma ?? prismaAdmin
   const month = monthKeyOf(date) // YYYY-MM
   return await tryPrismaThenFallback<UsageStats>(
     async () => {
@@ -220,7 +225,7 @@ export async function recordUsage(
   await tryPrismaThenFallback<void>(
     async () => {
       // Atomic upsert with increment — race-safe across concurrent LLM calls.
-      const row = await defaultPrisma.aITokenUsage.upsert({
+      const row = await prismaAdmin.aITokenUsage.upsert({
         where: {
           organizationId_date: { organizationId: orgId, date: dateStr },
         },

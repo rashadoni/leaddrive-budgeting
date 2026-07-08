@@ -2,7 +2,13 @@ import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import { z } from "zod"
-import { prisma } from "./prisma"
+// Phase 5.2 S5 RLS — the auth path (adapter + credentials user lookup + jwt
+// refresh) runs BEFORE any org context exists and reads the RLS-covered `users`
+// table, so it MUST use the BYPASSRLS `prismaAdmin` client. Under the app role
+// with no `app.organization_id` set, `users` would return 0 rows → login
+// bricked. `users`/`organizations` reads here are already tightly bounded by
+// NextAuth's own flow. (plan risk #1: "Login bricked at final flip".)
+import { prismaAdmin as prisma } from "./db/prisma-admin"
 import { getLogger } from "./log"
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.

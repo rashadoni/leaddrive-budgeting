@@ -26,6 +26,7 @@
 
 import { Prisma } from "@prisma/client"
 import { prisma as defaultPrisma } from "@/lib/prisma"
+import { prismaAdmin } from "@/lib/db/prisma-admin"
 import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 import type { CommodityAdapter, CommodityDataPoint, CommodityFetchResult } from "./types"
 import { checkPlausibility } from "./plausibility"
@@ -96,7 +97,7 @@ export async function ingestCommodityData(
   opts: IngestOptions = {},
   now: Date = new Date(),
 ): Promise<IngestResult> {
-  const prisma = opts.prisma ?? defaultPrisma
+  const prisma = opts.prisma ?? prismaAdmin
   const perSource: CommodityFetchResult[] = []
   const errors: string[] = []
   let pointsWritten = 0
