@@ -154,6 +154,21 @@ per RLS_RUNBOOK §1.
 
 ## Progress log
 
+- 2026-07-08 — **Post-S6 housekeeping: prod deploys unblocked + admin password
+  rotated + operator scripts fixed in the image.** (1) The S6 flip left the prod
+  git working tree dirty (Codex's SQL edits, byte-identical to the committed
+  `9f56aa2d`, + `.bak` files) which was rejecting all `git push`/deploys; cleaned
+  it (`git checkout -- scripts/sql/*.sql`, removed `.bak`), redeployed to sync
+  prod → `f82c2375`, RLS still enforced. (2) Found the standalone runtime image
+  ships neither `scripts/` nor `tsx`, so `npx tsx scripts/…` (create-admin,
+  rotate-admin-password) failed on prod — added `COPY scripts` + `COPY
+  node_modules/bcryptjs` + global `tsx@4` to the Dockerfile runtime stage
+  (commit `dbc01e55`; also fixes the long-broken first-deploy create-admin step).
+  (3) Rotated the demo `Admin123!` admin login (`admin@fo.az`) to a strong
+  generated secret via the new org-agnostic `scripts/rotate-admin-password.ts`
+  (finds by email, updates the hash by id — no org-slug footgun); verified old
+  `Admin123!` now rejected (session null). New secret delivered out-of-band (not
+  in any transcript/file in git). **Phase 5.2 RLS is fully closed out on prod.**
 - 2026-07-08 — **S6 DONE — RLS ENFORCED ON PRODUCTION. 🔒** Codex ran the
   prod flip per `docs/RLS_S6_PROD_FLIP_TASK.md` (agent is classifier-blocked
   from SSH+BYPASSRLS grants). Provisioned `budgetpro_admin` (bypassrls=t) +
