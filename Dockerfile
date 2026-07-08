@@ -63,6 +63,13 @@ RUN addgroup --system --gid 1001 nodejs && \
 # bumps that add new transitive deps).
 RUN npm install -g --no-fund --no-audit prisma@6.19.3
 
+# tsx — run the TypeScript admin/maintenance scripts (scripts/*.ts) on prod
+# (e.g. create-admin, rotate-admin-password). Node 20 can't strip TS types
+# natively, and the standalone image ships no dev toolchain, so without this a
+# `docker compose exec app npx tsx scripts/…` fails. Major-pinned (no breaking
+# jumps); it's only used for occasional operator scripts, never on the request path.
+RUN npm install -g --no-fund --no-audit tsx@4
+
 # Standalone Next.js output — includes only the node_modules Next.js traced
 # for server-side imports. Prisma is listed in `serverExternalPackages` so it
 # isn't bundled; we supply it via the COPYs below.
@@ -83,6 +90,14 @@ COPY --from=build --chown=nextjs:nodejs /app/docs            ./docs
 COPY --from=build --chown=nextjs:nodejs /app/prisma                        ./prisma
 COPY --from=build --chown=nextjs:nodejs /app/node_modules/.prisma          ./node_modules/.prisma
 COPY --from=build --chown=nextjs:nodejs /app/node_modules/@prisma/client   ./node_modules/@prisma/client
+
+# Operator scripts (scripts/*.ts) + their runtime deps. The standalone output
+# doesn't trace CLI scripts or their imports, so ship them explicitly so
+# `npx tsx scripts/…` works on prod (create-admin, rotate-admin-password).
+# bcryptjs is a zero-dep pure-JS package (used for password hashing); Prisma is
+# already copied above. `crypto` is a Node builtin.
+COPY --from=build --chown=nextjs:nodejs /app/scripts                       ./scripts
+COPY --from=build --chown=nextjs:nodejs /app/node_modules/bcryptjs         ./node_modules/bcryptjs
 
 # Entrypoint: run migrations then exec the server.
 COPY --chown=nextjs:nodejs deploy/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
