@@ -29,6 +29,15 @@ interface Props {
   year?: number;
   /** Tighter density (smaller chips, no labels). */
   compact?: boolean;
+  /**
+   * 2026-07-15 — years the org actually has data for (matrix
+   * `availableYears`). When provided, ONE annual chip renders per year so
+   * the user can navigate across fiscal years; without it only the active
+   * year's chip renders (the pre-fix behaviour, which left every other
+   * year's data unreachable). The active year is always included even if
+   * absent from the list.
+   */
+  availableYears?: number[];
 }
 
 const QUARTERS = [1, 2, 3, 4] as const;
@@ -45,20 +54,33 @@ function detectYear(period: string, fallback: number): number {
   return m ? parseInt(m[1], 10) : fallback;
 }
 
-export function PeriodChips({ current, onChange, year, compact = false }: Props) {
+export function PeriodChips({
+  current,
+  onChange,
+  year,
+  compact = false,
+  availableYears,
+}: Props) {
   const t = useTranslations("terminal");
   const fallbackYear = new Date().getUTCFullYear();
   const activeYear = year ?? detectYear(current, fallbackYear);
   const kind = detectKind(current);
-  const annualValue = String(activeYear);
-  const isAnnualActive = kind === "year" && current === annualValue;
+  const isAnnualActive = kind === "year";
   const activeQuarter = kind === "quarter" ? parseInt(current.slice(-1), 10) : null;
   const activeMonth = kind === "month" ? parseInt(current.slice(-2), 10) : null;
+
+  // One chip per navigable year; the active year is always present so a
+  // caller passing a stale/partial list can't orphan the current selection.
+  const yearChips = [...new Set([...(availableYears ?? []), activeYear])].sort(
+    (a, b) => a - b,
+  );
 
   const chipBase =
     "px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-tight border transition-colors cursor-pointer select-none";
   const chipInactive = "border-gray-800 text-gray-500 hover:border-gray-600 hover:text-gray-300";
   const chipActive = "border-cyan-500/60 bg-cyan-500/15 text-cyan-300";
+  /** Year carrying the active quarter/month selection (annual not selected). */
+  const chipActiveYearContext = "border-cyan-700/50 text-cyan-500";
 
   return (
     <div
@@ -66,16 +88,26 @@ export function PeriodChips({ current, onChange, year, compact = false }: Props)
       data-testid="period-chips"
       aria-label={t("periodChips.ariaLabel")}
     >
-      {/* Annual */}
-      <button
-        type="button"
-        onClick={() => onChange(annualValue)}
-        aria-pressed={isAnnualActive}
-        className={`${chipBase} ${isAnnualActive ? chipActive : chipInactive}`}
-        title={t("periodChips.annualHint", { year: activeYear })}
-      >
-        {annualValue}
-      </button>
+      {/* Years (annual anchors) */}
+      {yearChips.map((y) => {
+        const value = String(y);
+        const isActive = isAnnualActive && current === value;
+        const isContext = !isAnnualActive && y === activeYear;
+        return (
+          <button
+            key={y}
+            type="button"
+            onClick={() => onChange(value)}
+            aria-pressed={isActive}
+            className={`${chipBase} ${
+              isActive ? chipActive : isContext ? chipActiveYearContext : chipInactive
+            }`}
+            title={t("periodChips.annualHint", { year: y })}
+          >
+            {value}
+          </button>
+        );
+      })}
 
       {!compact && <span className="text-gray-700">·</span>}
 

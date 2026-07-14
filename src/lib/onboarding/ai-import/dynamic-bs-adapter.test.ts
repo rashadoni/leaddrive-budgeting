@@ -442,4 +442,34 @@ describe("runDynamicBsAdapter", () => {
     expect(rowsInserted).toBe(0)
     expect(runBalanceSheetBatch).not.toHaveBeenCalled()
   })
+
+  // ── 11. Year-mismatch guard (2026-07-15) ─────────────────────────────────
+  // The proposal's roles carry 2026 (buildProposal default); requesting 2025
+  // must SKIP the sheet (caller's planId targets the 2025 plan) instead of
+  // adopting the sheet's year and cross-contaminating plans. This is also
+  // what un-blocks a workbook with one BS tab per year: the other year's tab
+  // parses 0 rows, so it no longer false-trips the collision gate.
+
+  it("proposal year ≠ input.year → sheet skipped with re-run warning, no write", async () => {
+    vi.mocked(extractMapperInput).mockReturnValue(MOCK_MAPPER_INPUT)
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: buildProposal(0.9),
+      cacheHit: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    const result = await runDynamicBsAdapter(
+      makeFakeInput({ year: 2025 }),
+      "plan_1",
+      FAKE_PRISMA,
+    )
+
+    expect(result.itemCount).toBe(0)
+    expect(
+      result.warnings.some((w) => w.includes("Re-run the import with year=2026")),
+    ).toBe(true)
+    const { rowsInserted } = await result.applyToDb(FAKE_TX)
+    expect(rowsInserted).toBe(0)
+    expect(runBalanceSheetBatch).not.toHaveBeenCalled()
+  })
 })

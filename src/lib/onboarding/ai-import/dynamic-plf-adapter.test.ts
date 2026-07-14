@@ -523,4 +523,47 @@ describe("runDynamicPlfAdapter", () => {
     expect(rowsInserted).toBe(0)
     expect(runImportBatch).not.toHaveBeenCalled()
   })
+
+  // ── 10. Year-mismatch guard (2026-07-15) ──────────────────────────────────
+  // The caller's planId/periodScope target input.year; a sheet whose detected
+  // year differs must be SKIPPED, never written into the wrong year's plan.
+
+  it("proposal year ≠ input.year → sheet skipped with re-run warning, no write", async () => {
+    vi.mocked(extractMapperInput).mockReturnValue({
+      sourceFile: "test.xlsx",
+      sourceSheet: "PLF TEST",
+      columns: [],
+      sampleRows: [],
+      headerRowIndex: 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    const proposal2025 = buildProposal(0.9)
+    proposal2025.columns = proposal2025.columns.map((c) =>
+      c.role.startsWith("amount:")
+        ? { ...c, role: `${c.role}2025` as `amount:${string}` }
+        : c,
+    )
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: proposal2025,
+      cacheHit: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    const result = await runDynamicPlfAdapter(
+      makeFakeInput({ year: 2026 }),
+      "plan_1",
+      "company_1",
+      FAKE_PRISMA,
+    )
+
+    expect(result.itemCount).toBe(0)
+    expect(
+      result.warnings.some((w) =>
+        w.includes("Re-run the import with year=2025"),
+      ),
+    ).toBe(true)
+    const { rowsInserted } = await result.applyToDb(FAKE_TX)
+    expect(rowsInserted).toBe(0)
+    expect(runImportBatch).not.toHaveBeenCalled()
+  })
 })

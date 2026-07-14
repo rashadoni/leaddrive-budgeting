@@ -291,17 +291,40 @@ export async function runDynamicPlfAdapter(
   const yearWarnings: string[] = []
 
   if (typeof detectedYear === "number") {
-    effectiveYear = detectedYear
     if (detectedYear !== input.year) {
-      yearWarnings.push(
-        `Dynamic detection: proposal year ${detectedYear} differs from requested year ${input.year} — using proposal year`,
-      )
+      // 2026-07-15 — a year mismatch must SKIP, not adopt the sheet's year.
+      // The caller's planId/periodScope target `input.year`; adopting the
+      // sheet's year writes another fiscal year's rows into this year's plan.
+      // A workbook shipping one statement tab per year (e.g. "PLF Actual
+      // 2025" + "PLF Actual 2026") is loaded by running the import once per
+      // year — each run picks up exactly its own tabs.
+      return {
+        summary: `PLF sheet "${input.sheetName}" is for ${detectedYear}, not the requested ${input.year} — skipped`,
+        itemCount: 0,
+        warnings: [
+          `Dynamic PLF: sheet "${input.sheetName}" carries ${detectedYear} data but the import year is ${input.year} — skipped. Re-run the import with year=${detectedYear} to load it.`,
+        ],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
     }
+    effectiveYear = detectedYear
   } else if (
     detectedYear !== null &&
     typeof detectedYear === "object" &&
     "conflict" in detectedYear
   ) {
+    if (!detectedYear.conflict.includes(input.year)) {
+      // 2026-07-15 — none of the sheet's years is the requested one; see the
+      // single-year mismatch guard above (same contract, dynamic-bs-adapter).
+      return {
+        summary: `PLF sheet "${input.sheetName}" covers ${detectedYear.conflict.join("/")}, not the requested ${input.year} — skipped`,
+        itemCount: 0,
+        warnings: [
+          `Dynamic PLF: sheet "${input.sheetName}" carries ${detectedYear.conflict.join("/")} data but the import year is ${input.year} — skipped. Re-run the import with the matching year to load it.`,
+        ],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
     yearWarnings.push(
       `Dynamic detection: multiple years in proposal (${detectedYear.conflict.join(", ")}) — defaulting to input.year=${input.year}`,
     )

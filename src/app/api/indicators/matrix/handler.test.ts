@@ -114,6 +114,15 @@ describe('GET /api/indicators/matrix — handler', () => {
     expect(ivCall).toBeDefined();
     expect(ivCall.where.period).toBe(body.period);
     expect(ivCall.where.organizationId).toBe(ORG_ID);
+
+    // 2026-07-15 — availableYears powers the PeriodChips year row: every
+    // year with data plus the current (Baku) year, ascending. Without it the
+    // terminal had no cross-year navigation and data outside the default
+    // year was unreachable.
+    const currentYear = new Date().getUTCFullYear();
+    expect(body.availableYears).toEqual(
+      [...new Set([2023, 2024, 2025, currentYear])].sort((a, b) => a - b),
+    );
   });
 
   it('honors an explicit ?period=YYYY-MM override', async () => {
@@ -145,7 +154,13 @@ describe('GET /api/indicators/matrix — handler', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.period).toBe('2026-04');
-    const ivCall = prismaMock.indicatorValue.findMany.mock.calls[0][0];
+    // 2026-07-15 — the FIRST IV query is now the availableYears/default-period
+    // context (distinct periods, no companyId); the matrix query is the one
+    // scoped to companyId.
+    const ivCall = prismaMock.indicatorValue.findMany.mock.calls.find(
+      (c) => c[0]?.where?.companyId !== undefined,
+    )?.[0];
+    expect(ivCall).toBeDefined();
     expect(ivCall.where.period).toBe('2026-04');
   });
 
@@ -226,8 +241,15 @@ describe('GET /api/indicators/matrix — handler', () => {
     function setupIVMock(opIVs: unknown[], parentIVs: unknown[], parentIds: string[]): void {
       prismaMock.indicatorValue.findMany.mockImplementation(
         async (
-          arg: { where?: { companyId?: { in?: string[] } } } = {},
+          arg: {
+            where?: { companyId?: { in?: string[] } };
+            distinct?: string[];
+          } = {},
         ) => {
+          // 2026-07-15 — the availableYears/default-period context query
+          // (distinct periods, no companyId) runs first on every request;
+          // it must not receive the cell IVs.
+          if (arg.distinct?.includes('period')) return [];
           const targetIds = arg.where?.companyId?.in ?? [];
           // Detect parent-IV pass by intersection with parent ids.
           if (targetIds.some((id: string) => parentIds.includes(id))) {

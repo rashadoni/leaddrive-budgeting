@@ -312,17 +312,37 @@ export async function runDynamicCfAdapter(
   const yearWarnings: string[] = []
 
   if (typeof detectedYear === "number") {
-    effectiveYear = detectedYear
     if (detectedYear !== input.year) {
-      yearWarnings.push(
-        `Dynamic CF: proposal year ${detectedYear} differs from requested year ${input.year} — using proposal year`,
-      )
+      // 2026-07-15 — a year mismatch must SKIP, not adopt the sheet's year
+      // (caller's planId/periodScope target `input.year`; see the identical
+      // guard in dynamic-plf-adapter.ts / dynamic-bs-adapter.ts).
+      return {
+        summary: `CF sheet "${input.sheetName}" is for ${detectedYear}, not the requested ${input.year} — skipped`,
+        itemCount: 0,
+        warnings: [
+          `Dynamic CF: sheet "${input.sheetName}" carries ${detectedYear} data but the import year is ${input.year} — skipped. Re-run the import with year=${detectedYear} to load it.`,
+        ],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
     }
+    effectiveYear = detectedYear
   } else if (
     detectedYear !== null &&
     typeof detectedYear === "object" &&
     "conflict" in detectedYear
   ) {
+    if (!detectedYear.conflict.includes(input.year)) {
+      // 2026-07-15 — none of the sheet's years is the requested one; see the
+      // single-year mismatch guard above (same contract, dynamic-bs-adapter).
+      return {
+        summary: `CF sheet "${input.sheetName}" covers ${detectedYear.conflict.join("/")}, not the requested ${input.year} — skipped`,
+        itemCount: 0,
+        warnings: [
+          `Dynamic CF: sheet "${input.sheetName}" carries ${detectedYear.conflict.join("/")} data but the import year is ${input.year} — skipped. Re-run the import with the matching year to load it.`,
+        ],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
     yearWarnings.push(
       `Dynamic CF: multiple years in proposal (${detectedYear.conflict.join(", ")}) — defaulting to input.year=${input.year}`,
     )

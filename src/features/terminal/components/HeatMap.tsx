@@ -290,6 +290,7 @@ export function HeatMap({ period }: Props) {
           current={renderedPeriod}
           onChange={(p) => setSelectedPeriod(p)}
           compact={compactMode}
+          availableYears={data?.availableYears}
         />
       </div>
       {/* Tier 3 time-machine — scrub through months with play/pause.

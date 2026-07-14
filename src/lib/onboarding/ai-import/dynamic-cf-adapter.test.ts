@@ -444,4 +444,25 @@ describe("runDynamicCfAdapter", () => {
     expect(rowsInserted).toBe(0)
     expect(runCashFlowBatch).not.toHaveBeenCalled()
   })
+
+  // ── 12. Year-mismatch guard (2026-07-15) — same contract as PLF/BS ───────
+
+  it("proposal year ≠ input.year → sheet skipped with re-run warning, no write", async () => {
+    vi.mocked(extractMapperInput).mockReturnValue(MOCK_MAPPER_INPUT)
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: buildProposal(0.9),
+      cacheHit: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    const result = await runDynamicCfAdapter(makeFakeInput({ year: 2025 }), FAKE_PRISMA)
+
+    expect(result.itemCount).toBe(0)
+    expect(
+      result.warnings.some((w) => w.includes("Re-run the import with year=2026")),
+    ).toBe(true)
+    const { rowsInserted } = await result.applyToDb(FAKE_TX)
+    expect(rowsInserted).toBe(0)
+    expect(runCashFlowBatch).not.toHaveBeenCalled()
+  })
 })

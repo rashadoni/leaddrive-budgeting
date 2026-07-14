@@ -69,24 +69,44 @@ import { getCompanyReadiness } from '@/lib/server/get-company-readiness';
  * the current Baku year; if none is complete yet, fall back to the newest year
  * present; if the org has no annual data at all, `headlinePeriod()`. Callers
  * wanting a specific or monthly view pass `?period=YYYY` / `?period=YYYY-MM`.
+ *
+ * Also derives `availableYears` — every distinct year that has ANY
+ * IndicatorValue (annual, quarter or month period), plus the current Baku
+ * year. The PeriodChips year row renders from it, so a freshly imported
+ * in-progress year (2026) is reachable even while the DEFAULT stays on the
+ * last complete year — without this the terminal had NO year navigation at
+ * all and data outside the default year was invisible (2026-07-15 audit).
  */
-async function resolveDefaultPeriod(
+async function resolvePeriodContext(
   tx: Prisma.TransactionClient,
   organizationId: string,
-): Promise<string> {
+): Promise<{ defaultPeriod: string; availableYears: number[] }> {
   const rows = await tx.indicatorValue.findMany({
     where: { organizationId },
     select: { period: true },
     distinct: ['period'],
   });
-  const annual = rows
-    .map((r) => r.period)
-    .filter((p) => /^\d{4}$/.test(p))
-    .map(Number);
-  if (annual.length === 0) return headlinePeriod();
+  const periods = rows.map((r) => r.period);
   const cur = currentBakuYearNumber();
+  const availableYears = [
+    ...new Set(
+      periods
+        .map((p) => p.slice(0, 4))
+        .filter((y) => /^\d{4}$/.test(y))
+        .map(Number)
+        .concat(cur),
+    ),
+  ].sort((a, b) => a - b);
+  const annual = periods.filter((p) => /^\d{4}$/.test(p)).map(Number);
+  if (annual.length === 0)
+    return { defaultPeriod: headlinePeriod(), availableYears };
   const complete = annual.filter((y) => y < cur);
-  return String(complete.length > 0 ? Math.max(...complete) : Math.max(...annual));
+  return {
+    defaultPeriod: String(
+      complete.length > 0 ? Math.max(...complete) : Math.max(...annual),
+    ),
+    availableYears,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -271,11 +291,16 @@ export async function GET(request: NextRequest) {
     // operational companies so an empty org does ZERO extra IV work (matches the
     // "skips indicatorValue.findMany when no operational companies" guard) — the
     // period is moot when the matrix is empty, so `headlinePeriod()` suffices.
-    const period =
-      explicitPeriod ??
-      (operationalIds.length === 0
-        ? headlinePeriod()
-        : await resolveDefaultPeriod(tx, session.orgId));
+    // `availableYears` is resolved even for an explicit period — the year-chip
+    // row needs it on every fetch, not just the default one.
+    const periodCtx =
+      operationalIds.length === 0
+        ? {
+            defaultPeriod: headlinePeriod(),
+            availableYears: [currentBakuYearNumber()],
+          }
+        : await resolvePeriodContext(tx, session.orgId);
+    const period = explicitPeriod ?? periodCtx.defaultPeriod;
 
     const values =
       operationalIds.length === 0 || indicatorIds.length === 0
@@ -753,6 +778,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         period,
+        availableYears: periodCtx.availableYears,
         companies: [...companies, ...subgroupCompanies],
         indicators: indicatorsForRender,
         cells: allCellsForFreshness,

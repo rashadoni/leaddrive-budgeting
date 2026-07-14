@@ -66,6 +66,7 @@ import {
   markAiImportTemplateUsed,
 } from "@/lib/onboarding/ai-import/import-template-memory"
 import { buildEntityAliasMap } from "@/lib/onboarding/ai-import/entity-inference"
+import { detectStaleSiblingRows } from "@/lib/onboarding/ai-import/stale-sibling-check"
 import { logAuditEvent } from "@/lib/audit/log"
 import { importConsolidatedHoldingBs } from "@/lib/onboarding/adapters/azseker-consolidated-bs-import"
 import type { SheetMap, SheetMapEntry } from "@/lib/onboarding/ai-import/sheet-routing"
@@ -1139,6 +1140,27 @@ export async function POST(request: NextRequest) {
       backlogClosed = diffBacklogs(backlogBefore.companies, after.companies)
     } catch (e) {
       log.warn("backlog diff failed", {
+        err: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  // ── Stale-sibling detection (2026-07-15) ────────────────────────
+  // Rows an EARLIER import attributed to a company outside this import's
+  // footprint stay LIVE in the same plan and double-count against the freshly
+  // written per-entity rows (the "consolidated budget once stacked onto the
+  // holding" class). Pure detection — see stale-sibling-check.ts. Best-effort,
+  // apply-only: a detection failure must never break a committed import.
+  if (shouldApply && result.perGroup.some((g) => g.committed)) {
+    try {
+      const staleWarnings = await detectStaleSiblingRows(prisma, {
+        organizationId: orgId,
+        year,
+        classifications: result.perFile.flatMap((f) => f.classifications),
+      })
+      result.warnings.push(...staleWarnings)
+    } catch (e) {
+      log.warn("stale-sibling detection failed (non-fatal)", {
         err: e instanceof Error ? e.message : String(e),
       })
     }

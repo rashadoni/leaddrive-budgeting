@@ -112,6 +112,11 @@ export interface MatrixIndicatorCol {
 
 export interface MatrixResponse {
   period: string;
+  /** 2026-07-15 — every year with any IndicatorValue plus the current Baku
+   *  year, ascending. Drives the PeriodChips year row so data outside the
+   *  data-aware default year is reachable. Optional for back-compat with
+   *  cached/older payloads. */
+  availableYears?: number[];
   companies: MatrixCompanyRow[];
   indicators: MatrixIndicatorCol[];
   cells: HeatMapCell[];

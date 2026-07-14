@@ -305,17 +305,44 @@ export async function runDynamicBsAdapter(
   const yearWarnings: string[] = []
 
   if (typeof detectedYear === "number") {
-    effectiveYear = detectedYear
     if (detectedYear !== input.year) {
-      yearWarnings.push(
-        `Dynamic BS: proposal year ${detectedYear} differs from requested year ${input.year} — using proposal year`,
-      )
+      // 2026-07-15 — a year mismatch must SKIP, not adopt the sheet's year.
+      // The caller resolved planId/periodScope for `input.year`; writing
+      // `detectedYear` rows through them lands another year's balances in
+      // this year's plan (cross-year contamination) and its 0-row siblings
+      // used to false-trip the (year-less) collision gate when a workbook
+      // legitimately ships one BS tab per year. Mirrors the PLF adapter's
+      // strict year filter: re-run the import with the sheet's own year.
+      return {
+        summary: `BS sheet "${input.sheetName}" is for ${detectedYear}, not the requested ${input.year} — skipped`,
+        itemCount: 0,
+        warnings: [
+          `Dynamic BS: sheet "${input.sheetName}" carries ${detectedYear} data but the import year is ${input.year} — skipped. Re-run the import with year=${detectedYear} to load it.`,
+        ],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
     }
+    effectiveYear = detectedYear
   } else if (
     detectedYear !== null &&
     typeof detectedYear === "object" &&
     "conflict" in detectedYear
   ) {
+    if (!detectedYear.conflict.includes(input.year)) {
+      // 2026-07-15 — none of the sheet's years is the requested one (e.g. a
+      // "BS 2025" tab with a 2024-12 opening column, imported with
+      // year=2026). Defaulting to input.year would relabel a foreign year's
+      // balances as this year's. Skip, same contract as the single-year
+      // mismatch above.
+      return {
+        summary: `BS sheet "${input.sheetName}" covers ${detectedYear.conflict.join("/")}, not the requested ${input.year} — skipped`,
+        itemCount: 0,
+        warnings: [
+          `Dynamic BS: sheet "${input.sheetName}" carries ${detectedYear.conflict.join("/")} data but the import year is ${input.year} — skipped. Re-run the import with the matching year to load it.`,
+        ],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
     yearWarnings.push(
       `Dynamic BS: multiple years in proposal (${detectedYear.conflict.join(", ")}) — defaulting to input.year=${input.year}`,
     )

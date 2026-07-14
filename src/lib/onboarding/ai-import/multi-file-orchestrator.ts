@@ -666,8 +666,16 @@ async function parseFileSheets(
         effectiveEntityCode,
       })
       if (ar.warnings.length > 0) {
+        // Surface the first few warning TEXTS, not just a count — «emitted 3
+        // adapter warning(s)» hid the actionable reason (e.g. a sheet skipped
+        // for a year mismatch) from the import report (2026-07-15 audit).
+        const shown = ar.warnings.slice(0, 3)
+        const more =
+          ar.warnings.length > shown.length
+            ? ` (+${ar.warnings.length - shown.length} more)`
+            : ""
         warnings.push(
-          `${filename}: sheet "${cls.sheetName}" emitted ${ar.warnings.length} adapter warning(s)`,
+          `${filename}: sheet "${cls.sheetName}" — ${shown.join(" · ")}${more}`,
         )
       }
     } catch (err) {
