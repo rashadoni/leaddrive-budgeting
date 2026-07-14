@@ -48,21 +48,80 @@ const HEADER_SCAN_ROWS = 6
 const MIN_BLOCK_ROWS = 3
 
 /**
- * Find the 0-based column index of the "BU" header within the top
- * `headerScanRows`. Returns -1 when the sheet has no BU column.
+ * Find the 0-based column index of the owning-entity column within the top
+ * `headerScanRows`. Returns -1 when the sheet has no usable BU column.
+ *
+ * Without an `aliasMap`, only the exact "BU" header is accepted (legacy
+ * behaviour). With one, numbered "BU_N" dimension columns become candidates
+ * too — needed for workbooks that ship NO plain "BU" header (e.g. a "PLF
+ * Budget" whose entity column is "BU_3" while "BU_1" tags the parent group,
+ * mislabelling subsidiary blocks). Candidates are scored by how many DISTINCT
+ * known entities their values resolve to via the aliasMap — the true entity
+ * column names every stacked block, so it maximises that count; a parent/
+ * sub-unit dimension collapses several blocks onto one label and scores lower.
+ * Ties prefer the exact "BU" header, then more distinct elimination-like
+ * labels (AJE/EJE — evidence of a genuine block column), then the leftmost.
  */
 export function findBuColumn(
   aoa: ReadonlyArray<ReadonlyArray<unknown>>,
+  aliasMapOrScanRows?: Record<string, string> | number,
   headerScanRows = HEADER_SCAN_ROWS,
 ): number {
-  for (let r = 0; r < Math.min(headerScanRows, aoa.length); r++) {
+  const aliasMap =
+    typeof aliasMapOrScanRows === "object" ? aliasMapOrScanRows : undefined
+  const scanRows =
+    typeof aliasMapOrScanRows === "number" ? aliasMapOrScanRows : headerScanRows
+
+  // Candidate columns: header row index + exactness per column.
+  const candidates: Array<{ col: number; headerRow: number; exact: boolean }> = []
+  for (let r = 0; r < Math.min(scanRows, aoa.length); r++) {
     const row = aoa[r] ?? []
     for (let c = 0; c < row.length; c++) {
       const v = row[c]
-      if (typeof v === "string" && v.trim().toUpperCase() === BU_HEADER) return c
+      if (typeof v !== "string") continue
+      const label = v.trim().toUpperCase()
+      if (!BU_HEADER_RE.test(label)) continue
+      if (!candidates.some((cand) => cand.col === c)) {
+        candidates.push({ col: c, headerRow: r, exact: label === BU_HEADER })
+      }
     }
   }
-  return -1
+  if (candidates.length === 0) return -1
+
+  const exact = candidates.find((c) => c.exact)
+  // Legacy path (no aliasMap): exact "BU" or nothing.
+  if (!aliasMap) return exact ? exact.col : -1
+
+  let best: { col: number; known: number; exact: boolean; elim: number } | null =
+    null
+  for (const cand of candidates) {
+    const known = new Set<string>()
+    const elim = new Set<string>()
+    for (let r = cand.headerRow + 1; r < aoa.length; r++) {
+      const v = aoa[r]?.[cand.col]
+      if (v === null || v === undefined) continue
+      const s = String(v).trim().toUpperCase()
+      if (!s) continue
+      if (isEliminationLikeEntityValue(s)) elim.add(s)
+      else if (aliasMap[s]) known.add(aliasMap[s])
+    }
+    const score = { col: cand.col, known: known.size, exact: cand.exact, elim: elim.size }
+    if (
+      !best ||
+      score.known > best.known ||
+      (score.known === best.known && score.exact && !best.exact) ||
+      (score.known === best.known &&
+        score.exact === best.exact &&
+        score.elim > best.elim)
+    ) {
+      best = score
+    }
+  }
+  // No candidate resolves ANY known entity — fall back to the exact "BU"
+  // column when present (legacy behaviour: downstream yields null-entity
+  // blocks and the split is not applied), else report no BU column.
+  if (best && best.known > 0) return best.col
+  return exact ? exact.col : -1
 }
 
 /**
@@ -153,14 +212,15 @@ export function splitByBuColumn(
     blankrows: false,
   }) as unknown[][]
 
-  const buCol = findBuColumn(aoa)
+  const buCol = findBuColumn(aoa, aliasMap)
   if (buCol < 0) return { buColumn: -1, blocks: [], warnings: [] }
 
-  // The "BU" header row itself must not open a block — data begins below it.
+  // The BU header row itself must not open a block — data begins below it.
+  // Match any "BU"/"BU_N" label since the chosen column may be a numbered one.
   let headerRow = 0
   for (let r = 0; r < Math.min(HEADER_SCAN_ROWS, aoa.length); r++) {
     const v = aoa[r]?.[buCol]
-    if (typeof v === "string" && v.trim().toUpperCase() === BU_HEADER) {
+    if (typeof v === "string" && BU_HEADER_RE.test(v.trim().toUpperCase())) {
       headerRow = r
       break
     }

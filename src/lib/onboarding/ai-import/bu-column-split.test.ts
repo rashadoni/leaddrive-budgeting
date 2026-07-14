@@ -45,6 +45,86 @@ describe("findBuColumn", () => {
   it("is case-insensitive and trims surrounding space", () => {
     expect(findBuColumn([["x", " bu "]])).toBe(1)
   })
+  it("without an aliasMap ignores numbered BU_N columns (legacy behaviour)", () => {
+    expect(findBuColumn([["Code", "BU_1", "BU_3"]])).toBe(-1)
+  })
+
+  // "PLF Budget 2026" shape (N. Nəcəfzadə.xlsx): no plain "BU" header; BU_1
+  // tags the parent group (mislabels CPC + AJE blocks as EDEN), BU_3 is the
+  // true per-block entity column, BU_2/BU_4 are non-entity dimensions.
+  const budgetShapeRows: unknown[][] = [
+    ["Code", "Name", "Jan", "BU_1", "BU_2", "BU_3", "BU_4"],
+    ...(["EDEN", "AZSF", "PROMALT", "CPC", "AJE"] as const).flatMap((entity) =>
+      Array.from({ length: 4 }, (_, i) => [
+        `PLF.0${i + 1}`,
+        `row ${i}`,
+        100 + i,
+        entity === "CPC" || entity === "AJE" ? "EDEN" : entity, // BU_1 mislabel
+        entity === "PROMALT" ? "JV" : "Core",
+        entity, // BU_3 — true entity
+        entity === "CPC" || entity === "PROMALT" ? "Production" : "Farming",
+      ]),
+    ),
+  ]
+
+  it("with an aliasMap picks the BU_N column resolving the most distinct entities", () => {
+    // BU_1 resolves {EDEN, AZSF, PROMALT} = 3; BU_3 resolves 4 (+AJE elim) → BU_3.
+    expect(findBuColumn(budgetShapeRows, aliasMap)).toBe(5)
+  })
+
+  it("prefers the exact 'BU' header on a distinct-entity tie", () => {
+    const rows: unknown[][] = [
+      ["Code", "BU", "BU_1"],
+      ["x", "CPC", "CPC"],
+      ["x", "EDEN", "EDEN"],
+    ]
+    expect(findBuColumn(rows, aliasMap)).toBe(1)
+  })
+
+  it("falls back to the exact 'BU' column when no candidate resolves a known entity", () => {
+    const rows: unknown[][] = [
+      ["Code", "BU", "BU_1"],
+      ["x", "SOMETHING", "OTHER"],
+    ]
+    expect(findBuColumn(rows, aliasMap)).toBe(1)
+  })
+
+  it("returns -1 when only unknown BU_N candidates exist", () => {
+    const rows: unknown[][] = [
+      ["Code", "BU_1"],
+      ["x", "SOMETHING"],
+    ]
+    expect(findBuColumn(rows, aliasMap)).toBe(-1)
+  })
+
+  it("splits the budget shape into 5 blocks via BU_3 (AJE skipped as elimination)", () => {
+    const ws = XLSX.utils.aoa_to_sheet(budgetShapeRows)
+    const wb = wbWith("PLF Budget 2026", ws)
+    const res = applyBuColumnSplit(wb, XLSX, {
+      sheetName: "PLF Budget 2026",
+      dataType: "PLF",
+      planKind: "budget",
+      aliasMap,
+    })
+    expect(res.applied).toBe(true)
+    expect(res.sheetMapEntries.map((e) => e.entityCode)).toEqual([
+      "AZSEKER-EDEN",
+      "AZSEKER", // AZSF alias → holding
+      "AZSEKER-PROMALT",
+      "AZSEKER-CPC",
+    ])
+    expect(res.sheetMapEntries.every((e) => e.planKind === "budget")).toBe(true)
+    expect(res.mapping).toContainEqual({
+      sheetName: "PLF Budget 2026",
+      entityCode: null,
+      buValue: "AJE",
+      rowCount: 4,
+      action: "skip",
+      reason: "elimination",
+    })
+    expect(wb.SheetNames).not.toContain("PLF Budget 2026")
+    expect(wb.SheetNames).toContain("PLF Budget 2026 [AZSEKER-CPC]")
+  })
 })
 
 describe("splitByBuColumn", () => {
