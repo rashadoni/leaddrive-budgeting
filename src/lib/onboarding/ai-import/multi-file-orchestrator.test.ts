@@ -1819,3 +1819,73 @@ describe("runMultiFileImport", () => {
     expect(bs?.entityCode).toBe("AZSEKER")
   })
 })
+
+describe("runMultiFileImport — recompute targets from cross-entity registers", () => {
+  // 2026-07-15 — a court-case / audit / counterparty register is ONE sheet
+  // naming several companies, so its classification carries entityCode=null
+  // and the entity-based target loop found nothing: the facts committed but
+  // no indicator was recomputed, and the terminal showed nothing until an
+  // unrelated financial import happened to fire one. Adapters that resolve
+  // companies per row now report them via `touchedCompanyCodes`.
+  it("recomputes the companies a register adapter resolved itself", async () => {
+    const prisma = stubPrisma({
+      companies: [
+        { id: "c1", code: "AZSEKER-CPC" },
+        { id: "c2", code: "AZSEKER-EDEN" },
+      ],
+    })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "Court cases",
+          dataType: "LEGAL_CASES",
+          entityCode: null, // cross-entity register — the whole point
+          confidence: 0.95,
+          reasoning: "court register",
+        },
+      ],
+    ])
+    const registerHandler: AdapterHandler = async () =>
+      ({
+        summary: "18 disputes",
+        itemCount: 18,
+        warnings: [],
+        applyToDb: vi.fn(async () => ({
+          rowsInserted: 18,
+          touchedCompanyCodes: ["AZSEKER-CPC", "AZSEKER-EDEN"],
+        })),
+      }) as unknown as Awaited<ReturnType<AdapterHandler>>
+
+    const result = await runMultiFileImport(
+      {
+        files: [
+          {
+            filename: "Açıq məhkəmə mübahisələri.xlsx",
+            workbook: fakeWorkbook("Court cases"),
+          },
+        ],
+        organizationId: "org1",
+        year: 2026,
+      } as MultiFileImportInput,
+      {
+        prisma,
+        anthropicClient: client,
+        model: "claude-test",
+        registry: buildRegistryWith({ LEGAL_CASES: registerHandler }),
+        XLSX: fakeXLSX,
+      },
+    )
+
+    expect(result.perGroup[0].fileType).toBe("compliance-register")
+    expect(result.perGroup[0].committed).toBe(true)
+    // The register's companies must reach the recompute pass — pre-fix this
+    // resolved to zero targets and every compliance cell stayed dark.
+    expect(prisma.company.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          code: { in: expect.arrayContaining(["AZSEKER-CPC", "AZSEKER-EDEN"]) },
+        }),
+      }),
+    )
+  })
+})

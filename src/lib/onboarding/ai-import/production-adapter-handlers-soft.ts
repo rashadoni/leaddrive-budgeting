@@ -947,7 +947,18 @@ export function makeCounterpartyHandler(
             period,
           })),
         })
-        return { rowsInserted: rows.length }
+        // Report the companies resolved per block so the orchestrator
+        // recomputes them — a cross-entity register has no sheet entityCode.
+        return {
+          rowsInserted: rows.length,
+          touchedCompanyCodes: [
+            ...new Set(
+              parsed.blocks
+                .map((b) => b.entityCode)
+                .filter((c): c is string => !!c),
+            ),
+          ],
+        }
       },
     }
   }
@@ -1041,7 +1052,12 @@ export function makeLegalCasesHandler(
           })
           rows += COURT_DISPUTE_METRICS.length + 1 // +1 canonical LEGAL_CASES_ACTIVE
         }
-        return { rowsInserted: rows }
+        // Report the companies resolved per row so the orchestrator
+        // recomputes them — a cross-entity register has no sheet entityCode.
+        return {
+          rowsInserted: rows,
+          touchedCompanyCodes: entries.map((e) => e.code),
+        }
       },
     }
   }
@@ -1136,7 +1152,12 @@ export function makeAuditFindingsHandler(
           })
           rows += AUDIT_FINDING_METRICS.length + 2 // +2 canonical AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN
         }
-        return { rowsInserted: rows }
+        // Report the companies resolved per row so the orchestrator
+        // recomputes them — a cross-entity register has no sheet entityCode.
+        return {
+          rowsInserted: rows,
+          touchedCompanyCodes: entries.map((e) => e.code),
+        }
       },
     }
   }
@@ -1187,7 +1208,10 @@ export function makeRiskRegisterHandler(
             } as unknown as Prisma.InputJsonValue,
           },
         })
-        return { rowsInserted: parsed.risks.length }
+        return {
+          rowsInserted: parsed.risks.length,
+          touchedCompanyCodes: [target],
+        }
       },
     }
   }

@@ -106,7 +106,22 @@ export interface AdapterRunResult {
      * sheet either commits or rolls back atomically.
      */
     tx: Prisma.TransactionClient,
-  ) => Promise<{ rowsInserted: number }>
+  ) => Promise<{
+    rowsInserted: number
+    /**
+     * Company codes this adapter wrote to, when it resolves them ITSELF
+     * (per-row) rather than from the sheet's single `entityCode`. The
+     * orchestrator unions these into the recompute pass.
+     *
+     * Without it a cross-entity register (court cases / audit findings /
+     * counterparty — one sheet naming several companies, so entityCode is
+     * null) reported ZERO touched companies: the facts committed but no
+     * indicator was recomputed, so the terminal showed nothing until an
+     * unrelated financial import happened to fire a recompute. Found
+     * 2026-07-15 loading the client's court-disputes file.
+     */
+    touchedCompanyCodes?: string[]
+  }>
 }
 
 export type AdapterHandler = (

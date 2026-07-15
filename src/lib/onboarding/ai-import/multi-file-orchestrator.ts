@@ -1340,12 +1340,17 @@ export async function runMultiFileImport(
     let totalRowsInserted = 0
     let postReconciliation: UniversalReconciliationReport = dryReconciliation
     let groupCommitError: string | null = null
+    /** Company codes the adapters resolved themselves (cross-entity registers). */
+    const adapterTouchedCodes = new Set<string>()
     try {
       await deps.prisma.$transaction(async (tx) => {
         for (const r of groupRecords) {
           if (!r.adapterResult) continue
           const applied = await r.adapterResult.applyToDb(tx)
           totalRowsInserted += applied.rowsInserted
+          for (const code of applied.touchedCompanyCodes ?? []) {
+            adapterTouchedCodes.add(code)
+          }
         }
 
         // Companies that just received data are no longer "awaiting data" —
@@ -1417,6 +1422,11 @@ export async function runMultiFileImport(
           touchedCompanies.add(ec)
         }
       }
+      // Cross-entity registers (court cases / audit findings / counterparty)
+      // carry entityCode=null and resolve their companies per row, so the
+      // loop above finds nothing. Union what the adapters reported writing —
+      // otherwise their facts commit but no indicator is ever recomputed.
+      for (const code of adapterTouchedCodes) touchedCompanies.add(code)
     } catch (err) {
       groupCommitError =
         err instanceof Error ? err.message : String(err)
