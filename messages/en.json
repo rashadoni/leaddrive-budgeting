@@ -2013,7 +2013,10 @@
       "sparklineTrendAriaLabel": "{indCode} 12-month trend for {coCode}",
       "sparklineTrendAriaLabelSelf": "{indCode} 12-month trend",
       "scenarioBanner": "⚡ SCENARIO: {label}",
-      "revertToBase": "Return to baseline data"
+      "revertToBase": "Return to baseline data",
+      "provisionalBadgeAll": "LEGACY · NOT DECISION-GRADE",
+      "provisionalBadgeSome": "LEGACY · {count} OF {total} NOT DECISION-GRADE",
+      "provisionalBadgeTooltip": "These values are not reconciled to source and carry no lineage, so they are not certified for decisions. The numbers are unchanged — only the claim about them is. Verify against the source before acting."
     },
     "benchmarkBand": {
       "title": "Target range (benchmark)",

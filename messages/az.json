@@ -2013,7 +2013,10 @@
       "sparklineTrendAriaLabel": "{indCode} {coCode} üçün 12 aylıq trend",
       "sparklineTrendAriaLabelSelf": "{indCode} 12 aylıq trend",
       "scenarioBanner": "⚡ SSENARİ: {label}",
-      "revertToBase": "Baza məlumatlarına qayıt"
+      "revertToBase": "Baza məlumatlarına qayıt",
+      "provisionalBadgeAll": "LEGACY · QƏRAR ÜÇÜN DEYİL",
+      "provisionalBadgeSome": "LEGACY · {total} DƏYƏRDƏN {count} QƏRAR ÜÇÜN DEYİL",
+      "provisionalBadgeTooltip": "Bu dəyərlər mənbə ilə üzləşdirilməyib və izlənilə bilmir, ona görə də qərar qəbulu üçün sertifikatlaşdırılmayıb. Rəqəmlər dəyişməyib — yalnız onlar haqqında iddia dəyişib. Hərəkət etməzdən əvvəl mənbə ilə yoxlayın."
     },
     "benchmarkBand": {
       "title": "Hədəf aralığı (benchmark)",

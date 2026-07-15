@@ -49,6 +49,7 @@ export function HeatMap({ period }: Props) {
     loading, error, refetchMatrix, companyTree, searchInputRef, mounted,
     setMounted, dbSummary, setDbSummary, activePeriod, alertThresholds,
     setAlertThresholds, refetchTimerRef, cellMap, compositeByCompany,
+    provisionalSummary,
     filteredCompanies, summary, activeCompanyIndustries, activeCompanyIndustry,
     rawIndicators, indicators, indicatorsWithAnyData, displayIndicators,
     hiddenUnknownCount, indicatorQuery, setIndicatorQuery, indicatorSearchInputRef,
@@ -108,7 +109,14 @@ export function HeatMap({ period }: Props) {
 
   return (
     <div className="font-mono text-[10px] text-gray-300 w-full h-full flex flex-col">
-      <div className="flex items-center justify-between mb-2 text-[10px] text-gray-500 shrink-0 gap-2">
+      {/* Phase 10 A5 — `flex-wrap` added with the Legacy/Provisional badge.
+          Every child here is `shrink-0`, so without wrapping the badge was
+          clipped at the panel's right edge (verified in the visual diff: it
+          rendered "⚠ LEGACY · NOT" with "DECISION-GRADE" cut off). A truncated
+          trust warning is worse than none. RU and AZ strings are longer than
+          EN, so wrapping — not a shorter label — is the fix that holds in
+          every locale. */}
+      <div className="flex flex-wrap items-center justify-between mb-2 text-[10px] text-gray-500 shrink-0 gap-2">
         <span className="shrink-0 flex items-center gap-1" title={t('hints.heatMap')}>
           {t('panels.heatMapShort')} · <span className="text-gray-300">{renderedPeriod}</span>
           {activeLock && (
@@ -266,6 +274,34 @@ export function HeatMap({ period }: Props) {
             Re-renders every 30s without re-fetching the matrix. */}
         {data?.lastComputedAt && (
           <FreshnessLabel iso={data.lastComputedAt} />
+        )}
+        {/* Phase 10 A5 — Legacy/Provisional posture, stated once for the
+            surface instead of on 498 individual cells. Renders whenever a
+            coloured cell on this matrix is not decision-grade; today that is
+            every one of them, because nothing is reconciled to source.
+            Colour-blind safe: the meaning is carried by the text, not the
+            amber. Cell values and cell colours are unchanged — this badge
+            withdraws a claim, it does not restate a number. */}
+        {/* Native `title` rather than a Radix Tooltip: this badge row sits
+            outside the TooltipProvider that wraps the matrix below, and the
+            neighbouring scenario badge already uses `title` for the same
+            reason. */}
+        {provisionalSummary.hasProvisional && (
+          <span
+            data-testid="heatmap-provisional-badge"
+            title={t('heatMap.provisionalBadgeTooltip')}
+            className="inline-flex items-center gap-1 shrink-0 px-2 py-0.5 rounded border border-[#FFB800]/50 bg-[#FFB800]/10 text-[#FFB800] text-[9px] uppercase tracking-wider font-semibold cursor-help"
+          >
+            <span aria-hidden="true">⚠</span>
+            <span>
+              {provisionalSummary.allProvisional
+                ? t('heatMap.provisionalBadgeAll')
+                : t('heatMap.provisionalBadgeSome', {
+                    count: provisionalSummary.provisional,
+                    total: provisionalSummary.coloured,
+                  })}
+            </span>
+          </span>
         )}
         {/* Phase 7.N — scenario mode badge */}
         {activeScenarioLabel && (

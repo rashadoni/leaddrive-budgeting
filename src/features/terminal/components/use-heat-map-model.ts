@@ -20,6 +20,7 @@ import {
   isAggregateRollup,
   type HeatMapCell,
 } from '@/lib/risk/heatmap-matrix';
+import { summarizeSurfaceGrade } from '@/lib/risk/decision-grade';
 import { useDriftHealth } from '../hooks/use-drift-health';
 import { useEventStream } from '@/lib/events/use-event-stream';
 import {
@@ -292,6 +293,29 @@ export function useHeatMapModel(period: string | undefined) {
 
   const cellMap = useMemo(
     () => (data ? buildCellMap(data.cells) : new Map<string, HeatMapCell>()),
+    [data],
+  );
+
+  // Phase 10 A5 — surface-level Legacy/Provisional posture.
+  //
+  // `requireLineage: true` is deliberate and is what makes this stable: no
+  // IndicatorValue in this product carries `lastReconciledAt` (0 of 1,269,
+  // measured 2026-07-16 — only audit-company.cjs writes it and it has never
+  // run over this data). So the verdict does not depend on the clock or on
+  // which cells happen to be loaded, and the badge states one true thing:
+  // nothing on this surface is reconciled, therefore nothing on it is
+  // certified for a decision.
+  //
+  // Deliberately NOT applied per cell: with 498/498 coloured cells untraced,
+  // per-cell demotion would grey the whole matrix — a cutover, not the
+  // "smallest protective presentation" of handoff §11, and it would break
+  // "keep the current Expert Matrix available" (§4). Cell colours are
+  // untouched here; the claim about them is what changed.
+  const provisionalSummary = useMemo(
+    () =>
+      summarizeSurfaceGrade(data?.cells ?? [], Date.now(), {
+        requireLineage: true,
+      }),
     [data],
   );
 
@@ -571,6 +595,7 @@ export function useHeatMapModel(period: string | undefined) {
     loading, error, refetchMatrix, companyTree, searchInputRef, mounted,
     setMounted, dbSummary, setDbSummary, activePeriod, alertThresholds,
     setAlertThresholds, refetchTimerRef, cellMap, compositeByCompany,
+    provisionalSummary,
     filteredCompanies, summary, activeCompanyIndustries, activeCompanyIndustry,
     rawIndicators, indicators, indicatorsWithAnyData, displayIndicators,
     hiddenUnknownCount, indicatorQuery, setIndicatorQuery, indicatorSearchInputRef,

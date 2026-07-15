@@ -78,8 +78,8 @@ Derived strictly from Stages A-E. No invented scope.
 | A2 | `DESIGN.md` from the approved UI/UX spec | implemented — owner-reviewed 2026-07-16, gaps recorded in §5 |
 | A3 | ADRs: Trust Core, Experience Shell | implemented — owner-reviewed 2026-07-16, T-7 corrected, gaps recorded in §5 |
 | A4 | Server-resolved operational feature flags (design + resolver) | implemented + tested (unit), not reviewed |
-| A5 | Minimal Legacy/Provisional presentation — stale/untraced values must not read decision-grade; **no financial value changes** | not started |
-| A6 | Focused tests proving stale/untraced cannot look decision-grade | not started |
+| A5 | Minimal Legacy/Provisional presentation — stale/untraced values must not read decision-grade; **no financial value changes** | implemented + tested + visually verified, not reviewed — surface badge only; per-cell demotion is an owner decision (§7) |
+| A6 | Focused tests proving stale/untraced cannot look decision-grade | implemented + tested (27 unit tests), not reviewed |
 
 *Gate: Stage A needs review before Stage B or any modern root UI (§5).*
 
@@ -395,3 +395,150 @@ with a runtime surface. **Not started in this slice, and not to be started
 without owner authorization.** Note §5.3's caveat: A5's `stale/untraced` rule
 will not catch the EDEN per-ha observations, which are fresh and traceable and
 withheld for unapproved methodology.
+
+---
+
+## 7. Slice A-PR3 — Legacy/Provisional presentation, A5 + A6 (2026-07-16)
+
+**Status: `implemented` + `tested` + `visually verified`. Not reviewed.
+NOT `reconciled` and NOT `methodology-approved` — no financial control was
+exercised, because no financial value changed.**
+
+### Outcome
+
+- **Behavior changed:** the Expert HeatMap header now carries a
+  `⚠ LEGACY · NOT DECISION-GRADE` badge whenever a coloured cell on the surface
+  is not decision-grade — today, every one of them. Cell colours, cell values
+  and layout are otherwise untouched.
+- **Who benefits:** anyone reading a green cell as certified. The surface no
+  longer *implicitly* claims these numbers are decision-grade. The audit's
+  headline finding was data trust 4.5/10; this withdraws the claim, it does not
+  restate a number.
+- **Behind a flag:** no. It is a protective label and is on for everyone —
+  which is the point of Stage A. It has no dependency on the A4 flags.
+- **Stage:** Stage A protective work; `provisional` posture by construction.
+
+### The measurement that drove the design
+
+Read-only SQL, local dev DB, 2026-07-16:
+
+| Fact | Value |
+|---|---:|
+| `IndicatorValue` rows | 1,269 |
+| rows with `lastReconciledAt` | **0** |
+| coloured cells (green/amber/red) | 498 |
+| coloured **and** never reconciled | **498 (100%)** |
+| coloured **and** >30 days old | 294 (59%) |
+
+`lastReconciledAt` is written only by `scripts/audit-company.cjs`, which has
+never run over this data. So the ADR's rule — no lineage → no decision-grade
+colour — applied per cell today demotes **the entire coloured matrix**. That is
+a cutover, not the "smallest protective presentation" of handoff §11, and it
+collides with §4 "keep the current Expert Matrix available" and with the risk
+register's "simplification frustrates power users".
+
+**Decision taken (safe, reversible, recorded):** state the posture **once at the
+surface**; leave cells alone. With 0 lineage, one badge says exactly what 498
+markers would say, and costs no legibility. **Per-cell demotion is an owner
+decision, not a preference** — the evidence is the 0/1269.
+
+### Files
+
+- `src/lib/risk/decision-grade.ts` (new — the gate)
+- `src/lib/risk/decision-grade.test.ts` (new — 27 tests, A6)
+- `src/features/terminal/components/use-heat-map-model.ts` (surface summary memo)
+- `src/features/terminal/components/HeatMap.tsx` (badge + `flex-wrap`)
+- `messages/en.json`, `messages/ru.json`, `messages/az.json` (3 keys × 3 locales)
+- `e2e/smoke/visual-baseline.spec.ts-snapshots/terminal-heatmap-chromium-darwin.png`
+  — **snapshot, listed separately as the handoff requires**
+- `docs/ROADMAP.md`, this file
+- **No migrations. No schema. No financial module touched.**
+
+### Design notes
+
+- The gate **can only withhold** decision-grade, never grant it, and never reads
+  `value` — a test asserts the cell is byte-identical after classification.
+- Fails closed on absent/unparseable `computedAt`: absence of evidence is not
+  evidence of freshness.
+- `requireLineage` defaults **false** in the gate, deliberately: with 0/1269
+  rows carrying lineage, a default-on rule would grey the product the instant
+  the module gained a caller. The HeatMap badge passes `true` explicitly —
+  which is also what makes it deterministic (0 lineage ⇒ `allProvisional` is
+  always true, independent of the clock and of which cells loaded).
+- `DEFAULT_STALE_AFTER_MS` = 30 days is **not invented**: it is the window
+  already shipped in `trust-status.ts` (Phase L6). It is a parameter, not a
+  constant, so approving a different window is a call-site change.
+
+### Evidence — commands actually run this turn
+
+| Command | Result |
+|---|---|
+| `vitest run src/lib/risk/decision-grade.test.ts` | 27/27 passed |
+| `vitest run HeatMap.test.tsx` | 5/5 passed (after the Tooltip fix below) |
+| `npx tsc --noEmit` | exit 0 |
+| `playwright test visual-baseline.spec.ts` | **exit 0** against the updated baseline |
+| read-only `psql` over `indicator_values` | the table above |
+
+### Two defects I introduced, found by looking rather than assuming
+
+1. **The badge's Radix `Tooltip` sat outside the `TooltipProvider`** — it threw
+   `Tooltip must be used within TooltipProvider` on every render and hung 5
+   HeatMap tests at 90s each. The 90s timeouts looked like slowness; the stderr
+   said otherwise. Fixed with a native `title`, matching the neighbouring
+   scenario badge, which sits outside the provider for the same reason.
+2. **The badge was clipped**: the visual diff showed it rendering
+   `⚠ LEGACY · NOT` with `DECISION-GRADE` cut off at the panel edge. Every child
+   of that header row is `shrink-0`, so it overflowed. A truncated trust warning
+   is worse than none. Fixed with `flex-wrap` rather than a shorter label,
+   because RU and AZ are longer than EN and would clip again.
+
+### Visual verification
+
+`BASELINE UPDATE: Phase 10 A5 — Legacy/Provisional badge added to the HeatMap
+header; header row wraps so the badge is not clipped.`
+
+Only `terminal-heatmap-chromium-darwin.png` was updated, after inspecting
+expected/actual/diff. The new PNG was then inspected directly: the badge reads
+`⚠ LEGACY · NOT DECISION-GRADE` in full, on its own wrapped line between the
+HEATMAP row and the year chips; the counts, filters, masked freshness label and
+matrix are unmoved.
+
+**`visual-baseline-board-deck` also fails — and it is not this slice.** Proven,
+not asserted: this slice's tracked files were stashed **path-scoped** (no
+protected file touched) and the spec re-run on a clean tree, where it fails
+identically. Its baseline was deliberately **not** updated — 05 §8.3 forbids
+accepting unrelated snapshot changes. It matches the drift already recorded in
+the roadmap for 2026-07-15 (local data change from the workbook import).
+
+### Limits — what is NOT done
+
+- **Not reviewed.** Stage A's gate.
+- **Per-cell demotion not shipped.** The gate supports it; the surface does not
+  use it. Owner decision, evidence above.
+- **The 30-day window is inherited, not approved.** Recorded as an owner
+  question. It currently affects nothing on screen: the badge uses lineage.
+- **The badge is a claim-withdrawal, not a full protective treatment.** A reader
+  who ignores the header still sees a confident green cell. Closing that is
+  per-cell demotion, i.e. the owner decision above.
+- **No component test asserts the badge renders** — `HeatMap.test.tsx` costs
+  ~90s/test and the badge is covered by the visual baseline plus the gate's 27
+  unit tests. A `data-testid="heatmap-provisional-badge"` is in place for a
+  cheap E2E assertion when Stage C adds stable selectors.
+- **The terminal-heatmap visual baseline is intermittently non-deterministic**
+  against live local data: with identical code, one run diffed 1,598 px and the
+  next exited 0. Pre-existing and independent of this slice, but it means the
+  gate cannot yet be trusted as a hard blocker. Worth a dedicated fix (mask the
+  live counts, or seed deterministic data) before Stage E leans on it.
+
+### Rollback
+
+Revert the six source/message files and restore the previous baseline PNG; the
+gate module is then unimported and inert. No data, schema or configuration to
+undo.
+
+### Next task
+
+Stage A's implementation items (A1–A6) are now all implemented; **A4, A5 and A6
+have not been reviewed.** Handoff §5 gates Stage B and any modern root UI on
+Stage A review. Per the ADRs, Stage B's first item (B1 canonical statement mart)
+additionally needs owner decisions T-1/T-5 that remain open.

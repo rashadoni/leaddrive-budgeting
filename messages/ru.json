@@ -2013,7 +2013,10 @@
       "sparklineTrendAriaLabel": "{indCode} тренд за 12 месяцев для {coCode}",
       "sparklineTrendAriaLabelSelf": "{indCode} тренд за 12 месяцев",
       "scenarioBanner": "⚡ СЦЕНАРИЙ: {label}",
-      "revertToBase": "Вернуться к базовым данным"
+      "revertToBase": "Вернуться к базовым данным",
+      "provisionalBadgeAll": "LEGACY · НЕ ДЛЯ РЕШЕНИЙ",
+      "provisionalBadgeSome": "LEGACY · {count} ИЗ {total} НЕ ДЛЯ РЕШЕНИЙ",
+      "provisionalBadgeTooltip": "Эти значения не сверены с источником и не имеют прослеживаемости, поэтому они не сертифицированы для принятия решений. Сами числа не изменились — изменилось лишь утверждение о них. Сверьтесь с источником перед действием."
     },
     "benchmarkBand": {
       "title": "Целевой диапазон (планка)",
