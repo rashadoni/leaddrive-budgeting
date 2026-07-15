@@ -724,3 +724,113 @@ pure, building on parsePeriodKey), or the deferred DataRevision persistence
 slice (additive model + RLS policy, reviewed). Do not start B1 until T-1
 is answered.
 ```
+
+---
+
+## 10. Slice B-PR2 — exact period invalidation, B3 (2026-07-16)
+
+**Status: `implemented` + `tested`. Not reviewed. Not wired — pure module, no
+caller, nothing to verify at runtime.**
+
+### Outcome
+
+- **Behavior changed for users: none.** `invalidatedPeriodKeys(changedMonth)` +
+  `periodContainsMonth()`, both pure. Commit `82260568`.
+- **Who benefits:** B5 (lineage) and the recompute pipeline. §4.4's requirement
+  — a changed monthly fact invalidates its month, quarter, YTDs, FY and LTM
+  windows — is now a decidable function instead of a paragraph.
+- **Files.** `src/lib/risk/period-invalidation.ts` + `.test.ts` (44 tests).
+  No migrations, no schema, no UI, no snapshots.
+
+### Design decisions worth review
+
+1. **Over-invalidation is treated as a defect, not a safe default.** `2026-YTD-04`
+   is not invalidated by a May change. "Just recompute the year" would be
+   simpler and wrong: §15 flags shadow compute doubling load.
+2. **LTM crosses the fiscal year.** A change to `2026-05` reaches `2027-LTM-04`.
+   Any invalidation scoped to the changed month's year silently misses it.
+3. **Rollups/composites/alerts are out of scope** (§4.4's remaining bullets).
+   They depend on org structure and are not derivable from a month string. The
+   writer that consumes this list owns them — recorded so the gap is visible
+   rather than assumed done.
+
+### Evidence — run this turn
+
+| Command | Result |
+|---|---|
+| `vitest run period-invalidation.test.ts` | 44/44 passed |
+| `npx tsc --noEmit` | exit 0 |
+| `npx vitest run --reporter=dot` | **exit 0** — 506 files, 6,576 passed, 19 skipped |
+
+No E2E/visual gate: no runtime surface, no layout file.
+
+### Limits
+
+- Not reviewed; Stage A's own review (A4-A6) is still outstanding.
+- **No caller.** Nothing in the recompute pipeline uses this yet; wiring it into
+  `recompute-trigger.ts` is a separate slice with a real runtime surface and a
+  real regression risk, and should not be bolted onto a contract commit.
+- §4.4's queue-behaviour clauses (duplicate messages, failure/retry, superseded
+  revision, partial completion) are only *addressable* now — the fan-out is
+  deterministic and comparable. They are not *tested end-to-end*, because there
+  is no queue integration in this slice.
+
+---
+
+## 11. Checkpoint (2026-07-16, session end)
+
+### Commits this session, all path-scoped, no protected file ever staged
+
+| SHA | Slice |
+|---|---|
+| `66722a02` | A4 — server-resolved rollout flags |
+| `a613c276` | A5+A6 — decision-grade gate + Legacy badge (BASELINE UPDATE) |
+| `7144256e` | Stage A review + checkpoint |
+| `a6231ef3` | B2a — PeriodContext contract |
+| `0ccaa21e` | B2b — DataRevision contract |
+| `0b504a8f` | B2 roadmap/status |
+| `82260568` | B3 — exact period invalidation |
+
+- **Uncommitted work: none** beyond this entry. All 8 protected paths remain
+  dirty and untouched, exactly as at session start.
+- **Checks at session end.** tsc 0 · vitest 506 files / 6,576 passed / 0 failed ·
+  prisma validate ok · build 0 · terminal visual-baseline exit 0.
+
+### State
+
+Stage A implemented (A1-A6); **A4-A6 not reviewed**. Stage B: B2 and B3
+implemented as pure contracts, **both unwired by design**. Everything added this
+session is inert unless imported — the sole exception is A5's badge, which is
+live for every user by intent.
+
+### Blockers
+
+- **Human review of A4-A6** — handoff §5's gate.
+- **T-1** (reconciliation tolerance) blocks B1: without it there is no pass/fail
+  line and any `reconciled` claim would be invented.
+- **T-5** (25-35 pilot KPI list) blocks B4. §9 forbids an agent choosing it.
+- **E-1** (pilot org list) blocks any V2 enablement. Allowlist ships empty = off.
+
+### Known debt surfaced, not fixed
+
+- The terminal-heatmap visual baseline is intermittently non-deterministic
+  against live local data (identical code → 1,598-px diff, then exit 0). Mask
+  the live counts or seed deterministic data before Stage E treats it as a
+  blocker.
+- `visual-baseline-board-deck` fails on a clean tree (proven by path-scoped
+  stash). Pre-existing, untouched, and still unexplained.
+- The `DataRevision` table is unbuilt: sibling tables carry RLS policies and
+  adding one without them is a security decision, not a mechanical migration.
+
+**Resume command:**
+
+```text
+Continue Risk Terminal 2.0 from IMPLEMENTATION-STATUS.md §11. B2 and B3
+contracts exist but are unwired. Implement exactly one slice, in this
+preference order:
+1. DataRevision persistence — additive Prisma model + RLS policy matching
+   the sibling tables (migrate status is clean, no drift).
+2. Wire invalidatedPeriodKeys() into the recompute trigger — real runtime
+   surface, needs regression coverage.
+Do not start B1 until owner decision T-1 is answered, or B4 until T-5 is.
+```
