@@ -165,11 +165,12 @@ describe("pnlSectionFromCode — SAP + Workbook imported codes", () => {
 })
 
 describe("revenueContribution — the two sign conventions", () => {
-  // The FO budget's other-operating income: subsidies imported as an
-  // expense-typed row whose income sits NEGATIVE (cost-as-positive
-  // convention). Before this helper the 13.45M vanished from the P&L and
-  // Net Profit read −10.6M against the workbook's own +3.83M.
-  it("negates expense-typed income so subsidies land as revenue", () => {
+  // `storedAs` is BudgetLine.lineType (the importer's sign convention), NOT
+  // ChartOfAccount.accountType. The FO subsidies are accountType=revenue but
+  // lineType=expense, so their income sits NEGATIVE; reading them as-is
+  // SUBTRACTED 13.45M and drove the 2026 budget's Net Profit to −10.6M
+  // against the workbook's own +3.83M.
+  it("negates income stored under the cost convention (lineType=expense)", () => {
     expect(revenueContribution("PLF.07.02.02", "expense", -3_570_000)).toBe(3_570_000)
     expect(revenueContribution("PLF.07.01.01", "expense", -300_000)).toBe(300_000)
   })

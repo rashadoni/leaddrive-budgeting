@@ -162,24 +162,25 @@ export function pnlSectionFromCode(
 /**
  * Signed revenue contribution of a P&L row whose section is `revenue`.
  *
- * Two conventions meet here. A row typed `revenue` stores income POSITIVE.
- * A row typed `expense`/`cogs` stores cost POSITIVE — so when such a row is
- * classified into the revenue section (other-operating income: subsidies,
- * interest, PLF.07.01/.02), its income sits there as a NEGATIVE amount and
- * must be negated to become revenue.
- *
- * Without this the FO budget lost 13.45M of subsidies from the P&L entirely
- * (they matched neither the revenue filter, which keyed off accountType, nor
- * the cost buckets, which only take expense-typed rows) and Net Profit read
- * −10.6M against the workbook's own +3.83M (2026-07-15).
+ * `storedAs` MUST be the row's **BudgetLine.lineType** — the importer's own
+ * classification, which is what decided the sign at write time (it flips
+ * Excel's sign for expense/cogs rows so cost reads positive). It is NOT the
+ * ChartOfAccount.accountType: for other-operating income the two DISAGREE by
+ * design — the FO workbook's subsidies + interest (PLF.07.01/.02) carry
+ * accountType `revenue` (semantically right) while lineType is `expense`, so
+ * their income sits in the DB NEGATIVE. Keying on accountType therefore reads
+ * income as-is and SUBTRACTS it: 13.45M of subsidies turned the 2026 budget's
+ * Net Profit into −10.6M against the workbook's own +3.83M (2026-07-15).
+ * Verified on prod that PLF.07.* are the only codes where the two fields
+ * disagree, so this rule fires exactly on income-under-the-cost-convention.
  *
  * Contra-revenue (returns / discounts) flips once more, as it always has.
  */
 export function revenueContribution(
   code: string,
-  accountType: string | null | undefined,
+  storedAs: string | null | undefined,
   amount: number,
 ): number {
-  const asRevenue = accountType === "revenue" ? amount : -amount
+  const asRevenue = storedAs === "revenue" ? amount : -amount
   return isContraRevenueCode(code) ? -asRevenue : asRevenue
 }

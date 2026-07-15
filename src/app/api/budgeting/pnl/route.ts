@@ -204,7 +204,7 @@ export async function GET(req: NextRequest) {
 
   // Build P&L rows grouped by account code + department name
   // This ensures products sharing the same SAP code (e.g. 601-01-02) appear as separate rows
-  const accountMap = new Map<string, { code: string; name: string; type: string; sortOrder: number; monthlyAmounts: Record<number, number> }>()
+  const accountMap = new Map<string, { code: string; name: string; type: string; storedAs: string; sortOrder: number; monthlyAmounts: Record<number, number> }>()
 
   type BL = BudgetLineRow
   budgetLines.forEach((bl: BL) => {
@@ -242,6 +242,10 @@ export async function GET(req: NextRequest) {
         code,
         name,
         type: accountType,
+        // Sign convention the importer wrote this row under — see
+        // `revenueContribution`. Deliberately NOT `accountType`: other
+        // operating income is accountType=revenue but stored lineType=expense.
+        storedAs: bl.lineType,
         sortOrder: bl.sortOrder,
         monthlyAmounts: {},
       })
@@ -318,7 +322,7 @@ export async function GET(req: NextRequest) {
     for (let m = 1; m <= 12; m++) {
       const val = acct.monthlyAmounts[m] || 0
       if (section === "revenue") {
-        monthlyRevenue[m] += revenueContribution(acct.code, acct.type, val)
+        monthlyRevenue[m] += revenueContribution(acct.code, acct.storedAs, val)
       } else if (section === "cogs") {
         monthlyCogs[m] -= val // negative for P&L subtraction
       }
@@ -534,7 +538,7 @@ function aggregateBudgetLinesForComparison(lines: BudgetLineRow[]): PnlLineCompa
     if (section === "revenue") {
       // 2026-07-15 — expense-typed income (subsidies/interest) stores its
       // income NEGATIVE; revenueContribution reconciles both conventions.
-      const signedAmount = revenueContribution(code, line.account.accountType, amount)
+      const signedAmount = revenueContribution(code, line.lineType, amount)
       buckets.monthlyRevenue[month] += signedAmount
       buckets.sectionTotals.revenue += signedAmount
     } else if (section === "cogs") {
