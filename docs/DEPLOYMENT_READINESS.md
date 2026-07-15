@@ -33,6 +33,10 @@ rotation cadence, and what breaks if it's wrong.
 | `QUEUE_BACKEND` | NO (default `inprocess`) | `src/lib/queue/feature-flag.ts` | SRE | Never | `bullmq` without a running worker → recompute jobs never drain |
 | `REDIS_URL` | NO (only if `QUEUE_BACKEND=bullmq`) | `src/lib/queue/redis-client.ts` | SRE | On Redis credential change | BullMQ worker can't connect; jobs queue with no consumer |
 | `LOG_LEVEL` | NO (default `info`) | `src/lib/log.ts` | SRE | Never | Wrong verbosity only |
+| `RISK_TERMINAL_V2_ENABLED` | NO (default off) | `src/features/terminal/lib/terminal-experience-flag.ts` | Product owner | Never | Only literal `true` enables; still needs allowlist membership. Fails closed |
+| `RISK_TERMINAL_V2_ORG_ALLOWLIST` | NO (default empty = nobody) | `src/features/terminal/lib/terminal-experience-flag.ts` | Product owner (decision E-1) | Per rollout stage | Exact, case-sensitive org IDs. Empty is a valid disabled state, **not** a wildcard. A typo fails closed (org stays on Expert) |
+| `RISK_TERMINAL_V2_DEFAULT_VIEW` | NO (default `expert`) | `src/features/terminal/lib/terminal-experience-flag.ts` | Product owner | Per rollout stage | Unknown value → `expert`. Ignored for orgs that aren't V2-enabled |
+| `RISK_TERMINAL_V2_AI_AUTORUN` | NO (default off) | `src/features/terminal/lib/terminal-experience-flag.ts` | Product owner | Never | `true` permits paid AI on terminal entry (spends money without user action). Subordinate to V2 being enabled |
 | `POSTGRES_USER` | YES (deploy) | `docker-compose.yml` | DBA | Annual or on incident | DB container won't init |
 | `POSTGRES_PASSWORD` | YES (deploy) | `docker-compose.yml` | DBA | Annual or on incident | App can't connect; downstream of `DATABASE_URL` |
 | `POSTGRES_DB` | YES (deploy) | `docker-compose.yml` | DBA | Never | DB container won't init |

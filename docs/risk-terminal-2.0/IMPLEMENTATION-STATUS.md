@@ -77,7 +77,7 @@ Derived strictly from Stages A-E. No invented scope.
 | A1 | Add Phase 10 section to `docs/ROADMAP.md` (only items actually started) | implemented — owner-reviewed 2026-07-16 |
 | A2 | `DESIGN.md` from the approved UI/UX spec | implemented — owner-reviewed 2026-07-16, gaps recorded in §5 |
 | A3 | ADRs: Trust Core, Experience Shell | implemented — owner-reviewed 2026-07-16, T-7 corrected, gaps recorded in §5 |
-| A4 | Server-resolved operational feature flags (design + resolver) | not started |
+| A4 | Server-resolved operational feature flags (design + resolver) | implemented + tested (unit), not reviewed |
 | A5 | Minimal Legacy/Provisional presentation — stale/untraced values must not read decision-grade; **no financial value changes** | not started |
 | A6 | Focused tests proving stale/untraced cannot look decision-grade | not started |
 
@@ -246,3 +246,152 @@ financial logic, no colour token and no header copy.
   needs revisiting — but no audit event records any change to that field, and the
   recompute that produced the current values ran 13 hours before the ADR was
   committed.
+
+---
+
+## 6. Slice A-PR2 — server-resolved rollout flags, A4 (2026-07-16)
+
+**Status: `implemented` + `tested` (unit). Not reviewed. Not wired: the resolver
+has no caller by design, so there is nothing to verify at runtime yet.**
+
+### Outcome
+
+- **Behavior changed for users: none.** The resolver is unreferenced — a pure
+  module plus its tests. `TerminalPage` is untouched, there is no view switch,
+  and no request resolves differently than it did yesterday.
+- **Who benefits:** the operator/product owner, later. This is the mechanism the
+  rollout (05 §12) and the emergency rollback (05 §13) both depend on. It exists
+  now so that Stage D wires a reviewed contract instead of inventing one under
+  cutover pressure.
+- **Behind a flag:** it *is* the flag. Ships in the fully-disabled state.
+- **Stage:** Stage A protective work. `provisional` in the sense that nothing
+  consumes it; the contract itself is complete for its defined scope.
+
+### Requirements closed
+
+A4 (handoff §5 Stage A item 3 · plan §9 · ADR Experience Shell §5), including the
+`terminal-experience-flag.test.ts` suite mandated by 05 §6 and that section's
+behavioral requirement "feature flags resolve consistently in server and client
+render". A5 and A6 remain **not started** — deliberately not begun in this slice.
+
+### Files
+
+- `src/features/terminal/lib/terminal-experience-flag.ts` (new, resolver)
+- `src/features/terminal/lib/terminal-experience-flag.test.ts` (new, 50 tests)
+- `.env.example`, `.env.production.example` (new documented vars, all default-off)
+- `docs/DEPLOYMENT_READINESS.md` (4 rows in the env matrix)
+- `docs/ROADMAP.md` (10.A4 status + dated changelog entry)
+- this file
+- **No migrations. No translation files. No snapshots. No schema. No UI.**
+
+### Design
+
+`resolveTerminalExperienceFlags(organizationId)` → `{v2Enabled, defaultView,
+aiAutorun}`.
+
+- **E-1 enforced literally.** V2 requires `RISK_TERMINAL_V2_ENABLED=true` **and**
+  exact, case-sensitive membership in `RISK_TERMINAL_V2_ORG_ALLOWLIST`. An empty
+  allowlist is a valid *disabled* state enabling **nobody**; `*` is not a
+  wildcard. The failure this prevents is an unreviewed holding-wide cutover from
+  a single env edit.
+- **Everything fails closed.** Only the literal `true` enables — `1`, `yes`, `on`
+  and junk are false. Unknown `DEFAULT_VIEW` → `expert`, the legacy view and
+  rollback target. A disabled org always gets `expert`, whatever is configured.
+- **`aiAutorun` is subordinate to `v2Enabled`**, so a non-piloted org can never
+  be told paid AI may run on entry (05 §2.2, risk `AI prewarm spends money`).
+- **SSR/hydration divergence** (plan risk `medium/high`) is addressed
+  structurally, not by convention: env is read only inside the resolver, which is
+  server-only by contract; the returned DTO is JSON primitives only and carries
+  the *decision*, never the allowlist roster; the client receives it as props.
+- **Env read per call**, per `src/lib/queue/feature-flag.ts`. A module-level
+  constant would freeze at import time and turn the documented rollback (flip the
+  flag, restart) into a redeploy.
+- **Located in `features/terminal/lib/`, not `lib/risk/`** — this is UI rollout
+  policy; `lib/risk/` is certified financial logic and the boundary should stay
+  legible.
+
+### Evidence — commands actually run this turn
+
+| Command | Result |
+|---|---|
+| `npx vitest run …/terminal-experience-flag.test.ts` | 50/50 passed |
+| `npx tsc --noEmit` | exit 0 |
+| `npx vitest run --reporter=dot` | exit 0 — 502 files, 6,434 passed, 19 skipped, 0 failed |
+| `npx prisma validate` | schema valid |
+| `npm run build` | exit 0 |
+
+Test coverage: all-off default · empty/whitespace-only/comma-only allowlist ·
+org absent (plus case-sensitivity and no prefix/substring match) · org present
+(multi-entry, padding, duplicates, all six canonical views) · malformed env
+(parameterized) · SSR/client contract (JSON round trip; wiping every flag var
+after serialization cannot change hydrated state; per-call env read).
+
+**One flake observed and chased down, not waved away.** The first full sweep
+reported `1 failed` in a centering assertion shared by
+`VarianceExplainerPanel.test.tsx` / `IndicatorDetail.empty-states.test.tsx`. Both
+pass in isolation and the re-run sweep was clean at exit 0 — this is the
+happy-dom/React batching flake `vitest.config.ts` documents (hence its
+`retry: 2`). A pure module with no importers cannot affect a DOM centering
+assertion. Recorded because the first run's output said `failed`.
+
+### Runtime scenario
+
+**None exercised — and none exists.** The module has no caller, so there is no
+route, no state and no rendered surface to drive. No E2E and no visual gate: no
+file in this slice can affect layout (`PanelGrid` / `CompanyTree` / `HeatMap` /
+terminal CSS / `globals.css` / Tailwind all untouched), so 05 §8.1 does not
+apply. The unit suite is the whole of the behavioral evidence.
+
+### Financial reconciliation
+
+**Not applicable.** No formula, aggregation, period, threshold, weight, KPI or
+source datum was touched. No production action of any kind.
+
+### Limits — what is NOT done
+
+- **Not reviewed.** A1–A3 passed the Stage A gate on 2026-07-16; A4 has not.
+- **Not wired.** No UI switch, no `?view=` handling, no provider, no consumer.
+  That is D1 and it is gated on Stage A review.
+- **Client-import protection is by contract, not by build.** *Deviation from the
+  architect's plan, recorded rather than glossed:* the `server-only` package
+  marker was not adopted. It is absent from this repo, so it would mean a new
+  dependency plus a one-file convention — outside A4's scope, and the sibling
+  `queue/feature-flag.ts` sets the docblock precedent. Consequence: a future
+  `"use client"` module importing this resolver fails at hydration, not at build.
+  Worth revisiting when D1 adds the first real consumer.
+- **The SSR test proves the resolver's transport contract, not a component's
+  compliance** with it — no component exists yet. D1 owes a render/hydration
+  regression test.
+- **`RISK_TERMINAL_V2_AI_AUTORUN=true` is permission state only.** It grants
+  nothing here; no AI endpoint is called anywhere in this slice.
+- **Owner decision E-1 remains half-open.** The *semantics* were decided
+  (2026-07-16, §5.2); the actual pilot org list is not chosen. The allowlist
+  ships empty — which, by the rule this slice enforces, means off.
+- **Case-sensitive org IDs** make a typo fail closed (org stays on Expert), but
+  operators must paste canonical DB IDs. Documented in the env matrix.
+
+### Rollback
+
+Delete two new files and revert four documentation edits; nothing else observes
+them. Once wired (D1), rollback is 05 §13's configuration triple:
+`RISK_TERMINAL_V2_ENABLED=false`, `RISK_TERMINAL_V2_DEFAULT_VIEW=expert`,
+`RISK_TERMINAL_V2_AI_AUTORUN=false`, then restart through the normal process.
+The resolver's per-call env read is what keeps that a restart rather than a
+redeploy.
+
+### Commit SHA
+
+`feat(terminal): add server-resolved rollout flags` — path-scoped, 7 files,
++609/−2, no protected file staged (all 8 protected paths verified still dirty
+and untouched after commit). The SHA itself is backfilled by the next slice:
+this entry ships *inside* the commit it describes, so the hash cannot exist
+while it is being written — the same reason A-PR1's `2b28c2af` was recorded by
+A-PR1b.
+
+### Next task
+
+**A5** — the minimal Legacy/Provisional presentation, the first slice in Phase 10
+with a runtime surface. **Not started in this slice, and not to be started
+without owner authorization.** Note §5.3's caveat: A5's `stale/untraced` rule
+will not catch the EDEN per-ha observations, which are fresh and traceable and
+withheld for unapproved methodology.
