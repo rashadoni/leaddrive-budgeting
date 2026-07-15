@@ -226,6 +226,7 @@ describe("detectFileType", () => {
       opsFacts: 1,
       budgetActuals: 1,
       salesForecast: 1,
+      complianceRegister: 0,
       unknown: 1,
     })
   })
@@ -347,5 +348,42 @@ describe("detectFileType", () => {
     )
     expect(result.fileType).toBe("main-financial")
     expect(result.sheetCounts.salesForecast).toBe(1)
+  })
+})
+
+describe("detectFileType — compliance-register (2026-07-15)", () => {
+  // The four compliance sheet types shipped with adapters on 2026-06-21 but
+  // NO FileType bucket, so a file made of them classified fine, parsed its
+  // rows, then had its whole group skipped as "unknown" and never committed
+  // (the client's court-disputes file: 57 rows parsed, 0 written).
+  it.each([
+    ["LEGAL_CASES"],
+    ["AUDIT_FINDINGS"],
+    ["COUNTERPARTY"],
+    ["RISK_REGISTER"],
+  ] as const)("%s sheets alone → compliance-register, not unknown", (dt) => {
+    const r = detectFileType([cls("a", dt, "X")], "register.xlsx")
+    expect(r.fileType).toBe("compliance-register")
+    expect(r.sheetCounts.complianceRegister).toBe(1)
+  })
+
+  it("mixed compliance sheets still resolve to one register file", () => {
+    const r = detectFileType(
+      [cls("a", "LEGAL_CASES", "X"), cls("b", "AUDIT_FINDINGS", "X")],
+      "compliance.xlsx",
+    )
+    expect(r.fileType).toBe("compliance-register")
+    expect(r.sheetCounts.complianceRegister).toBe(2)
+  })
+
+  it("financial intent still wins when mixed into a real statement file", () => {
+    // main-financial needs PLF + (BS | CF) — a lone PLF is deliberately
+    // treated as suspicious, so pair it with a BS here.
+    const r = detectFileType(
+      [cls("a", "PLF", "X"), cls("b", "BS", "X"), cls("c", "LEGAL_CASES", "X")],
+      "fin.xlsx",
+    )
+    expect(r.fileType).toBe("main-financial")
+    expect(r.sheetCounts.complianceRegister).toBe(1)
   })
 })

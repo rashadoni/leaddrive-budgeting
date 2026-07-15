@@ -158,6 +158,10 @@ const APPLY_ORDER: Record<FileType, number> = {
   // right after kpi-only so KPI Azik-shape sheets get the first write
   // and OPS_FACTS appends without conflicts. Phase 7.M Tier 7.
   "ops-facts": 2.5,
+  // compliance-register writes Counterparty + Company.settings + the
+  // canonical compliance facts; it only needs companies seeded, so it sits
+  // beside the other soft buckets. 2026-07-15.
+  "compliance-register": 2.7,
   "capex-plan": 3,
   "land-registry": 4,
   "forward-forecast": 5,
@@ -879,6 +883,7 @@ export async function runMultiFileImport(
           opsFacts: 0,
           budgetActuals: 0,
           salesForecast: 0,
+          complianceRegister: 0,
           unknown: 0,
         },
       })

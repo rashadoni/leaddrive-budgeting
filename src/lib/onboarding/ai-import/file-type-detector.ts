@@ -59,6 +59,14 @@ export type FileType =
   // `sales_forecasts` table. Detected by SALES_FORECAST-classified sheet(s)
   // without PLF/BS/CF.
   | "sales-forecast"
+  // 2026-07-15 — compliance/soft register: a file made of COUNTERPARTY /
+  // LEGAL_CASES / AUDIT_FINDINGS / RISK_REGISTER sheets and nothing
+  // financial. Their sheet classifiers + adapters shipped 2026-06-21, but
+  // no FileType bucket did — so such a file classified fine, parsed its
+  // rows, then had its whole group skipped as "unknown" and NEVER
+  // committed (found 2026-07-15 loading the client's court-disputes file:
+  // 57 rows parsed, 0 written). Mixed with PLF/BS/CF → main-financial.
+  | "compliance-register"
   | "unknown"
 
 export interface FileTypeResult {
@@ -86,6 +94,8 @@ export interface FileTypeResult {
     opsFacts: number
     budgetActuals: number
     salesForecast: number
+    /** COUNTERPARTY + LEGAL_CASES + AUDIT_FINDINGS + RISK_REGISTER sheets. */
+    complianceRegister: number
     unknown: number
   }
 }
@@ -109,6 +119,7 @@ function bucketSheets(
     opsFacts: 0,
     budgetActuals: 0,
     salesForecast: 0,
+    complianceRegister: 0,
     unknown: 0,
   }
   for (const c of classifications) {
@@ -154,6 +165,12 @@ function bucketSheets(
         break
       case "SALES_FORECAST":
         counts.salesForecast++
+        break
+      case "COUNTERPARTY":
+      case "LEGAL_CASES":
+      case "AUDIT_FINDINGS":
+      case "RISK_REGISTER":
+        counts.complianceRegister++
         break
       case "UNKNOWN":
         counts.unknown++
@@ -387,6 +404,31 @@ export function detectFileType(
       fileType: "ops-facts",
       confidence: conf,
       reasoning: `${counts.opsFacts} ops-facts sheet(s), no PLF/BS/CF → standalone operational-facts file`,
+      sheetCounts: counts,
+    }
+  }
+
+  // Priority 5.65: compliance-register — counterparty / court-case / audit-
+  // finding / risk-register sheets without PLF/BS/CF. These write
+  // Counterparty rows + Company.settings + the canonical compliance facts
+  // (LEGAL_CASES_ACTIVE, AUDIT_CLOSED_PCT, AUDIT_MAJOR_OPEN), which is what
+  // lights the terminal's compliance + concentration columns. Mixed with
+  // PLF/BS/CF → main-financial, same rule as every soft bucket above.
+  if (
+    counts.complianceRegister >= 1 &&
+    counts.plf === 0 &&
+    counts.bs === 0 &&
+    counts.cf === 0
+  ) {
+    const conf = avgConfidenceOver(classifications, (c) =>
+      ["COUNTERPARTY", "LEGAL_CASES", "AUDIT_FINDINGS", "RISK_REGISTER"].includes(
+        c.dataType,
+      ),
+    )
+    return {
+      fileType: "compliance-register",
+      confidence: conf,
+      reasoning: `${counts.complianceRegister} compliance/register sheet(s), no PLF/BS/CF → standalone compliance file`,
       sheetCounts: counts,
     }
   }
