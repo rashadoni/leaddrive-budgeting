@@ -18,7 +18,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client"
 import type { AdapterHandler, AdapterRunInput, AdapterRunResult } from "./adapter-registry"
 import type { OrgContext } from "./prod-adapter-context"
-import { parseProductSalesSheet } from "./product-sales-parser"
+import { parseProductSalesSheet, parseSalesCustomers } from "./product-sales-parser"
 import { runSalesProductBatch } from "../sales-product-import-batch"
 import type { ReconciliationKey } from "../reconciliation"
 
@@ -82,10 +82,29 @@ export function makeProductSalesHandler(
     const products = new Set(parsed.rows.map((r) => r.identity.code)).size
     const revenue = parsed.rows.reduce((s, r) => s + r.amount, 0)
 
+    // Customer concentration — derived from the SAME transactional rows.
+    // The client's "Müştəri İcmalı" tab is a pre-computed summary the
+    // counterparty-register parser can't read, but every fakt row names its
+    // customer, so CUSTOMER_HHI / TOP_CUSTOMER_SHARE / TOP3_CUSTOMER_SHARE
+    // are derivable from the source of record. Budget grids have no customer
+    // dimension, so this only ever fires on the transactional shape.
+    const customers =
+      parsed.shape === "transactions"
+        ? parseSalesCustomers(input.workbook, input.sheetName, input.XLSX, {
+            year: input.year,
+          })
+        : { rows: [], warnings: [] }
+    const warnings = [...parsed.warnings, ...customers.warnings]
+    if (customers.rows.length > 0) {
+      warnings.push(
+        `Sheet "${input.sheetName}": ${customers.rows.length} customers derived for ${input.entityCode} — top customer ${customers.rows[0].sharePct.toFixed(1)}% of ${input.year} turnover`,
+      )
+    }
+
     return {
-      summary: `${parsed.rows.length} product-month sales rows (${products} products, ${(revenue / 1e6).toFixed(2)}M net) for ${input.entityCode} [${planKind}]`,
+      summary: `${parsed.rows.length} product-month sales rows (${products} products, ${(revenue / 1e6).toFixed(2)}M net) for ${input.entityCode} [${planKind}]${customers.rows.length > 0 ? ` + ${customers.rows.length} customers` : ""}`,
       itemCount: parsed.rows.length,
-      warnings: parsed.warnings,
+      warnings,
       expectedSums,
       applyToDb: async (tx: Prisma.TransactionClient) => {
         const ctx = await ensureCtx()
@@ -96,6 +115,35 @@ export function makeProductSalesHandler(
           rows: parsed.rows,
           unit: "ton",
         })
+
+        // Counterparty snapshot — ACTUALS only: concentration is a realized
+        // fact, and writing a budget's customer split would overwrite it.
+        const companyId = ctx.codeToId.get(input.entityCode!)
+        if (customers.rows.length > 0 && planKind === "actual" && companyId) {
+          const period = String(input.year)
+          // Replace THIS company+role+period only. Hard delete (not archive):
+          // @@unique(companyId, role, name, period) would collide with a
+          // re-inserted same-named row. Mirrors the register handler.
+          await tx.counterparty.deleteMany({
+            where: {
+              organizationId: ctx.organizationId,
+              companyId,
+              role: "customer",
+              period,
+            },
+          })
+          await tx.counterparty.createMany({
+            data: customers.rows.map((c) => ({
+              organizationId: ctx.organizationId,
+              companyId,
+              role: "customer",
+              name: c.name,
+              sharePct: c.sharePct,
+              annualAmount: c.amount,
+              period,
+            })),
+          })
+        }
         return { rowsInserted: result.metrics.rowsInserted }
       },
     } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }

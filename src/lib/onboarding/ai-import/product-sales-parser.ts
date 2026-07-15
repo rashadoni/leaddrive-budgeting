@@ -601,6 +601,103 @@ export function parseProductSalesSheet(
   return res
 }
 
+/** Customer-name headers on a transactional sales sheet, either language. */
+const TX_CUSTOMER = /^(müştəri|musteri|müştəri adı|musteri adi|customer|client)$/i
+
+export interface SalesCustomerRow {
+  name: string
+  /** Net turnover for the year, same basis as the product rows. */
+  amount: number
+  /** Share of the sheet's total turnover, 0-100. */
+  sharePct: number
+}
+
+/**
+ * Aggregate a TRANSACTIONAL sales sheet by CUSTOMER for one year.
+ *
+ * This is what lights up CUSTOMER_HHI / TOP_CUSTOMER_SHARE /
+ * TOP3_CUSTOMER_SHARE: the client's "Müştəri İcmalı" tab is a pre-computed
+ * summary the counterparty-register parser can't read, but every fakt row
+ * names its customer, so the concentration is derivable from the source.
+ *
+ * Returns [] (not an error) when the sheet has no customer column — plenty of
+ * sales sheets don't, and that must not fail the import.
+ */
+export function parseSalesCustomers(
+  workbook: XLSXType.WorkBook,
+  sheetName: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  xlsx: any,
+  opts: { year: number },
+): { rows: SalesCustomerRow[]; warnings: string[] } {
+  const aoa = toAoa(workbook, sheetName, xlsx)
+  const warnings: string[] = []
+
+  let headerRow = -1
+  for (let r = 0; r < Math.min(8, aoa.length); r++) {
+    const strs = (aoa[r] ?? []).filter((v): v is string => typeof v === "string")
+    if (
+      strs.some((v) => TX_PERIOD.test(v.trim())) &&
+      strs.some((v) => TX_AMOUNT.test(v))
+    ) {
+      headerRow = r
+      break
+    }
+  }
+  if (headerRow < 0) return { rows: [], warnings: [] }
+  const header = aoa[headerRow] ?? []
+  const findCol = (re: RegExp) =>
+    header.findIndex((v) => typeof v === "string" && re.test(v.trim()))
+  const periodCol = findCol(TX_PERIOD)
+  const amountCol = findCol(TX_AMOUNT)
+  const customerCol = findCol(TX_CUSTOMER)
+  if (periodCol < 0 || amountCol < 0 || customerCol < 0) return { rows: [], warnings: [] }
+
+  const byName = new Map<string, number>()
+  for (let r = headerRow + 1; r < aoa.length; r++) {
+    const row = aoa[r]
+    if (!row) continue
+    const period = cellToPeriod(row[periodCol])
+    if (!period || period.year !== opts.year) continue
+    const raw = row[customerCol]
+    if (typeof raw !== "string" || !raw.trim()) continue
+    const amount = num(row[amountCol]) ?? 0
+    if (amount === 0) continue
+    // Collapse case/spacing variants of the same customer so one buyer
+    // written two ways doesn't halve its apparent concentration.
+    const name = raw.trim().replace(/\s+/g, " ")
+    const key = name.toUpperCase()
+    byName.set(key, (byName.get(key) ?? 0) + amount)
+  }
+  if (byName.size === 0) return { rows: [], warnings: [] }
+
+  // Display name = the first spelling seen for each key.
+  const displayByKey = new Map<string, string>()
+  for (let r = headerRow + 1; r < aoa.length; r++) {
+    const raw = aoa[r]?.[customerCol]
+    if (typeof raw !== "string" || !raw.trim()) continue
+    const name = raw.trim().replace(/\s+/g, " ")
+    const key = name.toUpperCase()
+    if (!displayByKey.has(key)) displayByKey.set(key, name)
+  }
+
+  const total = [...byName.values()].reduce((s, v) => s + v, 0)
+  if (total <= 0) {
+    warnings.push(
+      `Sheet "${sheetName}": customer turnover for ${opts.year} nets to ${total.toFixed(0)} — concentration not derived`,
+    )
+    return { rows: [], warnings }
+  }
+  const rows = [...byName.entries()]
+    .map(([key, amount]) => ({
+      name: displayByKey.get(key) ?? key,
+      amount,
+      sharePct: (amount / total) * 100,
+    }))
+    .sort((a, b) => b.amount - a.amount)
+  return { rows, warnings }
+}
+
 /**
  * Final price rule (client decision: NET basis).
  *   • explicit price wins ONLY when it agrees with amount/quantity (±1%) —

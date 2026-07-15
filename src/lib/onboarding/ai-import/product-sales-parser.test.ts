@@ -13,6 +13,7 @@ import * as XLSX from "xlsx"
 import {
   detectProductSalesShape,
   parseProductSalesSheet,
+  parseSalesCustomers,
   resolveUnitPrice,
   inferQuantityScale,
 } from "./product-sales-parser"
@@ -259,5 +260,53 @@ describe("resolveUnitPrice", () => {
   })
   it("handles negative (return / credit-note) rows", () => {
     expect(resolveUnitPrice({ ...base, quantity: -10, amount: -3_700 })).toBe(370)
+  })
+})
+
+describe("parseSalesCustomers — concentration from the fakt rows", () => {
+  // The client's counterparty tab is a pre-computed summary the register
+  // parser can't read; every fakt row names its customer, so HHI and
+  // top-customer share are derivable from the source of record.
+  const CUST: unknown[][] = [
+    ["Dövr", "Müştəri adı", "Məhsul qrupu", "Net Miqdar Ton", "Net Satış AZN"],
+    [new Date(2026, 0, 1), "ATS Food MMC", "Qlükoza", 10, 600_000],
+    [new Date(2026, 1, 1), "ats food mmc", "Nişasta", 5, 200_000], // same buyer, other spelling
+    [new Date(2026, 0, 1), "BB 7 MMC", "Qlükoza", 4, 150_000],
+    [new Date(2026, 2, 1), "Bolluq LTD", "Fruktoza", 2, 50_000],
+    [new Date(2025, 5, 1), "Köhnə MMC", "Qlükoza", 99, 900_000], // other year
+  ]
+
+  it("aggregates turnover per customer and ranks by size", () => {
+    const { rows } = parseSalesCustomers(wb("C", CUST), "C", XLSX, { year: 2026 })
+    expect(rows.map((r) => r.name)).toEqual(["ATS Food MMC", "BB 7 MMC", "Bolluq LTD"])
+    expect(rows[0].amount).toBe(800_000) // both spellings folded together
+  })
+
+  it("computes share of the year's total turnover", () => {
+    const { rows } = parseSalesCustomers(wb("C", CUST), "C", XLSX, { year: 2026 })
+    // total 2026 = 800k + 150k + 50k = 1.0M
+    expect(rows[0].sharePct).toBeCloseTo(80, 5)
+    expect(rows[1].sharePct).toBeCloseTo(15, 5)
+    expect(rows.reduce((s, r) => s + r.sharePct, 0)).toBeCloseTo(100, 5)
+  })
+
+  it("excludes other years (concentration is per-period)", () => {
+    const { rows } = parseSalesCustomers(wb("C", CUST), "C", XLSX, { year: 2026 })
+    expect(rows.some((r) => r.name === "Köhnə MMC")).toBe(false)
+  })
+
+  it("returns [] for a sheet with no customer column — never an error", () => {
+    const NO_CUST: unknown[][] = [
+      ["Dövr", "Məhsul qrupu", "Net Miqdar Ton", "Net Satış AZN"],
+      [new Date(2026, 0, 1), "Qlükoza", 10, 11_000],
+    ]
+    const { rows, warnings } = parseSalesCustomers(wb("N", NO_CUST), "N", XLSX, { year: 2026 })
+    expect(rows).toEqual([])
+    expect(warnings).toEqual([])
+  })
+
+  it("returns [] for a budget grid (no customer dimension)", () => {
+    const { rows } = parseSalesCustomers(wb("F", FARMING), "F", XLSX, { year: 2026 })
+    expect(rows).toEqual([])
   })
 })
