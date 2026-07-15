@@ -619,3 +619,108 @@ Stage B2 — PeriodContext + DataRevision (additive schema only; no KPI
 methodology, no financial formula change). Do not start B1 until owner
 decision T-1 (reconciliation tolerance) is answered.
 ```
+
+---
+
+## 9. Slice B-PR1 — PeriodContext + DataRevision contracts, B2 (2026-07-16)
+
+**Status: `implemented` + `tested`. Not reviewed. Not wired — both modules are
+unimported by design, so there is nothing to verify at runtime yet.**
+
+### Outcome
+
+- **Behavior changed for users: none.** Two pure contract modules with no
+  callers, no schema and no DB access.
+- **Who benefits:** Stage B's remaining items. B3 (invalidation), B5 (lineage)
+  and B6 (Risk × Confidence) all need a period contract and a revision identity
+  to exist before they can be built. This is that floor.
+- **Behind a flag:** not applicable — nothing executes.
+- **Stage:** Stage B trust core; `provisional` in that nothing consumes it.
+
+### Files
+
+- `src/lib/risk/period-context.ts` + `.test.ts` (new — 38 tests) — commit `a6231ef3`
+- `src/lib/risk/data-revision.ts` + `.test.ts` (new — 33 tests) — commit `0ccaa21e`
+- `docs/ROADMAP.md`, this file
+- **No migrations. No schema. No translation files. No snapshots. No UI.**
+
+### Design decisions worth review
+
+1. **Period key grammar.** MONTH/QUARTER/FY reuse the strings already stored on
+   `IndicatorValue.period`, so the contract describes existing data with no
+   migration. YTD/LTM had no stored representation and needed one:
+   `YYYY-YTD-MM` / `YYYY-LTM-MM`, chosen so the existing `^\d{4}` year probe
+   (`isPartialYear`) keeps working. **LTM is reported under its ending year** —
+   an LTM ending May 2026 is a 2026 figure reaching back into 2025.
+2. **`coverageMonths` vs `expectedCoverageMonths` is the whole point.** It is
+   the structural form of the EDEN defect: ~4 booked months of a 12-month year
+   previously read as a complete FY result at 169.8% "green".
+3. **UTC math, Baku declaration.** `timeZone` declares the fiscal calendar's
+   zone; it does not shift the timestamps. `periods.ts` established that split
+   and conflating the two is what booked a month of revenue into the wrong year
+   via a 24-second LMT drift.
+4. **The content hash excludes lifecycle state.** If approving a revision
+   changed its hash, the hash could not answer its only question — "is this the
+   same source state?". Id lists hash as sets so a re-import in a different
+   order is not a new revision (idempotency, ADR §4).
+5. **No `DataRevision` table.** See limits.
+
+### Evidence — commands actually run this turn
+
+| Command | Result |
+|---|---|
+| `vitest run period-context.test.ts` | 38/38 passed |
+| `vitest run data-revision.test.ts` | 33/33 passed |
+| `npx tsc --noEmit` | exit 0 |
+| `npx vitest run --reporter=dot` | **exit 0** — 505 files, 6,532 passed, 19 skipped |
+| `npx prisma validate` | schema valid |
+| `npx prisma migrate status` | "Database schema is up to date" — no drift |
+
+No E2E and no visual gate: no file in this slice has a runtime surface or can
+affect layout, so neither applies.
+
+### Financial reconciliation
+
+**Not applicable, and deliberately so.** Neither module computes money. A period
+contract describes *when*; a revision describes *from what*. No formula,
+aggregation, threshold, weight, KPI or value was touched.
+
+### Limits — what is NOT done
+
+- **Not reviewed**, and Stage A's own review (A4-A6) is still outstanding.
+- **`DataRevision` is not persisted.** No Prisma model, no migration. This is a
+  judgement call worth an explicit look: every sibling table in this database
+  carries RLS policies, and adding one without them risks precisely the
+  cross-org exposure 05 §13 names as an immediate rollback trigger. That is a
+  security-shaped decision, not a mechanical `migrate dev`, so it gets its own
+  slice. `prisma migrate status` reports no drift, so that slice starts clean.
+- **Nothing produces a PeriodContext yet.** No writer stamps one onto an
+  observation; `revisionId` has no source. Wiring is B5's job.
+- **`hasFullCoverage()` is not §4.3 completeness** — coverage only. Named
+  narrowly so no caller mistakes it for a decision-grade gate.
+- **The YTD/LTM key grammar is my choice, not the spec's.** The spec defines the
+  taxonomy but not the string form. If the owner or a later stage prefers a
+  different encoding, it is a parser change in one file — but it is a decision
+  that should be seen rather than inherited silently.
+
+### Rollback
+
+Delete four files. Nothing imports them.
+
+### Next task
+
+**B3** (exact M/Q/YTD/FY/LTM invalidation) is the natural next dependency-ready
+item — it needs the period contract that now exists, and no owner decision.
+**B1 remains blocked on T-1**; **B4 on T-5**. Stage A review (A4-A6) is still
+the outstanding human gate.
+
+**Resume command:**
+
+```text
+Continue Risk Terminal 2.0 from IMPLEMENTATION-STATUS.md §9. B2 contracts
+are implemented (period-context.ts, data-revision.ts) but unwired.
+Implement exactly one slice: either B3 (exact M/Q/YTD/FY/LTM invalidation,
+pure, building on parsePeriodKey), or the deferred DataRevision persistence
+slice (additive model + RLS policy, reviewed). Do not start B1 until T-1
+is answered.
+```
