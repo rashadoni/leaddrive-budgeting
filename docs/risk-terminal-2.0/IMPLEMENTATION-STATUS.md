@@ -22,6 +22,9 @@ restored — that was a one-off, and it is not a precedent).
 ?? docs/risk-terminal-2.0/00-EXECUTIVE-SUMMARY-RU.md
 ?? docs/risk-terminal-2.0/05-TEST-UAT-ROLLOUT.md
 ?? docs/risk-terminal-2.0/CLAUDE-CODE-HANDOFF.md
+?? output/                                   # unrelated artifact: logo vector PDF.
+                                             # Owner-confirmed 2026-07-16 — never
+                                             # stage into a Risk Terminal commit.
 ?? scripts/check-sales-parse-local.ts        # local FO-workbook harnesses
 ?? scripts/import-fo-workbook-local.ts
 ?? scripts/recompute-local-all.ts
@@ -71,9 +74,9 @@ Derived strictly from Stages A-E. No invented scope.
 ### Stage A — documentation/ADR + protective mode  ← current
 | # | Task | Status |
 |---|---|---|
-| A1 | Add Phase 10 section to `docs/ROADMAP.md` (only items actually started) | implemented, not reviewed |
-| A2 | `DESIGN.md` from the approved UI/UX spec | implemented, not reviewed |
-| A3 | ADRs: Trust Core, Experience Shell | implemented, not reviewed |
+| A1 | Add Phase 10 section to `docs/ROADMAP.md` (only items actually started) | implemented — owner-reviewed 2026-07-16 |
+| A2 | `DESIGN.md` from the approved UI/UX spec | implemented — owner-reviewed 2026-07-16, gaps recorded in §5 |
+| A3 | ADRs: Trust Core, Experience Shell | implemented — owner-reviewed 2026-07-16, T-7 corrected, gaps recorded in §5 |
 | A4 | Server-resolved operational feature flags (design + resolver) | not started |
 | A5 | Minimal Legacy/Provisional presentation — stale/untraced values must not read decision-grade; **no financial value changes** | not started |
 | A6 | Focused tests proving stale/untraced cannot look decision-grade | not started |
@@ -134,21 +137,112 @@ because this slice has no runtime surface to test.**
    yet enforce them.
 7. **Visual verification.** Not applicable.
 8. **What is NOT verified.**
-   - The ADRs and DESIGN.md are a faithful reading of the package, but they have
-     had **no human review** — that review is the Stage A gate (handoff §5).
-   - Reading coverage is partial: `CLAUDE-CODE-HANDOFF.md`, `AGENTS.md`,
+   - The ADRs and DESIGN.md had **no human review** at the time of this slice —
+     that review is the Stage A gate (handoff §5). *Closed 2026-07-16: see §5.*
+   - Reading coverage was partial: `CLAUDE-CODE-HANDOFF.md`, `AGENTS.md`,
      `PRODUCT.md`, `00-EXECUTIVE-SUMMARY-RU.md`,
      `02-PRODUCT-AND-UI-UX-SPEC.md`, `03-DATA-KPI-TRUST-SPEC.md` and
-     `04-TECHNICAL-IMPLEMENTATION-PLAN.md` were read in full. **Not yet read:**
-     `01-AUDIT-BASELINE.md`, `05-TEST-UAT-ROLLOUT.md`, `README.md` and the
-     1,795-line `docs/ROADMAP.md` (only its structure and Phase 9 conventions).
-     Handoff §2 asks for all of them before editing; this is a real deviation and
-     is recorded rather than glossed. Consequence: A5/A6 must not start until
-     `05-TEST-UAT-ROLLOUT.md` (Definition of Done) and `01-AUDIT-BASELINE.md`
-     (the defect list the protective layer must cover) are read.
+     `04-TECHNICAL-IMPLEMENTATION-PLAN.md` were read in full. **Not read at the
+     time:** `01-AUDIT-BASELINE.md`, `05-TEST-UAT-ROLLOUT.md`, `README.md` and
+     `docs/ROADMAP.md` (only its structure and Phase 9 conventions).
+     Handoff §2 asks for all of them before editing; this was a real deviation and
+     is recorded rather than glossed. *Closed 2026-07-16 — and the deviation had a
+     concrete cost: the unread roadmap changelog contained the direct refutation
+     of this slice's T-7 claim. See §5.*
 9. **Limitations.** Contracts only. Nothing prevents a stale value from looking
    decision-grade yet — that is A5, and it is the first slice with a runtime
    surface.
-10. **Commit SHA.** See below (path-scoped; no protected file staged).
+10. **Commit SHA.** `2b28c2af` — `docs(terminal): define Risk Terminal 2.0
+    contracts`, 2026-07-15 23:28 (+0400). Path-scoped, 5 files, +915/−0, no
+    protected file staged. The correction slice below is `A-PR1b`.
 11. **Next task.** **A4** — server-resolved feature flags (design + resolver, no
-    UI switch), after reading `05-TEST-UAT-ROLLOUT.md` and `01-AUDIT-BASELINE.md`.
+    UI switch). Not started; owner has not authorized it as of 2026-07-16.
+
+---
+
+## 5. Owner Review of A1–A3 (2026-07-16)
+
+**Outcome: Stage A gate passed for A1–A3 with one correction and a recorded gap
+list.** The full package plus `docs/ROADMAP.md` were read in full, and each
+artifact was cross-checked against its source. Zero runtime change in the review
+or in the correction slice.
+
+### 5.1 The correction — T-7
+
+The T-7 row asserted that EDEN divides by 22 595 ha and returns −131.8 ₼/ha.
+Read-only verification refuted both halves: the resolver reads only
+`Company.settings.hectaresPlanted`, EDEN's value is **4 000** (the basis the
+thresholds were calibrated on, and the value persisted in the calculation
+inputs), 22 595 is the leased-land registry in `settings.landParcels` — a field
+no code path reads — and no observation anywhere in the database is near −131.8.
+The figure exists in one commit and in no code, data or log.
+
+The row and its footnote are rewritten in `ADR-risk-terminal-trust-core.md`; the
+claim is recorded as withdrawn. **The T-7 question itself stays open** — registry
+vs planted area is a real CFO/Ops choice — but it is not live in the form first
+described.
+
+Verification also surfaced what *is* live in those KPIs: a quarterly-calibrated
+threshold applied to annual-only observations, and an internally inconsistent
+2026 input bundle (EBITDA from summed `pl_ebitda` facts vs revenue/net income
+from the budgetLine path; EBITDA and net income differ by 15.3M with
+`da_total = 0`). Both are recorded in the ADR's T-7 note.
+
+**Interim posture, owner-approved:** the three EDEN per-ha KPIs stay
+`provisional`, excluded from the decision-grade surface, confirmed alerts, the
+composite score and the T-5 pilot set until financial reconciliation closes.
+Formulas, thresholds, weights and source data unchanged. No production change.
+
+### 5.2 Owner decisions as of 2026-07-16
+
+| # | State | A4 | A5 / Stage B |
+|---|---|---|---|
+| E-1 | **Semantics decided** — empty allowlist = V2 off for every org; pilot list still open | unblocked | — |
+| T-7 | **Interim posture decided** (provisional + excluded); methodology choice open | non-blocking | blocks B4 |
+| T-1 · T-2 · T-3 · T-4 · T-5 · T-6 | deferred, non-blocking for A4 | non-blocking | block B1/B4/B6 |
+| E-2 · E-3 | deferred, non-blocking for A4 | non-blocking | block Stage D |
+
+Deferral is authorized by the documentation, not by convenience: both ADRs head
+their tables "owner decisions — block **enforcement**, not this ADR", every
+`Blocks` entry names a Stage B or Stage D surface, and handoff §5 lists Stage A
+item 3 (server-resolved flags) with no owner-decision dependency. A4 touches no
+financial logic, no colour token and no header copy.
+
+### 5.3 Gaps found and left open (not defects in A1–A3 — recorded scope)
+
+- **DESIGN.md** omits spec §15.1's `--risk-*` colour tokens, spec §12
+  (Methodology Center), `--ease-in`, and spec §14.5 (feedback/focus).
+- **Trust Core ADR** omits spec §11 (alert/risk-event rules) and 7 of the 9 KPI
+  corrections in spec §8 — EBITDA (a P0 in the audit) has no ADR home and no
+  decision number.
+- **Neither ADR** carries spec §12's `TerminalOverviewResponse` contract, though
+  plan §4.1 names the façade files.
+- **05 §2.3 and §2.4** — repair the TodayBrief visual masking, and stop E2E from
+  assuming a table at the terminal root — are named prerequisites in the NO-GO
+  list and appear in no ADR and no Phase 10 task.
+- **A5 scope caveat:** A5 covers `stale/untraced`. The EDEN per-ha observations
+  are fresh and traceable, and are withheld for unapproved methodology. A5 will
+  not catch them unless its rule is widened.
+- **Unverified numbers elsewhere:** `IndicatorDefinition.weight` (1.5→0.7,
+  shipped 2026-05-24) is live and unapproved — it is T-4's subject matter.
+
+### 5.4 Slice A-PR1b — T-7 correction and owner decisions (2026-07-16)
+
+**Status: `implemented`. No runtime surface; no tests apply.**
+
+- **Files.** `docs/architecture/ADR-risk-terminal-trust-core.md` (T-7 row +
+  verification note), `docs/architecture/ADR-risk-terminal-experience-shell.md`
+  (E-1 row + §5 empty-allowlist rule), this file.
+- **Not changed.** No formula, threshold, weight, seed, resolver or source datum.
+  No schema, migration, flag, translation or snapshot. No production action. The
+  `docs/ROADMAP.md` T-7 wording at line 600 still carries the withdrawn figure
+  and is **not** corrected in this slice — the owner scoped it to the ADRs and
+  this file.
+- **Evidence.** Read-only SQL against the local dev database and `git log -S`
+  over full history. Prod was not inspected: the original claim said "on prod",
+  and prod inspection was not authorized.
+- **Limits.** The refutation rests on the local dev database plus repository
+  history. If prod's `hectaresPlanted` for EDEN differs from 4 000, the T-7 note
+  needs revisiting — but no audit event records any change to that field, and the
+  recompute that produced the current values ran 13 hours before the ADR was
+  committed.

@@ -181,7 +181,64 @@ stays behind flags with the legacy path intact; cutover is a read-pointer flip.
 | T-4 | Domain/portfolio weights and any nonlinear rollup | Risk owner | Composite score |
 | T-5 | The 25–35 pilot KPI list | CFO + Risk | KPI registry scope |
 | T-6 | DSCR numerator (CFADS vs NOI) + scheduled principal source | CFO | DSCR certification (proxy until then) |
-| T-7 | Per-hectare basis: registry area vs planted area, and the period basis for the numerator | CFO / Ops | Agro per-ha KPIs — **live issue**: EDEN currently divides by 22 595 ha (registry) and returns −131.8 ₼/ha; the threshold in code was calibrated for ~4 000 ha |
+| T-7 | Per-hectare basis: registry area vs planted area, and the period basis for the numerator | CFO / Ops | Agro per-ha KPI certification — see the verification note below |
 
-T-7 is not hypothetical: it is producing a nonsense number on prod right now and
-is the clearest live example of why §9 exists.
+### T-7 verification note (2026-07-16, owner-directed correction)
+
+The T-7 row as first written on 2026-07-15 claimed that EDEN divides by 22 595 ha
+(registry) and returns −131.8 ₼/ha. **That claim is unverified and is
+contradicted by the code, the database and this repository's own history. It is
+recorded here as withdrawn, not carried forward.** It was written without the
+lineage that §7 of this ADR requires of any number that carries weight.
+
+Verified by read-only inspection on 2026-07-16:
+
+- The three per-ha KPIs (`AGRO_REVENUE_PER_HA`, `AGRO_COST_PER_HA`,
+  `AGRO_YIELD_EFFICIENCY`) resolve `hectares_planted` from
+  `Company.settings.hectaresPlanted` and nothing else
+  (`src/lib/risk/recompute-resolvers-a.ts`). No code path reads
+  `settings.landParcels`.
+- EDEN's `hectaresPlanted` is **4 000** — the same basis the thresholds were
+  calibrated on (`src/lib/risk/seeds/agro.ts`). The persisted calculation inputs
+  record `"hectares_planted": 4000` for both 2025 and 2026, so this is the
+  recorded input, not an inference from the formula.
+- The 22 595 ha figure is the **leased land registry** (17 parcels, from
+  `Çıxarışların uçotu.xlsx`), held in `settings.landParcels`. The roadmap
+  changelog for 2026-05-31 states this explicitly and records
+  `hectaresPlanted`=4 000 as the separate planted-cane figure, owner-confirmed.
+- No observation anywhere in the database holds a value near −131.8. The figure
+  appears in exactly one commit — the one that asserted it — and in no code, no
+  data and no log.
+
+**The question T-7 asks stays open and still needs a CFO/Ops decision.** Registry
+area and planted area answer different questions — return on land held versus
+return on land farmed — and each needs its own threshold. Engineering cannot
+choose between them without inventing methodology, which §9 forbids. The question
+is simply not live in the form first described.
+
+What *is* live and verified on the same data, and is why the three KPIs are held
+off the decision surface:
+
+- **Period basis.** Thresholds were calibrated on quarterly actuals and the hint
+  copy says "per quarter", but only annual observations (2023–2026) exist. A
+  quarterly threshold is being applied to an annual numerator — prohibited by
+  trust spec §8.6 without owner approval.
+- **Aggregation.** EDEN's 2026 input bundle is internally inconsistent: `ebitda`
+  (+11 962 639.82) is the exact sum of twelve monthly `pl_ebitda` operational
+  facts, while `revenue` (266 379.02) and `net_income` (−3 382 397.83) come from
+  the budgetLine path. With `da_total = 0`, EBITDA and net income cannot differ
+  by 15.3M. The audit independently records the same revenue as 0.266M against a
+  financial P&L of 3.514M, a −92.4% difference. This is §1 of this ADR being
+  violated inside the very indicator T-7 describes.
+
+**Interim posture, owner-approved 2026-07-16.** The three EDEN per-ha KPIs remain
+`provisional`: excluded from the decision-grade surface, from confirmed alerts,
+from the composite score and from the T-5 pilot set, until the financial
+reconciliation closes. Formulas, thresholds, weights and source data are
+unchanged by this decision, and no production change is made.
+
+Enforcing that posture belongs to A5 — with one caveat the owner should carry
+into A5's scope: A5 as written covers `stale/untraced` values, and these
+observations are neither. They are fresh and traceable, and are withheld because
+their methodology is unapproved and their input bundle is incoherent. A5 will not
+catch them unless its rule is widened to cover unapproved methodology.

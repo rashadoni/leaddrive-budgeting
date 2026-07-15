@@ -88,6 +88,11 @@ Operational rollout flags — not commercial entitlements. Resolved server-side
 and passed to the client as initial state; no client-only env read that diverges
 between SSR and hydration.
 
+**An empty `RISK_TERMINAL_V2_ORG_ALLOWLIST` means V2 is off for every
+organization** — never "no filter, therefore everyone". Empty is the valid safe
+default state, and the resolver carries a test asserting exactly that. (Owner
+decision, 2026-07-16 — E-1.)
+
 ### 6. URL is the view state
 
 ```text
@@ -154,6 +159,6 @@ deploy.
 
 | # | Question | Owner | Blocks |
 |---|---|---|---|
-| E-1 | Pilot org allowlist for `RISK_TERMINAL_V2_ENABLED` | Product owner | PR 5+ rollout |
+| E-1 | Pilot org allowlist for `RISK_TERMINAL_V2_ENABLED` | Product owner | PR 5+ rollout. **Semantics decided 2026-07-16:** empty allowlist is a valid safe state and means V2 off for every organization (§5). The pilot org list itself stays open and is not needed until there is a shell to enable. |
 | E-2 | Final colour tokens after contrast verification (spec §15 is a target, not verified) | Design + a11y | Token freeze |
 | E-3 | Is `Risk Center` the confirmed product label in the header? | Product owner | Header copy / i18n keys |
