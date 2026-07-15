@@ -386,3 +386,62 @@ describe("GET /api/budgeting/pnl — happy path", () => {
     expect(body.comparison.actual.monthlyBelowEbitda["1"]).toBe(50)
   })
 })
+
+describe("GET /api/budgeting/pnl — reversal (credit-note) signs", () => {
+  // 2026-07-15 — the actual-line-comparison path used to Math.abs() EVERY
+  // row before summing, so a credit note ADDED to cost instead of
+  // subtracting. The FO 2026 actuals carry 21 such rows (−0.129M), which
+  // inflated OpEx by exactly 2× that and moved Net Profit from −4.20M to
+  // −4.43M. The sibling aggregation abs's the summed total, so the same
+  // route disagreed with itself.
+  function line(code: string, amount: number, accountType = "expense") {
+    return {
+      companyId: "co_1",
+      department: null,
+      lineType: accountType,
+      sortOrder: 0,
+      monthIndex: 0, // January
+      plannedAmount: amount,
+      account: { code, name: code, accountType },
+    }
+  }
+
+  it("subtracts an OpEx reversal instead of adding it", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    // Active plan = the BUDGET; its counterpart (actuals) feeds the
+    // comparison path. budgetActual stays empty so the fallback runs.
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce({ id: "plan_budget", name: "B", year: 2026, kind: "budget" })
+      .mockResolvedValueOnce({ id: "plan_actual", name: "A", year: 2026, kind: "actual" })
+    prismaMock.budgetActual.findMany.mockResolvedValue([])
+    prismaMock.budgetLine.findMany
+      .mockResolvedValueOnce([]) // active (budget) plan rows — not under test
+      .mockResolvedValueOnce([
+        line("PLF.05.01.01", 1_000), // admin cost
+        line("PLF.05.01.02", -100), // credit note against it
+      ])
+
+    const res = await GET(makeRequest("/api/budgeting/pnl?planId=plan_budget"))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    // 1000 − 100 = 900, NOT 1000 + 100 = 1100.
+    expect(body.sectionActuals.opex).toBe(900)
+    expect(body.monthlyActualOpex["1"]).toBe(900)
+  })
+
+  it("still reads a wholly-negative cost section as positive (defensive intent kept)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce({ id: "plan_budget", name: "B", year: 2026, kind: "budget" })
+      .mockResolvedValueOnce({ id: "plan_actual", name: "A", year: 2026, kind: "actual" })
+    prismaMock.budgetActual.findMany.mockResolvedValue([])
+    prismaMock.budgetLine.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([line("PLF.05.01.01", -1_000), line("PLF.05.01.02", -500)])
+
+    const res = await GET(makeRequest("/api/budgeting/pnl?planId=plan_budget"))
+    const body = await res.json()
+    expect(body.sectionActuals.opex).toBe(1_500)
+    expect(body.monthlyActualOpex["1"]).toBe(1_500)
+  })
+})

@@ -542,17 +542,38 @@ function aggregateBudgetLinesForComparison(lines: BudgetLineRow[]): PnlLineCompa
       buckets.monthlyRevenue[month] += signedAmount
       buckets.sectionTotals.revenue += signedAmount
     } else if (section === "cogs") {
-      const cost = Math.abs(amount)
-      buckets.monthlyCogs[month] += cost
-      buckets.sectionTotals.cogs += cost
+      buckets.monthlyCogs[month] += amount
+      buckets.sectionTotals.cogs += amount
     } else if (section === "opex") {
-      const cost = Math.abs(amount)
-      buckets.monthlyOpex[month] += cost
-      buckets.sectionTotals.opex += cost
+      buckets.monthlyOpex[month] += amount
+      buckets.sectionTotals.opex += amount
     } else if (section === "belowEbitda") {
-      const cost = Math.abs(amount)
-      buckets.monthlyBelowEbitda[month] += cost
-      buckets.sectionTotals.belowEbitda += cost
+      buckets.monthlyBelowEbitda[month] += amount
+      buckets.sectionTotals.belowEbitda += amount
+    }
+  }
+
+  // 2026-07-15 — normalise each cost section to the cost-as-positive
+  // convention ONCE, on the total, instead of Math.abs()-ing every row.
+  //
+  // Per-row abs made a reversal ADD to cost instead of subtracting: the FO
+  // 2026 actuals carry 21 credit notes worth −0.129M, which inflated OpEx by
+  // exactly 2× that (6.08M → 6.34M) and moved Net Profit from −4.20M to
+  // −4.43M against the workbook. The sibling path (`aggregateRowsForEbitda`)
+  // already abs's the summed total, so the same route disagreed with itself.
+  // Abs on the total keeps the original defensive intent — a section stored
+  // wholly negative still reads positive — without eating reversals.
+  for (const s of ["cogs", "opex", "belowEbitda"] as const) {
+    if (buckets.sectionTotals[s] >= 0) continue
+    buckets.sectionTotals[s] = -buckets.sectionTotals[s]
+    const monthly =
+      s === "cogs"
+        ? buckets.monthlyCogs
+        : s === "opex"
+          ? buckets.monthlyOpex
+          : buckets.monthlyBelowEbitda
+    for (const m of Object.keys(monthly)) {
+      monthly[Number(m)] = -monthly[Number(m)]
     }
   }
   return buckets
