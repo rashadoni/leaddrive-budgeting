@@ -10,6 +10,7 @@ import {
   isContraRevenueCode,
   pnlSectionFromCode,
   pnlSectionFromRole,
+  revenueContribution,
 } from "@/lib/budgeting/coa-role"
 import { isDaCode } from "@/lib/budgeting/da-codes"
 
@@ -306,13 +307,19 @@ export async function GET(req: NextRequest) {
   // Compute monthlyRevenue and monthlyCogs from leaf-level budget_lines
   // 602 (returns) and 603 (discounts) are contra-revenue — subtract from net revenue
   // COGS stored as positive in DB, but P&L view expects negative (GP = Revenue + COGS)
+  // 2026-07-15 — classify by pnlSectionFromCode, NOT by accountType. Other
+  // operating income (subsidies / interest) is imported as an expense-typed
+  // row carrying a negative amount; keying off accountType left it out of
+  // revenue while the cost buckets ignored it too, so it vanished from the
+  // P&L (13.45M of FO subsidies; Net Profit read −10.6M vs the file's +3.83M).
+  // `revenueContribution` reconciles the two sign conventions.
   leafAccounts.forEach((acct) => {
+    const section = pnlSectionFromCode(acct.code, acct.type)
     for (let m = 1; m <= 12; m++) {
       const val = acct.monthlyAmounts[m] || 0
-      if (acct.type === "revenue") {
-        const isContraRevenue = isContraRevenueCode(acct.code)
-        monthlyRevenue[m] += isContraRevenue ? -val : val
-      } else if (acct.type === "cogs") {
+      if (section === "revenue") {
+        monthlyRevenue[m] += revenueContribution(acct.code, acct.type, val)
+      } else if (section === "cogs") {
         monthlyCogs[m] -= val // negative for P&L subtraction
       }
     }
@@ -400,9 +407,10 @@ export async function GET(req: NextRequest) {
       monthlyActualDa[month] += Math.abs(amount)
     }
     if (section === "revenue") {
-      const sign = isContraRevenueCode(code) ? -1 : 1
-      sectionActuals.revenue += sign * amount
-      monthlyActualRevenue[month] += sign * amount
+      // 2026-07-15 — same two-convention reconciliation as the plan side.
+      const signed = revenueContribution(code, a.lineType, amount)
+      sectionActuals.revenue += signed
+      monthlyActualRevenue[month] += signed
     } else if (section === "cogs") {
       sectionActuals.cogs += amount
       monthlyActualCogs[month] += amount
@@ -524,7 +532,9 @@ function aggregateBudgetLinesForComparison(lines: BudgetLineRow[]): PnlLineCompa
     if (isDaCode(code)) buckets.monthlyDa[month] += Math.abs(amount)
 
     if (section === "revenue") {
-      const signedAmount = isContraRevenueCode(code) ? -amount : amount
+      // 2026-07-15 — expense-typed income (subsidies/interest) stores its
+      // income NEGATIVE; revenueContribution reconciles both conventions.
+      const signedAmount = revenueContribution(code, line.account.accountType, amount)
       buckets.monthlyRevenue[month] += signedAmount
       buckets.sectionTotals.revenue += signedAmount
     } else if (section === "cogs") {

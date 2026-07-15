@@ -158,3 +158,28 @@ export function pnlSectionFromCode(
   if (accountType === "expense") return "opex"
   return null
 }
+
+/**
+ * Signed revenue contribution of a P&L row whose section is `revenue`.
+ *
+ * Two conventions meet here. A row typed `revenue` stores income POSITIVE.
+ * A row typed `expense`/`cogs` stores cost POSITIVE — so when such a row is
+ * classified into the revenue section (other-operating income: subsidies,
+ * interest, PLF.07.01/.02), its income sits there as a NEGATIVE amount and
+ * must be negated to become revenue.
+ *
+ * Without this the FO budget lost 13.45M of subsidies from the P&L entirely
+ * (they matched neither the revenue filter, which keyed off accountType, nor
+ * the cost buckets, which only take expense-typed rows) and Net Profit read
+ * −10.6M against the workbook's own +3.83M (2026-07-15).
+ *
+ * Contra-revenue (returns / discounts) flips once more, as it always has.
+ */
+export function revenueContribution(
+  code: string,
+  accountType: string | null | undefined,
+  amount: number,
+): number {
+  const asRevenue = accountType === "revenue" ? amount : -amount
+  return isContraRevenueCode(code) ? -asRevenue : asRevenue
+}

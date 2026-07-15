@@ -10,6 +10,7 @@ import {
   deriveRoleFromCode,
   isContraRevenueCode,
   pnlSectionFromCode,
+  revenueContribution,
   pnlSectionFromRole,
 } from "./coa-role"
 
@@ -160,5 +161,36 @@ describe("pnlSectionFromCode — SAP + Workbook imported codes", () => {
     expect(pnlSectionFromCode("CUSTOM-COGS", "cogs")).toBe("cogs")
     expect(pnlSectionFromCode("CUSTOM-EXP", "expense")).toBe("opex")
     expect(pnlSectionFromCode("CUSTOM-ASSET", "asset")).toBeNull()
+  })
+})
+
+describe("revenueContribution — the two sign conventions", () => {
+  // The FO budget's other-operating income: subsidies imported as an
+  // expense-typed row whose income sits NEGATIVE (cost-as-positive
+  // convention). Before this helper the 13.45M vanished from the P&L and
+  // Net Profit read −10.6M against the workbook's own +3.83M.
+  it("negates expense-typed income so subsidies land as revenue", () => {
+    expect(revenueContribution("PLF.07.02.02", "expense", -3_570_000)).toBe(3_570_000)
+    expect(revenueContribution("PLF.07.01.01", "expense", -300_000)).toBe(300_000)
+  })
+
+  it("leaves a revenue-typed row's sign alone", () => {
+    expect(revenueContribution("PLF.01.01.01", "revenue", 15_836_740)).toBe(15_836_740)
+  })
+
+  it("still flips contra-revenue (returns / discounts)", () => {
+    expect(revenueContribution("602-01", "revenue", 5_000)).toBe(-5_000)
+    expect(revenueContribution("603-01", "revenue", 1_200)).toBe(-1_200)
+  })
+
+  it("an expense-typed row carrying a real cost turns negative — it is not revenue", () => {
+    // Guard against blindly negating: only rows the classifier puts in the
+    // revenue section reach this helper, and a positive cost there would be a
+    // genuine income reversal.
+    expect(revenueContribution("PLF.07.02.02", "expense", 100_000)).toBe(-100_000)
+  })
+
+  it("treats a null accountType as the cost convention (import default)", () => {
+    expect(revenueContribution("PLF.07.02.04", null, -9_230_000)).toBe(9_230_000)
   })
 })
