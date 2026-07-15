@@ -6,7 +6,7 @@
  * via `tryPrismaThenFallback` table-missing detection.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }))
 
@@ -142,4 +142,39 @@ describe("withTokenBudget wrapper", () => {
     const r = await checkBudget("org_a", tinyBudget)
     expect(r.ok).toBe(false)
   })
+})
+
+describe("capFromEnv — env-overridable ceilings (2026-07-15)", () => {
+  // The caps were hardcoded, so raising one meant a release. They're now
+  // operational knobs — but a typo must never silently uncap spend.
+  const KEY = "LLM_DAILY_TOKEN_CAP"
+  const original = process.env[KEY]
+  afterEach(() => {
+    if (original === undefined) delete process.env[KEY]
+    else process.env[KEY] = original
+    vi.resetModules()
+  })
+
+  async function loadCap(value?: string): Promise<number> {
+    if (value === undefined) delete process.env[KEY]
+    else process.env[KEY] = value
+    vi.resetModules()
+    const mod = await import("./cost-budget")
+    return mod.DEFAULT_BUDGET.daily
+  }
+
+  it("defaults to 500K when unset", async () => {
+    expect(await loadCap(undefined)).toBe(500_000)
+  })
+
+  it("honours a valid override", async () => {
+    expect(await loadCap("700000")).toBe(700_000)
+  })
+
+  it.each(["abc", "0", "-1", ""])(
+    "falls back to the default for a bad value (%s) — never uncapped",
+    async (bad) => {
+      expect(await loadCap(bad)).toBe(500_000)
+    },
+  )
 })

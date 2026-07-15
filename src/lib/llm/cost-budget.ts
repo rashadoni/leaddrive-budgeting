@@ -34,8 +34,26 @@ import { prisma as defaultPrisma } from "@/lib/prisma"
 import { prismaAdmin } from "@/lib/db/prisma-admin"
 import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 
-const DEFAULT_DAILY_TOKEN_CAP = 500_000
-const DEFAULT_MONTHLY_TOKEN_CAP = 10_000_000
+/**
+ * Per-org daily/monthly token ceilings — the guard that stops a runaway
+ * import loop from burning the Anthropic key.
+ *
+ * Env-overridable (2026-07-15): the caps were hardcoded, so raising one even
+ * temporarily meant a code change + release — too heavy for what is an
+ * operational knob. `LLM_DAILY_TOKEN_CAP` / `LLM_MONTHLY_TOKEN_CAP` now let an
+ * operator adjust it in `.env.production` and restart. A malformed or
+ * non-positive value falls back to the default rather than disabling the
+ * guard: a typo must never silently uncap spend.
+ */
+function capFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback
+}
+
+const DEFAULT_DAILY_TOKEN_CAP = capFromEnv("LLM_DAILY_TOKEN_CAP", 500_000)
+const DEFAULT_MONTHLY_TOKEN_CAP = capFromEnv("LLM_MONTHLY_TOKEN_CAP", 10_000_000)
 
 export type TokenBudget = {
   daily: number

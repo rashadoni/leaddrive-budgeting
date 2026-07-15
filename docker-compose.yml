@@ -50,6 +50,10 @@ services:
       # can't verify it from inside the container. Safe behind our nginx config.
       AUTH_TRUST_HOST: "true"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Per-org LLM token ceilings (see src/lib/llm/cost-budget.ts). Unset =
+      # the built-in 500K/day, 10M/month. Raise here + restart; no release.
+      LLM_DAILY_TOKEN_CAP: ${LLM_DAILY_TOKEN_CAP:-}
+      LLM_MONTHLY_TOKEN_CAP: ${LLM_MONTHLY_TOKEN_CAP:-}
       # R4 (audit round 2) — bearer for /api/cron/* (trade-digest crontab).
       CRON_SECRET: ${CRON_SECRET:-}
       # RLS Stage 3 (S6) — RLS-enforced app role + BYPASSRLS admin role.
