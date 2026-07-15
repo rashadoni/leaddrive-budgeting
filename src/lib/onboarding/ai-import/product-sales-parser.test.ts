@@ -14,6 +14,7 @@ import {
   detectProductSalesShape,
   parseProductSalesSheet,
   resolveUnitPrice,
+  inferQuantityScale,
 } from "./product-sales-parser"
 
 const EDEN = "AZSEKER-EDEN"
@@ -174,6 +175,63 @@ describe("transactional actuals", () => {
     const actualGlucose = res.rows.find((r) => r.identity.slug === "GLUCOSE")!
     const budgetGlucose = budget.rows.find((r) => r.identity.slug === "GLUCOSE")!
     expect(actualGlucose.identity.code).toBe(budgetGlucose.identity.code)
+  })
+})
+
+describe("quantity unit guard (kg mislabelled as 'Ton')", () => {
+  // The client's CPC actuals: "Net Miqdar Ton" holding kilograms. Their own
+  // summary divides by 1000; without this the Sales price reads 1000x low.
+  const KG_TX: unknown[][] = [
+    ["Dövr", "Məhsul qrupu", "Net Miqdar Ton", "Net Satış AZN"],
+    [new Date(2026, 0, 1), "Qlükoza", 635_437, 576_206],
+    [new Date(2026, 1, 1), "Qlükoza", 851_189, 723_449],
+    [new Date(2026, 0, 1), "Nişasta", 675_800, 496_449],
+    [new Date(2026, 1, 1), "Nişasta", 414_950, 344_536],
+  ]
+  // Farming actuals genuinely in tonnes — must be left alone.
+  const TONNE_TX: unknown[][] = [
+    ["Dövr", "Product", "Satış, Ton", "Satış, AZN"],
+    [new Date(2026, 0, 1), "Buğda", 25, 9_072],
+    [new Date(2026, 0, 1), "Arpa", 98, 40_148],
+    [new Date(2026, 1, 1), "Arpa", 198, 81_140],
+    [new Date(2026, 1, 1), "Badam", 18, 32_580],
+  ]
+
+  it("divides by 1000 when the median implied price is impossibly low for a tonne", () => {
+    const res = parseProductSalesSheet(wb("K", KG_TX), "K", XLSX, {
+      entityCode: CPC,
+      year: 2026,
+    })
+    const jan = res.rows.find((r) => r.identity.slug === "GLUCOSE" && r.month === 1)!
+    expect(jan.quantity).toBeCloseTo(635.437, 3)
+    expect(jan.amount).toBe(576_206) // money untouched
+    expect(resolveUnitPrice(jan)).toBeCloseTo(906.79, 1) // ₼/tonne, matches the client's own summary
+    expect(res.warnings.some((w) => w.includes("kilograms"))).toBe(true)
+  })
+
+  it("leaves a genuine tonnes column untouched", () => {
+    const res = parseProductSalesSheet(wb("T2", TONNE_TX), "T2", XLSX, {
+      entityCode: EDEN,
+      year: 2026,
+    })
+    const wheat = res.rows.find((r) => r.identity.slug === "WHEAT")!
+    expect(wheat.quantity).toBe(25)
+    expect(resolveUnitPrice(wheat)).toBeCloseTo(362.88, 1)
+    expect(res.warnings.some((w) => w.includes("kilograms"))).toBe(false)
+  })
+
+  it("never fires on a column that doesn't claim tonnes", () => {
+    expect(inferQuantityScale([
+      { quantity: 1000, amount: 900 },
+      { quantity: 2000, amount: 1800 },
+      { quantity: 3000, amount: 2700 },
+    ], "Net Quantity").divisor).toBe(1)
+  })
+
+  it("needs 3+ priced rows before inferring (one cheap by-product can't flip a sheet)", () => {
+    expect(
+      inferQuantityScale([{ quantity: 1000, amount: 900 }], "Net Miqdar Ton").divisor,
+    ).toBe(1)
   })
 })
 

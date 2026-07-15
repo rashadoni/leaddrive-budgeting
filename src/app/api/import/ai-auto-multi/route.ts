@@ -67,6 +67,7 @@ import {
 } from "@/lib/onboarding/ai-import/import-template-memory"
 import { buildEntityAliasMap } from "@/lib/onboarding/ai-import/entity-inference"
 import { detectStaleSiblingRows } from "@/lib/onboarding/ai-import/stale-sibling-check"
+import { detectProductSalesShape } from "@/lib/onboarding/ai-import/product-sales-parser"
 import { logAuditEvent } from "@/lib/audit/log"
 import { importConsolidatedHoldingBs } from "@/lib/onboarding/adapters/azseker-consolidated-bs-import"
 import type { SheetMap, SheetMapEntry } from "@/lib/onboarding/ai-import/sheet-routing"
@@ -779,6 +780,25 @@ export async function POST(request: NextRequest) {
     if (entries.length > 0) f.sheetMap = [...entries, ...(f.sheetMap ?? [])]
   }
 
+  // ── Pin product-sales sheets deterministically (2026-07-15) ────────────
+  // Volume/price/revenue-per-product sheets are recognised by SHAPE, not by the
+  // LLM: the classifier only ever sees ~12 truncated columns, so a 95-column
+  // banner grid with mixed AZ/EN headers is not a routing problem it can win —
+  // and a misroute sends product money to the wrong table. Entity + planKind
+  // still come from the normal chain (alias map / classifier / guided fix +
+  // the sheet-name keyword), so nothing here is org-specific.
+  const productSalesSheets: Array<{ filename: string; sheetName: string; shape: string }> = []
+  for (const f of files) {
+    const entries: SheetMapEntry[] = []
+    for (const sheetName of f.workbook.SheetNames) {
+      const shape = detectProductSalesShape(f.workbook, sheetName, XLSX)
+      if (!shape) continue
+      entries.push({ match: sheetName, dataType: "SALES_PRODUCTS", role: "source" })
+      productSalesSheets.push({ filename: f.filename, sheetName, shape })
+    }
+    if (entries.length > 0) f.sheetMap = [...entries, ...(f.sheetMap ?? [])]
+  }
+
   if ((guidedSheetFixes?.length ?? 0) > 0) {
     const knownCodes = new Set(knownEntityCodes)
     const unmatched = new Set(
@@ -1237,6 +1257,7 @@ export async function POST(request: NextRequest) {
     consolidatedBsWarnings,
     budgetPlfSplits,
     buColumnSplits,
+    productSalesSheets,
     durationMs: Date.now() - t0,
   })
 }

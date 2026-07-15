@@ -188,6 +188,11 @@ const DATATYPE_RULES: Record<SheetDataType, DataTypeRule> = {
     note: "ни один seeded индикатор пока не читает BudgetActual напрямую — для variance в будущем",
     match: () => false,
   },
+  SALES_PRODUCTS: {
+    writes: "SalesBudgetLine.quantity / unitPrice / amount (объём + цена по продукту × месяц)",
+    note: "питает вкладку «Продажи» бюджетирования; индикаторы читают P&L, а не эту таблицу",
+    match: () => false,
+  },
   SALES_FORECAST: {
     writes: "SalesForecast.amount (прогноз продаж по департаменту × месяц)",
     note: "ни один индикатор пока не читает sales_forecasts напрямую",

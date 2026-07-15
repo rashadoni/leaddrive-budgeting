@@ -31,6 +31,7 @@ import {
   makeCfHandler,
   makeKpiHandler,
 } from "./production-adapter-handlers-financial"
+import { makeProductSalesHandler } from "./production-adapter-handlers-sales"
 import {
   makeLandRegistryHandler,
   makeCapexHandler,
@@ -121,6 +122,8 @@ export function buildProductionAdapterRegistry(
     KPI_FARMING: wrap((p, c, e) => makeKpiHandler(p, c, e, "farming")),
     KPI_PROCESSING: wrap((p, c, e) => makeKpiHandler(p, c, e, "processing")),
     SALES: wrap((p, c, e) => makeKpiHandler(p, c, e, "sales")),
+    // 2026-07-15 — product-sales sheets -> SalesBudgetLine (Sales tab qty/price).
+    SALES_PRODUCTS: wrap(makeProductSalesHandler),
     LAND_REGISTRY: wrap(makeLandRegistryHandler),
     CAPEX: wrap(makeCapexHandler),
     DESCRIPTIONS: wrap(makeDescriptionsHandler),

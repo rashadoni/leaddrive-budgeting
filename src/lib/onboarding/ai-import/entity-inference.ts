@@ -83,6 +83,14 @@ export interface EntityInferenceResult {
  * Financial STATEMENT types where an entity-less sheet forces a manual pick.
  * Sales / KPI / counterparty etc. already resolve entity from sheet content
  * or per-row attribution, so they're out of scope here.
+ *
+ * SALES_PRODUCTS is deliberately NOT here (tried and reverted 2026-07-15):
+ * these sheets are transactional, so their cells carry CUSTOMER names — and a
+ * group's customers include its own sibling companies. The cell-scan promptly
+ * attributed the farming sales sheet to the processing company because
+ * "CPC MMC" appears as an intragroup customer. Entity for a sales sheet must
+ * come from a signal that can't be confused with a counterparty: the
+ * classifier's read of the sheet, or an explicit per-sheet pin from the user.
  */
 const STATEMENT_TYPES: ReadonlySet<SheetDataType> = new Set<SheetDataType>([
   "PLF",

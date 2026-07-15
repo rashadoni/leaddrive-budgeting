@@ -415,6 +415,54 @@ function parseBudgetBanner(
 // Shape 3 — transactional actuals → product × month
 // ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Largest plausible per-unit price (AZN) for a quantity column that CLAIMS to
+ * be tonnes. Agricultural + processed goods trade in the 50–20,000 ₼/t band;
+ * an implied price below this floor means the column is really a smaller unit.
+ */
+const TONNE_PRICE_FLOOR = 20
+const KG_PER_TONNE = 1000
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0
+  const s = [...values].sort((a, b) => a - b)
+  const m = Math.floor(s.length / 2)
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
+/**
+ * Divisor turning the sheet's quantity into the unit its header claims.
+ *
+ * The client's CPC actuals ship a column headed "Net Miqdar Ton" whose values
+ * are actually KILOGRAMS — their own summary tab divides it by 1000, and the
+ * implied price proves it (0.91 ₼ vs the budget's 946 ₼/t). Importing it as
+ * stated would make the Sales page's price 1000× too small and break every
+ * budget-vs-actual product comparison.
+ *
+ * Deterministic + conservative: only fires when the header EXPLICITLY claims
+ * tonnes AND the sheet-wide MEDIAN implied price is below the floor (so one
+ * cheap by-product can't flip a whole sheet). Otherwise the quantity is taken
+ * as stated. Confirmed with the client 2026-07-15.
+ */
+export function inferQuantityScale(
+  rows: ReadonlyArray<{ quantity: number; amount: number }>,
+  qtyHeader: string,
+): { divisor: number; reason: string | null } {
+  if (!/\bton\b|tonn|miqdar\s+ton/i.test(qtyHeader)) return { divisor: 1, reason: null }
+  const prices = rows
+    .filter((r) => r.quantity !== 0 && r.amount !== 0)
+    .map((r) => Math.abs(r.amount / r.quantity))
+  if (prices.length < 3) return { divisor: 1, reason: null }
+  const med = median(prices)
+  if (med > 0 && med < TONNE_PRICE_FLOOR) {
+    return {
+      divisor: KG_PER_TONNE,
+      reason: `column "${qtyHeader.trim()}" claims tonnes but the median implied price is ${med.toFixed(2)} ₼ — the values are kilograms; divided by ${KG_PER_TONNE} so price/volume read per tonne`,
+    }
+  }
+  return { divisor: 1, reason: null }
+}
+
 function parseTransactions(
   aoa: Aoa,
   entityCode: string,
@@ -500,9 +548,19 @@ function parseTransactions(
       `Sales transactions "${entityCode}": ${skippedYear} row(s) outside ${year} skipped (import that year separately).`,
     )
   }
+
+  // Normalise the quantity to the unit the header claims (kg-as-"Ton" guard).
+  const rows = [...byKey.values()]
+  const qtyHeader = String(header[qtyCol] ?? "")
+  const scale = inferQuantityScale(rows, qtyHeader)
+  if (scale.divisor !== 1) {
+    for (const r of rows) r.quantity /= scale.divisor
+    warnings.push(`Sales transactions "${entityCode}": ${scale.reason}`)
+  }
+
   return {
     shape: "transactions",
-    rows: [...byKey.values()],
+    rows,
     warnings,
     unknownLabels: [...unknown],
   }

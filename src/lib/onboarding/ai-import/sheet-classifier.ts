@@ -95,6 +95,13 @@ export type SheetDataType =
   // categories + criticality + description). Recognized so it is NOT
   // misclassified; a dedicated importer is added once a KRI consumer exists.
   | "RISK_REGISTER"
+  // 2026-07-15 — product-sales sheet (volume + price + revenue per product x
+  // month), either a budget grid or transactional actuals. Writes
+  // SalesBudgetLine (the budgeting Sales tab's source) via the product-sales
+  // adapter. Distinct from SALES (Azik KPI shape -> operational_facts only)
+  // and from SALES_FORECAST (department x month -> sales_forecasts).
+  // Detected deterministically by shape, NOT by the LLM.
+  | "SALES_PRODUCTS"
   | "UNKNOWN"
 
 export interface SheetClassification {
@@ -255,6 +262,7 @@ const VALID_DATA_TYPES = new Set<SheetDataType>([
   "LEGAL_CASES",
   "AUDIT_FINDINGS",
   "RISK_REGISTER",
+  "SALES_PRODUCTS",
   "UNKNOWN",
 ])
 
