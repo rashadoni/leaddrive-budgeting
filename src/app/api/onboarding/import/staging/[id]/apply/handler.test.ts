@@ -47,7 +47,17 @@ const { prismaMock, applierMocks, recomputeMock } = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
-vi.mock('@/lib/onboarding/ai-mapper/applier', () => applierMocks);
+// `applyProposal` / `detectProposalYear` are stubbed (they need a real
+// workbook); `mergeProposal` is NOT. It computes the mapping the B5 revision
+// is fingerprinted from, so stubbing it would let the lineage tests assert a
+// mapping id derived from a mock rather than from the proposal actually
+// applied — which is the one thing those tests exist to disprove.
+vi.mock('@/lib/onboarding/ai-mapper/applier', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('@/lib/onboarding/ai-mapper/applier')
+  >();
+  return { ...actual, ...applierMocks };
+});
 vi.mock('@/lib/risk/recompute-trigger', () => recomputeMock);
 vi.mock('xlsx', () => ({
   read: vi.fn().mockReturnValue({
@@ -331,6 +341,14 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
           importStaging: {
             updateMany: vi.fn().mockResolvedValue({ count: 1 }), // concurrency claim
             update: vi.fn().mockResolvedValue({ id: STAGING_ID }),
+          },
+          // Phase 10 / Stage B5 — the apply transaction now also pins the
+          // source state it commits (`ensureDataRevision`). Stubbed here so
+          // this test keeps its scope (the 12-row BudgetLine contract);
+          // lineage itself is asserted in the B5 block below.
+          dataRevision: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({ id: 'rev_1' }),
           },
         };
         return await cb(tx);
@@ -667,5 +685,263 @@ describe("POST .../apply — Codex pre-prod guards", () => {
     expect(res.status).toBe(409);
     // The claim is the FIRST tx op — delete must never run when it loses.
     expect(deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Phase 10 / Stage B5 — the production lineage writer.
+ *
+ * This is the block that proves lineage is *recorded*, not merely recordable.
+ * It runs the real `$transaction` callback against a tx-spy, so the revision
+ * write and the ids it carries are the route's, not a fixture's.
+ *
+ * What it deliberately does NOT claim: three-way atomicity across apply +
+ * revision + IndicatorValue. Recompute is post-commit on this route (and on
+ * every import path here), per 03-DATA-KPI-TRUST-SPEC §6.1/§6.4. The tests
+ * below pin the boundary that does hold — apply ↔ revision — and pin the
+ * post-commit hand-off of the revisionId.
+ */
+describe('POST /api/onboarding/import/staging/[id]/apply — B5 lineage writer', () => {
+  const REVISION_ID = 'rev_committed_1';
+
+  type TxSpy = {
+    dataRevisionCreate: ReturnType<typeof vi.fn>;
+    dataRevisionFindFirst: ReturnType<typeof vi.fn>;
+    budgetLineCreate: ReturnType<typeof vi.fn>;
+  };
+
+  /** Wire `$transaction` to actually run the route's callback. */
+  function wireTx(opts: {
+    existingRevision?: { id: string } | null;
+    onRevisionCreate?: () => unknown;
+    failBudgetLine?: boolean;
+    claimCount?: number;
+  } = {}): TxSpy {
+    const dataRevisionFindFirst = vi
+      .fn()
+      .mockResolvedValue(opts.existingRevision ?? null);
+    const dataRevisionCreate = vi.fn(async () => {
+      if (opts.onRevisionCreate) return opts.onRevisionCreate();
+      return { id: REVISION_ID };
+    });
+    const budgetLineCreate = vi.fn(async () => {
+      if (opts.failBudgetLine) throw new Error('BUDGET_LINE_WRITE_FAILED');
+      return { id: 'bl_1' };
+    });
+    prismaMock.$transaction.mockImplementation(
+      async (cb: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          budgetPlan: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({ id: 'plan_1' }),
+          },
+          budgetLine: {
+            deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+            create: budgetLineCreate,
+          },
+          chartOfAccount: {
+            findUnique: vi.fn().mockResolvedValue(null),
+            create: vi.fn(async ({ data }: { data: { code: string } }) => ({
+              id: `coa_${data.code}`,
+            })),
+          },
+          importStaging: {
+            updateMany: vi
+              .fn()
+              .mockResolvedValue({ count: opts.claimCount ?? 1 }),
+            update: vi.fn().mockResolvedValue({ id: STAGING_ID }),
+          },
+          dataRevision: {
+            findFirst: dataRevisionFindFirst,
+            create: dataRevisionCreate,
+          },
+        };
+        // A real interactive transaction rolls back on a throw. Let it
+        // propagate exactly as Prisma would; the route's catch handles it.
+        return await cb(tx);
+      },
+    );
+    return { dataRevisionCreate, dataRevisionFindFirst, budgetLineCreate };
+  }
+
+  function stageStagingRow(proposal?: Record<string, unknown>) {
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      id: STAGING_ID,
+      companyId: COMPANY_ID,
+      status: 'pending',
+      sourceFile: 'aac.xlsx',
+      sourceSheet: 'SOPL',
+      proposal: proposal ?? {
+        columns: [
+          { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: 'codes' },
+          { sourceIndex: 2, role: 'amount:Plan2026', confidence: 0.8, reasoning: 'amounts' },
+        ],
+        accountTypeOverrides: [],
+        anomalies: [],
+      },
+      userOverrides: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      appliedAt: null,
+    });
+    applierMocks.applyProposal.mockReturnValue({
+      lines: [
+        {
+          code: '601-01',
+          label: 'Revenue',
+          plannedAnnual: 1200,
+          accountType: 'revenue',
+          perMonth: Array.from({ length: 12 }, () => 100),
+        },
+      ],
+      warnings: [],
+      parentRollupsDropped: [],
+      parentRollupsUnallocated: [],
+    });
+    applierMocks.detectProposalYear.mockReturnValue(2026);
+  }
+
+  it('creates the revision inside the apply transaction with REAL artifact + mapping ids', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageStagingRow();
+    const spy = wireTx();
+
+    const res = await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+    expect(res.status).toBe(200);
+
+    expect(spy.dataRevisionCreate).toHaveBeenCalledTimes(1);
+    const data = spy.dataRevisionCreate.mock.calls[0][0].data;
+    expect(data.organizationId).toBe(ORG_ID);
+    expect(data.companyIds).toEqual([COMPANY_ID]);
+    expect(data.reason).toBe('import');
+    expect(data.createdById).toBe('u_mgr');
+    // The artifact is the staging row that was actually applied — not a
+    // filename, not a constant.
+    expect(data.sourceArtifactIds).toEqual([`import-staging:${STAGING_ID}`]);
+    // The mapping id is derived from the proposal actually applied.
+    expect(data.mappingVersionIds).toHaveLength(1);
+    expect(data.mappingVersionIds[0]).toMatch(/^effective-mapping:[0-9a-f]{64}$/);
+    // The period range is the fiscal year the apply wrote.
+    expect(data.periodFrom).toBe('2026-01');
+    expect(data.periodTo).toBe('2026-12');
+    // No placeholder ever reaches the database.
+    for (const id of [...data.sourceArtifactIds, ...data.mappingVersionIds]) {
+      expect(id).not.toMatch(/unknown|placeholder|todo|tbd/i);
+    }
+  });
+
+  it('passes the committed revisionId to recomputeIndicator via the trigger', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageStagingRow();
+    wireTx();
+
+    await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+
+    expect(recomputeMock.runRecomputeForCompanies).toHaveBeenCalledTimes(1);
+    const call = recomputeMock.runRecomputeForCompanies.mock.calls[0];
+    // 4th arg is RunRecomputeOptions — this is the hand-off that makes the
+    // IndicatorValue rows traceable.
+    expect(call[4]).toMatchObject({ revisionId: REVISION_ID });
+    // And it is scoped to the company/year the apply touched.
+    expect(call[2]).toEqual([{ companyId: COMPANY_ID, year: 2026 }]);
+  });
+
+  it('surfaces the revisionId on the apply response (additively)', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageStagingRow();
+    wireTx();
+
+    const res = await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+    const body = await res.json();
+    expect(body.revisionId).toBe(REVISION_ID);
+    // Pre-existing response contract is untouched.
+    expect(body).toMatchObject({ stagingId: STAGING_ID, status: 'applied', year: 2026 });
+  });
+
+  it('reuses an identical revision rather than creating a duplicate', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageStagingRow();
+    const spy = wireTx({ existingRevision: { id: 'rev_existing' } });
+
+    await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+
+    // Found by content hash → no second row, and the existing id is what
+    // the observations get traced to.
+    expect(spy.dataRevisionCreate).not.toHaveBeenCalled();
+    expect(recomputeMock.runRecomputeForCompanies.mock.calls[0][4]).toMatchObject({
+      revisionId: 'rev_existing',
+    });
+  });
+
+  it('a failed source write rolls back the revision with the apply — and never recomputes', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageStagingRow();
+    const spy = wireTx({ failBudgetLine: true });
+    prismaMock.importStaging.update.mockResolvedValue({ id: STAGING_ID });
+
+    const res = await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+
+    expect(res.status).toBe(500);
+    // The revision write is downstream of the failing line write, so it is
+    // never even attempted; had it been, the transaction throw would undo it.
+    expect(spy.dataRevisionCreate).not.toHaveBeenCalled();
+    // No revision, no import → nothing to trace, so nothing is recomputed.
+    expect(recomputeMock.runRecomputeForCompanies).not.toHaveBeenCalled();
+  });
+
+  it('a failed revision write rolls back the apply — no untraceable import commits', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageStagingRow();
+    const spy = wireTx({
+      onRevisionCreate: () => {
+        throw new Error('REVISION_WRITE_FAILED');
+      },
+    });
+    prismaMock.importStaging.update.mockResolvedValue({ id: STAGING_ID });
+
+    const res = await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+
+    // The import lines were written in this transaction; the revision throw
+    // takes them down with it. An import that cannot say where it came from
+    // does not land.
+    expect(res.status).toBe(500);
+    expect(spy.budgetLineCreate).toHaveBeenCalled(); // it tried
+    expect(recomputeMock.runRecomputeForCompanies).not.toHaveBeenCalled();
+  });
+
+  it('a repeat apply of the same staging creates no second revision', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageStagingRow();
+    // The concurrency claim is what makes apply once-only: the second POST
+    // sees count 0 and throws STAGING_RACE before any write lands.
+    const spy = wireTx({ claimCount: 0 });
+
+    const res = await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+
+    expect(res.status).toBe(409);
+    expect(spy.dataRevisionCreate).not.toHaveBeenCalled();
+    expect(recomputeMock.runRecomputeForCompanies).not.toHaveBeenCalled();
+  });
+
+  it('a recompute failure does not roll back the revision — and is reported, not hidden', async () => {
+    // This pins the boundary honestly rather than pretending it is stronger
+    // than it is. Recompute is post-commit here; a failure leaves the import
+    // and its revision committed, with `indicatorsStale` telling the truth.
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageStagingRow();
+    const spy = wireTx();
+    recomputeMock.runRecomputeForCompanies.mockResolvedValue({
+      ok: 0,
+      unknown: 0,
+      failed: 3,
+      targets: 3,
+    });
+
+    const res = await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(spy.dataRevisionCreate).toHaveBeenCalledTimes(1);
+    expect(body.indicatorsStale).toBe(true);
+    expect(body.revisionId).toBe(REVISION_ID);
   });
 });

@@ -335,6 +335,12 @@ export async function GET(request: NextRequest) {
               // cells fall back to "computed" rendering — defeating
               // the entire feature.
               valueSource: true,
+              // Phase 10 / Stage B5 — lineage. Scalar on the IV row, and
+              // this query is already `organizationId`-scoped, so it can
+              // only ever be a revision of the caller's own org; no
+              // DataRevision join, so no other org's revision detail is
+              // reachable through here. Null on every legacy row.
+              revisionId: true,
               // Financial-truth-infra Phase B.2 — sanityBand reaches
               // every HeatMap cell so the CompanyTree trust badge can
               // promote to 'suspicious' on extreme-band cells without a
@@ -477,6 +483,12 @@ export async function GET(request: NextRequest) {
           signalConfidence,
           ...(sparkline ? { sparkline } : {}),
           ...(error ? { error } : {}),
+          // Phase 10 / Stage B5 — omitted rather than sent as null when the
+          // row is untraced, so a legacy cell's payload is byte-identical to
+          // what it was before lineage existed. The gate reads absent and
+          // null the same (`!cell.revisionId` → no_lineage), so omission
+          // costs no meaning and every legacy row costs no bytes.
+          ...(v.revisionId ? { revisionId: v.revisionId } : {}),
           // Phase 7.H F4.v2.4 — materiality is only stamped on ESG
           // cells (other indicators don't participate in the framework).
           ...(materiality ? { materiality } : {}),
@@ -564,6 +576,9 @@ export async function GET(request: NextRequest) {
               // parent cells (sub-44 path) so a holding-level cell
               // carries the same provenance badge as its children.
               valueSource: true,
+              // Phase 10 / Stage B5 — lineage on real parent rollup cells,
+              // on the same org-scoped terms as the operational query above.
+              revisionId: true,
               // Financial-truth-infra Phase B.2 — sanityBand mirrored to
               // parent rollup cells so a holding-level row inherits the
               // audit verdict from its IV.
@@ -611,6 +626,9 @@ export async function GET(request: NextRequest) {
         ...(error ? { error } : {}),
         ...(materiality ? { materiality } : {}),
         ...(v.sanityBand ? { sanityBand: v.sanityBand as 'normal' | 'low_extreme' | 'high_extreme' | 'missing_input' | 'no_band' } : {}),
+        // Phase 10 / Stage B5 — same omit-when-untraced contract as the
+        // operational cells above.
+        ...(v.revisionId ? { revisionId: v.revisionId } : {}),
         // Sub-44 cont'd architect 💡 closure — discriminated-union
         // `kind` field replaces the legacy `isRealParentRollup` boolean.
         // Distinguishes from synthetic averages (different drill-down

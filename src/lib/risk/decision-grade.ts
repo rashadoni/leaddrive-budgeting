@@ -43,6 +43,8 @@ export type ProvisionalReason =
   | 'unreliable_signal'
   /** No `revisionId`: the value cannot name the source state it came from. */
   | 'no_lineage'
+  /** No `lastReconciledAt`: the value was never checked against its source. */
+  | 'no_reconciliation'
   /** Computed too long ago to speak for the current period. */
   | 'stale'
   /** No value ingested, or not applicable — never decision-grade to begin with. */
@@ -85,6 +87,24 @@ export interface GradeOptions {
    * that actually populates it, under review.
    */
   requireLineage?: boolean;
+  /**
+   * Require reconciliation (a `lastReconciledAt`) for decision-grade.
+   *
+   * Defaults to **false** for the same reason `requireLineage` does — 0 of
+   * 1,269 rows carry the stamp — but it exists, and callers that require
+   * lineage must require this too. Here is why that pairing is not optional:
+   *
+   * Before Stage B5, `requireLineage: true` was load-bearing all by itself,
+   * because nothing could ever satisfy it. B5 gave imports a writer, so a
+   * freshly imported cell now HAS a `revisionId` — and if lineage were the
+   * only gate, that cell would be certified decision-grade the moment it
+   * landed, having never been reconciled to its source, coverage-checked or
+   * methodology-approved. Lineage answers "where did this come from?"; it
+   * cannot answer "is it right?". Presence of a revision is necessary for
+   * decision-grade and nowhere near sufficient, which is exactly what the
+   * §5.1/§7 split says.
+   */
+  requireReconciliation?: boolean;
 }
 
 /** Statuses that carry a confident green/amber/red read. */
@@ -101,7 +121,11 @@ export function classifyObservationGrade(
   now: number,
   opts: GradeOptions = {},
 ): GradeVerdict {
-  const { staleAfterMs = DEFAULT_STALE_AFTER_MS, requireLineage = false } = opts;
+  const {
+    staleAfterMs = DEFAULT_STALE_AFTER_MS,
+    requireLineage = false,
+    requireReconciliation = false,
+  } = opts;
   const reasons: ProvisionalReason[] = [];
 
   // No cell, or a status that already reads neutral. `unknown` is a data gap
@@ -119,6 +143,13 @@ export function classifyObservationGrade(
   // provenance, or vice versa. Both are required for decision-grade; they fail
   // for different reasons and are recorded separately.
   if (requireLineage && !cell.revisionId) reasons.push('no_lineage');
+  // The other half of the sentence above, and the one B5 makes load-bearing:
+  // an imported cell can now name its source, and naming a source is not being
+  // checked against it. Without this rule, stamping a revisionId would silently
+  // certify a never-reconciled number.
+  if (requireReconciliation && !cell.lastReconciledAt) {
+    reasons.push('no_reconciliation');
+  }
 
   if (isStale(cell.computedAt, now, staleAfterMs)) reasons.push('stale');
 
@@ -149,6 +180,7 @@ const REASON_SEVERITY: ProvisionalReason[] = [
   'calculation_error',
   'unreliable_signal',
   'no_lineage',
+  'no_reconciliation',
   'stale',
   'no_observation',
 ];

@@ -884,4 +884,98 @@ describe('runRecomputeForCompanies', () => {
       ]);
     });
   });
+
+  describe('options.revisionId — B5 lineage hand-off', () => {
+    it('omitting options leaves every row untraced (legacy contract)', async () => {
+      const prisma = makePrisma([co()], [ind()]);
+      mockedRecompute.mockResolvedValue({ ok: true, status: 'green', value: 75 });
+
+      await runRecomputeForCompanies(prisma as never, 'org_1', [
+        { companyId: 'co_1', year: 2026 },
+      ]);
+
+      // Every legacy caller — cron, scripts, the other import routes — must
+      // keep writing `revisionId = null`. A row that never named a source is
+      // honestly untraced, and A5's gate holds it at Provisional for it.
+      expect(mockedRecompute).toHaveBeenCalled();
+      for (const call of mockedRecompute.mock.calls) {
+        expect(call[1].revisionId).toBeUndefined();
+      }
+    });
+
+    it('passes the revisionId to every recomputeIndicator call in the run', async () => {
+      const prisma = makePrisma([co()], [ind()]);
+      mockedRecompute.mockResolvedValue({ ok: true, status: 'green', value: 75 });
+
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [{ companyId: 'co_1', year: 2026 }],
+        {},
+        { revisionId: 'rev_1' },
+      );
+
+      expect(mockedRecompute).toHaveBeenCalled();
+      for (const call of mockedRecompute.mock.calls) {
+        expect(call[1].revisionId).toBe('rev_1');
+        // The revision travels with the org it belongs to; the write path
+        // re-checks that pairing before it stamps anything.
+        expect(call[1].organizationId).toBe('org_1');
+      }
+    });
+
+    it('an explicit null revisionId clears lineage (it does not merely skip it)', async () => {
+      const prisma = makePrisma([co()], [ind()]);
+      mockedRecompute.mockResolvedValue({ ok: true, status: 'green', value: 75 });
+
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [{ companyId: 'co_1', year: 2026 }],
+        {},
+        { revisionId: null },
+      );
+
+      for (const call of mockedRecompute.mock.calls) {
+        expect(call[1].revisionId).toBeNull();
+      }
+    });
+
+    it('never traces a parent rollup to the importing company\'s revision', async () => {
+      // A rollup aggregates N children; a revision raised by importing ONE of
+      // them names that one child. Stamping it on the parent would have the
+      // holding cite a source that explains a fraction of its own number.
+      const parent = co({ id: 'co_parent', code: 'HOLD', level: 1, industry: null });
+      const child = co({ id: 'co_1', code: 'CHILD' });
+      const rollupInd = ind({
+        id: 'i_rollup',
+        code: 'IND_HOLDING_REVENUE',
+        formula: 'rollup("IND_REVENUE_TOTAL")',
+        requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+        industries: [],
+      });
+      const prisma = makePrisma([child], [rollupInd], [parent]);
+      mockedRecompute.mockResolvedValue({ ok: true, status: 'green', value: 75 });
+
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [{ companyId: 'co_1', year: 2026 }],
+        {},
+        { revisionId: 'rev_1' },
+      );
+
+      const byCompany = new Map<string, unknown>();
+      for (const call of mockedRecompute.mock.calls) {
+        byCompany.set(call[1].companyId as string, call[1].revisionId);
+      }
+      // Guard the guard: the parent pass must actually have run, or the
+      // assertion below would pass for the wrong reason (absent ≠ untraced).
+      expect(byCompany.has('co_parent')).toBe(true);
+      // The imported company's own observation is traced...
+      expect(byCompany.get('co_1')).toBe('rev_1');
+      // ...the holding's rollup is not.
+      expect(byCompany.get('co_parent')).toBeUndefined();
+    });
+  });
 });

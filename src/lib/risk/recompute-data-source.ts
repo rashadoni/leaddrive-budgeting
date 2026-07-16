@@ -658,11 +658,24 @@ export function createPrismaDataSource(
           ...(sparkline !== undefined && {
             sparkline: sparkline as Prisma.InputJsonValue,
           }),
-          // Stage B5 — mirrors the sparkline rule: `undefined` MUST NOT touch
-          // the column. A bulk recompute that does not thread a revision must
-          // not silently erase lineage a traced write established earlier.
-          // Passing `null` explicitly still clears it.
-          ...(revisionId !== undefined && { revisionId }),
+          // Stage B5 — lineage is written on EVERY update, and deliberately
+          // does NOT follow the sparkline rule above.
+          //
+          // The two look alike and are opposites. A sparkline is independent
+          // data owned by another writer (the offline worker), so a recompute
+          // that has none must leave it alone. A `revisionId` is a property of
+          // the `value` three lines up: it is the claim "this revision
+          // produced this number". The moment an untraced recompute replaces
+          // `value`, that claim stops being true — so carrying the old
+          // revision forward would not be preserving lineage, it would be
+          // fabricating it, and a wrong pointer reads as evidence where `null`
+          // reads as the absence of it.
+          //
+          // Hence: traced write → stamps its revision; untraced write → clears
+          // to null and the row is honestly untraced again, exactly as A5's
+          // gate will then report it. Presence therefore means "this revision
+          // produced this number", never "some revision once did".
+          revisionId: revisionId ?? null,
         },
       });
     },

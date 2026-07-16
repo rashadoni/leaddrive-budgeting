@@ -204,22 +204,56 @@ d('IndicatorValue lineage (live DB)', () => {
     });
   });
 
-  it('an untraced bulk recompute never erases lineage established earlier', async () => {
-    // `undefined` must not touch the column — the same rule sparkline follows.
-    // Otherwise the nightly period-only fan-out would silently strip every
-    // pointer a traced import wrote.
+  it('an untraced recompute CLEARS lineage rather than inheriting it', async () => {
+    // This test asserted the opposite until the B5 writer review, and the
+    // inversion is the point — so the reasoning is worth keeping.
+    //
+    // The old rule ("`undefined` must not touch the column — the same rule
+    // sparkline follows") modelled lineage on the sparkline, and the analogy is
+    // wrong. A sparkline is independent data owned by another writer, so a
+    // recompute that has none must leave it alone. A revisionId is a property
+    // of the `value` written in the same statement: it asserts "this revision
+    // produced this number".
+    //
+    // With the old rule, the nightly cron — which threads no revision — would
+    // overwrite value/status/computedAt from a completely different source
+    // state and leave the import's revision attached to it. The row would then
+    // cite provenance for a number that provenance never produced. That is not
+    // preserving lineage; it is manufacturing it, and a wrong pointer reads as
+    // evidence where null reads as its absence.
     const rev = await ensureDataRevision(admin, {
       scope: scopeFor(ORG_A, { sourceArtifactIds: ['keep.xlsx'] }),
       reason: 'import',
     });
-    await upsertIv(ORG_A, rev.id, '2024');
+    const traced = await upsertIv(ORG_A, rev.id, '2024');
+    expect(traced.revisionId).toBe(rev.id);
+
+    // Now an untraced recompute rewrites the same row, as the cron does.
     const after = await upsertIv(ORG_A, undefined, '2024');
-    expect(after.revisionId).toBe(rev.id);
+    expect(after.revisionId).toBeNull();
   });
 
-  it('clears lineage only when null is passed explicitly', async () => {
+  it('clears lineage when null is passed explicitly', async () => {
     const cleared = await upsertIv(ORG_A, null, '2024');
     expect(cleared.revisionId).toBeNull();
+  });
+
+  it('re-stamps lineage when a later traced write replaces the value', async () => {
+    // The inverse of the above: presence must track the CURRENT writer, so a
+    // second import re-establishes the pointer rather than being ignored.
+    const first = await ensureDataRevision(admin, {
+      scope: scopeFor(ORG_A, { sourceArtifactIds: ['first.xlsx'] }),
+      reason: 'import',
+    });
+    const second = await ensureDataRevision(admin, {
+      scope: scopeFor(ORG_A, { sourceArtifactIds: ['second.xlsx'] }),
+      reason: 'import',
+    });
+    expect(second.id).not.toBe(first.id);
+
+    await upsertIv(ORG_A, first.id, '2022');
+    const after = await upsertIv(ORG_A, second.id, '2022');
+    expect(after.revisionId).toBe(second.id);
   });
 
   it('refuses to delete a revision that observations still point at', async () => {

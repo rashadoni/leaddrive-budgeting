@@ -791,3 +791,122 @@ describe('GET /api/indicators/matrix — truth-infra C.3 pending filter', () => 
     expect(where).toMatchObject({ status: { not: 'pending' } });
   });
 });
+
+/**
+ * Phase 10 / Stage B5 — lineage on the wire.
+ *
+ * The matrix is the only place a `revisionId` becomes visible to a client, and
+ * it is the place a cross-org leak would show up. These tests pin both: that a
+ * traced cell carries its revision, and that the query which fetches it cannot
+ * reach another organization's rows in the first place.
+ */
+describe('GET /api/indicators/matrix — B5 revisionId serialization', () => {
+  const COMPANY = {
+    id: 'c1',
+    code: 'AAC',
+    name: 'AAC',
+    industry: 'hospitality',
+    level: 2,
+    isActive: true,
+    role: 'operational',
+    sortOrder: 1,
+  };
+  const INDICATOR = {
+    id: 'i1',
+    code: 'GROSS_MARGIN',
+    nameEn: 'Gross Margin',
+    direction: 'higher_is_better',
+    unit: '%',
+    sortOrder: 1,
+  };
+
+  function setupMatrix(ivRows: unknown[]): void {
+    prismaMock.company.findMany.mockResolvedValue([COMPANY]);
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([INDICATOR]);
+    prismaMock.indicatorValue.findMany.mockImplementation(
+      async (arg: { distinct?: string[] } = {}) => {
+        // The period-resolution query runs first and must not get cell rows.
+        if (arg.distinct?.includes('period')) return [{ period: '2025' }];
+        return ivRows;
+      },
+    );
+  }
+
+  function iv(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'iv_1',
+      companyId: 'c1',
+      indicatorId: 'i1',
+      value: 42,
+      status: 'green',
+      inputs: {},
+      sparkline: null,
+      valueSource: 'computed',
+      ...overrides,
+    };
+  }
+
+  it('serializes revisionId on a traced cell', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    setupMatrix([iv({ revisionId: 'rev_abc' })]);
+
+    const res = await GET(makeRequest('/api/indicators/matrix'));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const cell = body.cells.find(
+      (c: { companyId: string }) => c.companyId === 'c1',
+    );
+    expect(cell.revisionId).toBe('rev_abc');
+  });
+
+  it('leaves a legacy (null-revision) cell exactly as it was — field absent', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    setupMatrix([iv({ revisionId: null })]);
+
+    const res = await GET(makeRequest('/api/indicators/matrix'));
+    const body = await res.json();
+    const cell = body.cells.find(
+      (c: { companyId: string }) => c.companyId === 'c1',
+    );
+    // Back-compat: an untraced cell's payload is byte-identical to the
+    // pre-lineage shape. `!cell.revisionId` reads absent and null alike, so
+    // the gate still calls it `no_lineage`.
+    expect('revisionId' in cell).toBe(false);
+    expect(cell.value).toBe(42);
+    expect(cell.status).toBe('green');
+  });
+
+  it('asks the database for revisionId, scoped to the caller organization only', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    setupMatrix([iv({ revisionId: 'rev_abc' })]);
+
+    await GET(makeRequest('/api/indicators/matrix'));
+
+    const cellQuery = prismaMock.indicatorValue.findMany.mock.calls.find(
+      (c) => c[0]?.where?.companyId !== undefined,
+    )?.[0];
+    expect(cellQuery).toBeDefined();
+    // The lineage column is selected...
+    expect(cellQuery.select.revisionId).toBe(true);
+    // ...from rows that are org-scoped at the query itself, which is what
+    // makes a foreign revision unreachable rather than merely unrendered.
+    expect(cellQuery.where.organizationId).toBe(ORG_ID);
+    // And no DataRevision is joined, so no other org's revision detail
+    // (its artifacts, its period range, its author) can ride along.
+    expect(cellQuery.select.revision).toBeUndefined();
+    expect(cellQuery.include).toBeUndefined();
+  });
+
+  it('emits no lineage for a synthetic rollup cell — it has no observation to trace', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    setupMatrix([iv({ revisionId: 'rev_abc' })]);
+
+    const res = await GET(makeRequest('/api/indicators/matrix'));
+    const body = await res.json();
+    for (const cell of body.cells) {
+      if (cell.kind === 'synthetic-rollup') {
+        expect(cell.revisionId).toBeUndefined();
+      }
+    }
+  });
+});

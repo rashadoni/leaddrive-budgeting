@@ -298,13 +298,25 @@ export function useHeatMapModel(period: string | undefined) {
 
   // Phase 10 A5 — surface-level Legacy/Provisional posture.
   //
-  // `requireLineage: true` is deliberate and is what makes this stable: no
-  // IndicatorValue in this product carries `lastReconciledAt` (0 of 1,269,
-  // measured 2026-07-16 — only audit-company.cjs writes it and it has never
-  // run over this data). So the verdict does not depend on the clock or on
-  // which cells happen to be loaded, and the badge states one true thing:
-  // nothing on this surface is reconciled, therefore nothing on it is
-  // certified for a decision.
+  // `requireLineage: true` + `requireReconciliation: true` are deliberate, and
+  // the pair is what makes this stable.
+  //
+  // The reasoning here used to be "no IndicatorValue carries
+  // `lastReconciledAt`, so requiring lineage is stable" — which stopped being
+  // true twice over. Commit `a8c5b7fa` re-pointed the lineage rule at
+  // `revisionId`, so this option no longer had anything to do with
+  // reconciliation; then Stage B5 gave imports a writer, so `revisionId` is no
+  // longer absent. Requiring lineage ALONE would therefore have certified
+  // every freshly imported cell as decision-grade — never reconciled, never
+  // coverage-checked, never methodology-approved — which is the exact claim
+  // this badge exists to refuse.
+  //
+  // Reconciliation is the stable leg: 0 of 1,269 rows carry
+  // `lastReconciledAt` (measured 2026-07-16 — only audit-company.cjs writes
+  // it and it has never run over this data). So the verdict does not depend on
+  // the clock, on which cells are loaded, or on whether an import ran, and the
+  // badge states one true thing: nothing on this surface is reconciled,
+  // therefore nothing on it is certified for a decision.
   //
   // Deliberately NOT applied per cell: with 498/498 coloured cells untraced,
   // per-cell demotion would grey the whole matrix — a cutover, not the
@@ -315,6 +327,7 @@ export function useHeatMapModel(period: string | undefined) {
     () =>
       summarizeSurfaceGrade(data?.cells ?? [], Date.now(), {
         requireLineage: true,
+        requireReconciliation: true,
       }),
     [data],
   );

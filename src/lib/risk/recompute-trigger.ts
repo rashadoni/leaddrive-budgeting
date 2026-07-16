@@ -98,6 +98,26 @@ export interface RunRecomputeResult {
  */
 export interface RunRecomputeOptions {
   codeFilter?: readonly string[];
+  /**
+   * Phase 10 / Stage B5 — the DataRevision every IndicatorValue written by this
+   * run is traced to.
+   *
+   * Only an import that created a revision inside its own apply transaction
+   * passes this; it names the committed source state these observations were
+   * derived from (03-DATA-KPI-TRUST-SPEC §6.1 — a source mutation carries its
+   * `revisionId` to the recompute it triggers).
+   *
+   * Omitted → every row keeps `revisionId = null`, exactly as before. That is
+   * the legacy contract, and it is not a defect: an untraced row is honestly
+   * untraced, and A5's gate holds it at Provisional for precisely that reason.
+   *
+   * The revision must belong to `organizationId`. This module does not check
+   * that — `upsertIndicatorValue` does, on every write, and refuses a foreign
+   * one. Validating here as well would only move the error earlier while
+   * leaving the real write path to be trusted, so the check lives where the
+   * write is.
+   */
+  revisionId?: string | null;
 }
 
 const EMPTY_RESULT: RunRecomputeResult = {
@@ -354,8 +374,26 @@ export async function runRecomputeForCompanies(
     const parentTargets = parentCompanies.flatMap((p) =>
       rollupDefs.map((d) => ({ company: p, definition: d })),
     );
-    const targets = [...operationalTargets, ...parentTargets];
-    for (const { company, definition } of targets) {
+    // Phase 10 / Stage B5 — only the companies the caller actually named may
+    // carry the caller's revision.
+    //
+    // `parentCompanies` is every level-1 company in the org, not the imported
+    // company's ancestor, and a parent's rollup aggregates N children. A
+    // revision raised by importing ONE child names exactly that child in its
+    // `companyIds` and one workbook in its `sourceArtifactIds` — so stamping it
+    // onto a holding's rollup would have the rollup claim provenance from a
+    // source that explains one of its inputs, and would stamp unrelated
+    // sub-groups besides. A rollup's real lineage is the union of its
+    // children's revisions, which a single `revisionId` cannot express.
+    //
+    // So parent rollups stay untraced (null → honestly untraced → Provisional)
+    // until a revision can speak for an aggregate. That is a gap, and it is a
+    // smaller lie than the alternative.
+    const targets = [
+      ...operationalTargets.map((t) => ({ ...t, traced: true })),
+      ...parentTargets.map((t) => ({ ...t, traced: false })),
+    ];
+    for (const { company, definition, traced } of targets) {
       const defLike: IndicatorDefinitionLike = {
         id: definition.id,
         code: definition.code,
@@ -384,6 +422,10 @@ export async function runRecomputeForCompanies(
           period,
           baseCurrency: company.baseCurrencyCode ?? undefined,
           industry: company.industry ?? null,
+          // Phase 10 / Stage B5 — undefined on every legacy caller, which
+          // leaves the row `revisionId = null` as before. A parent rollup is
+          // never traced to a caller's revision (see `traced` above).
+          revisionId: traced ? options.revisionId : undefined,
         });
         if (result.status === 'unknown') unknown += 1;
         else ok += 1;

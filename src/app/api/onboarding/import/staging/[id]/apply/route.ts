@@ -51,6 +51,8 @@ import { saveApprovedTemplate } from '@/lib/onboarding/ai-mapper/template-store'
 import { extractMapperInput } from '@/lib/onboarding/ai-mapper/extract';
 import { computeStructureHash } from '@/lib/onboarding/ai-mapper/structure-hash';
 import { currentBakuYearNumber } from '@/lib/risk/periods';
+import { ensureDataRevision } from '@/lib/risk/data-revision-writer';
+import { buildImportRevisionScope } from '@/lib/risk/import-lineage';
 import type { MappingProposal } from '@/lib/onboarding/ai-mapper/types';
 import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
@@ -65,6 +67,12 @@ type ApplyDiagnostics = {
   warnings: number;
   parentRollupsDropped: number;
   parentRollupsUnallocated: number;
+  /**
+   * Phase 10 / Stage B5 — the DataRevision this apply committed, and the one
+   * every IndicatorValue the follow-on recompute writes is traced to.
+   * Additive on the wire; existing clients ignore it.
+   */
+  revisionId: string;
 };
 
 export async function POST(
@@ -495,6 +503,12 @@ export async function POST(
   // FX_IMPORTED_INPUT flag it as non-base); else the company base currency.
   const baseCurrencyCode =
     applyResult.resolvedCurrency ?? companyForCurrency?.baseCurrencyCode ?? 'AZN';
+  // The mapping actually applied: the staged proposal merged with whatever the
+  // reviewer overrode. Computed once and used twice — to fingerprint this
+  // import's lineage below, and to save the approved template after commit —
+  // so the mapping the revision names can never drift from the mapping the
+  // template records.
+  const effectiveMapping = mergeProposal(proposal, userOverrides);
   let diagnostics: ApplyDiagnostics;
   try {
     diagnostics = await prisma.$transaction(
@@ -631,12 +645,44 @@ export async function POST(
           },
         });
 
+        // Phase 10 / Stage B5 — pin the source state this apply just
+        // committed, inside the transaction that committed it.
+        //
+        // The boundary is deliberate. A revision names SOURCE state, and this
+        // transaction is where source state becomes real: if any write above
+        // rolls back, no revision may survive claiming it happened; if the
+        // revision cannot be written, the import must not commit unexplained.
+        // Both hold because they are one transaction.
+        //
+        // Recompute is NOT in this transaction — it runs post-commit below, as
+        // it does on every import path here, and as 03-DATA-KPI-TRUST-SPEC
+        // §6.1/§6.4 describe: a source mutation carries its revisionId into a
+        // downstream recompute whose observations are pending (and shown
+        // provisional) until it lands. So this transaction guarantees
+        // apply ↔ revision. It does NOT guarantee revision ↔ IndicatorValue —
+        // a post-commit recompute failure leaves this revision referenced by
+        // fewer rows than it explains, which the per-cell gate reads correctly
+        // (untraced rows stay Provisional) and `indicatorsStale` surfaces.
+        // See IMPLEMENTATION-STATUS.md §17.
+        const revision = await ensureDataRevision(tx, {
+          scope: buildImportRevisionScope({
+            organizationId: orgIdLocal,
+            companyId,
+            stagingId: staging.id,
+            effectiveMapping,
+            targetYear,
+          }),
+          reason: 'import',
+          createdById: session.userId,
+        });
+
         return {
           inserted,
           deleted: del.count,
           warnings: applyResult.warnings.length,
           parentRollupsDropped: applyResult.parentRollupsDropped.length,
           parentRollupsUnallocated: applyResult.parentRollupsUnallocated.length,
+          revisionId: revision.id,
         };
       },
       // 60s timeout — covers ~500 rows comfortably; matches the import-
@@ -690,6 +736,11 @@ export async function POST(
     pairError: (label, err) => recomputeLog.error(label, {
       err: err instanceof Error ? err.message : String(err),
     }),
+  }, {
+    // Phase 10 / Stage B5 — every IndicatorValue this run writes is traced to
+    // the revision the apply transaction committed above. This is the first
+    // production path that records lineage rather than merely being able to.
+    revisionId: diagnostics.revisionId,
   });
   const indicatorsStale = recomputeResult.failed > 0;
 
@@ -731,7 +782,7 @@ export async function POST(
   // be pre-filled (commit still goes through Phase-A validation). Best-effort:
   // a template-save failure must NOT fail an import that already committed.
   if (storedHash) {
-    const approved = mergeProposal(proposal, userOverrides);
+    const approved = effectiveMapping;
     void saveApprovedTemplate(prisma, orgId, {
       structureHash: storedHash,
       sheetName: staging.sourceSheet,

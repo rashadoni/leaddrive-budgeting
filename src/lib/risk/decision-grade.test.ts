@@ -299,3 +299,80 @@ describe('decision-grade gate', () => {
     });
   });
 });
+
+/**
+ * Phase 10 / Stage B5 review closure — lineage is necessary, not sufficient.
+ *
+ * These tests exist because a real defect got this far: once B5 gave imports a
+ * writer, `requireLineage: true` alone would have certified every freshly
+ * imported cell as decision-grade — never reconciled, never coverage-checked.
+ * The gate must refuse that.
+ */
+describe('classifyObservationGrade — revisionId alone does not certify', () => {
+  const freshTracedCell = {
+    companyId: 'c1',
+    indicatorId: 'i1',
+    value: 42,
+    status: 'green' as const,
+    valueSource: 'computed' as const,
+    signalConfidence: 'high' as const,
+    revisionId: 'rev_1',
+    computedAt: new Date().toISOString(),
+  };
+
+  it('a freshly imported, fully traced cell is STILL provisional — it was never reconciled', () => {
+    const verdict = classifyObservationGrade(freshTracedCell, Date.now(), {
+      requireLineage: true,
+      requireReconciliation: true,
+    });
+    expect(verdict.grade).toBe('provisional');
+    expect(verdict.reasons).toContain('no_reconciliation');
+    // Lineage is genuinely satisfied — that is the point. It just isn't enough.
+    expect(verdict.reasons).not.toContain('no_lineage');
+  });
+
+  it('names lineage and reconciliation as separate failures', () => {
+    const verdict = classifyObservationGrade(
+      { ...freshTracedCell, revisionId: undefined },
+      Date.now(),
+      { requireLineage: true, requireReconciliation: true },
+    );
+    expect(verdict.reasons).toContain('no_lineage');
+    expect(verdict.reasons).toContain('no_reconciliation');
+  });
+
+  it('certifies only when BOTH lineage and reconciliation are present and it is fresh', () => {
+    const verdict = classifyObservationGrade(
+      { ...freshTracedCell, lastReconciledAt: new Date().toISOString() },
+      Date.now(),
+      { requireLineage: true, requireReconciliation: true },
+    );
+    expect(verdict.grade).toBe('decision-grade');
+    expect(verdict.reasons).toEqual([]);
+  });
+
+  it('a reconciled but untraced cell is provisional — reconciliation is not provenance', () => {
+    const verdict = classifyObservationGrade(
+      {
+        ...freshTracedCell,
+        revisionId: undefined,
+        lastReconciledAt: new Date().toISOString(),
+      },
+      Date.now(),
+      { requireLineage: true, requireReconciliation: true },
+    );
+    expect(verdict.grade).toBe('provisional');
+    expect(verdict.reasons).toEqual(['no_lineage']);
+  });
+
+  it('requireReconciliation defaults off — no caller is demoted by upgrading', () => {
+    const verdict = classifyObservationGrade(freshTracedCell, Date.now(), {
+      requireLineage: true,
+    });
+    expect(verdict.reasons).not.toContain('no_reconciliation');
+  });
+
+  it('ranks no_lineage above no_reconciliation when both fail', () => {
+    expect(worstReason(['no_reconciliation', 'no_lineage'])).toBe('no_lineage');
+  });
+});

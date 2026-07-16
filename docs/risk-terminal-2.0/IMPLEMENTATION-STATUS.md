@@ -1121,3 +1121,135 @@ badge retractable. Then wire revisionId into the matrix API select so the
 gate can see it. Do NOT wire invalidatedPeriodKeys (§13). B1 needs T-1; B4
 needs T-5; do not enable V2.
 ```
+
+## 17. Slice B-PR5 — the first production lineage writer, B5 (2026-07-16)
+
+**Status: `implemented` + `tested` (16 unit + 8 handler + 4 matrix + 3 trigger +
+6 gate; 36 live-DB). `reviewed` — by an independent adversarial subagent, which
+found three real defects, all fixed below. Not owner-reviewed.
+Lineage is now *recorded* on one import path. Provisional is NOT lifted.**
+
+### 17.1 The writer choice, and the evidence behind it
+
+The task named the staging apply route "if code evidence confirms it is the real
+canonical, org-scoped, transaction-safe apply boundary". It is the first two.
+It is **not** a boundary that spans recompute — and no path in this codebase is:
+
+| Path | Source write | Recompute |
+|---|---|---|
+| `staging/[id]/apply` | `$transaction` | **after** commit (`:687`) |
+| `staging/[id]/apply-multi` | `$transaction` | **after** commit (`:878`) |
+| `staging/[id]/apply-multi-entity` | `$transaction` | **after** commit (`:655`) |
+| `onboarding/import/budget` | `$transaction` | **after** commit (`:323`) |
+
+Each carries its own comment saying why ("would extend tx beyond 60s on big
+sheets"), and `recompute-trigger.ts:16-18` states the matching failure policy:
+per-pair errors are never re-thrown, because "a single bad indicator formula
+must not hide a successful import".
+
+So the task's requirement 9 — *an error at any step rolls back apply,
+DataRevision and IndicatorValue together* — is **not achievable** without
+restructuring the canonical financial import path (handoff §2.8: stop when a
+slice needs a materially broader change than the documentation authorizes).
+
+It is also **not what the spec asks for.** `03-DATA-KPI-TRUST-SPEC` §6.1: "Every
+source mutation emits `SourceChangeEvent { revisionId, affectedPeriodKeys, … }`"
+— the revision is raised at the *source mutation*, and recompute is downstream.
+§6.4's observation states (`pending → computing → ready`) and its rule that a
+pending value may be shown "only with stale/provisional treatment" describe an
+eventually-consistent recompute explicitly. The two-phase shape is the design,
+not a defect in it.
+
+**Therefore the boundary implemented is:** the revision is created inside the
+apply transaction, because a revision pins SOURCE state and that transaction is
+where source state becomes real. `apply ↔ revision` is atomic. `revision ↔
+IndicatorValue` is not, and is not claimed to be.
+
+### 17.2 The ids — real, and what they are not
+
+- `sourceArtifactIds: ['import-staging:<cuid>']`. No `SourceArtifact` model
+  exists (§9 names one); the staging row is 1:1 with an uploaded file+sheet and
+  is the closest real identity. Deliberately **not** the filename — two
+  unrelated workbooks are both `budget.xlsx`, and a filename-keyed revision
+  would hash two source states alike and hand the second import the first one's
+  lineage.
+- `mappingVersionIds: ['effective-mapping:<sha256>']` over the mapping actually
+  applied (proposal ⊕ reviewer overrides): column `role`, `currencyCode`,
+  account-type overrides. Excludes `confidence`/`reasoning` prose — commentary
+  about a decision is not the decision. **Not** the approved-template version:
+  that is saved post-commit, best-effort, so reading it at apply time would name
+  a version this import did not necessarily use.
+
+### 17.3 The review (independent subagent) — three real defects, all fixed
+
+| # | Defect | Fix |
+|---|---|---|
+| **1** | **Provisional was lifted.** `use-heat-map-model.ts:314` passes `requireLineage: true`; its comment justified this from `lastReconciledAt`, but `a8c5b7fa` had re-pointed the lineage rule at `revisionId`. B5 fills `revisionId` → a fresh import would be certified decision-grade, never reconciled. | `decision-grade.ts` gained `no_reconciliation` — the rule its own comment already claimed ("both are required"). Surface requires it. 0/1,269 reconciled ⇒ badge unchanged. |
+| **2** | **Lineage would lie.** `upsertIndicatorValue` preserved `revisionId` on `undefined` (modelled on sparkline). The cron threads no revision → it would overwrite value/status/computedAt and leave the import's revision on a number it never produced. | Lineage written on **every** update. Presence now means "this revision produced this number". The live-DB test asserting the old rule is inverted, reasoning kept. |
+| **3** | **Parent rollups over-stamped.** The trigger fans out to every level-1 company org-wide; one child's import would stamp every holding's rollup with a revision naming one child. | Only companies the caller named are traced. Rollups stay untraced until a revision can speak for an aggregate. |
+
+Also closed: `currencyCode` added to the mapping hash (it selects which amount
+column wins and tags `BudgetLine.currencyCode` — it changes the money).
+
+Verdicts returned CLEAN: atomicity claim accurate · cross-org leakage · duplicate
+revision · orphan records · accidental financial change.
+
+### 17.4 Financial reconciliation — measured
+
+Identical before and after: **1,269** IVs · **0** traced · **0** reconciled ·
+**0** revisions · **498** coloured · ΣIV **413,796,007.3851349** ·
+ΣBudgetLine **1,062,640,716.182965**. No backfill. The writer is inert until a
+real import runs.
+
+### 17.5 Evidence — commands actually run this turn
+
+- `npx tsc --noEmit` → 0
+- `npx prisma validate` → ok
+- `npx vitest run --reporter=dot` → **507 files / 6,616 passed / 55 skipped / 0 failed**
+- `RLS_INTEGRATION=1` live-DB → **36 passed**
+- Read-only SQL reconciliation (above)
+- No visual gate: no file from the mandated list in scope, and the badge verdict
+  is provably unmoved (0 traced ∧ 0 reconciled ⇒ `allProvisional` either way).
+
+### 17.6 Limits — what is NOT done
+
+- **Provisional is NOT lifted**, and must not be until reconciliation, coverage
+  and methodology gates exist. B5 proves *where a number came from*, never
+  *whether it is right*.
+- **Four import paths remain untraced** (apply-multi, apply-multi-entity,
+  budget, multi-file-orchestrator). Widening is mechanical now the contract
+  holds, but each needs its own revision scope; a wrong `companyIds` would be a
+  false claim, not a gap.
+- **A staging id is not a byte fingerprint.** Raw upload bytes are not retained
+  (`xlsxTempPath` is a temp path the caller cleans up), so `contentHash` must
+  **not** be described as a file-content hash. Exact artifact provenance needs a
+  hash of the applied workbook bytes.
+- **Two period vocabularies meet.** The revision's range is month keys
+  (`2026-01`..`2026-12`); the observations it stamps carry the FY key `2026`.
+  Both are valid; they do not compare as strings (`'2026' < '2026-01'`). Nothing
+  queries that way today; anything that starts must go through `parsePeriodKey`.
+- **New blast radius, for owner sign-off:** a DataRevision write failure now
+  rolls back a financial import that would previously have committed (e.g. a
+  `createdById` FK for a deleted user). Deliberate — an import that cannot say
+  where it came from should not land — but it is new.
+- **`requireLineage` still defaults false** in the gate; only the HeatMap
+  surface opts in, alongside `requireReconciliation`.
+- Live-DB tests are opt-in (`RLS_INTEGRATION=1`), so not a CI gate.
+
+### 17.7 Rollback
+
+Revert the commit. `revisionId` stays a nullable column that no writer fills;
+every row is null; the gate reads null as `no_lineage` exactly as before.
+
+### 17.8 Next task
+
+Widen the contract to `apply-multi` / `apply-multi-entity` / `budget`, each with
+a revision scope naming the companies it actually wrote. Do **not** wire
+`invalidatedPeriodKeys` (§13). B1 needs T-1; B4 needs T-5; do not enable V2.
+
+### 17.9 Unrelated observation, not touched
+
+`.claude/settings.json` is dirty in this worktree (pre-existing, protected, never
+staged). It widens Bash permissions to include `ssh root@<redacted-host> *` and
+drops `"hooks": {}`. Flagged for the owner because an unrestricted-shell
+allowlist entry is worth a deliberate decision; **not** modified by this slice.
