@@ -296,4 +296,46 @@ d('IndicatorValue lineage (live DB)', () => {
       expect(verdict.reasons).toContain('no_lineage');
     });
   });
+  describe('actor resolution honours the nullable/SetNull contract', () => {
+    const ACTOR = 'zzlineageactoruser000001';
+
+    it('records the author when they exist', async () => {
+      await admin.user.upsert({
+        where: { id: ACTOR },
+        create: {
+          id: ACTOR,
+          email: 'zz-lineage-actor@example.test',
+          name: 'zz lineage actor',
+          passwordHash: 'x',
+          organizationId: ORG_A,
+          role: 'manager',
+        },
+        update: {},
+      });
+      const rev = await ensureDataRevision(admin, {
+        scope: scopeFor(ORG_A, { sourceArtifactIds: ['actor-present.xlsx'] }),
+        reason: 'import',
+        createdById: ACTOR,
+      });
+      const row = await admin.dataRevision.findFirstOrThrow({ where: { id: rev.id } });
+      expect(row.createdById).toBe(ACTOR);
+      await admin.dataRevision.deleteMany({ where: { id: rev.id } });
+      await admin.user.deleteMany({ where: { id: ACTOR } });
+    });
+
+    it('records null rather than throwing when the author has been deleted', async () => {
+      // A vanished user is a fact about the user, not a reason to reject the
+      // import. Without this resolution the insert would P2003 and roll back a
+      // financial import because the person who started it was removed.
+      const rev = await ensureDataRevision(admin, {
+        scope: scopeFor(ORG_A, { sourceArtifactIds: ['actor-gone.xlsx'] }),
+        reason: 'import',
+        createdById: 'zzlineagedeletedactor001', // never inserted
+      });
+      const row = await admin.dataRevision.findFirstOrThrow({ where: { id: rev.id } });
+      expect(row.createdById).toBeNull();
+      await admin.dataRevision.deleteMany({ where: { id: rev.id } });
+    });
+  });
+
 });

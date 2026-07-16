@@ -50,7 +50,7 @@ export async function ensureDataRevision(
   prisma: PrismaClient | Prisma.TransactionClient,
   input: EnsureDataRevisionInput,
 ): Promise<EnsuredRevision> {
-  const { scope, reason, createdById } = input;
+  const { scope, reason } = input;
   const contentHash = computeRevisionContentHash({ scope, reason });
 
   const existing = await prisma.dataRevision.findFirst({
@@ -58,6 +58,11 @@ export async function ensureDataRevision(
     select: { id: true },
   });
   if (existing) return { id: existing.id, contentHash, created: false };
+
+  // Resolve the actor only on the create path — an existing revision already
+  // recorded its author, and a re-import must never rewrite it (a revision is
+  // immutable). This also spares the dedup path a `users` lookup.
+  const createdById = await resolveActor(prisma, input.createdById);
 
   try {
     const created = await prisma.dataRevision.create({
@@ -71,7 +76,8 @@ export async function ensureDataRevision(
         periodFrom: scope.periodFrom,
         periodTo: scope.periodTo,
         reason,
-        createdById: createdById ?? null,
+        // Resolved against the nullable/SetNull contract just above.
+        createdById,
         contentHash,
       },
       select: { id: true },
@@ -96,6 +102,40 @@ export async function ensureDataRevision(
     }
     throw err;
   }
+}
+
+/**
+ * Resolve the actor to record, honouring `createdById`'s nullable/SetNull
+ * contract instead of quietly turning it into a mandatory FK.
+ *
+ * The schema says a revision may have no author: `createdById String?` with
+ * `onDelete: SetNull`, because cron and script paths legitimately have none.
+ * But an insert naming a user who no longer exists is a P2003 — and since the
+ * revision is written inside the import's transaction, that would roll back a
+ * financial import because the person who started it was deleted mid-request.
+ * A vanished author is a fact about the author, not a reason to reject the
+ * data, and the schema already says how to record it: null.
+ *
+ * So an author is recorded when the author still exists, and dropped when they
+ * do not — which is precisely what `SetNull` would do a moment later anyway.
+ *
+ * **Residual race, stated rather than papered over:** the user could be deleted
+ * between this check and the insert. The window is one statement inside a
+ * transaction, and the outcome if it lost would be the pre-existing behaviour
+ * (P2003 → rollback), not a corrupt revision. Closing it entirely needs an FK
+ * lock on `users`, which would make imports contend on user rows — a worse
+ * trade than the window it removes.
+ */
+async function resolveActor(
+  prisma: PrismaClient | Prisma.TransactionClient,
+  createdById: string | null | undefined,
+): Promise<string | null> {
+  if (!createdById) return null;
+  const actor = await prisma.user.findUnique({
+    where: { id: createdById },
+    select: { id: true },
+  });
+  return actor ? actor.id : null;
 }
 
 function isUniqueViolation(err: unknown): boolean {

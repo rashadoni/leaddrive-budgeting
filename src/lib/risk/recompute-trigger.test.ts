@@ -977,5 +977,72 @@ describe('runRecomputeForCompanies', () => {
       // ...the holding's rollup is not.
       expect(byCompany.get('co_parent')).toBeUndefined();
     });
+
+    it('traces only the companies the revision names, not everyone recomputed', async () => {
+      // A multi-company apply recomputes every company it touched, but only the
+      // ones its transaction actually WROTE belong to the revision. The rest
+      // must not cite it.
+      const written = co({ id: 'co_written', code: 'W' });
+      const recomputedOnly = co({ id: 'co_untouched', code: 'U' });
+      const prisma = makePrisma([written, recomputedOnly], [ind()]);
+      mockedRecompute.mockResolvedValue({ ok: true, status: 'green', value: 75 });
+
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [
+          { companyId: 'co_written', year: 2026 },
+          { companyId: 'co_untouched', year: 2026 },
+        ],
+        {},
+        { revisionId: 'rev_1', tracedCompanyIds: new Set(['co_written']) },
+      );
+
+      const byCompany = new Map<string, unknown>();
+      for (const call of mockedRecompute.mock.calls) {
+        byCompany.set(call[1].companyId as string, call[1].revisionId);
+      }
+      // Both were recomputed — the run's scope is unchanged...
+      expect(byCompany.has('co_written')).toBe(true);
+      expect(byCompany.has('co_untouched')).toBe(true);
+      // ...but only the written one is traced.
+      expect(byCompany.get('co_written')).toBe('rev_1');
+      expect(byCompany.get('co_untouched')).toBeUndefined();
+    });
+
+    it('traces every leaf company when no traced set is given (single-company paths)', async () => {
+      const prisma = makePrisma([co()], [ind()]);
+      mockedRecompute.mockResolvedValue({ ok: true, status: 'green', value: 75 });
+
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [{ companyId: 'co_1', year: 2026 }],
+        {},
+        { revisionId: 'rev_1' },
+      );
+
+      for (const call of mockedRecompute.mock.calls) {
+        expect(call[1].revisionId).toBe('rev_1');
+      }
+    });
+
+    it('an empty traced set traces nobody', async () => {
+      const prisma = makePrisma([co()], [ind()]);
+      mockedRecompute.mockResolvedValue({ ok: true, status: 'green', value: 75 });
+
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [{ companyId: 'co_1', year: 2026 }],
+        {},
+        { revisionId: 'rev_1', tracedCompanyIds: new Set<string>() },
+      );
+
+      expect(mockedRecompute).toHaveBeenCalled();
+      for (const call of mockedRecompute.mock.calls) {
+        expect(call[1].revisionId).toBeUndefined();
+      }
+    });
   });
 });

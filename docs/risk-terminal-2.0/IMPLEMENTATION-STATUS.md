@@ -1303,3 +1303,81 @@ revision. On the staging path the status claim 409s a repeat before it can.
   claim, not a gap, which is why they are not bulk-copied here.
 - The parser mapping id does not version parser code (above).
 - Everything in §17.6 that is not listed as closed still stands.
+
+---
+
+## 19. Slice B-PR7 — multi-company lineage from committed writes, B5 cont'd (2026-07-16)
+
+**Status: `implemented` + `tested` (43 unit + 32 handler + 15 live-DB).
+`reviewed` — independent adversarial subagent, no defects (2 cosmetic concerns,
+one fixed). Not owner-reviewed. Three of five import paths now record lineage.
+Provisional still NOT lifted.**
+
+Wires `POST /api/onboarding/import/staging/[id]/apply-multi-entity` under the
+owner's approved multi-company contract, and blocks `apply-multi` with proof.
+
+### 19.1 Why `apply-multi-entity` is buildable and `apply-multi` is not
+
+The owner's rule #2 is the whole game: `companyIds` must be provable from
+**committed writes**, never from the request, the entity map or a declared plan.
+The two routes differ exactly on whether that proof exists.
+
+| | `apply-multi-entity` | `apply-multi` |
+|---|---|---|
+| Writes | one `$transaction` (`route.ts:542`) | budget-line tx covers **one** company (`staging.companyId`); KPI + BS dispatchers write **other** companies in **separate** transactions (`apply-multi-dispatchers.ts:100,349`), failures non-fatal |
+| Write proof | `applyParsedLinesToCompany` returns `{inserted, deleted}` per entity, collected in-tx (`route.ts:591`) | `kpiTouchedCompanyIds.add(id)` fires **before** the write and can precede a `continue` that writes nothing (`apply-multi-dispatchers.ts:104-108`) — a *potential* set, not a *committed* one |
+| One source event? | yes — one sheet, split by its entity column | no — budget sheet + KPI families + BS sheets, different mappings |
+
+So `apply-multi-entity` satisfies all six of the owner's conditions for one
+shared revision, and `apply-multi` satisfies none. Wiring `apply-multi` would
+require either a per-source `RevisionBatch` (schema work, not yet justified) or
+folding three separate transactions into one (a broader change than authorized).
+**It stays a recorded blocker, per rule #6.**
+
+### 19.2 How the scope is proven
+
+`committedCompanyIds(writes)` (`import-lineage.ts`) filters
+`inserted > 0 || deleted > 0`, de-dupes and sorts. A deletion-only entity counts
+— a clean-slate is a committed change to that company's data and moves its
+indicators. `buildMultiEntityImportRevisionScope` then fails closed:
+`empty_committed_scope` when nothing was written, `cross_org_company` when a
+committed id escapes the org set. Both throw **inside** the transaction, so the
+import rolls back with them — the approved fail-closed policy. The error carries
+a reason code only, never a company id or source datum.
+
+Only the written companies are traced in the recompute (`tracedCompanyIds`), so
+a company that was recomputed but not written stays untraced. Parent rollups are
+never traced (they merge several revisions; one id cannot express that).
+
+### 19.3 Deleted-author FK race (owner rule #5)
+
+`ensureDataRevision` now resolves the actor before insert: an author who still
+exists is recorded, one who was deleted mid-request is recorded as `null` — the
+schema's own `createdById String?` / `onDelete: SetNull` contract. Without this,
+a revision inside the import tx would P2003 and roll back a financial import
+because the person who started it was removed. Residual race (delete between the
+check and the insert) is one statement inside a tx and degrades to the
+pre-existing P2003 → rollback, not corruption. This is shared code, so all three
+wired routes get the behaviour; consistent and desirable, and noted because it is
+broader than this one route.
+
+### 19.4 Evidence — commands actually run this turn
+
+- `npx tsc --noEmit` → 0
+- `npx prisma validate` → ok
+- `npx vitest run --reporter=dot` → **507 files / 6,669 passed / 57 skipped / 0 failed**
+- live-DB (`RLS_INTEGRATION=1`) lineage + RLS → **36 passed** (incl. 2 new actor-resolution)
+- Reconciliation, read-only SQL: **1,269** IVs · **0** traced · **0** reconciled ·
+  **0** revisions · **498** coloured · ΣIV **413,796,007.3851349** ·
+  ΣBudgetLine **1,062,640,716.182965** — unchanged.
+- Independent adversarial review: CLEAN on all 10 risks (false scope, cross-org,
+  over-stamped rollups, partial tx, duplicate revision, mixed mapping/artifact,
+  financial change, premature decision-grade, actor race, empty-scope fail-closed).
+
+### 19.5 Limits
+
+- **`apply-multi` blocked** (§19.1) and **`multi-file-orchestrator` untouched**
+  — different files, mappings, companies and periods; needs its own scope proof
+  and probably a `RevisionBatch`. Separate checkpoint, per rule.
+- Everything in §17.6 / §18.3 not marked closed still stands.
+- Provisional NOT lifted — the gate still requires reconciliation, 0/1,269 have it.

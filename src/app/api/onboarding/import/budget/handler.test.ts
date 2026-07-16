@@ -221,6 +221,8 @@ describe('POST /api/onboarding/import/budget — B5 lineage writer', () => {
             findFirst: vi.fn().mockResolvedValue(null),
             create: dataRevisionCreate,
           },
+          // B5 actor resolution reads the user (nullable/SetNull contract).
+          user: { findUnique: vi.fn().mockResolvedValue({ id: 'u_mgr' }) },
         };
         return await cb(tx);
       },

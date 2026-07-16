@@ -12,6 +12,9 @@ import type { MappingProposal } from '@/lib/onboarding/ai-mapper/types';
 import {
   buildBudgetImportRevisionScope,
   buildImportRevisionScope,
+  buildMultiEntityImportRevisionScope,
+  committedCompanyIds,
+  LineageScopeError,
   effectiveMappingVersionId,
   importStagingArtifactId,
   parserMappingVersionId,
@@ -324,6 +327,195 @@ describe('buildBudgetImportRevisionScope', () => {
         ...base,
         parser: 'rollup',
         rollupColumnHeader: 'Mərkəz',
+      }),
+      reason: 'import',
+    });
+    expect(a).not.toBe(b);
+  });
+});
+
+describe('committedCompanyIds — fact of writing, not intent to write', () => {
+  it('includes a company that had rows inserted', () => {
+    expect(committedCompanyIds([{ companyId: 'b', inserted: 3, deleted: 0 }])).toEqual(['b']);
+  });
+
+  it('includes a company that only had rows DELETED — a clean-slate is a write', () => {
+    // Its financial data changed and its indicators move; a revision explaining
+    // the result must name it.
+    expect(committedCompanyIds([{ companyId: 'b', inserted: 0, deleted: 7 }])).toEqual(['b']);
+  });
+
+  it('EXCLUDES a company that wrote nothing — mapped and planned is not written', () => {
+    expect(
+      committedCompanyIds([
+        { companyId: 'wrote', inserted: 1, deleted: 0 },
+        { companyId: 'inert', inserted: 0, deleted: 0 },
+      ]),
+    ).toEqual(['wrote']);
+  });
+
+  it('de-duplicates and sorts deterministically', () => {
+    expect(
+      committedCompanyIds([
+        { companyId: 'c', inserted: 1, deleted: 0 },
+        { companyId: 'a', inserted: 1, deleted: 0 },
+        { companyId: 'c', inserted: 2, deleted: 0 },
+        { companyId: 'b', inserted: 0, deleted: 1 },
+      ]),
+    ).toEqual(['a', 'b', 'c']);
+  });
+
+  it('is empty when nothing was written', () => {
+    expect(committedCompanyIds([{ companyId: 'x', inserted: 0, deleted: 0 }])).toEqual([]);
+  });
+});
+
+describe('buildMultiEntityImportRevisionScope', () => {
+  const base = {
+    organizationId: 'org_1',
+    stagingId: 'stg_1',
+    effectiveMapping: mapping(),
+    targetYear: 2026,
+    organizationCompanyIds: new Set(['co_1', 'co_2', 'co_3']),
+  };
+
+  it('names exactly the companies that were written', () => {
+    const scope = buildMultiEntityImportRevisionScope({
+      ...base,
+      writes: [
+        { companyId: 'co_2', inserted: 5, deleted: 0 },
+        { companyId: 'co_1', inserted: 3, deleted: 1 },
+      ],
+    });
+    expect(scope.companyIds).toEqual(['co_1', 'co_2']);
+  });
+
+  it('one written company yields a one-company revision', () => {
+    const scope = buildMultiEntityImportRevisionScope({
+      ...base,
+      writes: [{ companyId: 'co_1', inserted: 5, deleted: 0 }],
+    });
+    expect(scope.companyIds).toEqual(['co_1']);
+  });
+
+  it('a company present in the request but never written is NOT in the revision', () => {
+    // The entity map said three; the transaction wrote two. The revision
+    // attests to the two.
+    const scope = buildMultiEntityImportRevisionScope({
+      ...base,
+      writes: [
+        { companyId: 'co_1', inserted: 5, deleted: 0 },
+        { companyId: 'co_2', inserted: 2, deleted: 0 },
+        { companyId: 'co_3', inserted: 0, deleted: 0 },
+      ],
+    });
+    expect(scope.companyIds).toEqual(['co_1', 'co_2']);
+    expect(scope.companyIds).not.toContain('co_3');
+  });
+
+  it('normalises duplicate write reports for one company', () => {
+    const scope = buildMultiEntityImportRevisionScope({
+      ...base,
+      writes: [
+        { companyId: 'co_1', inserted: 5, deleted: 0 },
+        { companyId: 'co_1', inserted: 4, deleted: 0 },
+      ],
+    });
+    expect(scope.companyIds).toEqual(['co_1']);
+  });
+
+  it('rejects an empty committed scope — a revision naming nobody attests to nothing', () => {
+    expect(() =>
+      buildMultiEntityImportRevisionScope({
+        ...base,
+        writes: [{ companyId: 'co_1', inserted: 0, deleted: 0 }],
+      }),
+    ).toThrow(LineageScopeError);
+    try {
+      buildMultiEntityImportRevisionScope({ ...base, writes: [] });
+    } catch (err) {
+      expect((err as LineageScopeError).reasonCode).toBe('empty_committed_scope');
+    }
+  });
+
+  it('rejects a company outside the caller organization', () => {
+    try {
+      buildMultiEntityImportRevisionScope({
+        ...base,
+        writes: [
+          { companyId: 'co_1', inserted: 1, deleted: 0 },
+          { companyId: 'co_foreign', inserted: 1, deleted: 0 },
+        ],
+      });
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(LineageScopeError);
+      expect((err as LineageScopeError).reasonCode).toBe('cross_org_company');
+    }
+  });
+
+  it('leaks nothing in the error — a code, never an identifier', () => {
+    try {
+      buildMultiEntityImportRevisionScope({
+        ...base,
+        writes: [{ companyId: 'co_foreign', inserted: 1, deleted: 0 }],
+      });
+    } catch (err) {
+      expect((err as Error).message).not.toContain('co_foreign');
+      expect((err as Error).message).toBe('lineage scope rejected: cross_org_company');
+    }
+  });
+
+  it('carries the shared artifact, mapping and period range', () => {
+    const scope = buildMultiEntityImportRevisionScope({
+      ...base,
+      writes: [{ companyId: 'co_1', inserted: 1, deleted: 0 }],
+    });
+    expect(scope.sourceArtifactIds).toEqual(['import-staging:stg_1']);
+    expect(scope.mappingVersionIds).toEqual([effectiveMappingVersionId(mapping())]);
+    expect(scope.periodFrom).toBe('2026-01');
+    expect(scope.periodTo).toBe('2026-12');
+  });
+
+  it('write ORDER does not change the revision identity — companyIds is a set', () => {
+    const a = computeRevisionContentHash({
+      scope: buildMultiEntityImportRevisionScope({
+        ...base,
+        writes: [
+          { companyId: 'co_1', inserted: 1, deleted: 0 },
+          { companyId: 'co_2', inserted: 1, deleted: 0 },
+        ],
+      }),
+      reason: 'import',
+    });
+    const b = computeRevisionContentHash({
+      scope: buildMultiEntityImportRevisionScope({
+        ...base,
+        writes: [
+          { companyId: 'co_2', inserted: 1, deleted: 0 },
+          { companyId: 'co_1', inserted: 1, deleted: 0 },
+        ],
+      }),
+      reason: 'import',
+    });
+    expect(a).toBe(b);
+  });
+
+  it('a different set of written companies is a different revision', () => {
+    const a = computeRevisionContentHash({
+      scope: buildMultiEntityImportRevisionScope({
+        ...base,
+        writes: [{ companyId: 'co_1', inserted: 1, deleted: 0 }],
+      }),
+      reason: 'import',
+    });
+    const b = computeRevisionContentHash({
+      scope: buildMultiEntityImportRevisionScope({
+        ...base,
+        writes: [
+          { companyId: 'co_1', inserted: 1, deleted: 0 },
+          { companyId: 'co_2', inserted: 1, deleted: 0 },
+        ],
       }),
       reason: 'import',
     });

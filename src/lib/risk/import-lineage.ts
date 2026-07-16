@@ -237,3 +237,135 @@ export function buildBudgetImportRevisionScope(
     periodTo: `${year}-12`,
   };
 }
+
+/**
+ * Why a lineage scope could not be built. Safe to log and to map to a response:
+ * a code, never source data and never another organization's identifiers.
+ */
+export type LineageScopeErrorCode =
+  /** The transaction wrote no company — there is nothing to attest. */
+  | 'empty_committed_scope'
+  /** A committed write named a company outside the caller's organization. */
+  | 'cross_org_company';
+
+export class LineageScopeError extends Error {
+  readonly reasonCode: LineageScopeErrorCode;
+  constructor(reasonCode: LineageScopeErrorCode) {
+    // The message carries the code and nothing else — it may reach a log.
+    super(`lineage scope rejected: ${reasonCode}`);
+    this.name = 'LineageScopeError';
+    this.reasonCode = reasonCode;
+  }
+}
+
+/**
+ * One company's actual write result, as reported by the code that performed it.
+ *
+ * This type exists to make the rule enforceable at the type level: a scope is
+ * built from write *results*, never from a request, an entity map, a plan or
+ * any other statement of intent.
+ */
+export interface CommittedCompanyWrite {
+  companyId: string;
+  inserted: number;
+  deleted: number;
+}
+
+/**
+ * The companies a transaction actually wrote — all of them, and only them.
+ *
+ * A company earns its place here by having had rows inserted **or** deleted.
+ * Deletion counts: the clean-slate delete is a committed change to that
+ * company's financial data and moves its indicators, so a revision that
+ * explains the result must name it. A company that was mapped, parsed and
+ * planned but produced neither an insert nor a delete changed nothing, and a
+ * revision claiming it would be a false claim rather than a generous one.
+ *
+ * De-duplicated and sorted so the identity is set-like and order-free, matching
+ * `computeRevisionContentHash`'s convention: two runs that wrote the same
+ * companies in a different order are the same source state.
+ */
+export function committedCompanyIds(
+  writes: readonly CommittedCompanyWrite[],
+): string[] {
+  const written = writes
+    .filter((w) => w.inserted > 0 || w.deleted > 0)
+    .map((w) => w.companyId);
+  return [...new Set(written)].sort();
+}
+
+export interface BuildMultiEntityImportRevisionScopeInput {
+  organizationId: string;
+  /** `ImportStaging.id` — the artifact this apply is committing. */
+  stagingId: string;
+  /** Proposal merged with reviewer overrides: the mapping actually applied. */
+  effectiveMapping: MappingProposal;
+  /** Fiscal year every entity in this apply writes. */
+  targetYear: number;
+  /** The transaction's own write results. Not the request, not the entity map. */
+  writes: readonly CommittedCompanyWrite[];
+  /**
+   * Companies already proven to belong to `organizationId`. The scope asserts
+   * every committed write falls inside this set rather than trusting that an
+   * earlier check ran — a revision is an attestation, so it verifies.
+   */
+  organizationCompanyIds: ReadonlySet<string>;
+}
+
+/**
+ * Build the scope for a one-sheet, many-company (entity-split) apply.
+ *
+ * A single shared revision is correct here, and only because every condition
+ * that would forbid it is absent — checked, not assumed:
+ * - **one transaction**: all per-entity writes commit together (the route's
+ *   `$transaction`), so the revision and every row it explains share a fate;
+ * - **one source event**: one sheet of one workbook, split by its entity column;
+ * - **one mapping**: that sheet has a single proposal ⊕ overrides, applied to
+ *   every entity — so `mappingVersionIds` is complete with one entry, not
+ *   truncated to one;
+ * - **one period range**: every entity writes the same fiscal year into the same
+ *   plan, so the range covers all and only what was touched.
+ *
+ * If any of those stopped holding — several files, per-entity mappings, mixed
+ * years — this function would be the wrong shape and the honest answer would be
+ * separate revisions or a `RevisionBatch`, not a wider claim from one row.
+ *
+ * @throws {LineageScopeError} `empty_committed_scope` when nothing was written,
+ *   `cross_org_company` when a write escaped the caller's organization. Both
+ *   fail closed: thrown inside the transaction, they roll the import back.
+ */
+export function buildMultiEntityImportRevisionScope(
+  input: BuildMultiEntityImportRevisionScopeInput,
+): RevisionScope {
+  const {
+    organizationId,
+    stagingId,
+    effectiveMapping,
+    targetYear,
+    writes,
+    organizationCompanyIds,
+  } = input;
+
+  const companyIds = committedCompanyIds(writes);
+  // Fail closed. An empty scope means the transaction is about to commit
+  // financial changes that no revision describes, or none at all — either way a
+  // revision naming nobody attests to nothing and must not be written.
+  if (companyIds.length === 0) {
+    throw new LineageScopeError('empty_committed_scope');
+  }
+  for (const id of companyIds) {
+    if (!organizationCompanyIds.has(id)) {
+      throw new LineageScopeError('cross_org_company');
+    }
+  }
+
+  const year = String(targetYear);
+  return {
+    organizationId,
+    companyIds,
+    sourceArtifactIds: [importStagingArtifactId(stagingId)],
+    mappingVersionIds: [effectiveMappingVersionId(effectiveMapping)],
+    periodFrom: `${year}-01`,
+    periodTo: `${year}-12`,
+  };
+}

@@ -44,7 +44,13 @@ import { applyParsedLinesToCompany } from '@/lib/onboarding/ai-mapper/apply-line
 import { SKIP_ENTITY } from '@/lib/onboarding/ai-mapper/entity-resolve';
 import { computeControlTotals } from '@/lib/onboarding/ai-mapper/control-totals';
 import { validateImport } from '@/lib/onboarding/ai-mapper/validate-import';
-import { detectProposalYear } from '@/lib/onboarding/ai-mapper/applier';
+import { detectProposalYear, mergeProposal } from '@/lib/onboarding/ai-mapper/applier';
+import { ensureDataRevision } from '@/lib/risk/data-revision-writer';
+import {
+  buildMultiEntityImportRevisionScope,
+  committedCompanyIds,
+  LineageScopeError,
+} from '@/lib/risk/import-lineage';
 import { extractMapperInput } from '@/lib/onboarding/ai-mapper/extract';
 import { computeStructureHash } from '@/lib/onboarding/ai-mapper/structure-hash';
 import { currentBakuYearNumber } from '@/lib/risk/periods';
@@ -537,9 +543,16 @@ export async function POST(
     inserted: number;
     deleted: number;
   }
+  // The mapping actually applied. `applyProposalByEntity` re-merges the same
+  // overrides internally before it splits, so this is the mapping that produced
+  // the rows — not a restatement of the staged proposal.
+  const effectiveMapping = mergeProposal(proposal, userOverrides);
   let txReports: EntityWriteReport[] = [];
+  // Phase 10 / Stage B5 — the revision this apply commits. Assigned inside the
+  // transaction below, so it exists only if the import does.
+  let revisionId = '';
   try {
-    txReports = await prisma.$transaction(
+    const txResult = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
         // Concurrency claim (Codex P0 #2) — race-safe status flip inside the tx
         // before any per-entity delete; the 2nd POST blocks then sees count 0.
@@ -604,11 +617,61 @@ export async function POST(
             } as unknown as Prisma.InputJsonValue,
           },
         });
-        return reports;
+
+        // Phase 10 / Stage B5 — pin the source state this apply committed,
+        // inside the transaction that committed it.
+        //
+        // One shared revision is correct here, and only because every condition
+        // that would forbid it is absent: all per-entity writes are in THIS
+        // transaction; they are one source event (one sheet of one workbook,
+        // split by its entity column); they share one mapping and one fiscal
+        // year. `apply-multi` satisfies none of that and is deliberately not
+        // wired — see IMPLEMENTATION-STATUS.md §19.
+        //
+        // The scope is derived from `reports`, i.e. from what
+        // `applyParsedLinesToCompany` actually wrote — never from `entityMap`,
+        // the request, or the plan. Those say what was *meant* to happen; a
+        // revision attests to what *did*. It throws on an empty or foreign
+        // scope, and throwing here rolls the whole import back, which is the
+        // approved fail-closed policy: no financial commit without provenance.
+        const revision = await ensureDataRevision(tx, {
+          scope: buildMultiEntityImportRevisionScope({
+            organizationId: orgId,
+            stagingId: staging.id,
+            effectiveMapping,
+            targetYear,
+            writes: reports,
+            organizationCompanyIds: inOrgIds,
+          }),
+          reason: 'import',
+          createdById: session.userId,
+        });
+
+        return { reports, revisionId: revision.id };
       },
       { timeout: 120_000 },
     );
+    txReports = txResult.reports;
+    revisionId = txResult.revisionId;
   } catch (err) {
+    // Lineage failure — the import has already rolled back with it. Report a
+    // stable reason code; never echo source data or foreign identifiers.
+    if (err instanceof LineageScopeError) {
+      log.error('lineage scope rejected — import rolled back', {
+        route: '/api/onboarding/import/staging/[id]/apply-multi-entity',
+        organizationId: orgId,
+        stagingId: staging.id,
+        reasonCode: err.reasonCode,
+      });
+      return NextResponse.json(
+        {
+          error:
+            'Импорт отменён: не удалось зафиксировать происхождение данных. Данные не изменены.',
+          reasonCode: err.reasonCode,
+        },
+        { status: 422 },
+      );
+    }
     if (err instanceof Error && err.message === 'STAGING_RACE') {
       return NextResponse.json(
         { error: 'Эта загрузка уже применяется/применена (параллельный запрос).', status: 'applied' },
@@ -658,6 +721,16 @@ export async function POST(
     affectedCompanyIds.map((companyId) => ({ companyId, year: targetYear })),
     {
       pairError: (label, err) => recomputeLog.error(label, { err: err instanceof Error ? err.message : String(err) }),
+    },
+    {
+      // Phase 10 / Stage B5 — trace the observations back to the revision the
+      // transaction committed. `tracedCompanyIds` is the revision's own
+      // `companyIds`, so a company that was recomputed but NOT written (its
+      // entity produced no insert and no delete) stays untraced rather than
+      // citing a revision that does not name it. Parent rollups are never
+      // traced — they merge several revisions, which one id cannot express.
+      revisionId,
+      tracedCompanyIds: new Set(committedCompanyIds(txReports)),
     },
   );
   const indicatorsStale = recomputeResult.failed > 0;

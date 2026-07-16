@@ -28,7 +28,15 @@ const { prismaMock, entityMocks, applierMocks, applyLinesMock, recomputeMock } =
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 vi.mock('@/lib/onboarding/ai-mapper/entity-split', () => entityMocks);
-vi.mock('@/lib/onboarding/ai-mapper/applier', () => applierMocks);
+// `mergeProposal` is deliberately NOT stubbed: it computes the mapping the B5
+// revision is fingerprinted from, so a stub would let the lineage assertions
+// pass against a mock rather than the mapping actually applied.
+vi.mock('@/lib/onboarding/ai-mapper/applier', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('@/lib/onboarding/ai-mapper/applier')
+  >();
+  return { ...actual, ...applierMocks };
+});
 vi.mock('@/lib/onboarding/ai-mapper/apply-lines', () => applyLinesMock);
 vi.mock('@/lib/risk/recompute-trigger', () => recomputeMock);
 vi.mock('xlsx', () => ({ read: vi.fn().mockReturnValue({ SheetNames: ['S'], Sheets: { S: {} } }) }));
@@ -43,6 +51,31 @@ import { POST } from './route';
 
 const ORG_ID = 'org_az';
 const STAGING_ID = 'staging_me';
+
+/**
+ * Phase 10 / Stage B5 — the apply transaction now also pins the source state it
+ * commits (`ensureDataRevision`), so every tx-spy needs the models that touches:
+ * `dataRevision` for the revision itself and `user` for the actor lookup that
+ * honours `createdById`'s nullable contract. Factory so the shape lives once.
+ */
+function makeTxSpy(over: Record<string, unknown> = {}) {
+  return {
+    budgetPlan: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: 'plan1' }),
+    },
+    importStaging: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      update: vi.fn().mockResolvedValue({ id: STAGING_ID }),
+    },
+    dataRevision: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: 'rev_me_1' }),
+    },
+    user: { findUnique: vi.fn().mockResolvedValue({ id: 'u' }) },
+    ...over,
+  };
+}
 
 function paramsFor(id: string) {
   return { params: Promise.resolve({ id }) };
@@ -203,11 +236,7 @@ describe('POST .../apply-multi-entity', () => {
     prismaMock.company.findMany.mockResolvedValue([{ id: 'coA', baseCurrencyCode: 'AZN' }]);
     applyLinesMock.applyParsedLinesToCompany.mockResolvedValueOnce({ inserted: 1, deleted: 0 });
     prismaMock.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
-      const tx = {
-        budgetPlan: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'plan1' }) },
-        importStaging: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), update: vi.fn().mockResolvedValue({ id: STAGING_ID }) },
-      };
-      return cb(tx);
+      return cb(makeTxSpy());
     });
     const res = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA', EJE: '__SKIP__' }) }), paramsFor(STAGING_ID));
     expect(res.status).toBe(200);
@@ -332,11 +361,7 @@ describe('POST .../apply-multi-entity', () => {
       .mockResolvedValueOnce({ inserted: 1, deleted: 3 })
       .mockResolvedValueOnce({ inserted: 1, deleted: 2 });
     prismaMock.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
-      const tx = {
-        budgetPlan: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'plan1' }) },
-        importStaging: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), update: vi.fn().mockResolvedValue({ id: STAGING_ID }) },
-      };
-      return cb(tx);
+      return cb(makeTxSpy());
     });
 
     const res = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA', EDEN: 'coB' }) }), paramsFor(STAGING_ID));
@@ -415,11 +440,9 @@ describe('POST .../apply-multi-entity', () => {
     const planCreate = vi.fn().mockResolvedValue({ id: 'newplan' });
     const planFindFirst = vi.fn().mockResolvedValue(inTxPlan); // in-tx TOCTOU recheck
     prismaMock.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
-      const tx = {
-        budgetPlan: { create: planCreate, findFirst: planFindFirst },
-        importStaging: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), update: vi.fn().mockResolvedValue({ id: STAGING_ID }) },
-      };
-      return cb(tx);
+      return cb(
+        makeTxSpy({ budgetPlan: { create: planCreate, findFirst: planFindFirst } }),
+      );
     });
     return { planCreate, planFindFirst };
   }
@@ -483,5 +506,252 @@ describe('POST .../apply-multi-entity', () => {
     // with ack → proceeds
     const ok = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA' }), planKind: 'actual', acknowledgeSecondActualPlan: 'true' }), paramsFor(STAGING_ID));
     expect(ok.status).toBe(200);
+  });
+});
+
+/**
+ * Phase 10 / Stage B5 — multi-company lineage, from committed writes only.
+ *
+ * The rule these tests exist to enforce: `companyIds` is derived from what the
+ * transaction actually wrote, never from the entity map, the request or the
+ * plan. Those state intent; a revision attests to fact. Every test below runs
+ * the real `$transaction` callback so the scope is the route's, not a fixture's.
+ */
+describe('POST .../apply-multi-entity — B5 multi-company lineage', () => {
+  const REVISION_ID = 'rev_me_1';
+
+  function wireTx(over: Record<string, unknown> = {}) {
+    const dataRevisionCreate = vi.fn().mockResolvedValue({ id: REVISION_ID });
+    const spy = makeTxSpy({
+      dataRevision: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: dataRevisionCreate,
+      },
+      ...over,
+    });
+    prismaMock.$transaction.mockImplementation(
+      async (cb: (tx: unknown) => Promise<unknown>) => cb(spy),
+    );
+    return { dataRevisionCreate };
+  }
+
+  function stageTwoEntities() {
+    stage({ entityValues: ['AZSF', 'EDEN'] });
+    entityMocks.applyProposalByEntity.mockReturnValue({
+      entityColumn: 14,
+      entityValues: ['AZSF', 'EDEN'],
+      perEntity: [
+        { entityValue: 'AZSF', result: greenResult('X', 100) },
+        { entityValue: 'EDEN', result: greenResult('Y', 50) },
+      ],
+    });
+    prismaMock.company.findMany.mockResolvedValue([
+      { id: 'coA', baseCurrencyCode: 'AZN' },
+      { id: 'coB', baseCurrencyCode: 'AZN' },
+    ]);
+  }
+
+  const twoEntityMap = JSON.stringify({ AZSF: 'coA', EDEN: 'coB' });
+
+  function revisionData(spy: { dataRevisionCreate: ReturnType<typeof vi.fn> }) {
+    return (
+      spy.dataRevisionCreate.mock.calls as unknown as Array<
+        [{ data: Record<string, string[] & string> }]
+      >
+    )[0][0].data;
+  }
+
+  it('names every company the transaction actually wrote', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stageTwoEntities();
+    applyLinesMock.applyParsedLinesToCompany
+      .mockResolvedValueOnce({ inserted: 3, deleted: 0 })
+      .mockResolvedValueOnce({ inserted: 2, deleted: 1 });
+    const spy = wireTx();
+
+    const res = await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
+    expect(res.status).toBe(200);
+
+    const data = revisionData(spy);
+    expect(data.companyIds).toEqual(['coA', 'coB']);
+    expect(data.organizationId).toBe(ORG_ID);
+    expect(data.reason).toBe('import');
+    expect(data.sourceArtifactIds).toEqual([`import-staging:${STAGING_ID}`]);
+    expect(data.mappingVersionIds).toHaveLength(1);
+    expect(data.mappingVersionIds[0]).toMatch(/^effective-mapping:[0-9a-f]{64}$/);
+    expect(data.periodFrom).toBe('2026-01');
+    expect(data.periodTo).toBe('2026-12');
+  });
+
+  it('one written company yields a one-company revision', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stage({ entityValues: ['AZSF'] });
+    entityMocks.applyProposalByEntity.mockReturnValue({
+      entityColumn: 14,
+      entityValues: ['AZSF'],
+      perEntity: [{ entityValue: 'AZSF', result: greenResult('X', 100) }],
+    });
+    prismaMock.company.findMany.mockResolvedValue([{ id: 'coA', baseCurrencyCode: 'AZN' }]);
+    applyLinesMock.applyParsedLinesToCompany.mockResolvedValue({ inserted: 3, deleted: 0 });
+    const spy = wireTx();
+
+    await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA' }) }), paramsFor(STAGING_ID));
+
+    expect(revisionData(spy).companyIds).toEqual(['coA']);
+  });
+
+  it('a mapped company that wrote NOTHING is not in the revision', async () => {
+    // The entity map named two; the transaction wrote one. The revision must
+    // attest to the one — intent is not evidence.
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stageTwoEntities();
+    applyLinesMock.applyParsedLinesToCompany
+      .mockResolvedValueOnce({ inserted: 3, deleted: 0 })
+      .mockResolvedValueOnce({ inserted: 0, deleted: 0 });
+    const spy = wireTx();
+
+    await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
+
+    const data = revisionData(spy);
+    expect(data.companyIds).toEqual(['coA']);
+    expect(data.companyIds).not.toContain('coB');
+  });
+
+  it('a company written only by DELETION is in the revision — its data changed', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stageTwoEntities();
+    applyLinesMock.applyParsedLinesToCompany
+      .mockResolvedValueOnce({ inserted: 3, deleted: 0 })
+      .mockResolvedValueOnce({ inserted: 0, deleted: 9 });
+    const spy = wireTx();
+
+    await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
+
+    expect(revisionData(spy).companyIds).toEqual(['coA', 'coB']);
+  });
+
+  it('traces ONLY the written companies in the recompute — not everyone recomputed', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stageTwoEntities();
+    applyLinesMock.applyParsedLinesToCompany
+      .mockResolvedValueOnce({ inserted: 3, deleted: 0 })
+      .mockResolvedValueOnce({ inserted: 0, deleted: 0 });
+    wireTx();
+
+    await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
+
+    const opts = recomputeMock.runRecomputeForCompanies.mock.calls[0][4];
+    expect(opts.revisionId).toBe(REVISION_ID);
+    expect([...opts.tracedCompanyIds]).toEqual(['coA']);
+  });
+
+  it('rejects and rolls back when the transaction wrote nothing at all', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stageTwoEntities();
+    applyLinesMock.applyParsedLinesToCompany.mockResolvedValue({ inserted: 0, deleted: 0 });
+    const spy = wireTx();
+
+    const res = await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.reasonCode).toBe('empty_committed_scope');
+    // Fail-closed: no revision, and the import is gone with it.
+    expect(spy.dataRevisionCreate).not.toHaveBeenCalled();
+    expect(recomputeMock.runRecomputeForCompanies).not.toHaveBeenCalled();
+  });
+
+  it('the lineage error leaks no source data or identifiers', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stageTwoEntities();
+    applyLinesMock.applyParsedLinesToCompany.mockResolvedValue({ inserted: 0, deleted: 0 });
+    wireTx();
+
+    const res = await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
+    const raw = JSON.stringify(await res.json());
+
+    expect(raw).not.toContain('coA');
+    expect(raw).not.toContain('coB');
+    expect(raw).not.toContain('AZSF');
+  });
+
+  it('a lineage failure rolls the whole import back — no partial financial commit', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stageTwoEntities();
+    const spy = wireTx({
+      dataRevision: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockRejectedValue(new Error('REVISION_WRITE_FAILED')),
+      },
+    });
+    void spy;
+
+    const res = await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
+
+    expect(res.status).toBe(500);
+    // The lines were written in the same transaction; the throw takes them with it.
+    expect(applyLinesMock.applyParsedLinesToCompany).toHaveBeenCalled();
+    expect(recomputeMock.runRecomputeForCompanies).not.toHaveBeenCalled();
+  });
+
+  it('a source-write failure leaves no revision', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stageTwoEntities();
+    applyLinesMock.applyParsedLinesToCompany.mockRejectedValue(new Error('WRITE_FAILED'));
+    const spy = wireTx();
+
+    const res = await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
+
+    expect(res.status).toBe(500);
+    expect(spy.dataRevisionCreate).not.toHaveBeenCalled();
+    expect(recomputeMock.runRecomputeForCompanies).not.toHaveBeenCalled();
+  });
+
+  it('a repeat apply creates no second revision — the staging claim stops it', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stageTwoEntities();
+    const spy = wireTx({
+      importStaging: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }), // lost the claim
+        update: vi.fn(),
+      },
+    });
+
+    const res = await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
+
+    expect(res.status).toBe(409);
+    expect(spy.dataRevisionCreate).not.toHaveBeenCalled();
+    expect(recomputeMock.runRecomputeForCompanies).not.toHaveBeenCalled();
+  });
+
+  it('reuses an identical revision rather than creating a duplicate', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stageTwoEntities();
+    const spy = wireTx({
+      dataRevision: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'rev_existing' }),
+        create: vi.fn(),
+      },
+    });
+    void spy;
+
+    await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
+
+    expect(recomputeMock.runRecomputeForCompanies.mock.calls[0][4]).toMatchObject({
+      revisionId: 'rev_existing',
+    });
+  });
+
+  it('records no actor rather than failing when the user vanished mid-request', async () => {
+    // `createdById` is nullable with SetNull; a deleted author is a fact about
+    // the author, not a reason to reject the import.
+    await mockSession({ orgId: ORG_ID, userId: 'u_gone', role: 'manager' });
+    stageTwoEntities();
+    const spy = wireTx({ user: { findUnique: vi.fn().mockResolvedValue(null) } });
+
+    const res = await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
+
+    expect(res.status).toBe(200);
+    expect(revisionData(spy).createdById).toBeNull();
   });
 });

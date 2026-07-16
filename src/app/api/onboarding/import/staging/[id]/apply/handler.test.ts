@@ -350,6 +350,7 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
             findFirst: vi.fn().mockResolvedValue(null),
             create: vi.fn().mockResolvedValue({ id: 'rev_1' }),
           },
+          user: { findUnique: vi.fn().mockResolvedValue({ id: 'u_mgr' }) },
         };
         return await cb(tx);
       },
@@ -755,6 +756,8 @@ describe('POST /api/onboarding/import/staging/[id]/apply — B5 lineage writer',
             findFirst: dataRevisionFindFirst,
             create: dataRevisionCreate,
           },
+          // B5 actor resolution (nullable/SetNull contract) reads the user.
+          user: { findUnique: vi.fn().mockResolvedValue({ id: 'u_mgr' }) },
         };
         // A real interactive transaction rolls back on a throw. Let it
         // propagate exactly as Prisma would; the route's catch handles it.

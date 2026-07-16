@@ -118,6 +118,24 @@ export interface RunRecomputeOptions {
    * write is.
    */
   revisionId?: string | null;
+  /**
+   * Phase 10 / Stage B5 — the leaf companies `revisionId` is allowed to stamp.
+   *
+   * A revision names the companies it attests to (`DataRevision.companyIds`).
+   * A recompute run can legitimately cover more than that: a multi-company apply
+   * recomputes every company it touched, but only the ones whose data the
+   * transaction actually wrote belong to the revision. Stamping the others would
+   * have a row cite a revision that does not name it — a false claim, and
+   * exactly the kind this stage exists to prevent.
+   *
+   * So when supplied, only these companies are traced; everyone else in the run
+   * writes `revisionId = null`. Omitted → every leaf company in the run is
+   * traced, which is right when the caller's revision names them all (the
+   * single-company import paths).
+   *
+   * Parent rollups are never traced regardless — see the `traced` flag below.
+   */
+  tracedCompanyIds?: ReadonlySet<string>;
 }
 
 const EMPTY_RESULT: RunRecomputeResult = {
@@ -389,8 +407,14 @@ export async function runRecomputeForCompanies(
     // So parent rollups stay untraced (null → honestly untraced → Provisional)
     // until a revision can speak for an aggregate. That is a gap, and it is a
     // smaller lie than the alternative.
+    // A leaf company is traced only if the caller's revision actually names it
+    // (`tracedCompanyIds`, when supplied). A parent rollup never is.
+    const tracedIds = options.tracedCompanyIds;
     const targets = [
-      ...operationalTargets.map((t) => ({ ...t, traced: true })),
+      ...operationalTargets.map((t) => ({
+        ...t,
+        traced: tracedIds ? tracedIds.has(t.company.id) : true,
+      })),
       ...parentTargets.map((t) => ({ ...t, traced: false })),
     ];
     for (const { company, definition, traced } of targets) {
