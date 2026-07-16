@@ -26,6 +26,10 @@ import { aiErrorBody } from "@/lib/ai/ai-error"
 import { extractMapperInput } from "@/lib/onboarding/ai-mapper/extract"
 import { runMapper } from "@/lib/onboarding/ai-mapper/mapper"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
+import {
+  WORKBOOK_CONTENT_HASH_KEY,
+  computeWorkbookContentHash,
+} from "@/lib/onboarding/ai-mapper/workbook-content-hash"
 import type { MappingProposal, SourceColumn } from "@/lib/onboarding/ai-mapper/types"
 // rls-scan-ignore: AI Data Mapper multi-file analyze (maxDuration 120). Reads
 // org companies to hint an Anthropic sheet-mapping LLM call across N files, then
@@ -114,8 +118,10 @@ export async function POST(request: NextRequest) {
   }
 
   let workbook: XLSX.WorkBook
+  let workbookBytes: Buffer
   try {
-    workbook = XLSX.read(Buffer.from(await file.arrayBuffer()), {
+    workbookBytes = Buffer.from(await file.arrayBuffer())
+    workbook = XLSX.read(workbookBytes, {
       type: "buffer",
       cellFormula: false,
       cellHTML: false,
@@ -182,6 +188,7 @@ export async function POST(request: NextRequest) {
       proposal: {
         sheets: sheets.map((s) => ({ sheetName: s.sheetName, proposal: s.proposal })),
         __structureHash: hashes.join("|"),
+        [WORKBOOK_CONTENT_HASH_KEY]: computeWorkbookContentHash(workbookBytes),
       } as unknown as object,
       createdBy: session.userId,
       expiresAt: new Date(Date.now() + STAGING_TTL_MS),

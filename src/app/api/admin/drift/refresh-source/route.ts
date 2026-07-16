@@ -18,13 +18,21 @@
  * button-spam from racking quota.
  */
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+// rls-scan-ignore: admin-only ingestion route with an authenticated, explicit
+// organizationId. Provider fetches can exceed the 5s interactive transaction
+// window, so pass the BYPASSRLS client and keep every read/write constrained by
+// the session org instead of holding a withOrgScope transaction over network I/O.
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit } from "@/lib/rate-limit"
 import {
   getCommodityAdapters,
   ingestCommodityData,
 } from "@/lib/intel/commodity"
+import {
+  getCommodityApiKeySource,
+  listApiKeys,
+} from "@/lib/intel/api-keys"
 
 export const maxDuration = 60
 export const runtime = "nodejs"
@@ -51,6 +59,36 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  const availableSources = getCommodityAdapters().map((a) => a.source)
+  if (!availableSources.includes(sourceCode)) {
+    return NextResponse.json(
+      {
+        error: `Unknown sourceCode: ${sourceCode}`,
+        availableSources,
+      },
+      { status: 404 },
+    )
+  }
+
+  // Validate configuration before consuming the rate-limit allowance. A
+  // missing key is an actionable setup state, not a failed provider request.
+  const keySource = getCommodityApiKeySource(sourceCode)
+  const apiKeys = keySource
+    ? await listApiKeys(prisma, orgId)
+    : undefined
+  if (keySource && !apiKeys?.[keySource]) {
+    return NextResponse.json(
+      {
+        error: `API key is not configured for ${sourceCode}`,
+        code: "api_key_missing",
+        sourceCode,
+        keySource,
+        configurePath: "/budgeting/admin/api-keys",
+      },
+      { status: 424 },
+    )
+  }
+
   // Rate-limit per (org × sourceCode) — independent buckets so admin
   // can hit several different sources in quick succession.
   const rateLimitError = enforceRateLimit(`${orgId}:${sourceCode}`, RATE_LIMIT)
@@ -60,20 +98,9 @@ export async function POST(request: NextRequest) {
   // construction. Without this the manual "Refresh now" button would
   // bypass the key wiring and the EIA / USDA / GTrends adapters would
   // emit api_key_missing even when the admin has set a key.
-  const { listApiKeys } = await import("@/lib/intel/api-keys")
-  const apiKeys = await listApiKeys(prisma as never, orgId)
   const adapters = getCommodityAdapters({ apiKeys }).filter(
     (a) => a.source === sourceCode,
   )
-  if (adapters.length === 0) {
-    return NextResponse.json(
-      {
-        error: `Unknown sourceCode: ${sourceCode}`,
-        availableSources: getCommodityAdapters().map((a) => a.source),
-      },
-      { status: 404 },
-    )
-  }
 
   const startedAt = Date.now()
   const result = await ingestCommodityData(orgId, adapters, { prisma })

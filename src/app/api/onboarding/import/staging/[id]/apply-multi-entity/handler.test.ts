@@ -47,10 +47,14 @@ vi.mock('@/lib/rate-limit', async () => {
 
 import type { NextRequest as NextRequestType } from 'next/server';
 import { mockSession, makeRequest } from '@/test/api-harness';
+import { computeWorkbookContentHash } from '@/lib/onboarding/ai-mapper/workbook-content-hash';
 import { POST } from './route';
 
 const ORG_ID = 'org_az';
 const STAGING_ID = 'staging_me';
+const UPLOADED_WORKBOOK_HASH = computeWorkbookContentHash(
+  new TextEncoder().encode('x'),
+);
 
 /**
  * Phase 10 / Stage B5 — the apply transaction now also pins the source state it
@@ -114,7 +118,13 @@ const signBlockedResult = () => ({
   signConventions: { cogs: { convention: 'ambiguous', evidence: { negRows: 1, posRows: 1, negAbs: 600, posAbs: 600, netSum: 0 } } },
 });
 
-function stage(opts: { status?: string; entityValues?: string[]; anomalies?: unknown[]; overallConfidence?: number } = {}) {
+function stage(opts: {
+  status?: string;
+  entityValues?: string[];
+  anomalies?: unknown[];
+  overallConfidence?: number;
+  workbookHash?: string | null;
+} = {}) {
   prismaMock.importStaging.findFirst.mockResolvedValue({
     id: STAGING_ID,
     companyId: 'anchor_co',
@@ -122,6 +132,12 @@ function stage(opts: { status?: string; entityValues?: string[]; anomalies?: unk
     sourceSheet: 'S',
     sourceFile: 'm.xlsx',
     proposal: {
+      ...(opts.workbookHash === null
+        ? {}
+        : {
+            __workbookContentSha256:
+              opts.workbookHash ?? UPLOADED_WORKBOOK_HASH,
+          }),
       columns: [{ sourceIndex: 0, role: 'code', confidence: 1 }],
       anomalies: opts.anomalies ?? [],
       overallConfidence: opts.overallConfidence ?? 0.95,
@@ -186,6 +202,40 @@ describe('POST .../apply-multi-entity', () => {
     stage();
     const res = await POST(await reqWith({ entityMap: '{}' }), paramsFor(STAGING_ID));
     expect(res.status).toBe(422);
+  });
+
+  it('409 when replacement workbook bytes do not match the analyzed upload', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stage({
+      workbookHash: computeWorkbookContentHash(
+        new TextEncoder().encode('reviewed-file'),
+      ),
+    });
+
+    const res = await POST(
+      await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA', EDEN: 'coB' }) }),
+      paramsFor(STAGING_ID),
+    );
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ integrityError: 'mismatch' });
+    expect(entityMocks.applyProposalByEntity).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('409 when staging has no byte-exact workbook fingerprint', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stage({ workbookHash: null });
+
+    const res = await POST(
+      await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA', EDEN: 'coB' }) }),
+      paramsFor(STAGING_ID),
+    );
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ integrityError: 'missing' });
+    expect(entityMocks.applyProposalByEntity).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it('409 on entity-set drift (file BU set ≠ reviewed set)', async () => {
@@ -510,14 +560,14 @@ describe('POST .../apply-multi-entity', () => {
 });
 
 /**
- * Phase 10 / Stage B5 — multi-company lineage, from committed writes only.
+ * Phase 10 / Stage B5 — multi-company import revision, from committed writes.
  *
  * The rule these tests exist to enforce: `companyIds` is derived from what the
  * transaction actually wrote, never from the entity map, the request or the
  * plan. Those state intent; a revision attests to fact. Every test below runs
  * the real `$transaction` callback so the scope is the route's, not a fixture's.
  */
-describe('POST .../apply-multi-entity — B5 multi-company lineage', () => {
+describe('POST .../apply-multi-entity — B5 multi-company import revision', () => {
   const REVISION_ID = 'rev_me_1';
 
   function wireTx(over: Record<string, unknown> = {}) {
@@ -630,7 +680,7 @@ describe('POST .../apply-multi-entity — B5 multi-company lineage', () => {
     expect(revisionData(spy).companyIds).toEqual(['coA', 'coB']);
   });
 
-  it('traces ONLY the written companies in the recompute — not everyone recomputed', async () => {
+  it('does not blanket-stamp the import revision onto any batch-recomputed KPI', async () => {
     await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
     stageTwoEntities();
     applyLinesMock.applyParsedLinesToCompany
@@ -640,9 +690,14 @@ describe('POST .../apply-multi-entity — B5 multi-company lineage', () => {
 
     await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
 
-    const opts = recomputeMock.runRecomputeForCompanies.mock.calls[0][4];
-    expect(opts.revisionId).toBe(REVISION_ID);
-    expect([...opts.tracedCompanyIds]).toEqual(['coA']);
+    const call = recomputeMock.runRecomputeForCompanies.mock.calls[0];
+    // Both companies still take the normal refresh path; neither receives a
+    // workbook-only revision for formulas that may have mixed dependencies.
+    expect(call[2]).toEqual([
+      { companyId: 'coA', year: 2026 },
+      { companyId: 'coB', year: 2026 },
+    ]);
+    expect(call[4]).toBeUndefined();
   });
 
   it('rejects and rolls back when the transaction wrote nothing at all', async () => {
@@ -727,19 +782,18 @@ describe('POST .../apply-multi-entity — B5 multi-company lineage', () => {
   it('reuses an identical revision rather than creating a duplicate', async () => {
     await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
     stageTwoEntities();
-    const spy = wireTx({
+    const dataRevisionCreate = vi.fn();
+    wireTx({
       dataRevision: {
         findFirst: vi.fn().mockResolvedValue({ id: 'rev_existing' }),
-        create: vi.fn(),
+        create: dataRevisionCreate,
       },
     });
-    void spy;
 
     await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
 
-    expect(recomputeMock.runRecomputeForCompanies.mock.calls[0][4]).toMatchObject({
-      revisionId: 'rev_existing',
-    });
+    expect(dataRevisionCreate).not.toHaveBeenCalled();
+    expect(recomputeMock.runRecomputeForCompanies.mock.calls[0][4]).toBeUndefined();
   });
 
   it('records no actor rather than failing when the user vanished mid-request', async () => {

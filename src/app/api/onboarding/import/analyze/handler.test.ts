@@ -75,6 +75,7 @@ import { requireRole } from "@/lib/api-auth"
 import { recordUsage } from "@/lib/llm/cost-budget"
 import { runMapper } from "@/lib/onboarding/ai-mapper/mapper"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
+import { computeWorkbookContentHash } from "@/lib/onboarding/ai-mapper/workbook-content-hash"
 import { findEntityColumn, extractEntityValues } from "@/lib/onboarding/ai-mapper/entity-split"
 import { resolveEntityCompanies } from "@/lib/onboarding/ai-mapper/entity-resolve"
 import { prisma } from "@/lib/prisma"
@@ -145,6 +146,9 @@ describe("POST /api/onboarding/import/analyze", () => {
     expect(createArg.data.companyId).toBe("c1")
     expect(createArg.data.createdBy).toBe("u1")
     expect(createArg.data.sourceSheet).toBe("PL")
+    expect(createArg.data.proposal.__workbookContentSha256).toBe(
+      computeWorkbookContentHash(new Uint8Array([1, 2, 3])),
+    )
     expect(createArg.data.expiresAt).toBeInstanceOf(Date)
     expect(recordUsage).toHaveBeenCalled()
   })

@@ -200,8 +200,9 @@ dropped with `DROP ROLE budgetpro_app;` / `DROP ROLE budgetpro_admin;` as superu
 
 ## 9. Out of scope / follow-ups for the human (NOT this task)
 
-- **Rotate the demo admin password `Admin123!`** on prod before giving the 2nd
-  tenant (Mars Overseas) access — it's a credential action for the human.
+- **Rotate the production demo admin password** before giving the 2nd tenant
+  (Mars Overseas) access. Its previously documented value is now redacted and
+  must be treated as compromised; rotation remains an owner credential action.
 - Wiring `node scripts/rls-coverage-scan.mjs --enforce` into CI to block new
   unwrapped routes (a code/CI change, can be a separate PR).
 - TLS/domain + SMTP provider (separate, pre-existing items).

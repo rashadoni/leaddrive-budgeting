@@ -290,7 +290,13 @@ export function HeatMapCellTd({
           : ''
       }${isLowConfidence ? ' (low data confidence)' : ''}`}
     >
-      <Tooltip>
+      {/* Dense matrix cells sit directly beside each other. Radix's default
+          hoverable-content grace area can keep the previous cell's tooltip
+          open while the pointer is already over the next cell, so a tooltip
+          that started on a missing cell appears to describe red/green cells.
+          Cell tooltips contain no interactive controls, so closing them as
+          soon as the trigger is left is both safe and keeps hover data exact. */}
+      <Tooltip disableHoverableContent>
         <TooltipTrigger asChild>
           <div
             className="relative"

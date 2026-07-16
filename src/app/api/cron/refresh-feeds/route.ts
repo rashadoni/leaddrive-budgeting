@@ -14,8 +14,8 @@
  *
  * ── One-time setup on Vercel ──────────────────────────────────────────────
  *   1. Set env `CRON_SECRET` to a long random string.
- *   2. (optional) Set `EIA_API_KEY` / `USDA_API_KEY` / `SCRAPINGDOG_API_KEY`
- *      free-tier keys — without them those few adapters skip gracefully.
+ *   2. Configure optional per-organization EIA / USDA / Google Trends keys in
+ *      Admin → API keys. Adapters without a configured key skip gracefully.
  *   3. The schedule is registered in `vercel.json` (`crons`, daily 06:00 UTC).
  *      NOTE: `maxDuration = 300` needs Vercel **Pro**; Hobby caps execution
  *      around 10s (too short for ingest + recompute → upgrade, or keep using
@@ -33,6 +33,7 @@ import { getLogger } from "@/lib/log"
 import { enumerateActiveOrgs } from "@/lib/intel/scheduler-bootstrap"
 import { ingestCommodityData } from "@/lib/intel/commodity/ingest"
 import { getCommodityAdapters } from "@/lib/intel/commodity"
+import { listApiKeys } from "@/lib/intel/api-keys"
 import { filterOperationalCompanies } from "@/lib/risk/targets"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
 
@@ -54,13 +55,6 @@ export async function GET(req: NextRequest) {
   }
 
   const year = new Date().getUTCFullYear()
-  const adapters = getCommodityAdapters({
-    apiKeys: {
-      eia: process.env.EIA_API_KEY ?? null,
-      usda: process.env.USDA_API_KEY ?? null,
-      gtrends: process.env.SCRAPINGDOG_API_KEY ?? null,
-    },
-  })
 
   const orgs = await enumerateActiveOrgs(prisma)
   const summary: Array<{
@@ -73,6 +67,12 @@ export async function GET(req: NextRequest) {
   for (const org of orgs) {
     let pointsWritten = 0
     const feedErrors: string[] = []
+
+    // Every organization owns its provider credentials. Constructing one
+    // adapter set before this loop would leak the scheduler into a global-key
+    // contract and make the Admin API-key screen ineffective for cron runs.
+    const apiKeys = await listApiKeys(prisma, org.id)
+    const adapters = getCommodityAdapters({ apiKeys })
 
     // 1. Pull the free feeds (per-adapter try/catch inside ingestCommodityData).
     try {

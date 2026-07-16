@@ -33,6 +33,7 @@ import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { settingsSchemaForIndustry } from "./validate"
+import { computeKeysChanged } from "./compute-keys-changed"
 
 export async function GET(
   req: NextRequest,
@@ -177,34 +178,4 @@ export async function PATCH(
     keysChanged,
     ...(auditResult.ok ? {} : { auditStale: true }),
   })
-}
-
-/**
- * Compute the set of keys that differ between `before` and `after`.
- * Considers: added (in after but not before), removed (in before but not
- * after), and modified (in both with different JSON-serialized value).
- *
- * Returned array is sorted for stable audit diff output. Pure helper —
- * exported for unit-test coverage.
- */
-export function computeKeysChanged(
-  before: Record<string, unknown> | null,
-  after: Record<string, unknown>,
-): string[] {
-  const bk = before ? new Set(Object.keys(before)) : new Set<string>()
-  const ak = new Set(Object.keys(after))
-  const changed = new Set<string>()
-  for (const k of ak) {
-    if (!bk.has(k)) {
-      changed.add(k) // added
-      continue
-    }
-    if (JSON.stringify(before?.[k]) !== JSON.stringify(after[k])) {
-      changed.add(k) // modified
-    }
-  }
-  for (const k of bk) {
-    if (!ak.has(k)) changed.add(k) // removed
-  }
-  return [...changed].sort()
 }

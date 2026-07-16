@@ -56,6 +56,7 @@ vi.mock("@/lib/prisma", () => ({
 
 import { requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { computeWorkbookContentHash } from "@/lib/onboarding/ai-mapper/workbook-content-hash"
 import { POST } from "./route"
 
 const SESSION = { userId: "u1", orgId: "org1", role: "manager" as const }
@@ -93,5 +94,8 @@ describe("POST /api/onboarding/import/analyze-multi", () => {
     const createArg = (prisma.importStaging.create as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(createArg.data.proposal.sheets).toHaveLength(2)
     expect(createArg.data.proposal.__structureHash).toBe("hash|hash")
+    expect(createArg.data.proposal.__workbookContentSha256).toBe(
+      computeWorkbookContentHash(new Uint8Array([1])),
+    )
   })
 })

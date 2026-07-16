@@ -273,7 +273,7 @@ report "*.test.ts SKIPPED (test fixture allow-list)" \
 mkdir -p "$SCRATCH/e2e/fixtures"
 fixpath="$SCRATCH/e2e/fixtures/auth-stub.ts"
 cat > "$fixpath" <<'EOF'
-const adminPassword = "Admin123!";
+const adminPassword = "FixtureOnly123!";
 EOF
 out=$(run_scanner "$fixpath")
 report "e2e/fixtures path SKIPPED" \

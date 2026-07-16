@@ -4,9 +4,9 @@
 
 **Product:** BudgetPro Enterprise Holding Risk Terminal  
 **Prepared:** 2026-07-15  
-**Status:** implementation-ready proposal, not yet implemented  
+**Status:** implementation in progress; Stage A and early trust-core slices are implemented, but the full 2.0 cutover is not complete
 **Audience:** product owner, CFO, risk owner, finance controller, designer, Claude Code, engineering reviewer  
-**Delivery boundary:** this package documents the work. It does not claim that any described feature, formula, migration, UI, test, or rollout has been implemented.
+**Delivery boundary:** this package began as the design proposal. `docs/ROADMAP.md` and `IMPLEMENTATION-STATUS.md` are authoritative for what is implemented; all remaining stages stay proposals until their listed gates pass. Production readiness is still a separate release decision.
 
 ## 1. Executive decision
 
@@ -24,6 +24,8 @@ The current terminal contains valuable professional infrastructure, including ke
 
 Read the package in this order:
 
+0. [00-EXECUTIVE-SUMMARY-RU.md](./00-EXECUTIVE-SUMMARY-RU.md)
+   Russian owner summary: audit verdict, target product, trust rules, realistic timeline and the current execution boundary.
 1. [01-AUDIT-BASELINE.md](./01-AUDIT-BASELINE.md)  
    Evidence-based current-state audit, defects, strengths, severity and decision-grade definition.
 2. [02-PRODUCT-AND-UI-UX-SPEC.md](./02-PRODUCT-AND-UI-UX-SPEC.md)  
@@ -37,7 +39,7 @@ Read the package in this order:
 6. [CLAUDE-CODE-HANDOFF.md](./CLAUDE-CODE-HANDOFF.md)  
    Operating instructions and copy-ready prompt for Claude Code.
 
-The repository-level planning source remains [../ROADMAP.md](../ROADMAP.md). This package proposes a new **Phase 10: Risk Terminal 2.0, Trust Core & Decision Cockpit**. The roadmap must only be updated as implementation tasks actually start or finish.
+The repository-level planning source remains [../ROADMAP.md](../ROADMAP.md). This package defines **Phase 10: Risk Terminal 2.0, Trust Core & Decision Cockpit**, now in implementation. The roadmap and `IMPLEMENTATION-STATUS.md` must only advance when work actually starts, passes its named checks, or is explicitly blocked.
 
 ## 3. Product promise
 
@@ -149,7 +151,7 @@ The final interface must let an unaided target user:
 
 1. Find the largest material portfolio risk in at most 30 seconds and 3 interactions.
 2. Explain the status and its top drivers in at most 60 seconds.
-3. verify period, data-through, confidence and source in at most 45 seconds.
+3. Verify period, data-through, confidence and source in at most 45 seconds.
 4. Assign an owner and due date in at most 60 seconds.
 5. Run a scenario and explain the delta in at most 2 minutes.
 

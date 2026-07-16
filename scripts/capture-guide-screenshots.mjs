@@ -14,7 +14,7 @@ import path from "node:path";
 
 const BASE_URL = process.env.GUIDE_BASE_URL ?? "http://localhost:3000";
 const EMAIL = process.env.GUIDE_EMAIL ?? "admin@budgetpro.com";
-const PASSWORD = process.env.GUIDE_PASSWORD ?? "Admin123!";
+const PASSWORD = process.env.GUIDE_PASSWORD;
 const OUT_DIR = "docs/guide/screenshots";
 
 const SURFACES = [
@@ -36,6 +36,12 @@ const SURFACES = [
 ];
 
 async function main() {
+  if (!PASSWORD) {
+    throw new Error(
+      "GUIDE_PASSWORD is required; no screenshot credential is stored in the repository.",
+    );
+  }
+
   await mkdir(OUT_DIR, { recursive: true });
 
   const browser = await chromium.launch({ headless: true });

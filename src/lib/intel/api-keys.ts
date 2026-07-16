@@ -44,6 +44,23 @@ export const KNOWN_API_KEY_SOURCES = [
 
 export type ApiKeySource = (typeof KNOWN_API_KEY_SOURCES)[number]
 
+/** Commodity adapters that cannot fetch without an organization-owned key. */
+export const COMMODITY_SOURCE_API_KEYS = {
+  "eia-energy": "eia",
+  "usda-nass": "usda",
+  "google-trends-az": "gtrends",
+} as const satisfies Record<string, ApiKeySource>
+
+export function getCommodityApiKeySource(
+  sourceCode: string,
+): ApiKeySource | null {
+  return (
+    COMMODITY_SOURCE_API_KEYS[
+      sourceCode as keyof typeof COMMODITY_SOURCE_API_KEYS
+    ] ?? null
+  )
+}
+
 /** Minimal Prisma client shape — keeps this helper unit-testable
  *  without a live DB. Phase 8 D3 final (2026-05-29): typed as
  *  `Pick<PrismaClient, "organization">` so the real (now strictly-typed)

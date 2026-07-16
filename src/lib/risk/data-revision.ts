@@ -7,16 +7,14 @@
  *
  * The point of a revision is to make one question answerable: *given this
  * number on screen, exactly which sources and mappings produced it, and has
- * anything moved since?* Today that question has no answer — 0 of 1,269
- * `IndicatorValue` rows carry any lineage (measured 2026-07-16, see A5), which
- * is why every coloured cell is `provisional`. This contract is the shape of
- * the answer.
+ * anything moved since?* The persisted model and nullable IndicatorValue
+ * pointer now provide the storage contract; legacy and unverified paths remain
+ * honestly untraced and therefore provisional.
  *
- * **Scope: contract + hash only.** There is deliberately no Prisma model here.
- * Persisting revisions is additive schema work, and every sibling table in this
- * database carries RLS policies — adding one without them would risk exactly
- * the cross-org exposure the rollout doc lists as an immediate rollback
- * trigger. That belongs in its own reviewed slice, not appended to this one.
+ * **Scope of this module: contract + hash only.** Persistence lives in the
+ * additive `DataRevision` Prisma model and its RLS/immutability migration;
+ * writer logic lives in `data-revision-writer.ts`. Keeping those concerns
+ * separate prevents this pure contract module from performing database I/O.
  *
  * Nothing here computes money. A revision describes provenance.
  */

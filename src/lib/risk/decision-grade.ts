@@ -13,9 +13,10 @@
  *
  * **Why the gate is not applied per-cell to the legacy Expert matrix (yet).**
  * Measured against the local dev database on 2026-07-16: of 1,269
- * `IndicatorValue` rows, **0 carry lineage** — Stage B5 added `revisionId` as a
- * nullable column with no backfill, and no production path stamps one yet, so
- * every legacy row is honestly `null`. (Reconciliation is equally absent: 0
+ * `IndicatorValue` rows, **0 carried lineage at that checkpoint** — Stage B5
+ * added `revisionId` as a nullable column with no backfill. Import writers may
+ * now create revisions, but legacy and dependency-mixed recomputes remain
+ * honestly untraced. (Reconciliation was equally absent at the checkpoint: 0
  * rows have `lastReconciledAt`, written only by `scripts/audit-company.cjs`,
  * which has never run over this data.) All 498 coloured cells are therefore
  * untraced, and 294 of them are also >30 days old. Applying `no lineage → no colour` per cell today would demote 100% of
@@ -80,11 +81,10 @@ export interface GradeOptions {
    * Require lineage (a `revisionId`) for decision-grade.
    *
    * Defaults to **false** — not because lineage is optional (the ADR says it
-   * is mandatory), but because no row in this database carries a `revisionId`
-   * yet, so defaulting to `true` would silently demote every cell in the
-   * product the moment this module gained a caller. Stage B5 added the column
-   * and a writer that can stamp it; flipping this default belongs to the stage
-   * that actually populates it, under review.
+   * is mandatory), but because legacy and mixed-source rows are not guaranteed
+   * to carry a trustworthy `revisionId`. Defaulting to `true` would silently
+   * demote the current matrix. Flipping this default belongs to a reviewed
+   * cutover after lineage and reconciliation coverage are measured.
    */
   requireLineage?: boolean;
   /**

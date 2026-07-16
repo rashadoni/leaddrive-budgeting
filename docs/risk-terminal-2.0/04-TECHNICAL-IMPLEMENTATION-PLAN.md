@@ -31,7 +31,7 @@ Before any implementation session:
 - The dev server is managed by LaunchAgent `com.budgetpro.dev`.
 - Do not start `npm run dev` manually.
 - Restart only with the documented LaunchAgent command when needed.
-- Read `/Users/rashadrahimov/Library/Logs/budgetpro.log` for the effective port and server health.
+- Read `~/Library/Logs/budgetpro.log` for the effective port and server health.
 
 Environment observation on 2026-07-15: Docker occupied port 3000 and Next fell back to 3001. This is drift-prone. Verify at execution time. If still true, point E2E explicitly with `E2E_BASE_URL=http://localhost:3001`; do not edit global test defaults to match a temporary local collision.
 

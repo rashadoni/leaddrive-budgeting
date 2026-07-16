@@ -16,7 +16,7 @@ import {
   Leaf, Coins, Users, TrendingUp, Activity, Shield, Building2, Cpu,
   type LucideIcon,
 } from "lucide-react"
-import { type RiskTag } from "@/app/api/companies/[id]/risk-tags/route"
+import type { RiskTag } from "@/lib/risk/risk-tags"
 import { fetchSettings } from "./company-settings-shared"
 
 const RISK_TAG_META: Record<RiskTag, { label: string; description: string; chipColor: string }> = {

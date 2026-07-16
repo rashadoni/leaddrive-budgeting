@@ -143,7 +143,10 @@ export function CommodityTickerPanel() {
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   Latest
                 </div>
-                <div className="text-2xl font-bold tabular-nums">
+                <div
+                  data-testid="sugar-latest"
+                  className="text-2xl font-bold tabular-nums"
+                >
                   ${fmtNum(sugarSeries.latest, 1)}
                 </div>
                 <div className="text-[10px] text-muted-foreground">USD/tonne</div>

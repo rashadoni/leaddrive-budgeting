@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   filterOperationalCompanies,
   filterRollupParentCompanies,
+  isIndicatorApplicableToCompany,
   isRollupIndicator,
   preferOrgScopedDefinitions,
   matchCompaniesToIndicators,
@@ -198,6 +199,52 @@ describe('matchCompaniesToIndicators', () => {
       [def({ id: 'fx', industries: ['hospitality', 'agro_crops'] })],
     );
     expect(matches).toHaveLength(2);
+  });
+});
+
+describe('isIndicatorApplicableToCompany', () => {
+  it('matches a company industry and treats an empty catalogue scope as universal', () => {
+    expect(
+      isIndicatorApplicableToCompany(
+        { industry: 'agro_crops' },
+        { industries: ['agro_crops'] },
+      ),
+    ).toBe(true);
+    expect(
+      isIndicatorApplicableToCompany(
+        { industry: 'agro_crops' },
+        { industries: [] },
+      ),
+    ).toBe(true);
+  });
+
+  it('fails open when the company taxonomy is unknown', () => {
+    expect(
+      isIndicatorApplicableToCompany(
+        { industry: null },
+        { industries: ['hospitality'] },
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps a real legacy observation despite a catalogue mismatch', () => {
+    expect(
+      isIndicatorApplicableToCompany(
+        { industry: 'agro_crops' },
+        { industries: ['hospitality'] },
+        'green',
+      ),
+    ).toBe(true);
+  });
+
+  it('does not let an unknown placeholder rescue an explicit mismatch', () => {
+    expect(
+      isIndicatorApplicableToCompany(
+        { industry: 'agro_crops' },
+        { industries: ['hospitality'] },
+        'unknown',
+      ),
+    ).toBe(false);
   });
 });
 

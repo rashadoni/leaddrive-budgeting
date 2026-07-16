@@ -42,7 +42,11 @@ import {
 } from '@/lib/risk/recompute'
 import { mapWithConcurrency } from '@/lib/risk/concurrency'
 import { parsePeriod, PeriodParseError } from '@/lib/risk/periods'
-import { filterOperationalCompanies } from '@/lib/risk/targets'
+import {
+  filterOperationalCompanies,
+  isIndicatorApplicableToCompany,
+  preferOrgScopedDefinitions,
+} from '@/lib/risk/targets'
 import type { IndicatorStatus } from '@/lib/risk/formula-engine'
 
 export const maxDuration = 30
@@ -194,9 +198,16 @@ export async function POST(request: NextRequest) {
       },
     }),
     prisma.indicatorDefinition.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        // prismaAdmin bypasses RLS for this CPU-heavy read-only route, so the
+        // tenant boundary must stay explicit here. Global seeds are visible
+        // to every org; org overrides are visible only to their own org.
+        OR: [{ organizationId: null }, { organizationId: session.orgId }],
+      },
       select: {
         id: true,
+        organizationId: true,
         code: true,
         nameEn: true, // human-readable label for the preview results table
         nameRu: true,
@@ -204,6 +215,8 @@ export async function POST(request: NextRequest) {
         formula: true,
         thresholds: true,
         requiredInputs: true,
+        industries: true,
+        isActive: true,
         aggregation: true, // 2026-05-31 — snapshot/flow → ctx.aggregation
       },
     }),
@@ -211,7 +224,12 @@ export async function POST(request: NextRequest) {
 
   const companies = filterOperationalCompanies(companiesRaw)
   type IndRow = (typeof indicators)[number]
-  const affectedIndicators = (indicators as IndRow[]).filter((i: IndRow) =>
+  // Keep the same definition-selection contract as the canonical recompute
+  // path: a tenant override wins over the global seed with the same code.
+  const preferredIndicators = preferOrgScopedDefinitions(
+    indicators as IndRow[],
+  )
+  const affectedIndicators = preferredIndicators.filter((i: IndRow) =>
     isAffected({ requiredInputs: i.requiredInputs }, overrideKeys),
   )
 
@@ -221,15 +239,35 @@ export async function POST(request: NextRequest) {
       overrides,
       cells: [],
       affectedIndicatorCount: 0,
+      pairsAttempted: 0,
+      pairsErrored: 0,
+      lastError: null,
     })
   }
 
-  // Load baseline IVs for the affected (co, indicator, period) tuples in one
-  // query so we can compute deltas without running a second pipeline.
+  if (companies.length === 0) {
+    return NextResponse.json({
+      period,
+      overrides,
+      cells: [],
+      affectedIndicatorCount: 0,
+      pairsAttempted: 0,
+      pairsErrored: 0,
+      lastError: null,
+    })
+  }
+
+  // Load baseline IVs before building the pair list. A real non-unknown
+  // observation is evidence of a legacy/per-company applicability override;
+  // an `unknown` placeholder is not. The explicit organizationId predicate is
+  // defense in depth because this route deliberately uses prismaAdmin.
   const baselineIvs = await prisma.indicatorValue.findMany({
     where: {
-      companyId: { in: companies.map((c) => c.id) },
-      indicatorId: { in: affectedIndicators.map((i: IndRow) => i.id) },
+      organizationId: session.orgId,
+      companyId: { in: companies.map((company) => company.id) },
+      indicatorId: {
+        in: affectedIndicators.map((indicator: IndRow) => indicator.id),
+      },
       period,
     },
     select: { companyId: true, indicatorId: true, value: true, status: true },
@@ -242,6 +280,47 @@ export async function POST(request: NextRequest) {
     baselineByKey.set(`${iv.companyId}:${iv.indicatorId}`, {
       value: iv.value,
       status: iv.status as IndicatorStatus,
+    })
+  }
+
+  // Applicability is pair-specific, not a catalogue-wide property. Avoid the
+  // broad company x affected-indicator product: an agro KPI must not appear
+  // on a food-processing company merely because the same shock affects both
+  // formula families. Empty `industries` remains universal and real legacy
+  // observations follow the HeatMap fail-open contract. Company eligibility
+  // itself stays canonical: `filterOperationalCompanies` admits only active,
+  // industry-classified level-2 operating entities.
+  const pairs: Array<{
+    company: (typeof companies)[number]
+    definition: (typeof affectedIndicators)[number]
+  }> = []
+  for (const company of companies) {
+    for (const definition of affectedIndicators) {
+      const baseline = baselineByKey.get(`${company.id}:${definition.id}`)
+      if (
+        isIndicatorApplicableToCompany(
+          company,
+          definition,
+          baseline?.status,
+        )
+      ) {
+        pairs.push({ company, definition })
+      }
+    }
+  }
+  const applicableIndicatorIds = [
+    ...new Set(pairs.map(({ definition }) => definition.id)),
+  ]
+
+  if (pairs.length === 0) {
+    return NextResponse.json({
+      period,
+      overrides,
+      cells: [],
+      affectedIndicatorCount: 0,
+      pairsAttempted: 0,
+      pairsErrored: 0,
+      lastError: null,
     })
   }
 
@@ -270,63 +349,68 @@ export async function POST(request: NextRequest) {
   // under the Prisma pool. Per-pair failure → null (skipped), never aborts.
   let perPairErrors = 0
   let lastError: string | null = null
-  const pairs: Array<{ co: (typeof companies)[number]; ind: (typeof affectedIndicators)[number] }> = []
-  for (const co of companies) {
-    for (const ind of affectedIndicators) pairs.push({ co, ind })
-  }
-  const mapped = await mapWithConcurrency(pairs, 8, async ({ co, ind }) => {
-    try {
-      const def: IndicatorDefinitionLike = {
-        id: ind.id,
-        code: ind.code,
-        formula: ind.formula,
-        thresholds: ind.thresholds,
-        requiredInputs: ind.requiredInputs,
-        aggregation: ind.aggregation, // 2026-05-31 — snapshot/flow
+  const mapped = await mapWithConcurrency(
+    pairs,
+    8,
+    async ({ company: co, definition: ind }) => {
+      try {
+        const def: IndicatorDefinitionLike = {
+          id: ind.id,
+          code: ind.code,
+          formula: ind.formula,
+          thresholds: ind.thresholds,
+          requiredInputs: ind.requiredInputs,
+          aggregation: ind.aggregation, // 2026-05-31 — snapshot/flow
+        }
+        const r = await recomputeIndicator(ds, {
+          organizationId: session.orgId,
+          companyId: co.id,
+          definition: def,
+          period,
+          scenarioOverrides: overrides,
+        })
+        const baseline = baselineByKey.get(`${co.id}:${ind.id}`) ?? null
+        const baselineValue = baseline?.value ?? null
+        const scenarioValue = r.status === 'unknown' ? null : r.value
+        let deltaPct: number | null = null
+        if (
+          baselineValue !== null &&
+          scenarioValue !== null &&
+          Math.abs(baselineValue) > 1e-9
+        ) {
+          deltaPct =
+            ((scenarioValue - baselineValue) / Math.abs(baselineValue)) * 100
+        }
+        return {
+          companyId: co.id,
+          companyCode: co.code ?? co.id,
+          indicatorId: ind.id,
+          indicatorCode: ind.code,
+          indicatorNameEn: ind.nameEn,
+          indicatorNameRu: ind.nameRu,
+          unit: ind.unit,
+          baselineValue,
+          baselineStatus: baseline?.status ?? null,
+          scenarioValue,
+          scenarioStatus: r.status === 'unknown' ? null : r.status,
+          deltaPct,
+        }
+      } catch (err) {
+        // Per-pair failure shouldn't abort the whole preview; skip the pair (the
+        // UI renders it as missing). Counted + last-error surfaced for diagnostics.
+        perPairErrors++
+        lastError = err instanceof Error ? err.message : String(err)
+        return null
       }
-      const r = await recomputeIndicator(ds, {
-        organizationId: session.orgId,
-        companyId: co.id,
-        definition: def,
-        period,
-        scenarioOverrides: overrides,
-      })
-      const baseline = baselineByKey.get(`${co.id}:${ind.id}`) ?? null
-      const baselineValue = baseline?.value ?? null
-      const scenarioValue = r.status === 'unknown' ? null : r.value
-      let deltaPct: number | null = null
-      if (baselineValue !== null && scenarioValue !== null && Math.abs(baselineValue) > 1e-9) {
-        deltaPct = ((scenarioValue - baselineValue) / Math.abs(baselineValue)) * 100
-      }
-      return {
-        companyId: co.id,
-        companyCode: co.code ?? co.id,
-        indicatorId: ind.id,
-        indicatorCode: ind.code,
-        indicatorNameEn: ind.nameEn,
-        indicatorNameRu: ind.nameRu,
-        unit: ind.unit,
-        baselineValue,
-        baselineStatus: baseline?.status ?? null,
-        scenarioValue,
-        scenarioStatus: r.status === 'unknown' ? null : r.status,
-        deltaPct,
-      }
-    } catch (err) {
-      // Per-pair failure shouldn't abort the whole preview; skip the pair (the
-      // UI renders it as missing). Counted + last-error surfaced for diagnostics.
-      perPairErrors++
-      lastError = err instanceof Error ? err.message : String(err)
-      return null
-    }
-  })
+    },
+  )
   for (const m of mapped) if (m) results.push(m)
 
   return NextResponse.json({
     period,
     overrides,
-    affectedIndicatorCount: affectedIndicators.length,
-    pairsAttempted: companies.length * affectedIndicators.length,
+    affectedIndicatorCount: applicableIndicatorIds.length,
+    pairsAttempted: pairs.length,
     pairsErrored: perPairErrors,
     lastError,
     cells: results,

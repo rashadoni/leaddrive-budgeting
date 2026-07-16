@@ -68,6 +68,7 @@ import { currentBakuYearNumber } from "@/lib/risk/periods"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
 import { extractMapperInput } from "@/lib/onboarding/ai-mapper/extract"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
+import { verifyStagedWorkbookContent } from "@/lib/onboarding/ai-mapper/workbook-content-hash"
 import { computeControlTotals } from "@/lib/onboarding/ai-mapper/control-totals"
 import { validateImport } from "@/lib/onboarding/ai-mapper/validate-import"
 // Phase 7.I Turn — Workbook-shape deterministic fallback. When AI Mapper
@@ -225,10 +226,33 @@ export async function POST(
     )
   }
 
+  let workbookBytes: Buffer
+  try {
+    workbookBytes = Buffer.from(await file.arrayBuffer())
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Failed to read workbook: ${err instanceof Error ? err.message : String(err)}` },
+      { status: 400 },
+    )
+  }
+
+  const contentVerification = verifyStagedWorkbookContent(staging.proposal, workbookBytes)
+  if (contentVerification !== "match") {
+    return NextResponse.json(
+      {
+        error:
+          contentVerification === "missing"
+            ? "Сохранённый анализ не содержит точный отпечаток файла. Для безопасного импорта повторите анализ этого файла."
+            : "Загруженный файл отличается от файла, который был проанализирован. Повторите анализ изменённого файла перед импортом.",
+        integrityError: contentVerification,
+      },
+      { status: 409 },
+    )
+  }
+
   let workbook: XLSX.WorkBook
   try {
-    const arrayBuffer = await file.arrayBuffer()
-    workbook = XLSX.read(Buffer.from(arrayBuffer), {
+    workbook = XLSX.read(workbookBytes, {
       type: "buffer",
       cellFormula: false,
       cellHTML: false,
@@ -259,7 +283,8 @@ export async function POST(
 
   // Structure-hash guard (Phase 2 #5): reject a file edited since analyze —
   // the multi proposal maps columns by index per sheet. Stored hash is the
-  // per-sheet hashes joined with "|". Skipped for pre-guard stagings.
+  // per-sheet hashes joined with "|". This semantic shape check complements
+  // the mandatory byte check above.
   const storedHash = (staging.proposal as { __structureHash?: string }).__structureHash
   if (storedHash) {
     // Re-extract with the SAME company industry analyze used (computeStructureHash

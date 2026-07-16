@@ -58,6 +58,28 @@ export interface MatchResult<
 }
 
 /**
+ * Decide whether one indicator applies to one company activity profile.
+ *
+ * The catalogue contract is intentionally fail-open for missing taxonomy:
+ * a company without a known industry or a definition without industry tags
+ * cannot be proved non-applicable. A non-unknown persisted observation also
+ * keeps a legacy/per-company override reachable even if today's catalogue
+ * tags disagree. Persisted `unknown` placeholders are not evidence and must
+ * not rescue an explicit mismatch.
+ */
+export function isIndicatorApplicableToCompany(
+  company: { industry?: string | null },
+  definition: { industries?: readonly string[] | null },
+  observedStatus?: string | null,
+): boolean {
+  if (!company.industry) return true;
+  const industries = definition.industries ?? [];
+  if (industries.length === 0) return true;
+  if (industries.includes(company.industry)) return true;
+  return observedStatus != null && observedStatus !== 'unknown';
+}
+
+/**
  * Keep only operational (level 2) companies with an industry set AND
  * `role==='operational'`. Sub-groups (level 1) have no industry; admin
  * cost-centres (role='admin') would false-red on operational thresholds
@@ -114,10 +136,7 @@ export function matchCompaniesToIndicators<
   const out: Array<MatchResult<C, I>> = [];
   for (const company of companies) {
     for (const def of definitions) {
-      if (
-        def.industries.length === 0 ||
-        def.industries.includes(company.industry)
-      ) {
+      if (isIndicatorApplicableToCompany(company, def)) {
         out.push({ company, definition: def });
       }
     }

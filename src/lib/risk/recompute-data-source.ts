@@ -574,9 +574,11 @@ export function createPrismaDataSource(
       revisionId,
     }) {
       // Phase 10 / Stage B5 — lineage guard. A revisionId is only meaningful
-      // if it names a revision of THIS organization: a pointer into another
-      // tenant would render as evidence while being a leak, which is strictly
-      // worse than the honest `null` that legacy rows carry.
+      // if it names a revision of THIS organization whose immutable company
+      // scope explicitly contains the company being written. A pointer into
+      // another tenant OR a sibling company's revision would render as
+      // evidence for a source state that did not produce this value, which is
+      // strictly worse than the honest `null` that legacy rows carry.
       //
       // Verified here rather than at the caller because this adapter is the
       // single place an IndicatorValue is written — a check upstream could be
@@ -586,17 +588,22 @@ export function createPrismaDataSource(
       // was passed), so the revision cannot vanish between check and write, and
       // a rollback discards both.
       //
-      // Cost is zero on every existing path: no caller passes revisionId yet,
-      // and `undefined` skips the query entirely.
+      // Cost is zero on current batch runtime paths: none passes revisionId,
+      // and `undefined` skips the query entirely. A future dependency-aware
+      // caller pays this guard only when it has a complete revision to stamp.
       if (revisionId != null) {
         const revision = await prisma.dataRevision.findFirst({
-          where: { id: revisionId, organizationId },
+          where: {
+            id: revisionId,
+            organizationId,
+            companyIds: { has: companyId },
+          },
           select: { id: true },
         });
         if (!revision) {
-          // One message for both "missing" and "belongs to another org": the
-          // caller must not be able to probe another tenant's revision ids by
-          // distinguishing the two.
+          // One message for "missing", "belongs to another org", and "does
+          // not attest to this company": the caller must not be able to probe
+          // revision scope by distinguishing the cases.
           throw new Error(
             `upsertIndicatorValue: revision ${revisionId} not found in organization ${organizationId}`,
           );

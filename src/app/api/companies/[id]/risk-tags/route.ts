@@ -26,18 +26,12 @@ import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { getLogger } from "@/lib/log"
+import { RISK_TAGS } from "@/lib/risk/risk-tags"
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
 const log = getLogger("api:companies:risk-tags")
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
-
-export const RISK_TAGS = [
-  "subsidy_dependency",
-  "non_transparent_structure",
-  "data_absence",
-] as const
-export type RiskTag = (typeof RISK_TAGS)[number]
 
 const BodySchema = z.object({
   riskTags: z.array(z.enum(RISK_TAGS)).max(RISK_TAGS.length),

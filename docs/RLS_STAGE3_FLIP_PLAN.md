@@ -167,11 +167,11 @@ per RLS_RUNBOOK §1.
   (3) Shipped the new org-agnostic `scripts/rotate-admin-password.ts` (finds by
   email, updates the hash by id — no org-slug footgun) and validated it
   end-to-end on prod: rotated `admin@fo.az` (org FO Holding) to a strong
-  generated secret, verified old `Admin123!` rejected — **then, at the user's
-  request, reset it BACK to `Admin123!`** for pre-onboarding dev convenience
-  (verified `Admin123!` logs in again). **Phase 5.2 RLS is fully closed out on
+  generated secret and verified the previous weak demo password was rejected —
+  **then, at the user's request, reset it back to that weak demo password** for
+  pre-onboarding convenience (verified it logged in again). **Phase 5.2 RLS is fully closed out on
   prod.** ⚠️ **Open credential gate: prod admin login is currently the weak demo
-  `Admin123!`; re-rotate before the 2nd tenant (Mars Overseas) gets access —
+  credential; re-rotate before the 2nd tenant (Mars Overseas) gets access —
   `docker compose --env-file .env.production exec -T -e ADMIN_EMAIL=admin@fo.az
   -e ADMIN_PASSWORD=<strong> app npx tsx scripts/rotate-admin-password.ts`.**
 - 2026-07-08 — **S6 DONE — RLS ENFORCED ON PRODUCTION. 🔒** Codex ran the
@@ -192,7 +192,7 @@ per RLS_RUNBOOK §1.
   (idempotent, interpolates outside dollar-quotes). Prod originals backed up as
   `scripts/sql/*.bak-20260708073557`. **Every /api route now runs through an
   RLS-enforced app role on prod; a forgotten `withOrgScope` fails loud (0 rows)
-  instead of leaking.** Remaining (human): rotate the demo `Admin123!` before
+  instead of leaking.** Remaining (human): rotate the weak demo password before
   Mars gets access; optional CI `rls-coverage-scan --enforce` gate.
 - 2026-07-08 — **S5-prep committed + DEV-flip validated (then reverted) + S5-prep DEPLOYED to prod.**
   Prep for the default-client flip: `logAuditEvent` + `runRecomputeForCompanies`
@@ -213,7 +213,7 @@ per RLS_RUNBOOK §1.
   clean (users read via admin, correct rejection — "login bricked" risk #1
   DISPROVEN). `budgetpro_admin` bypassrls=t. **Dev flip then REVERTED** (user:
   "не надо на локалке, переходи на прод"). One gap: authenticated HTTP click-
-  through not run (dev password rotated off the Admin123! default). S5-prep
+  through not run (dev password rotated away from the formerly documented weak default). S5-prep
   DEPLOYED to prod (`9fdfc91c`, /login 200) — behaviour-preserving there (roles
   unset → superuser fallback; prod still logs "DATABASE_URL_APP not set"). **Prod
   enforcement flip (S6) is now teed up — see runbook below; it is Rashad's action

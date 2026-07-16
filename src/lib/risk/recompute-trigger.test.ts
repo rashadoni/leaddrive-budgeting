@@ -885,8 +885,8 @@ describe('runRecomputeForCompanies', () => {
     });
   });
 
-  describe('options.revisionId — B5 lineage hand-off', () => {
-    it('omitting options leaves every row untraced (legacy contract)', async () => {
+  describe('B5 lineage safety boundary', () => {
+    it('batch recompute leaves every row untraced', async () => {
       const prisma = makePrisma([co()], [ind()]);
       mockedRecompute.mockResolvedValue({ ok: true, status: 'green', value: 75 });
 
@@ -894,17 +894,31 @@ describe('runRecomputeForCompanies', () => {
         { companyId: 'co_1', year: 2026 },
       ]);
 
-      // Every legacy caller — cron, scripts, the other import routes — must
-      // keep writing `revisionId = null`. A row that never named a source is
-      // honestly untraced, and A5's gate holds it at Provisional for it.
+      // The batch has no per-indicator dependency manifest, so every caller
+      // writes `revisionId = null`. A row that cannot name its complete source
+      // set is honestly untraced and stays Provisional.
       expect(mockedRecompute).toHaveBeenCalled();
       for (const call of mockedRecompute.mock.calls) {
         expect(call[1].revisionId).toBeUndefined();
       }
     });
 
-    it('passes the revisionId to every recomputeIndicator call in the run', async () => {
-      const prisma = makePrisma([co()], [ind()]);
+    it('ignores a legacy blanket revisionId even if an untyped caller sends one', async () => {
+      const prisma = makePrisma(
+        [co()],
+        [
+          ind({
+            id: 'i_budget',
+            code: 'BUDGET_ONLY',
+            requiredInputs: ['budgetLine:revenue'],
+          }),
+          ind({
+            id: 'i_mixed',
+            code: 'MIXED_INPUTS',
+            requiredInputs: ['budgetLine:revenue', 'commodityPrice:sugar'],
+          }),
+        ],
+      );
       mockedRecompute.mockResolvedValue({ ok: true, status: 'green', value: 75 });
 
       await runRecomputeForCompanies(
@@ -912,19 +926,17 @@ describe('runRecomputeForCompanies', () => {
         'org_1',
         [{ companyId: 'co_1', year: 2026 }],
         {},
-        { revisionId: 'rev_1' },
+        { revisionId: 'rev_1' } as never,
       );
 
-      expect(mockedRecompute).toHaveBeenCalled();
+      expect(mockedRecompute).toHaveBeenCalledTimes(2);
       for (const call of mockedRecompute.mock.calls) {
-        expect(call[1].revisionId).toBe('rev_1');
-        // The revision travels with the org it belongs to; the write path
-        // re-checks that pairing before it stamps anything.
+        expect(call[1].revisionId).toBeUndefined();
         expect(call[1].organizationId).toBe('org_1');
       }
     });
 
-    it('an explicit null revisionId clears lineage (it does not merely skip it)', async () => {
+    it('ignores a legacy explicit-null batch option too', async () => {
       const prisma = makePrisma([co()], [ind()]);
       mockedRecompute.mockResolvedValue({ ok: true, status: 'green', value: 75 });
 
@@ -933,11 +945,11 @@ describe('runRecomputeForCompanies', () => {
         'org_1',
         [{ companyId: 'co_1', year: 2026 }],
         {},
-        { revisionId: null },
+        { revisionId: null } as never,
       );
 
       for (const call of mockedRecompute.mock.calls) {
-        expect(call[1].revisionId).toBeNull();
+        expect(call[1].revisionId).toBeUndefined();
       }
     });
 
@@ -962,7 +974,7 @@ describe('runRecomputeForCompanies', () => {
         'org_1',
         [{ companyId: 'co_1', year: 2026 }],
         {},
-        { revisionId: 'rev_1' },
+        { revisionId: 'rev_1' } as never,
       );
 
       const byCompany = new Map<string, unknown>();
@@ -972,13 +984,13 @@ describe('runRecomputeForCompanies', () => {
       // Guard the guard: the parent pass must actually have run, or the
       // assertion below would pass for the wrong reason (absent ≠ untraced).
       expect(byCompany.has('co_parent')).toBe(true);
-      // The imported company's own observation is traced...
-      expect(byCompany.get('co_1')).toBe('rev_1');
-      // ...the holding's rollup is not.
+      // Neither the child nor the holding can cite a workbook-only revision:
+      // the child formula may have mixed inputs and the rollup certainly does.
+      expect(byCompany.get('co_1')).toBeUndefined();
       expect(byCompany.get('co_parent')).toBeUndefined();
     });
 
-    it('traces only the companies the revision names, not everyone recomputed', async () => {
+    it('does not let a legacy traced-company set opt selected rows into false lineage', async () => {
       // A multi-company apply recomputes every company it touched, but only the
       // ones its transaction actually WROTE belong to the revision. The rest
       // must not cite it.
@@ -995,7 +1007,7 @@ describe('runRecomputeForCompanies', () => {
           { companyId: 'co_untouched', year: 2026 },
         ],
         {},
-        { revisionId: 'rev_1', tracedCompanyIds: new Set(['co_written']) },
+        { revisionId: 'rev_1', tracedCompanyIds: new Set(['co_written']) } as never,
       );
 
       const byCompany = new Map<string, unknown>();
@@ -1005,12 +1017,12 @@ describe('runRecomputeForCompanies', () => {
       // Both were recomputed — the run's scope is unchanged...
       expect(byCompany.has('co_written')).toBe(true);
       expect(byCompany.has('co_untouched')).toBe(true);
-      // ...but only the written one is traced.
-      expect(byCompany.get('co_written')).toBe('rev_1');
+      // ...and neither is traced without complete per-KPI dependencies.
+      expect(byCompany.get('co_written')).toBeUndefined();
       expect(byCompany.get('co_untouched')).toBeUndefined();
     });
 
-    it('traces every leaf company when no traced set is given (single-company paths)', async () => {
+    it('does not blanket-trace a single-company run', async () => {
       const prisma = makePrisma([co()], [ind()]);
       mockedRecompute.mockResolvedValue({ ok: true, status: 'green', value: 75 });
 
@@ -1019,11 +1031,11 @@ describe('runRecomputeForCompanies', () => {
         'org_1',
         [{ companyId: 'co_1', year: 2026 }],
         {},
-        { revisionId: 'rev_1' },
+        { revisionId: 'rev_1' } as never,
       );
 
       for (const call of mockedRecompute.mock.calls) {
-        expect(call[1].revisionId).toBe('rev_1');
+        expect(call[1].revisionId).toBeUndefined();
       }
     });
 
@@ -1036,7 +1048,7 @@ describe('runRecomputeForCompanies', () => {
         'org_1',
         [{ companyId: 'co_1', year: 2026 }],
         {},
-        { revisionId: 'rev_1', tracedCompanyIds: new Set<string>() },
+        { revisionId: 'rev_1', tracedCompanyIds: new Set<string>() } as never,
       );
 
       expect(mockedRecompute).toHaveBeenCalled();

@@ -24,11 +24,12 @@
  *   transaction), so reading it at apply time would name a version that this
  *   import did not necessarily use.
  *
- * The limit this leaves, stated plainly: a staging id proves *which import
- * event* produced a value, not the byte-exact workbook behind it. Raw upload
- * bytes are not retained on that path (`schema.prisma` — `xlsxTempPath` is a
- * temp path the caller cleans up), so `DataRevision.contentHash` must not be
- * described as a file-content hash for staged imports.
+ * The staged proposal now retains `__workbookContentSha256`, and every apply
+ * route verifies the replacement bytes against it before parsing. An auditor
+ * can therefore resolve the byte digest through the retained ImportStaging
+ * row. The revision still names that row rather than embedding the digest:
+ * `DataRevision.contentHash` hashes the revision scope (artifact id, mapping,
+ * company and period), so it must not be described as a file-content hash.
  *
  * The deterministic per-company import (`onboarding/import/budget`) is not
  * subject to that limit: it holds the uploaded bytes while it works, so
@@ -166,15 +167,14 @@ export interface BuildImportRevisionScopeInput {
  * `YYYY-01`..`YYYY-12` is the range the revision genuinely speaks for — not a
  * narrower window it did not touch, and not a wider one it cannot vouch for.
  *
- * **Known gap — two period vocabularies meet here.** The observations that
- * carry this revision are written at the FY key `YYYY` (`recompute-trigger.ts`
- * → `period = String(year)`), while the range above is in MONTH keys. Both are
- * valid keys in the same grammar (`period-context.ts` → `parsePeriodKey`), but
- * they do not compare as strings: `'2026' < '2026-01'`, so a naive range query
- * asking "does this revision cover this observation?" answers no. Nothing
- * queries that way today. Anything that starts must compare through
- * `parsePeriodKey` (the FY period's months are exactly this range), not with
- * `<=`/`>=` on the raw keys. Recorded in IMPLEMENTATION-STATUS.md §17.
+ * **Known gap — two period vocabularies meet here.** Batch recompute writes FY
+ * observations at `YYYY` (`recompute-trigger.ts` → `period = String(year)`),
+ * while this import revision covers MONTH keys. The two are intentionally not
+ * linked today: a workbook revision is incomplete lineage for a KPI that may
+ * also read feeds, manual facts or rollups. When a future dependency-aware
+ * linker builds a complete observation revision, it must compare these keys
+ * through `parsePeriodKey`, not raw strings (`'2026' < '2026-01'`). Recorded
+ * in IMPLEMENTATION-STATUS.md §17.
  */
 export function buildImportRevisionScope(
   input: BuildImportRevisionScopeInput,

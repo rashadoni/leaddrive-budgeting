@@ -841,9 +841,10 @@ export async function recomputeIndicator(
     status,
     inputs: finalInputs,
     sparkline,
-    // Stage B5 — pass-through only. `undefined` leaves the column untouched
-    // on UPDATE, so a bulk recompute that threads no revision never erases
-    // lineage an earlier traced write established.
+    // Stage B5 — pass-through only. The canonical writer deliberately maps
+    // `undefined` to null on UPDATE: once this recompute replaces the value, an
+    // older revision no longer explains the number and must not survive as
+    // false evidence. A dependency-aware caller may pass a complete revision.
     revisionId: args.revisionId,
     // Phase 7.H F4.v2.1 — fall back to `computed` when the caller omits
     // the field (legacy / pre-v2.1 IndicatorDefinitionLike fixtures).

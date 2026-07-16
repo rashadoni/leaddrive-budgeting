@@ -64,6 +64,14 @@ services:
       # superuser: the docker-entrypoint migration step needs it.
       DATABASE_URL_APP: ${DATABASE_URL_APP:-}
       DATABASE_URL_ADMIN: ${DATABASE_URL_ADMIN:-}
+      # Risk Terminal 2.0 operational rollout flags. Defaults keep every org
+      # on the legacy Expert view and prevent paid AI from starting on entry.
+      # Enabling V2 still requires both the master switch and an exact org id
+      # in the allowlist (resolved server-side; never exposed as NEXT_PUBLIC_*).
+      RISK_TERMINAL_V2_ENABLED: ${RISK_TERMINAL_V2_ENABLED:-false}
+      RISK_TERMINAL_V2_ORG_ALLOWLIST: ${RISK_TERMINAL_V2_ORG_ALLOWLIST:-}
+      RISK_TERMINAL_V2_DEFAULT_VIEW: ${RISK_TERMINAL_V2_DEFAULT_VIEW:-expert}
+      RISK_TERMINAL_V2_AI_AUTORUN: ${RISK_TERMINAL_V2_AI_AUTORUN:-false}
       NODE_ENV: production
     expose:
       - "3000"

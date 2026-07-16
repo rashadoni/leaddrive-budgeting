@@ -41,6 +41,10 @@ import { useMatrix } from '../hooks/use-matrix';
 import { useCompanies, buildRiskTagsByCompanyId } from '../hooks/use-companies';
 import { getMateriality, isMaterialityScoped } from '@/lib/risk/esg-materiality';
 import { filterIndicatorsByQuery } from '../lib/indicator-search';
+import {
+  collectScopeIndustries,
+  partitionIndicatorsByScope,
+} from '../lib/indicator-applicability';
 
 const log = getLogger('terminal:heatmap');
 const PANEL_ID = 2;
@@ -116,58 +120,10 @@ export function useHeatMapModel(period: string | undefined) {
       cancelled = true;
     };
   }, []);
-  // Phase 7.I — sector-aware column ordering: when active company has an
-  // industry the materiality matrix knows about, sort indicator columns so
-  // material ones land left and hide `not_material` by default. User can
-  // flip the toggle to show all indicators; the choice persists via
-  // localStorage so reload doesn't snap back.
-  const [hideNotMaterial, setHideNotMaterial] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    try {
-      const stored = window.localStorage.getItem('terminal-hide-not-material-v1');
-      if (stored === '0') return false;
-      if (stored === '1') return true;
-    } catch {
-      // localStorage can throw in private mode — non-fatal.
-    }
-    return true; // default ON (hide indicators not associated with industry)
-  });
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(
-        'terminal-hide-not-material-v1',
-        hideNotMaterial ? '1' : '0',
-      );
-    } catch {
-      // non-fatal.
-    }
-  }, [hideNotMaterial]);
-
-  // 2026-05-27 — «Hide unknown» toggle: when ON, hide indicator columns
-  // where every visible company has status=unknown (no data resolved).
-  // Reduces visual noise from ~55% gray cells when showing real workflows.
-  // Default OFF so the matrix still surfaces gaps by default — toggle is
-  // a deliberate "demo mode" the user opts into. Persisted to localStorage.
-  const [hideUnknown, setHideUnknown] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    try {
-      return window.localStorage.getItem('terminal-hide-unknown-v1') === '1';
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(
-        'terminal-hide-unknown-v1',
-        hideUnknown ? '1' : '0',
-      );
-    } catch {
-      // non-fatal.
-    }
-  }, [hideUnknown]);
+  // Activity-aware progressive disclosure. The default is intentionally
+  // session-local: every fresh terminal visit starts with the relevant KPI
+  // set, while the user can reveal the complete catalogue on demand.
+  const [showAllIndicators, setShowAllIndicators] = useState(false);
 
   // Sub-20: shared `useMatrix()` hook. Module-level cache means
   // HeatMap + ComparePanel + CompanySnapshot all subscribe to ONE
@@ -461,28 +417,25 @@ export function useHeatMapModel(period: string | undefined) {
   //
   // For LEAF entities (level=2 ops cos like AZSEKER-EDEN) the company row
   // carries `industry` directly. For SUB-GROUPS / holdings (AAC, AZSEKER,
-  // …) the row's own `industry` is null — derive the relevant set by
-  // walking descendants and unioning their industries. The matrix payload
-  // surfaces `parentCompanyId` on each row, so the walk is one pass.
+  // …) the row's own `industry` is null — derive the relevant set from its
+  // descendants. With no active company, use the union of industries in the
+  // currently visible holding scope. This closes the old full-holding gap
+  // where activity filtering only worked after selecting one company.
+  const visibleCompanyIds = useMemo(
+    () => new Set(filteredCompanies.map((company) => company.id)),
+    [filteredCompanies],
+  );
   const activeCompanyIndustries = useMemo<readonly string[]>(() => {
-    if (!data || !activeCompanyCode) return [];
-    const co = data.companies.find((c) => c.code === activeCompanyCode);
-    if (!co) return [];
-    if (co.industry) return [co.industry];
-    // Sub-group with no own industry — union of descendant industries.
-    type WithParent = (typeof data.companies)[number] & { parentCompanyId?: string | null };
-    const collected = new Set<string>();
-    const walk = (parentId: string): void => {
-      for (const c of data.companies as ReadonlyArray<WithParent>) {
-        if (c.parentCompanyId === parentId) {
-          if (c.industry) collected.add(c.industry);
-          walk(c.id);
-        }
-      }
-    };
-    walk(co.id);
-    return Array.from(collected);
-  }, [data, activeCompanyCode]);
+    if (!data) return [];
+    const activeCompanyId = activeCompanyCode
+      ? data.companies.find((company) => company.code === activeCompanyCode)?.id
+      : null;
+    return collectScopeIndustries(
+      data.companies,
+      visibleCompanyIds,
+      activeCompanyId,
+    );
+  }, [data, activeCompanyCode, visibleCompanyIds]);
   // Back-compat single-industry alias used by materiality lookups. When
   // the active company resolves to exactly ONE industry (leaf op-co OR a
   // sub-group whose descendants share one industry, e.g. AAC = pure
@@ -493,31 +446,22 @@ export function useHeatMapModel(period: string | undefined) {
     activeCompanyIndustries.length === 1 ? activeCompanyIndustries[0] : null;
 
   const rawIndicators = data?.indicators ?? [];
-  const indicators = useMemo(() => {
-    if (activeCompanyIndustries.length === 0) return rawIndicators;
+  const applicability = useMemo(
+    () =>
+      partitionIndicatorsByScope({
+        indicators: rawIndicators,
+        cells: data?.cells ?? [],
+        visibleCompanyIds,
+        scopeIndustries: activeCompanyIndustries,
+      }),
+    [rawIndicators, data?.cells, visibleCompanyIds, activeCompanyIndustries],
+  );
+
+  const indicatorResolution = useMemo(() => {
     const rankMateriality = (rating: 'material' | 'low_materiality' | 'not_material'): number => {
       if (rating === 'material') return 0;
       if (rating === 'low_materiality') return 1;
       return 2; // not_material
-    };
-    /**
-     * Phase 7.I sub-fix — an indicator is "associated" with the active
-     * company when EITHER:
-     *   - its `industries` field is empty/missing (universal indicator
-     *     like financial ratios that apply to every sector), OR
-     *   - its `industries` array intersects with the active company's
-     *     resolved industry set (one entry for a leaf op-co; multiple
-     *     for a mixed sub-group like AZSEKER → agro_crops + food_processing).
-     * If `industries` is non-empty AND doesn't intersect, the indicator
-     * is explicitly NOT relevant to this entity (e.g. HOSP_OCC for an
-     * industrial holding) and gets hidden when "Material only" is on.
-     * Drops the column count from ~65 down to ~10–15 for a focused view,
-     * eliminating horizontal scroll.
-     */
-    const isAssociatedWithIndustry = (ind: { industries?: string[] }): boolean => {
-      const tags = ind.industries ?? [];
-      if (tags.length === 0) return true; // universal indicator
-      return tags.some((t) => activeCompanyIndustries.includes(t));
     };
     /**
      * Phase 7.I — secondary sort key: industry-specificity.
@@ -533,14 +477,16 @@ export function useHeatMapModel(period: string | undefined) {
      *   priority 0 — industry-tagged AND intersects active company industry
      *   priority 1 — universal indicator (empty `industries`)
      *   priority 2 — industry-tagged but non-intersecting (only visible
-     *                when "Material only" toggle is off; lands at the
-     *                right edge as low-relevance noise)
+     *                after explicit "Show all" disclosure)
      */
     const rankIndustrySpecificity = (ind: { industries?: string[] }): number => {
       const tags = ind.industries ?? [];
       if (tags.length === 0) return 1;
       return tags.some((t) => activeCompanyIndustries.includes(t)) ? 0 : 2;
     };
+    const relevantIds = new Set(
+      applicability.relevant.map((indicator) => indicator.id),
+    );
     const enriched = rawIndicators.map((ind) => ({
       ind,
       rating:
@@ -548,55 +494,49 @@ export function useHeatMapModel(period: string | undefined) {
           ? getMateriality(activeCompanyIndustry, ind.code)
           : ('material' as const),
     }));
-    const visible = hideNotMaterial
-      ? enriched.filter(
-          (e) => e.rating !== 'not_material' && isAssociatedWithIndustry(e.ind),
-        )
-      : enriched;
     // Stable two-level sort: (materiality rating ASC) then (industry-
     // specificity ASC). Equal-rated equal-specificity rows fall back to
     // insertion order, which matches the seed `sortOrder` field.
-    visible.sort((a, b) => {
+    enriched.sort((a, b) => {
       const r = rankMateriality(a.rating) - rankMateriality(b.rating);
       if (r !== 0) return r;
       return rankIndustrySpecificity(a.ind) - rankIndustrySpecificity(b.ind);
     });
-    return visible.map((e) => e.ind);
-  }, [activeCompanyIndustries, activeCompanyIndustry, hideNotMaterial, rawIndicators]);
-
-  // 2026-05-27 — «Hide unknown» derived view. Compute the set of indicator
-  // IDs that have AT LEAST ONE non-unknown cell among the currently
-  // visible companies; when toggle is ON, drop columns missing from that
-  // set. O(cells + visibleCompanies) per matrix change — bounded by the
-  // matrix size (60 × 50 = 3k cells worst case).
-  const indicatorsWithAnyData = useMemo(() => {
-    if (!data || !hideUnknown) return null;
-    const visibleCompanyIds = new Set(filteredCompanies.map((c) => c.id));
-    const set = new Set<string>();
-    for (const cell of data.cells) {
-      if (!visibleCompanyIds.has(cell.companyId)) continue;
-      if (cell.status && cell.status !== 'unknown') {
-        set.add(cell.indicatorId);
-      }
-    }
-    return set;
-  }, [data, filteredCompanies, hideUnknown]);
+    // Applicability and materiality answer different questions. A
+    // `not_material` KPI still belongs to the company's activity profile; the
+    // cell renderer already dims it to 12% and removes the status colour so an
+    // analyst can verify the deliberate de-emphasis. Hiding the whole column
+    // here made it indistinguishable from an unrelated KPI and contradicted
+    // the materiality contract in `esg-materiality.ts`.
+    const defaultVisible = enriched.filter(({ ind }) => relevantIds.has(ind.id));
+    return (showAllIndicators ? enriched : defaultVisible).map(({ ind }) => ind);
+  }, [
+    activeCompanyIndustries,
+    activeCompanyIndustry,
+    applicability.relevant,
+    rawIndicators,
+    showAllIndicators,
+  ]);
+  const indicators = indicatorResolution;
 
   const displayIndicators = useMemo(() => {
-    // Client-feedback #5 — an active indicator query takes precedence and
-    // surfaces every match, deliberately bypassing the "hide unknown" toggle
-    // (if the user explicitly searched for a column, show it even when all
-    // its cells are empty). Original column order is preserved by the matcher.
+    // An active indicator query narrows the current applicability view while
+    // preserving the original column order.
     if (indicatorQuery.trim()) {
       return filterIndicatorsByQuery(indicatorQuery, indicators);
     }
-    if (!hideUnknown || !indicatorsWithAnyData) return indicators;
-    return indicators.filter((ind) => indicatorsWithAnyData.has(ind.id));
-  }, [indicators, hideUnknown, indicatorsWithAnyData, indicatorQuery]);
+    return indicators;
+  }, [indicators, indicatorQuery]);
 
-  const hiddenUnknownCount = hideUnknown
-    ? indicators.length - displayIndicators.length
-    : 0;
+  // Disclosure count is based on what the current indicator search could
+  // reveal, not on the full unsearched catalogue.
+  const matchingRawIndicators = useMemo(
+    () => filterIndicatorsByQuery(indicatorQuery, rawIndicators),
+    [rawIndicators, indicatorQuery],
+  );
+  const hiddenIndicatorCount = showAllIndicators
+    ? 0
+    : Math.max(0, matchingRawIndicators.length - displayIndicators.length);
 
   return {
     t, locale, selectedPeriod, setSelectedPeriod, driftHealth, setCompany,
@@ -604,13 +544,14 @@ export function useHeatMapModel(period: string | undefined) {
     setActivePanel, search, setSearch, clearSearch, setAlertsCount,
     setAlertedCompanyCodes, setAlertMatches, compactMode, scenarioDelta,
     activeScenarioLabel, clearScenarioDelta, lockedPeriods, setLockedPeriods,
-    hideNotMaterial, setHideNotMaterial, hideUnknown, setHideUnknown, data,
+    showAllIndicators, setShowAllIndicators, data,
     loading, error, refetchMatrix, companyTree, searchInputRef, mounted,
     setMounted, dbSummary, setDbSummary, activePeriod, alertThresholds,
     setAlertThresholds, refetchTimerRef, cellMap, compositeByCompany,
     provisionalSummary,
     filteredCompanies, summary, activeCompanyIndustries, activeCompanyIndustry,
-    rawIndicators, indicators, indicatorsWithAnyData, displayIndicators,
-    hiddenUnknownCount, indicatorQuery, setIndicatorQuery, indicatorSearchInputRef,
+    rawIndicators, indicators, displayIndicators,
+    hiddenIndicatorCount, indicatorQuery, setIndicatorQuery,
+    indicatorSearchInputRef,
   };
 }

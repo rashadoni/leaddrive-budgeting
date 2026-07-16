@@ -11,7 +11,7 @@
  * text (which can drift across locale edits).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string, vars?: Record<string, unknown>) => {
@@ -93,6 +93,136 @@ describe("DriftDashboard", () => {
       // Status pills now render the translation keys.
       expect(screen.getByText("statusFresh")).toBeTruthy();
       expect(screen.getByText("statusStale")).toBeTruthy();
+    });
+  });
+
+  it("shows an actionable API-key link when EIA is not configured", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          recentDrifts: [],
+          referenceFreshness: [
+            {
+              sourceCode: "eia-energy",
+              cadence: "daily",
+              ageHours: null,
+              status: "missing",
+              metricCount: 0,
+              lastFetchedAt: null,
+              thresholds: { staleHours: 36, criticalHours: 72 },
+            },
+          ],
+          stalePending: [],
+          generatedAt: "2026-05-16T10:00:00Z",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 424,
+        headers: new Headers(),
+        json: async () => ({
+          error: "API key is not configured for eia-energy",
+          code: "api_key_missing",
+          configurePath: "/budgeting/admin/api-keys",
+        }),
+      });
+    global.fetch = fetchMock as never;
+
+    render(<DriftDashboard />);
+    const button = await screen.findByTitle("fetchTitle(code=eia-energy)");
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText("apiKeyMissing(code=eia-energy)")).toBeTruthy();
+      const link = screen.getByText("configureApiKey") as HTMLAnchorElement;
+      expect(link.getAttribute("href")).toBe("/budgeting/admin/api-keys");
+    });
+  });
+
+  it("surfaces the provider error when a refresh writes zero points", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          recentDrifts: [],
+          referenceFreshness: [
+            {
+              sourceCode: "weather-openmeteo",
+              cadence: "daily",
+              ageHours: 80,
+              status: "critical_stale",
+              metricCount: 0,
+              lastFetchedAt: null,
+              thresholds: { staleHours: 36, criticalHours: 72 },
+            },
+          ],
+          stalePending: [],
+          generatedAt: "2026-05-16T10:00:00Z",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({
+          inserted: 0,
+          errors: ["weather-openmeteo: upstream HTTP 503"],
+          perSource: [],
+        }),
+      });
+    global.fetch = fetchMock as never;
+
+    render(<DriftDashboard />);
+    const button = await screen.findByTitle("fetchTitle(code=weather-openmeteo)");
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText("weather-openmeteo: upstream HTTP 503")).toBeTruthy();
+    });
+  });
+
+  it("renders the server retry window for a rate-limited refresh", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          recentDrifts: [],
+          referenceFreshness: [
+            {
+              sourceCode: "eia-energy",
+              cadence: "daily",
+              ageHours: 1,
+              status: "fresh",
+              metricCount: 3,
+              lastFetchedAt: "2026-07-16T10:00:00Z",
+              thresholds: { staleHours: 36, criticalHours: 72 },
+            },
+          ],
+          stalePending: [],
+          generatedAt: "2026-07-16T10:00:00Z",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: new Headers({ "Retry-After": "42" }),
+        json: async () => ({
+          error: "Too many requests",
+          retryAfterSec: 42,
+        }),
+      });
+    global.fetch = fetchMock as never;
+
+    render(<DriftDashboard />);
+    const button = await screen.findByTitle("fetchTitle(code=eia-energy)");
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText("retryAfter(seconds=42)")).toBeTruthy();
     });
   });
 

@@ -73,8 +73,9 @@ interface ApplyResult {
   planId: string
   planCreated: boolean
   /**
-   * Phase 10 / Stage B5 — the DataRevision this import committed, and the one
-   * every IndicatorValue the follow-on recompute writes is traced to.
+   * Phase 10 / Stage B5 — the source-state revision committed with this
+   * import. It is intentionally not attached to batch-recomputed KPI values
+   * until complete per-indicator dependencies can be proven.
    */
   revisionId: string
 }
@@ -305,7 +306,10 @@ export async function POST(request: NextRequest) {
         // and this transaction is where source state becomes real, so the two
         // commit or roll back together. Recompute stays post-commit below —
         // per 03-DATA-KPI-TRUST-SPEC §6.1/§6.4 — so this guarantees
-        // import ↔ revision, not revision ↔ IndicatorValue. See
+        // import ↔ revision, not revision ↔ IndicatorValue. The workbook
+        // revision is intentionally not passed to the batch recompute: each
+        // KPI may also depend on feeds, manual facts or rollups, and no
+        // per-indicator dependency manifest exists yet. See
         // IMPLEMENTATION-STATUS.md §17.
         const revision = await ensureDataRevision(tx, {
           scope: buildBudgetImportRevisionScope({
@@ -363,10 +367,6 @@ export async function POST(request: NextRequest) {
       recomputeLog.error(label, {
         err: err instanceof Error ? err.message : String(err),
       }),
-  }, {
-    // Phase 10 / Stage B5 — trace every IndicatorValue this run writes to the
-    // revision the import transaction committed above.
-    revisionId: result.revisionId,
   })
   const indicatorsStale = recomputeResult.failed > 0
 
@@ -495,4 +495,3 @@ async function insertBudgetLineTx(
     })
   }
 }
-

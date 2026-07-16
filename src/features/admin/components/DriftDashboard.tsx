@@ -235,6 +235,7 @@ function FreshnessCard({
   const t = useTranslations("adminDriftDashboard");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
+  const [configurePath, setConfigurePath] = React.useState<string | null>(null);
   const [lastResult, setLastResult] = React.useState<string | null>(null);
 
   const statusLabel: Record<SourceFreshness["status"], string> = {
@@ -248,6 +249,7 @@ function FreshnessCard({
     e.stopPropagation();
     setBusy(true);
     setErr(null);
+    setConfigurePath(null);
     setLastResult(null);
     try {
       const res = await fetch(`/api/admin/drift/refresh-source?source=${encodeURIComponent(source.sourceCode)}`, {
@@ -255,10 +257,41 @@ function FreshnessCard({
       });
       const body = await res.json().catch(() => ({} as Record<string, unknown>));
       if (!res.ok) {
-        throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
+        if (body.code === "api_key_missing") {
+          setConfigurePath(
+            typeof body.configurePath === "string"
+              ? body.configurePath
+              : "/budgeting/admin/api-keys",
+          );
+          throw new Error(t("apiKeyMissing", { code: source.sourceCode }));
+        }
+        if (res.status === 429) {
+          const retryAfter =
+            typeof body.retryAfterSec === "number"
+              ? body.retryAfterSec
+              : Number(res.headers?.get?.("Retry-After"));
+          if (Number.isFinite(retryAfter) && retryAfter > 0) {
+            throw new Error(t("retryAfter", { seconds: retryAfter }));
+          }
+        }
+        throw new Error(
+          typeof body.message === "string"
+            ? body.message
+            : typeof body.error === "string"
+              ? body.error
+              : `HTTP ${res.status}`,
+        );
       }
       const inserted = typeof body.inserted === "number" ? body.inserted : 0;
-      const errors = Array.isArray(body.errors) ? body.errors.length : 0;
+      const errorMessages = Array.isArray(body.errors)
+        ? body.errors.filter(
+            (value: unknown): value is string => typeof value === "string",
+          )
+        : [];
+      if (inserted === 0 && errorMessages.length > 0) {
+        throw new Error(errorMessages[0]);
+      }
+      const errors = errorMessages.length;
       const errorsSuffix = errors > 0 ? t("errorsLabel", { n: errors }) : "";
       setLastResult(`${t("pointsLabel", { n: inserted })}${errorsSuffix}`);
       onRefreshed();
@@ -300,7 +333,14 @@ function FreshnessCard({
         <div className="mt-1 text-[10px] text-emerald-700 dark:text-emerald-400">{lastResult}</div>
       )}
       {err && (
-        <div className="mt-1 text-[10px] text-red-700 dark:text-red-400">{err}</div>
+        <div className="mt-1 text-[10px] text-red-700 dark:text-red-400">
+          {err}
+          {configurePath && (
+            <a className="ml-1 underline font-semibold" href={configurePath}>
+              {t("configureApiKey")}
+            </a>
+          )}
+        </div>
       )}
     </div>
   );

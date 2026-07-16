@@ -11,8 +11,8 @@
  * The seeded admin user comes from `scripts/create-admin.ts` (run once
  * after first deploy per `docs/ADMIN_RUNBOOK.md` §1.2). Credentials are
  * env-driven so tests run against any environment (dev / staging / prod
- * smoke); defaults match the local `scripts/create-admin.ts` defaults
- * for zero-config local dev.
+ * smoke). The password intentionally has no repository default: a checked-in
+ * credential is unsafe even when it is described as local-only.
  */
 
 import { Page, expect } from '@playwright/test';
@@ -23,20 +23,20 @@ export interface E2ECredentials {
 }
 
 /**
- * Default credentials for local dev — match the password documented in
- * ROADMAP §Changelog (2026-04-21 entry: "Live password temporarily
- * reverted to `Admin123!`"). Override via env for any non-local
- * environment.
- *
- * IMPORTANT: if you've rotated the dev admin password locally (which
- * you should, per `Phase 0.1` ROADMAP item), set `E2E_ADMIN_PASSWORD`
- * to the new value or the `loginAs()` smoke will time out at the
- * `waitForURL('/budgeting')` step.
+ * The email may use the non-secret local admin identifier. The password is
+ * mandatory so tests cannot silently reuse a leaked demo credential.
  */
 export function getCredentials(): E2ECredentials {
+  const password = process.env.E2E_ADMIN_PASSWORD;
+  if (!password) {
+    throw new Error(
+      'E2E_ADMIN_PASSWORD is required; BudgetPro does not keep an E2E password in the repository.',
+    );
+  }
+
   return {
     email: process.env.E2E_ADMIN_EMAIL ?? 'admin@budgetpro.com',
-    password: process.env.E2E_ADMIN_PASSWORD ?? 'Admin123!',
+    password,
   };
 }
 

@@ -298,6 +298,40 @@ describe("HeatMap cell-click → store contract (Phase 7.D regression)", () => {
     expect(setActivePanelMock).toHaveBeenCalledTimes(2);
   });
 
+  it("switches tooltip content when moving directly from a missing cell to a computed cell", async () => {
+    render(<HeatMap />);
+    await waitFor(() => {
+      expect(screen.getByText("AAC-MAIN")).toBeTruthy();
+    });
+
+    const cells = screen.getAllByRole("cell");
+    const missingCell = cells.find((td) =>
+      td.getAttribute("aria-label")?.startsWith("AAC-MAIN IND_FX_EXPOSURE"),
+    );
+    const computedCell = cells.find((td) =>
+      td.getAttribute("aria-label")?.startsWith("AAC-MAIN IND_NET_MARGIN"),
+    );
+    const missingTrigger = missingCell?.querySelector(":scope > div");
+    const computedTrigger = computedCell?.querySelector(":scope > div");
+
+    expect(missingTrigger).toBeTruthy();
+    expect(computedTrigger).toBeTruthy();
+
+    fireEvent.pointerMove(missingTrigger!, { pointerType: "mouse" });
+    await waitFor(() => {
+      expect(screen.getByRole("tooltip").textContent).toContain("нет данных");
+    });
+
+    fireEvent.pointerLeave(missingTrigger!, { pointerType: "mouse" });
+    fireEvent.pointerMove(computedTrigger!, { pointerType: "mouse" });
+    await waitFor(() => {
+      const tooltip = screen.getByRole("tooltip");
+      expect(tooltip.textContent).toContain("IND_NET_MARGIN");
+      expect(tooltip.textContent).toContain("-9.46 %");
+      expect(tooltip.textContent).not.toContain("нет данных");
+    });
+  });
+
   // Phase 7.G Turn VI — synthetic-rollup click route. Closes architect
   // Round-1 ⚠️ (test gap surfaced after IndicatorDetail.rollup.test.tsx
   // claimed it pairs with this file but no rollup case existed).

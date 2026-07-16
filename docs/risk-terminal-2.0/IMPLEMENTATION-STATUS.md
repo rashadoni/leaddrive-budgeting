@@ -10,18 +10,15 @@ was not actually run in the turn that claims it, the status is `not tested`.
 
 ---
 
-## 1. Protected paths (git status at 2026-07-15, session start)
+## 1. Protected paths (release checkpoint 2026-07-16)
 
 These are the user's own dirty/untracked files. **Do not stage, edit, revert or
-stash them** (the README edit was stashed once during a deploy earlier today and
-restored — that was a one-off, and it is not a precedent).
+stash them.** The Risk Terminal documentation files previously listed here are
+now deliberately part of the owner-authorized release candidate; the remaining
+protected paths are:
 
 ```text
  M .claude/settings.json
- M docs/risk-terminal-2.0/README.md          # user's own edit: RU summary link + typo
-?? docs/risk-terminal-2.0/00-EXECUTIVE-SUMMARY-RU.md
-?? docs/risk-terminal-2.0/05-TEST-UAT-ROLLOUT.md
-?? docs/risk-terminal-2.0/CLAUDE-CODE-HANDOFF.md
 ?? output/                                   # unrelated artifact: logo vector PDF.
                                              # Owner-confirmed 2026-07-16 — never
                                              # stage into a Risk Terminal commit.
@@ -37,7 +34,7 @@ restored — that was a one-off, and it is not a precedent).
 
 ## 2. Open decisions blocking scope
 
-### D-1 — Slice granularity: the task prompt and the handoff disagree ⛔
+### D-1 — Slice granularity: resolution history and current boundary
 
 The operator prompt asks to "полностью реализовать Risk Terminal 2.0 … Stages
 A-E" autonomously. The handoff this repo ships says the opposite, twice:
@@ -52,12 +49,13 @@ A-E" autonomously. The handoff this repo ships says the opposite, twice:
 The handoff also gates each stage on human review and on owner decisions
 (KPI methodology, tolerances, allowlist) that no agent may invent (§9).
 
-**Resolution taken:** proceed with **exactly one slice — Stage A per §11**, and
-treat B-E as queued-not-started. This follows the documentation, which the
-prompt itself names as the source of truth. Stage B remains blocked until Stage
-A is reviewed (§5).
-
-**Owner input:** Stage A approved by the owner 2026-07-15. B-E remain queued.
+**Resolution history:** the first implementation pass correctly stopped at one
+Stage A slice. The owner subsequently authorized continued implementation and
+A1-A3 were owner-reviewed on 2026-07-16. Additive, reversible trust-core slices
+B2, the pure portion of B3 and B5 infrastructure were then implemented and
+tested. This does **not** waive the remaining human gates: A4-A6 are not
+owner-reviewed; B1 still needs T-1; B4 still needs T-5; no V2 view is enabled;
+Stages C-E have not started. The current queue below is authoritative.
 
 ### D-2 — KPI methodology (expected, per handoff §9)
 
@@ -71,7 +69,7 @@ as `provisional` with a recorded question — never with an invented formula.
 
 Derived strictly from Stages A-E. No invented scope.
 
-### Stage A — documentation/ADR + protective mode  ← current
+### Stage A — documentation/ADR + protective mode (implemented; review partial)
 | # | Task | Status |
 |---|---|---|
 | A1 | Add Phase 10 section to `docs/ROADMAP.md` (only items actually started) | implemented — owner-reviewed 2026-07-16 |
@@ -81,13 +79,30 @@ Derived strictly from Stages A-E. No invented scope.
 | A5 | Minimal Legacy/Provisional presentation — stale/untraced values must not read decision-grade; **no financial value changes** | implemented + tested + visually verified, not reviewed — surface badge only; per-cell demotion is an owner decision (§7) |
 | A6 | Focused tests proving stale/untraced cannot look decision-grade | implemented + tested (27 unit tests), not reviewed |
 
-*Gate: Stage A needs review before Stage B or any modern root UI (§5).*
+*Gate state: A1-A3 are owner-reviewed. A4-A6 are implemented/tested but still
+await human review. No modern root UI or V2 enablement may proceed through that
+open gate.*
 
-### Stage B — trust core (blocked on Stage A review)
-B1 canonical statement mart/service (pilot scope) · B2 PeriodContext + DataRevision ·
-B3 exact M/Q/YTD/FY/LTM invalidation · B4 KPI Registry + first 25-35 approved KPIs ·
-B5 immutable observation + lineage · B6 Risk × Confidence + abstention ·
-B7 decision-grade event eligibility. *Each needs golden reconciliation + owner decisions.*
+### Stage B — trust core (additive slices in progress; financial cutover blocked)
+
+- **B1 canonical statement mart/service:** blocked on owner decision T-1 and
+  golden reconciliation controls.
+- **B2 PeriodContext + DataRevision:** contracts, persistence, RLS and DB
+  immutability implemented and tested; human review remains open.
+- **B3 exact M/Q/YTD/FY/LTM invalidation:** pure fan-out implemented and tested;
+  runtime wiring remains blocked until the canonical mart/period mutation path
+  can supply the exact changed month and downstream dependency set.
+- **B4 KPI Registry + first 25-35 approved KPIs:** blocked on owner decision T-5.
+- **B5 immutable observation + lineage:** storage, guards and import revision
+  writers implemented and tested. Generic recompute must remain untraced until
+  it can prove which indicators depend on the applied artifact; one workbook
+  revision must never be stamped onto weather, commodity, booking or mixed-source
+  observations merely because they recomputed in the same run.
+- **B6 Risk × Confidence + abstention / B7 decision-grade event eligibility:**
+  queued; neither is implemented.
+
+*Every financial surface still needs golden reconciliation and the named owner
+decisions before it can be described as decision-grade.*
 
 ### Stage C — zero-visual-change UI extraction (blocked on B contracts)
 C1 pure view-model builders · C2 `TerminalOverlayHost` · C3 `ExpertWorkspace` isolation ·
@@ -392,9 +407,9 @@ A-PR1b.
 
 **A5** — the minimal Legacy/Provisional presentation, the first slice in Phase 10
 with a runtime surface. **Not started in this slice, and not to be started
-without owner authorization.** Note §5.3's caveat: A5's `stale/untraced` rule
-will not catch the EDEN per-ha observations, which are fresh and traceable and
-withheld for unapproved methodology.
+without owner authorization.** Note §5.3's caveat: freshness and approved
+methodology are independent gates. EDEN's per-ha methodology remains an owner
+decision; no DataRevision lineage should be inferred from that historical note.
 
 ---
 
@@ -1124,10 +1139,18 @@ needs T-5; do not enable V2.
 
 ## 17. Slice B-PR5 — the first production lineage writer, B5 (2026-07-16)
 
+> **Current correction (2026-07-16):** the import-side `DataRevision` producer
+> remains, but blanket observation stamping was withdrawn after a release review
+> proved that one workbook revision cannot explain every formula in the batch
+> recompute. The historical slice account below is retained for audit context;
+> every claim that an import currently stamps `IndicatorValue.revisionId` is
+> superseded by §20.
+
 **Status: `implemented` + `tested` (16 unit + 8 handler + 4 matrix + 3 trigger +
 6 gate; 36 live-DB). `reviewed` — by an independent adversarial subagent, which
 found three real defects, all fixed below. Not owner-reviewed.
-Lineage is now *recorded* on one import path. Provisional is NOT lifted.**
+The import revision is recorded on one path; observation lineage is not.
+Provisional is NOT lifted.**
 
 ### 17.1 The writer choice, and the evidence behind it
 
@@ -1169,10 +1192,10 @@ IndicatorValue` is not, and is not claimed to be.
 
 - `sourceArtifactIds: ['import-staging:<cuid>']`. No `SourceArtifact` model
   exists (§9 names one); the staging row is 1:1 with an uploaded file+sheet and
-  is the closest real identity. Deliberately **not** the filename — two
-  unrelated workbooks are both `budget.xlsx`, and a filename-keyed revision
-  would hash two source states alike and hand the second import the first one's
-  lineage.
+  is the closest real identity. The retained proposal now also contains a
+  server-written SHA-256 of the analyzed workbook, and Apply verifies that the
+  replacement upload matches it byte-for-byte before parsing. The revision's
+  own `contentHash` remains a scope hash, not a file hash.
 - `mappingVersionIds: ['effective-mapping:<sha256>']` over the mapping actually
   applied (proposal ⊕ reviewer overrides): column `role`, `currencyCode`,
   account-type overrides. Excludes `confidence`/`reasoning` prose — commentary
@@ -1186,7 +1209,7 @@ IndicatorValue` is not, and is not claimed to be.
 |---|---|---|
 | **1** | **Provisional was lifted.** `use-heat-map-model.ts:314` passes `requireLineage: true`; its comment justified this from `lastReconciledAt`, but `a8c5b7fa` had re-pointed the lineage rule at `revisionId`. B5 fills `revisionId` → a fresh import would be certified decision-grade, never reconciled. | `decision-grade.ts` gained `no_reconciliation` — the rule its own comment already claimed ("both are required"). Surface requires it. 0/1,269 reconciled ⇒ badge unchanged. |
 | **2** | **Lineage would lie.** `upsertIndicatorValue` preserved `revisionId` on `undefined` (modelled on sparkline). The cron threads no revision → it would overwrite value/status/computedAt and leave the import's revision on a number it never produced. | Lineage written on **every** update. Presence now means "this revision produced this number". The live-DB test asserting the old rule is inverted, reasoning kept. |
-| **3** | **Parent rollups over-stamped.** The trigger fans out to every level-1 company org-wide; one child's import would stamp every holding's rollup with a revision naming one child. | Only companies the caller named are traced. Rollups stay untraced until a revision can speak for an aggregate. |
+| **3** | **Parent rollups over-stamped.** The trigger fans out to every level-1 company org-wide; one child's import would stamp every holding's rollup with a revision naming one child. | The release review tightened this further: the batch trigger stamps no observations at all until a per-indicator dependency manifest can prove the complete source set. |
 
 Also closed: `currencyCode` added to the mapping hash (it selects which amount
 column wins and tags `BudgetLine.currencyCode` — it changes the money).
@@ -1216,18 +1239,20 @@ real import runs.
 - **Provisional is NOT lifted**, and must not be until reconciliation, coverage
   and methodology gates exist. B5 proves *where a number came from*, never
   *whether it is right*.
-- **Four import paths remain untraced** (apply-multi, apply-multi-entity,
-  budget, multi-file-orchestrator). Widening is mechanical now the contract
-  holds, but each needs its own revision scope; a wrong `companyIds` would be a
-  false claim, not a gap.
-- **A staging id is not a byte fingerprint.** Raw upload bytes are not retained
-  (`xlsxTempPath` is a temp path the caller cleans up), so `contentHash` must
-  **not** be described as a file-content hash. Exact artifact provenance needs a
-  hash of the applied workbook bytes.
-- **Two period vocabularies meet.** The revision's range is month keys
-  (`2026-01`..`2026-12`); the observations it stamps carry the FY key `2026`.
-  Both are valid; they do not compare as strings (`'2026' < '2026-01'`). Nothing
-  queries that way today; anything that starts must go through `parsePeriodKey`.
+- **All batch-recomputed observations remain untraced.** Three import paths
+  create immutable source revisions, but none passes a workbook-only revision
+  into the generic KPI fan-out. This is a deliberate fail-closed boundary, not
+  an invitation to copy the option to more routes.
+- **A staging id is not itself a byte fingerprint.** The retained proposal now
+  stores the analyzed workbook SHA-256 and all three staged Apply routes verify
+  the same bytes before parsing. `DataRevision.contentHash` must still not be
+  described as a file-content hash; it fingerprints the canonical revision
+  scope.
+- **Two period vocabularies meet.** Import revisions use month-key ranges
+  (`2026-01`..`2026-12`), while generic batch observations use the FY key
+  `2026`. They are deliberately not linked today. A future dependency-aware
+  linker must compare them through `parsePeriodKey`, never as raw strings
+  (`'2026' < '2026-01'`).
 - **New blast radius, for owner sign-off:** a DataRevision write failure now
   rolls back a financial import that would previously have committed (e.g. a
   `createdById` FK for a deleted user). Deliberate — an import that cannot say
@@ -1259,12 +1284,14 @@ allowlist entry is worth a deliberate decision; **not** modified by this slice.
 ## 18. Slice B-PR6 — lineage on the deterministic import, B5 cont'd (2026-07-16)
 
 **Status: `implemented` + `tested` (28 unit + 7 handler). Not owner-reviewed.
-Two of five import paths now record lineage. Provisional still NOT lifted.**
+Two import paths create source revisions; neither currently stamps observation
+lineage. Provisional still NOT lifted.**
 
 Widens §17's contract to `POST /api/onboarding/import/budget` — the
 deterministic per-company import — on the same boundary: `ensureDataRevision()`
-inside the route's existing `$transaction` (`:247`), `revisionId` threaded to
-the post-commit recompute.
+inside the route's existing `$transaction` (`:247`). The revision is returned
+for audit diagnostics but is intentionally not threaded into the generic
+post-commit recompute.
 
 ### 18.1 Why this path's lineage is stronger, and where it is weaker
 
@@ -1297,10 +1324,9 @@ revision. On the staging path the status claim 409s a repeat before it can.
 
 ### 18.3 Limits
 
-- **Three paths still untraced:** `apply-multi`, `apply-multi-entity`,
-  `multi-file-orchestrator`. Each writes several companies per call, so each
-  needs a scope naming all of them — a wrong `companyIds` would be a false
-  claim, not a gap, which is why they are not bulk-copied here.
+- **All observations remain untraced** until complete per-indicator dependencies
+  can be represented. Import-side source revisions are useful audit records but
+  are not sufficient observation lineage by themselves.
 - The parser mapping id does not version parser code (above).
 - Everything in §17.6 that is not listed as closed still stands.
 
@@ -1309,9 +1335,9 @@ revision. On the staging path the status claim 409s a repeat before it can.
 ## 19. Slice B-PR7 — multi-company lineage from committed writes, B5 cont'd (2026-07-16)
 
 **Status: `implemented` + `tested` (43 unit + 32 handler + 15 live-DB).
-`reviewed` — independent adversarial subagent, no defects (2 cosmetic concerns,
-one fixed). Not owner-reviewed. Three of five import paths now record lineage.
-Provisional still NOT lifted.**
+`reviewed` — independent adversarial subagent, no defects in the import-revision
+scope itself. Not owner-reviewed. Three import paths create source revisions;
+zero stamp observation lineage. Provisional still NOT lifted.**
 
 Wires `POST /api/onboarding/import/staging/[id]/apply-multi-entity` under the
 owner's approved multi-company contract, and blocks `apply-multi` with proof.
@@ -1345,9 +1371,11 @@ committed id escapes the org set. Both throw **inside** the transaction, so the
 import rolls back with them — the approved fail-closed policy. The error carries
 a reason code only, never a company id or source datum.
 
-Only the written companies are traced in the recompute (`tracedCompanyIds`), so
-a company that was recomputed but not written stays untraced. Parent rollups are
-never traced (they merge several revisions; one id cannot express that).
+The revision names only companies actually written. The recompute does not
+receive `tracedCompanyIds` or any blanket `revisionId`: even for a written
+company, a formula may merge workbook, feed, manual and rollup inputs. Every
+batch-recomputed observation stays untraced until that complete dependency set
+can be proven.
 
 ### 19.3 Deleted-author FK race (owner rule #5)
 
@@ -1381,3 +1409,33 @@ broader than this one route.
   and probably a `RevisionBatch`. Separate checkpoint, per rule.
 - Everything in §17.6 / §18.3 not marked closed still stands.
 - Provisional NOT lifted — the gate still requires reconciliation, 0/1,269 have it.
+
+---
+
+## 20. Release safety correction — exact staged bytes and honest observation lineage (2026-07-16)
+
+**Current state:** `implemented` + focused-tested; full release gates are tracked
+in `docs/ROADMAP.md`. This section supersedes the runtime-lineage claims in
+§17-§19 without erasing their audit history.
+
+1. Both Analyze routes persist SHA-256 over the exact workbook buffer they parse.
+   `apply`, `apply-multi` and `apply-multi-entity` read the replacement once,
+   reject a missing or mismatched fingerprint with `409` before XLSX parsing and
+   before any transaction, then parse that same verified buffer. A changed file
+   must go through a fresh Analyze and preview.
+2. Three import paths still create immutable `DataRevision` rows inside the
+   transaction that commits their source writes. That is an import audit record;
+   it is not automatically the complete provenance of every derived KPI.
+3. `runRecomputeForCompanies` has no batch `revisionId` option. One fan-out can
+   evaluate workbook-only, external-feed, booking, manual, rollup and mixed-input
+   formulas, so stamping the initiating workbook revision onto all of them would
+   be false evidence. Recomputed observations remain `revisionId=null` and
+   Provisional.
+4. The lower-level writer keeps explicit future plumbing, but accepts a non-null
+   revision only when it belongs to the same organization **and its immutable
+   `companyIds` contains the written company**. Missing, foreign and sibling-
+   company revisions fail before the IndicatorValue write with one opaque error.
+5. Observation lineage can advance only after the KPI registry exposes a
+   complete per-indicator dependency manifest and the orchestrator can construct
+   the revision that explains that one value. Changing the LLM cannot replace
+   this deterministic contract.

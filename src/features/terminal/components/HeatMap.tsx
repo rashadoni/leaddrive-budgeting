@@ -45,14 +45,14 @@ export function HeatMap({ period }: Props) {
     setActivePanel, search, setSearch, clearSearch, setAlertsCount,
     setAlertedCompanyCodes, setAlertMatches, compactMode, scenarioDelta,
     activeScenarioLabel, clearScenarioDelta, lockedPeriods, setLockedPeriods,
-    hideNotMaterial, setHideNotMaterial, hideUnknown, setHideUnknown, data,
+    showAllIndicators, setShowAllIndicators, data,
     loading, error, refetchMatrix, companyTree, searchInputRef, mounted,
     setMounted, dbSummary, setDbSummary, activePeriod, alertThresholds,
     setAlertThresholds, refetchTimerRef, cellMap, compositeByCompany,
     provisionalSummary,
-    filteredCompanies, summary, activeCompanyIndustries, activeCompanyIndustry,
-    rawIndicators, indicators, indicatorsWithAnyData, displayIndicators,
-    hiddenUnknownCount, indicatorQuery, setIndicatorQuery, indicatorSearchInputRef,
+    filteredCompanies, summary, indicators, displayIndicators,
+    hiddenIndicatorCount, indicatorQuery, setIndicatorQuery,
+    indicatorSearchInputRef,
   } = useHeatMapModel(period);
 
   if (!mounted) {
@@ -79,9 +79,6 @@ export function HeatMap({ period }: Props) {
   // DEFAULTS to the last complete year (headlinePeriod), so this banner only
   // appears when the user explicitly navigates to the in-progress year.
   const isPartialPeriod = renderedPeriod !== '' && isPartialYear(renderedPeriod);
-  // Show the toggle only when there's a sector-aware industry — for org-wide
-  // view it would be ambiguous which industry to dim against.
-  const showMaterialityToggle = activeCompanyIndustry != null;
   // Phase E.4 — flag whether the currently-rendered period is signed off.
   // Match against the renderedPeriod string (exact match — locking "2026"
   // doesn't tag "2026-Q1" per period-lock.ts semantics).
@@ -203,45 +200,32 @@ export function HeatMap({ period }: Props) {
             </span>
           )}
         </div>
-        {showMaterialityToggle && (
-          <button
-            type="button"
-            onClick={() => setHideNotMaterial((v) => !v)}
-            className={`shrink-0 px-1.5 py-0.5 border rounded text-[9px] uppercase tracking-wider transition-colors ${
-              hideNotMaterial
-                ? 'border-[#00D4AA] text-[#00D4AA]'
-                : 'border-gray-700 text-gray-500 hover:border-gray-500'
-            }`}
-            title={
-              hideNotMaterial
-                ? `Showing material indicators only for ${activeCompanyIndustry}. Click to show all.`
-                : `Click to hide indicators flagged not-material for ${activeCompanyIndustry}.`
-            }
-          >
-            {hideNotMaterial ? 'Material only' : 'All'}
-          </button>
-        )}
-        {/* 2026-05-27 — «Hide unknown» toggle. Hides indicator columns
-            where every visible company has status=unknown. Default OFF
-            so gaps stay surfaced; user opts into "demo mode". */}
+        {/* Applicability filter — an always-visible on/off toggle. ON (green)
+            hides indicators that don't apply to the current activity profile;
+            the suffix shows how many are hidden right now. OFF (gray) shows the
+            full catalogue. */}
         <button
           type="button"
-          onClick={() => setHideUnknown((v) => !v)}
-          className={`shrink-0 px-1.5 py-0.5 border rounded text-[9px] uppercase tracking-wider transition-colors ${
-            hideUnknown
+          onClick={() => setShowAllIndicators((visible) => !visible)}
+          className={`shrink-0 px-1.5 py-0.5 border rounded text-[9px] uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4AA] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0A0E27] ${
+            !showAllIndicators
               ? 'border-[#00D4AA] text-[#00D4AA]'
               : 'border-gray-700 text-gray-500 hover:border-gray-500'
           }`}
-          title={
-            hideUnknown
-              ? `Hiding ${hiddenUnknownCount} indicator${hiddenUnknownCount === 1 ? '' : 's'} where every visible entity has no data. Click to show all.`
-              : 'Click to hide indicator columns where every visible entity has no data (cleaner view for demos).'
-          }
-          data-testid="hide-unknown-toggle"
+          title={t(
+            showAllIndicators
+              ? 'heatMap.showAllIndicatorsExpandedHint'
+              : 'heatMap.showAllIndicatorsCollapsedHint',
+          )}
+          aria-label={t('heatMap.hideIrrelevantIndicators')}
+          aria-pressed={!showAllIndicators}
+          aria-controls="risk-heatmap-table"
+          data-testid="show-all-indicators-toggle"
         >
-          {hideUnknown
-            ? `Hide unknown · ${hiddenUnknownCount} hidden`
-            : 'Hide unknown'}
+          {t('heatMap.hideIrrelevantIndicators')}
+          {!showAllIndicators && hiddenIndicatorCount > 0
+            ? ` · ${hiddenIndicatorCount}`
+            : ''}
         </button>
         {(dbSummary || summary) && (
           <span className="tabular-nums shrink-0" title={dbSummary ? 'Counts from DB (all entities incl. admin)' : 'Counts from matrix view (admin filtered)'}>
@@ -390,7 +374,11 @@ export function HeatMap({ period }: Props) {
 
       <div className={`flex-1 overflow-auto ${isEmpty || loading ? 'hidden' : ''}`}>
         <TooltipProvider delayDuration={300}>
-        <table className="border-collapse" aria-label={t('heatMap.tableAriaLabel')}>
+        <table
+          id="risk-heatmap-table"
+          className="border-collapse"
+          aria-label={t('heatMap.tableAriaLabel')}
+        >
           <thead>
             <tr>
               <th

@@ -183,13 +183,13 @@ describe('POST /api/onboarding/import/budget — handler', () => {
 });
 
 /**
- * Phase 10 / Stage B5 — lineage on the deterministic per-company import.
+ * Phase 10 / Stage B5 — revision capture on the deterministic import.
  *
  * Runs the real `$transaction` callback so the revision write and its ids are
  * the route's. This path's artifact id is the strongest in the product: it
  * fingerprints the uploaded bytes rather than naming a row that described them.
  */
-describe('POST /api/onboarding/import/budget — B5 lineage writer', () => {
+describe('POST /api/onboarding/import/budget — B5 import revision writer', () => {
   const REVISION_ID = 'rev_budget_1';
 
   function wireTx(opts: { onRevisionCreate?: () => unknown; failInsert?: boolean } = {}) {
@@ -277,7 +277,7 @@ describe('POST /api/onboarding/import/budget — B5 lineage writer', () => {
     }
   });
 
-  it('passes the committed revisionId to the recompute', async () => {
+  it('does not blanket-stamp the workbook revision onto batch-recomputed indicators', async () => {
     await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
     stageParse();
     wireTx();
@@ -285,7 +285,7 @@ describe('POST /api/onboarding/import/budget — B5 lineage writer', () => {
     await POST(await makeMultipartRequest());
 
     const call = recomputeMock.runRecomputeForCompanies.mock.calls[0];
-    expect(call[4]).toMatchObject({ revisionId: REVISION_ID });
+    expect(call[4]).toBeUndefined();
     expect(call[2]).toEqual([{ companyId: COMPANY_ID, year: 2026 }]);
   });
 

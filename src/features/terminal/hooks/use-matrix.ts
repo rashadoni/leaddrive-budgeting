@@ -45,6 +45,8 @@ export interface MatrixCompanyRow {
   code: string;
   name: string;
   industry: string;
+  /** Runtime hierarchy edge used for subgroup activity/profile roll-ups. */
+  parentCompanyId?: string | null;
   /** Set true on sub-group rollup rows (Turn 33.5); leaf ops cos omit. */
   isSubgroup?: boolean;
   /**
@@ -94,9 +96,8 @@ export interface MatrixIndicatorCol {
   /**
    * Phase 7.I — list of industries this indicator targets. Empty array
    * means universal (applies to every industry — e.g. financial ratios).
-   * HeatMap filters out indicators whose `industries` is non-empty and
-   * doesn't include the active company's industry when the "Material
-   * only" toggle is on. Source: `IndicatorDefinition.industries`.
+   * HeatMap hides explicit activity mismatches by default and exposes them
+   * through the "Show all" disclosure. Source: `IndicatorDefinition.industries`.
    */
   industries?: string[];
   /**

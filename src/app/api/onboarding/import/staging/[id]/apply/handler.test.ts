@@ -78,11 +78,15 @@ vi.mock('@/lib/rate-limit', async () => {
 
 import type { NextRequest as NextRequestType } from 'next/server';
 import { mockSession, makeRequest } from '@/test/api-harness';
+import { computeWorkbookContentHash } from '@/lib/onboarding/ai-mapper/workbook-content-hash';
 import { POST } from './route';
 
 const ORG_ID = 'org_az';
 const STAGING_ID = 'staging_1';
 const COMPANY_ID = 'co_aac';
+const FAKE_WORKBOOK_HASH = computeWorkbookContentHash(
+  new TextEncoder().encode('fake'),
+);
 
 function paramsFor(id: string) {
   return { params: Promise.resolve({ id }) };
@@ -189,6 +193,7 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
       status: 'pending',
       sourceSheet: 'SOPL',
       proposal: {
+        __workbookContentSha256: FAKE_WORKBOOK_HASH,
         columns: [
           { sourceIndex: 2, role: 'amount:Plan2026' },
         ],
@@ -275,6 +280,7 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
       status: 'pending',
       sourceSheet: 'SOPL',
       proposal: {
+        __workbookContentSha256: FAKE_WORKBOOK_HASH,
         columns: [{ sourceIndex: 2, role: 'amount:Plan2026' }],
         mappings: [],
       },
@@ -442,6 +448,53 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
     expect(prismaMock.auditEvent.create).not.toHaveBeenCalled();
   });
 
+  it('rejects a replacement workbook whose bytes differ from the analyzed upload', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      id: STAGING_ID,
+      companyId: COMPANY_ID,
+      status: 'pending',
+      sourceSheet: 'SOPL',
+      proposal: {
+        __workbookContentSha256: computeWorkbookContentHash(
+          new TextEncoder().encode('reviewed-file'),
+        ),
+        columns: [{ sourceIndex: 2, role: 'amount:Plan2026' }],
+      },
+      userOverrides: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      appliedAt: null,
+    });
+
+    const res = await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ integrityError: 'mismatch' });
+    expect(applierMocks.applyProposal).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects legacy staging rows that have no byte-exact workbook fingerprint', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      id: STAGING_ID,
+      companyId: COMPANY_ID,
+      status: 'pending',
+      sourceSheet: 'SOPL',
+      proposal: { columns: [{ sourceIndex: 2, role: 'amount:Plan2026' }] },
+      userOverrides: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      appliedAt: null,
+    });
+
+    const res = await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ integrityError: 'missing' });
+    expect(applierMocks.applyProposal).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
   // Phase 7.G L425 — dry-run flag returns the same diagnostics shape but
   // skips the prisma transaction, audit emission, and recompute trigger.
   // Lets the wizard preview the apply result before the user commits.
@@ -453,6 +506,7 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
       status: 'pending',
       sourceSheet: 'SOPL',
       proposal: {
+        __workbookContentSha256: FAKE_WORKBOOK_HASH,
         columns: [{ sourceIndex: 2, role: 'amount:Plan2026' }],
         mappings: [],
       },
@@ -525,6 +579,7 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
       status: 'pending',
       sourceSheet: 'SOPL',
       proposal: {
+        __workbookContentSha256: FAKE_WORKBOOK_HASH,
         columns: [{ sourceIndex: 2, role: 'amount:Plan2027' }],
         mappings: [],
       },
@@ -576,7 +631,10 @@ describe('POST .../apply — server-side review gates', () => {
       companyId: COMPANY_ID,
       status: 'pending',
       sourceSheet: 'SOPL',
-      proposal,
+      proposal: {
+        ...(proposal as Record<string, unknown>),
+        __workbookContentSha256: FAKE_WORKBOOK_HASH,
+      },
       userOverrides: null,
       expiresAt: new Date(Date.now() + 60_000),
       appliedAt: null,
@@ -652,7 +710,10 @@ describe("POST .../apply — Codex pre-prod guards", () => {
     await mockSession({ orgId: ORG_ID, userId: "u_mgr", role: "manager" });
     prismaMock.importStaging.findFirst.mockResolvedValue({
       id: STAGING_ID, companyId: COMPANY_ID, status: "pending", sourceSheet: "SOPL",
-      proposal: { columns: [{ sourceIndex: 0, role: "code" }, { sourceIndex: 5, role: "entity" }] },
+      proposal: {
+        __workbookContentSha256: FAKE_WORKBOOK_HASH,
+        columns: [{ sourceIndex: 0, role: "code" }, { sourceIndex: 5, role: "entity" }],
+      },
       userOverrides: null, expiresAt: new Date(Date.now() + 60_000), appliedAt: null,
     });
     const res = await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
@@ -664,7 +725,10 @@ describe("POST .../apply — Codex pre-prod guards", () => {
     await mockSession({ orgId: ORG_ID, userId: "u_mgr", role: "manager" });
     prismaMock.importStaging.findFirst.mockResolvedValue({
       id: STAGING_ID, companyId: COMPANY_ID, status: "pending", sourceSheet: "SOPL",
-      proposal: { columns: [{ sourceIndex: 2, role: "amount:Plan2026" }] },
+      proposal: {
+        __workbookContentSha256: FAKE_WORKBOOK_HASH,
+        columns: [{ sourceIndex: 2, role: "amount:Plan2026" }],
+      },
       userOverrides: null, expiresAt: new Date(Date.now() + 60_000), appliedAt: null,
     });
     applierMocks.applyProposal.mockReturnValue({
@@ -690,19 +754,19 @@ describe("POST .../apply — Codex pre-prod guards", () => {
 });
 
 /**
- * Phase 10 / Stage B5 — the production lineage writer.
+ * Phase 10 / Stage B5 — the production import-revision writer.
  *
- * This is the block that proves lineage is *recorded*, not merely recordable.
+ * This is the block that proves the import revision is recorded.
  * It runs the real `$transaction` callback against a tx-spy, so the revision
  * write and the ids it carries are the route's, not a fixture's.
  *
- * What it deliberately does NOT claim: three-way atomicity across apply +
- * revision + IndicatorValue. Recompute is post-commit on this route (and on
- * every import path here), per 03-DATA-KPI-TRUST-SPEC §6.1/§6.4. The tests
- * below pin the boundary that does hold — apply ↔ revision — and pin the
- * post-commit hand-off of the revisionId.
+ * What it deliberately does NOT claim: that the workbook revision explains
+ * every IndicatorValue in the post-commit fan-out. Formulas may also read
+ * external, manual and rollup inputs, and there is no per-indicator dependency
+ * manifest yet. The tests pin the boundary that does hold — apply ↔ revision —
+ * and pin that batch recompute receives no blanket revisionId.
  */
-describe('POST /api/onboarding/import/staging/[id]/apply — B5 lineage writer', () => {
+describe('POST /api/onboarding/import/staging/[id]/apply — B5 import revision writer', () => {
   const REVISION_ID = 'rev_committed_1';
 
   type TxSpy = {
@@ -774,13 +838,16 @@ describe('POST /api/onboarding/import/staging/[id]/apply — B5 lineage writer',
       status: 'pending',
       sourceFile: 'aac.xlsx',
       sourceSheet: 'SOPL',
-      proposal: proposal ?? {
-        columns: [
-          { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: 'codes' },
-          { sourceIndex: 2, role: 'amount:Plan2026', confidence: 0.8, reasoning: 'amounts' },
-        ],
-        accountTypeOverrides: [],
-        anomalies: [],
+      proposal: {
+        ...(proposal ?? {
+          columns: [
+            { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: 'codes' },
+            { sourceIndex: 2, role: 'amount:Plan2026', confidence: 0.8, reasoning: 'amounts' },
+          ],
+          accountTypeOverrides: [],
+          anomalies: [],
+        }),
+        __workbookContentSha256: FAKE_WORKBOOK_HASH,
       },
       userOverrides: null,
       expiresAt: new Date(Date.now() + 60_000),
@@ -832,7 +899,7 @@ describe('POST /api/onboarding/import/staging/[id]/apply — B5 lineage writer',
     }
   });
 
-  it('passes the committed revisionId to recomputeIndicator via the trigger', async () => {
+  it('does not blanket-stamp the workbook revision onto batch-recomputed indicators', async () => {
     await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
     stageStagingRow();
     wireTx();
@@ -841,9 +908,9 @@ describe('POST /api/onboarding/import/staging/[id]/apply — B5 lineage writer',
 
     expect(recomputeMock.runRecomputeForCompanies).toHaveBeenCalledTimes(1);
     const call = recomputeMock.runRecomputeForCompanies.mock.calls[0];
-    // 4th arg is RunRecomputeOptions — this is the hand-off that makes the
-    // IndicatorValue rows traceable.
-    expect(call[4]).toMatchObject({ revisionId: REVISION_ID });
+    // The batch trigger cannot prove the complete source set for each formula.
+    // No 5th-argument lineage options means the canonical writer stores null.
+    expect(call[4]).toBeUndefined();
     // And it is scoped to the company/year the apply touched.
     expect(call[2]).toEqual([{ companyId: COMPANY_ID, year: 2026 }]);
   });
@@ -865,14 +932,14 @@ describe('POST /api/onboarding/import/staging/[id]/apply — B5 lineage writer',
     stageStagingRow();
     const spy = wireTx({ existingRevision: { id: 'rev_existing' } });
 
-    await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+    const res = await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
 
-    // Found by content hash → no second row, and the existing id is what
-    // the observations get traced to.
+    // Found by content hash → no second import-revision row.
     expect(spy.dataRevisionCreate).not.toHaveBeenCalled();
-    expect(recomputeMock.runRecomputeForCompanies.mock.calls[0][4]).toMatchObject({
-      revisionId: 'rev_existing',
-    });
+    expect((await res.json()).revisionId).toBe('rev_existing');
+    // Reusing the source revision still does not make it complete lineage for
+    // each recomputed KPI.
+    expect(recomputeMock.runRecomputeForCompanies.mock.calls[0][4]).toBeUndefined();
   });
 
   it('a failed source write rolls back the revision with the apply — and never recomputes', async () => {

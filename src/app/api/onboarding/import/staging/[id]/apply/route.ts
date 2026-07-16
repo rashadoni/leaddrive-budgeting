@@ -12,9 +12,9 @@
  *   - /analyze didn't store the raw bytes (would be huge in DB; using a
  *     temp file dir would add infra without obvious benefit).
  *   - The SAVED `proposal.columns` describes WHICH columns to read; the
- *     raw xlsx provides the actual values. Same workbook re-uploaded =
- *     identical apply result (as long as the user didn't edit between
- *     analyze and apply).
+ *     raw xlsx provides the actual values. /analyze stores a SHA-256 of
+ *     the reviewed bytes; /apply rejects a changed file (or legacy staging
+ *     without that fingerprint) before parsing or writing anything.
  *
  * Auth: `manager` role + org-scope match. Staging row's organizationId
  * must equal session.orgId.
@@ -50,6 +50,7 @@ import { validateImport } from '@/lib/onboarding/ai-mapper/validate-import';
 import { saveApprovedTemplate } from '@/lib/onboarding/ai-mapper/template-store';
 import { extractMapperInput } from '@/lib/onboarding/ai-mapper/extract';
 import { computeStructureHash } from '@/lib/onboarding/ai-mapper/structure-hash';
+import { verifyStagedWorkbookContent } from '@/lib/onboarding/ai-mapper/workbook-content-hash';
 import { currentBakuYearNumber } from '@/lib/risk/periods';
 import { ensureDataRevision } from '@/lib/risk/data-revision-writer';
 import { buildImportRevisionScope } from '@/lib/risk/import-lineage';
@@ -68,9 +69,9 @@ type ApplyDiagnostics = {
   parentRollupsDropped: number;
   parentRollupsUnallocated: number;
   /**
-   * Phase 10 / Stage B5 — the DataRevision this apply committed, and the one
-   * every IndicatorValue the follow-on recompute writes is traced to.
-   * Additive on the wire; existing clients ignore it.
+   * Phase 10 / Stage B5 — the source-state revision committed with this
+   * import. It is not complete observation lineage for mixed-input KPIs and is
+   * therefore not passed to batch recompute. Additive on the wire.
    */
   revisionId: string;
 };
@@ -229,10 +230,38 @@ export async function POST(
     typeof dryRunRaw === 'string' &&
     /^(true|1|yes)$/i.test(dryRunRaw.trim());
 
+  let workbookBytes: Buffer;
+  try {
+    workbookBytes = Buffer.from(await file.arrayBuffer());
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error: `Failed to read workbook: ${err instanceof Error ? err.message : String(err)}`,
+      },
+      { status: 400 },
+    );
+  }
+
+  const contentVerification = verifyStagedWorkbookContent(
+    staging.proposal,
+    workbookBytes,
+  );
+  if (contentVerification !== 'match') {
+    return NextResponse.json(
+      {
+        error:
+          contentVerification === 'missing'
+            ? 'Сохранённый анализ не содержит точный отпечаток файла. Для безопасного импорта повторите анализ этого файла.'
+            : 'Загруженный файл отличается от файла, который был проанализирован. Повторите анализ изменённого файла перед импортом.',
+        integrityError: contentVerification,
+      },
+      { status: 409 },
+    );
+  }
+
   let workbook: XLSX.WorkBook;
   try {
-    const arrayBuffer = await file.arrayBuffer();
-    workbook = XLSX.read(Buffer.from(arrayBuffer), {
+    workbook = XLSX.read(workbookBytes, {
       type: 'buffer',
       cellFormula: false,
       cellHTML: false,
@@ -250,8 +279,8 @@ export async function POST(
 
   // Structure-hash guard (Phase 2 #5): reject when the re-uploaded file's
   // sheet structure differs from what was analysed — the saved proposal maps
-  // by column INDEX, so an edited file would silently mis-map. Skipped for
-  // pre-guard stagings (no stored hash) for back-compat.
+  // by column INDEX, so an edited file would silently mis-map. This semantic
+  // shape check complements the mandatory byte check above.
   const storedHash = (staging.proposal as { __structureHash?: string }).__structureHash;
   if (storedHash) {
     // Re-extract with the SAME company industry analyze used — computeStructureHash
@@ -656,13 +685,12 @@ export async function POST(
         //
         // Recompute is NOT in this transaction — it runs post-commit below, as
         // it does on every import path here, and as 03-DATA-KPI-TRUST-SPEC
-        // §6.1/§6.4 describe: a source mutation carries its revisionId into a
-        // downstream recompute whose observations are pending (and shown
-        // provisional) until it lands. So this transaction guarantees
-        // apply ↔ revision. It does NOT guarantee revision ↔ IndicatorValue —
-        // a post-commit recompute failure leaves this revision referenced by
-        // fewer rows than it explains, which the per-cell gate reads correctly
-        // (untraced rows stay Provisional) and `indicatorsStale` surfaces.
+        // §6.1/§6.4 describe. This transaction guarantees apply ↔ revision.
+        // It does NOT attach that workbook revision to IndicatorValues: one
+        // recompute fans out across formulas that may also depend on external,
+        // manual or rollup inputs. Until a per-indicator dependency manifest
+        // exists, those observations remain honestly untraced and Provisional.
+        // A post-commit recompute failure is surfaced by `indicatorsStale`.
         // See IMPLEMENTATION-STATUS.md §17.
         const revision = await ensureDataRevision(tx, {
           scope: buildImportRevisionScope({
@@ -736,11 +764,6 @@ export async function POST(
     pairError: (label, err) => recomputeLog.error(label, {
       err: err instanceof Error ? err.message : String(err),
     }),
-  }, {
-    // Phase 10 / Stage B5 — every IndicatorValue this run writes is traced to
-    // the revision the apply transaction committed above. This is the first
-    // production path that records lineage rather than merely being able to.
-    revisionId: diagnostics.revisionId,
   });
   const indicatorsStale = recomputeResult.failed > 0;
 
@@ -814,4 +837,3 @@ export async function POST(
     { status: 200 },
   );
 }
-

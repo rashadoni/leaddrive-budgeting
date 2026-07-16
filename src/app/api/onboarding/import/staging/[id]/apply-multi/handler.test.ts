@@ -64,11 +64,13 @@ vi.mock("@/lib/rate-limit", async () => {
 
 import type { NextRequest as NextRequestType } from "next/server"
 import { mockSession } from "@/test/api-harness"
+import { computeWorkbookContentHash } from "@/lib/onboarding/ai-mapper/workbook-content-hash"
 import { POST } from "./route"
 
 const ORG_ID = "org_az"
 const STAGING_ID = "staging_1"
 const COMPANY_ID = "co_aac"
+const FAKE_WORKBOOK_HASH = computeWorkbookContentHash(new TextEncoder().encode("fake"))
 
 function paramsFor(id: string) {
   return { params: Promise.resolve({ id }) }
@@ -92,6 +94,7 @@ async function makeRequest(opts?: { dryRun?: boolean }): Promise<NextRequestType
 }
 
 const validMultiProposal = {
+  __workbookContentSha256: FAKE_WORKBOOK_HASH,
   sheets: [
     { sheetName: "P&L", proposal: { columns: [], summary: "x", overallConfidence: 0.9, accountTypeOverrides: [], anomalies: [] } },
     { sheetName: "BS", proposal: { columns: [], summary: "y", overallConfidence: 0.9, accountTypeOverrides: [], anomalies: [] } },
@@ -213,6 +216,39 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — apply outcome
     const body = await res.json()
     expect(body.error).toMatch(/All sheets failed/)
     expect(body.perSheet).toHaveLength(2)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+
+  it("409 when replacement workbook bytes do not match the analyzed upload", async () => {
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      ...validStagingRow,
+      proposal: {
+        ...validMultiProposal,
+        __workbookContentSha256: computeWorkbookContentHash(
+          new TextEncoder().encode("reviewed-file"),
+        ),
+      },
+    })
+
+    const res = await POST(await makeRequest(), paramsFor(STAGING_ID))
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ integrityError: "mismatch" })
+    expect(applierMocks.applyMultiSheetProposal).not.toHaveBeenCalled()
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+
+  it("409 when staging has no byte-exact workbook fingerprint", async () => {
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      ...validStagingRow,
+      proposal: { sheets: validMultiProposal.sheets },
+    })
+
+    const res = await POST(await makeRequest(), paramsFor(STAGING_ID))
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ integrityError: "missing" })
+    expect(applierMocks.applyMultiSheetProposal).not.toHaveBeenCalled()
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
 
@@ -385,6 +421,7 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — apply outcome
     prismaMock.importStaging.findFirst.mockResolvedValue({
       ...validStagingRow,
       proposal: {
+        __workbookContentSha256: FAKE_WORKBOOK_HASH,
         sheets: [
           {
             sheetName: "P&L",

@@ -31,6 +31,10 @@ import { aiErrorBody } from "@/lib/ai/ai-error"
 import { extractMapperInput } from "@/lib/onboarding/ai-mapper/extract"
 import { runMapper } from "@/lib/onboarding/ai-mapper/mapper"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
+import {
+  WORKBOOK_CONTENT_HASH_KEY,
+  computeWorkbookContentHash,
+} from "@/lib/onboarding/ai-mapper/workbook-content-hash"
 import { getApprovedTemplate } from "@/lib/onboarding/ai-mapper/template-store"
 import { findEntityColumn, findCodeColumn, extractEntityValues } from "@/lib/onboarding/ai-mapper/entity-split"
 import { resolveEntityCompanies, looksLikeEliminationBU } from "@/lib/onboarding/ai-mapper/entity-resolve"
@@ -138,9 +142,10 @@ export async function POST(request: NextRequest) {
   }
 
   let workbook: XLSX.WorkBook
+  let workbookBytes: Buffer
   try {
-    const buf = Buffer.from(await file.arrayBuffer())
-    workbook = XLSX.read(buf, { type: "buffer", cellFormula: false, cellHTML: false })
+    workbookBytes = Buffer.from(await file.arrayBuffer())
+    workbook = XLSX.read(workbookBytes, { type: "buffer", cellFormula: false, cellHTML: false })
   } catch (err) {
     return NextResponse.json(
       { ok: false, error: `Invalid xlsx: ${err instanceof Error ? err.message : String(err)}` },
@@ -274,6 +279,7 @@ export async function POST(request: NextRequest) {
       proposal: {
         ...proposal,
         __structureHash: structureHash,
+        [WORKBOOK_CONTENT_HASH_KEY]: computeWorkbookContentHash(workbookBytes),
         ...(multiEntity ? { __multiEntity: multiEntity } : {}),
       } as unknown as object,
       createdBy: session.userId,

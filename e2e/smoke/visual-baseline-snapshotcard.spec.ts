@@ -93,7 +93,7 @@ test.describe('Phase 7.G — SnapshotCard panel visual baseline', () => {
     // AZMADE/AAC seed that Phase 2.3 REMOVED — it is no longer in any
     // matrix, so the snapshot card never rendered and this gate had been
     // 100% broken (failing at the `snapshot-card` visibility wait, NOT at
-    // login — login with the Admin123! default works). Repointed to a live
+    // login). Repointed to a live
     // L2 entity: `AZSEKER-AZSF` (Azərşəkər Sugar — the flagship sugar
     // op-co, 257 IndicatorValues; core business, least likely to ever be
     // restructured). Any of AZSEKER-{AZSF,CPC,EDEN,HORIZON,MALT} works;

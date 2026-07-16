@@ -48,11 +48,11 @@ import { detectProposalYear, mergeProposal } from '@/lib/onboarding/ai-mapper/ap
 import { ensureDataRevision } from '@/lib/risk/data-revision-writer';
 import {
   buildMultiEntityImportRevisionScope,
-  committedCompanyIds,
   LineageScopeError,
 } from '@/lib/risk/import-lineage';
 import { extractMapperInput } from '@/lib/onboarding/ai-mapper/extract';
 import { computeStructureHash } from '@/lib/onboarding/ai-mapper/structure-hash';
+import { verifyStagedWorkbookContent } from '@/lib/onboarding/ai-mapper/workbook-content-hash';
 import { currentBakuYearNumber } from '@/lib/risk/periods';
 import type { MappingProposal } from '@/lib/onboarding/ai-mapper/types';
 import type { ParseResult } from '@/lib/onboarding/adapters/azmade-sopl';
@@ -210,10 +210,36 @@ export async function POST(
   const dryRunRaw = form.get('dryRun');
   const dryRun = typeof dryRunRaw === 'string' && /^(true|1|yes)$/i.test(dryRunRaw.trim());
 
+  let workbookBytes: Buffer;
+  try {
+    workbookBytes = Buffer.from(await file.arrayBuffer());
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Failed to read workbook: ${err instanceof Error ? err.message : String(err)}` },
+      { status: 400 },
+    );
+  }
+
+  const contentVerification = verifyStagedWorkbookContent(
+    staging.proposal,
+    workbookBytes,
+  );
+  if (contentVerification !== 'match') {
+    return NextResponse.json(
+      {
+        error:
+          contentVerification === 'missing'
+            ? 'Сохранённый анализ не содержит точный отпечаток файла. Для безопасного импорта повторите анализ этого файла.'
+            : 'Загруженный файл отличается от файла, который был проанализирован. Повторите анализ изменённого файла перед импортом.',
+        integrityError: contentVerification,
+      },
+      { status: 409 },
+    );
+  }
+
   let workbook: XLSX.WorkBook;
   try {
-    const arrayBuffer = await file.arrayBuffer();
-    workbook = XLSX.read(Buffer.from(arrayBuffer), {
+    workbook = XLSX.read(workbookBytes, {
       type: 'buffer',
       cellFormula: false,
       cellHTML: false,
@@ -224,7 +250,8 @@ export async function POST(
     return NextResponse.json({ error: `Failed to parse workbook: ${err instanceof Error ? err.message : String(err)}` }, { status: 400 });
   }
 
-  // Structure-hash guard (columns). Skipped for pre-guard stagings.
+  // Structure-hash guard (columns). This semantic shape check complements
+  // the mandatory byte check above.
   const storedHash = (staging.proposal as { __structureHash?: string }).__structureHash;
   if (storedHash) {
     // Re-extract with the SAME company context the analyze used. Bug fix
@@ -550,7 +577,6 @@ export async function POST(
   let txReports: EntityWriteReport[] = [];
   // Phase 10 / Stage B5 — the revision this apply commits. Assigned inside the
   // transaction below, so it exists only if the import does.
-  let revisionId = '';
   try {
     const txResult = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
@@ -634,7 +660,7 @@ export async function POST(
         // revision attests to what *did*. It throws on an empty or foreign
         // scope, and throwing here rolls the whole import back, which is the
         // approved fail-closed policy: no financial commit without provenance.
-        const revision = await ensureDataRevision(tx, {
+        await ensureDataRevision(tx, {
           scope: buildMultiEntityImportRevisionScope({
             organizationId: orgId,
             stagingId: staging.id,
@@ -647,12 +673,11 @@ export async function POST(
           createdById: session.userId,
         });
 
-        return { reports, revisionId: revision.id };
+        return reports;
       },
       { timeout: 120_000 },
     );
-    txReports = txResult.reports;
-    revisionId = txResult.revisionId;
+    txReports = txResult;
   } catch (err) {
     // Lineage failure — the import has already rolled back with it. Report a
     // stable reason code; never echo source data or foreign identifiers.
@@ -721,16 +746,6 @@ export async function POST(
     affectedCompanyIds.map((companyId) => ({ companyId, year: targetYear })),
     {
       pairError: (label, err) => recomputeLog.error(label, { err: err instanceof Error ? err.message : String(err) }),
-    },
-    {
-      // Phase 10 / Stage B5 — trace the observations back to the revision the
-      // transaction committed. `tracedCompanyIds` is the revision's own
-      // `companyIds`, so a company that was recomputed but NOT written (its
-      // entity produced no insert and no delete) stays untraced rather than
-      // citing a revision that does not name it. Parent rollups are never
-      // traced — they merge several revisions, which one id cannot express.
-      revisionId,
-      tracedCompanyIds: new Set(committedCompanyIds(txReports)),
     },
   );
   const indicatorsStale = recomputeResult.failed > 0;

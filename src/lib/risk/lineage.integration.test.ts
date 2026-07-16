@@ -150,6 +150,22 @@ d('IndicatorValue lineage (live DB)', () => {
     await expect(upsertIv(ORG_A, foreign.id)).rejects.toThrow(/not found in organization/);
   });
 
+  it('rejects a same-organization revision that does not include the company', async () => {
+    // Tenant equality is necessary but insufficient: a revision scoped to a
+    // sibling company did not produce CO_A's value and must not be presented
+    // as its provenance.
+    const sibling = await ensureDataRevision(admin, {
+      scope: scopeFor(ORG_A, {
+        companyIds: ['zz-lineage-sibling-company'],
+        sourceArtifactIds: ['sibling-only.xlsx'],
+      }),
+      reason: 'import',
+    });
+    await expect(upsertIv(ORG_A, sibling.id)).rejects.toThrow(
+      /not found in organization/,
+    );
+  });
+
   it('rejects a revision that does not exist', async () => {
     await expect(upsertIv(ORG_A, 'zznosuchrevisionaaaa0001')).rejects.toThrow(
       /not found in organization/,

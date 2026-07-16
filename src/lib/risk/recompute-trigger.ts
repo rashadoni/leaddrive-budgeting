@@ -96,46 +96,20 @@ export interface RunRecomputeResult {
  * rollup detection, so it correctly affects both branches of the
  * trigger's pipeline.
  */
+/**
+ * Lineage is deliberately NOT a batch option. This trigger fans out across
+ * indicators whose formulas may combine workbook, feed, manual and rollup
+ * inputs; a source revision for the initiating import cannot attest to every
+ * resulting value. Until the KPI registry exposes a per-indicator dependency
+ * manifest and the recompute can build a revision from the complete input set,
+ * batch writes stay honestly untraced (`revisionId = null`).
+ *
+ * The lower-level `recomputeIndicator` argument remains available for a future
+ * dependency-aware orchestrator that can prove one specific observation's
+ * complete revision before it writes.
+ */
 export interface RunRecomputeOptions {
   codeFilter?: readonly string[];
-  /**
-   * Phase 10 / Stage B5 — the DataRevision every IndicatorValue written by this
-   * run is traced to.
-   *
-   * Only an import that created a revision inside its own apply transaction
-   * passes this; it names the committed source state these observations were
-   * derived from (03-DATA-KPI-TRUST-SPEC §6.1 — a source mutation carries its
-   * `revisionId` to the recompute it triggers).
-   *
-   * Omitted → every row keeps `revisionId = null`, exactly as before. That is
-   * the legacy contract, and it is not a defect: an untraced row is honestly
-   * untraced, and A5's gate holds it at Provisional for precisely that reason.
-   *
-   * The revision must belong to `organizationId`. This module does not check
-   * that — `upsertIndicatorValue` does, on every write, and refuses a foreign
-   * one. Validating here as well would only move the error earlier while
-   * leaving the real write path to be trusted, so the check lives where the
-   * write is.
-   */
-  revisionId?: string | null;
-  /**
-   * Phase 10 / Stage B5 — the leaf companies `revisionId` is allowed to stamp.
-   *
-   * A revision names the companies it attests to (`DataRevision.companyIds`).
-   * A recompute run can legitimately cover more than that: a multi-company apply
-   * recomputes every company it touched, but only the ones whose data the
-   * transaction actually wrote belong to the revision. Stamping the others would
-   * have a row cite a revision that does not name it — a false claim, and
-   * exactly the kind this stage exists to prevent.
-   *
-   * So when supplied, only these companies are traced; everyone else in the run
-   * writes `revisionId = null`. Omitted → every leaf company in the run is
-   * traced, which is right when the caller's revision names them all (the
-   * single-company import paths).
-   *
-   * Parent rollups are never traced regardless — see the `traced` flag below.
-   */
-  tracedCompanyIds?: ReadonlySet<string>;
 }
 
 const EMPTY_RESULT: RunRecomputeResult = {
@@ -392,32 +366,8 @@ export async function runRecomputeForCompanies(
     const parentTargets = parentCompanies.flatMap((p) =>
       rollupDefs.map((d) => ({ company: p, definition: d })),
     );
-    // Phase 10 / Stage B5 — only the companies the caller actually named may
-    // carry the caller's revision.
-    //
-    // `parentCompanies` is every level-1 company in the org, not the imported
-    // company's ancestor, and a parent's rollup aggregates N children. A
-    // revision raised by importing ONE child names exactly that child in its
-    // `companyIds` and one workbook in its `sourceArtifactIds` — so stamping it
-    // onto a holding's rollup would have the rollup claim provenance from a
-    // source that explains one of its inputs, and would stamp unrelated
-    // sub-groups besides. A rollup's real lineage is the union of its
-    // children's revisions, which a single `revisionId` cannot express.
-    //
-    // So parent rollups stay untraced (null → honestly untraced → Provisional)
-    // until a revision can speak for an aggregate. That is a gap, and it is a
-    // smaller lie than the alternative.
-    // A leaf company is traced only if the caller's revision actually names it
-    // (`tracedCompanyIds`, when supplied). A parent rollup never is.
-    const tracedIds = options.tracedCompanyIds;
-    const targets = [
-      ...operationalTargets.map((t) => ({
-        ...t,
-        traced: tracedIds ? tracedIds.has(t.company.id) : true,
-      })),
-      ...parentTargets.map((t) => ({ ...t, traced: false })),
-    ];
-    for (const { company, definition, traced } of targets) {
+    const targets = [...operationalTargets, ...parentTargets];
+    for (const { company, definition } of targets) {
       const defLike: IndicatorDefinitionLike = {
         id: definition.id,
         code: definition.code,
@@ -446,10 +396,10 @@ export async function runRecomputeForCompanies(
           period,
           baseCurrency: company.baseCurrencyCode ?? undefined,
           industry: company.industry ?? null,
-          // Phase 10 / Stage B5 — undefined on every legacy caller, which
-          // leaves the row `revisionId = null` as before. A parent rollup is
-          // never traced to a caller's revision (see `traced` above).
-          revisionId: traced ? options.revisionId : undefined,
+          // Phase 10 / Stage B5 safety gate — this batch trigger cannot prove
+          // the complete dependency revision for an individual KPI. Omitting
+          // lineage makes the canonical writer clear any stale pointer and
+          // leaves the recomputed observation honestly Provisional.
         });
         if (result.status === 'unknown') unknown += 1;
         else ok += 1;

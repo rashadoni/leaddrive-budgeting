@@ -296,18 +296,18 @@ export interface RecomputeDataSource {
      *
      * This is the **only** place a `revisionId` is stamped onto an
      * IndicatorValue; no other writer may set it. The Prisma adapter verifies
-     * the revision exists **and belongs to the same organization** before
-     * writing, and throws otherwise — a lineage pointer into another tenant
-     * would be worse than no lineage, because it would look like evidence.
+     * the revision belongs to the same organization **and names the company**
+     * before writing. A pointer to another tenant or sibling company's source
+     * state would be worse than no lineage because it would look like evidence.
      *
-     * Optional and defaulting to untraced: omit it and the row keeps
-     * `revisionId = null`, exactly like the 1,269 legacy rows, which A5's gate
-     * already treats as not decision-grade. Passing one is *evidence of
-     * lineage*, not a promise of correctness — reconciliation, coverage and
-     * approval are separate gates.
+     * Optional and defaulting to untraced: omit it and the writer stores
+     * `revisionId = null`, exactly like legacy rows, which A5's gate treats as
+     * not decision-grade. Passing one is valid only when the caller can prove
+     * it covers the complete inputs of this specific observation; reconciliation,
+     * coverage and approval remain separate gates.
      *
-     * `undefined` never clears an existing pointer on UPDATE; pass `null`
-     * explicitly to do that.
+     * `undefined` clears an existing pointer on UPDATE because the recomputed
+     * value has replaced the number the old revision described.
      */
     revisionId?: string | null;
   }): Promise<void>;
