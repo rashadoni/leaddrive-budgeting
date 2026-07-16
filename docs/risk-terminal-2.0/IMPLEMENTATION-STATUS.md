@@ -834,3 +834,77 @@ preference order:
    surface, needs regression coverage.
 Do not start B1 until owner decision T-1 is answered, or B4 until T-5 is.
 ```
+
+---
+
+## 12. Slice B-PR3 — DataRevision persistence, B2 (2026-07-16)
+
+**Status: `implemented` + `tested` (23 live-DB tests). Not reviewed. Closes the
+half of B2 that §9 deferred. Nothing reads the table yet.**
+
+Commit `78bce9e0`.
+
+### Outcome
+
+- **Behavior changed for users: none.** A new table with no reader. Legacy
+  read/serving paths untouched.
+- **Who benefits:** B5 (immutable observation + lineage). The reason every
+  coloured cell is `provisional` today is that 0/1269 rows can name their
+  source. This is where that name will live.
+
+### Files
+
+- `prisma/schema.prisma` — `DataRevision` model + `RevisionReason` enum
+- `prisma/migrations/20260716052925_data_revision/migration.sql` — **migration,
+  listed separately as the handoff requires**
+- `src/lib/risk/data-revision.rls.integration.test.ts` (new — 23 tests)
+- `src/lib/risk/data-revision.ts` — corrected a comment that contradicted the
+  new unique constraint
+- `docs/ROADMAP.md`, this file
+
+### Security review (the one the task asked for, item by item)
+
+| Risk | Finding |
+|---|---|
+| **Cross-org leakage** | Not found. 4 tests: `findMany` with **no** org filter → 0; `findUnique` by explicit id → null; cross-org write rejected; absent context → 0. |
+| **Missing RLS policy** | Not possible by construction — `ENABLE ROW LEVEL SECURITY` + `tenant_isolation` are in the **same migration** as `CREATE TABLE`. Verified live in `pg_policies`: `cmd=ALL`, qual identical to the baseline. |
+| **Mutable revision** | Not found. `BEFORE UPDATE` trigger verified in `pg_trigger`; 6 rejection tests. Lifecycle columns still move, by design. |
+| **Race condition** | Tested, not reasoned about: 5 concurrent creates of one source state → **exactly 1 row**, 1 fulfilled, 4 × P2002. |
+| **Duplicate revision** | `@@unique([organizationId, contentHash])`. Duplicate → P2002; repeated upsert returns the same id and leaves count 1. |
+| **Orphan records** | Org delete cascades → 0 left. `createdById` SetNull tested. `supersedesId` SetNull. |
+| **Rollback** | Migration is additive — every statement targets `data_revisions`; `indicator_values` = 1,269 before and after. Nothing reads the table, so revert = drop it. |
+
+### Two findings worth naming
+
+1. **The immutability trigger nearly broke user deletion.** `ON DELETE SET NULL`
+   is an UPDATE under the hood, so a blanket "no column may change" ban would
+   have made deleting a `User` fail. The rule is therefore narrower:
+   `createdById`/`supersedesId` may transition **to NULL** (the cascade) but
+   never to another value. Caught while writing the trigger, and covered by a
+   test that deletes a real user.
+2. **The isolation tests were vacuous at first, and said so.** `getPrismaApp()`
+   deliberately returns the default client under vitest, and the dev
+   `DATABASE_URL` is a superuser with BYPASSRLS — so my first run had ORG_B
+   happily reading ORG_A's row. That failure **is** the negative control: the
+   assertions only pass once routed through `budgetpro_app` (NOBYPASSRLS). The
+   suite now passes its client explicitly (as `rls-leak.integration.test.ts`
+   does) and **throws** if `DATABASE_URL_APP` is missing, rather than passing
+   against a client that ignores every policy.
+
+A third check was attempted and refused: temporarily `DISABLE ROW LEVEL
+SECURITY` to prove the tests fail without it. The permission guard blocked
+weakening a live isolation control, correctly — and the accidental
+superuser run above already provides that evidence, so nothing is missing.
+
+### Limits
+
+- **Not reviewed.**
+- **No writer.** Nothing constructs a `DataRevision` in any real code path;
+  `IndicatorValue` has no `revisionId`. Wiring lineage is B5, and it is the
+  slice that makes A5's provisional badge retractable.
+- **Tests are opt-in** (`RLS_INTEGRATION=1`) and skipped in the default sweep,
+  matching the existing RLS test. They are therefore **not** a CI gate — same
+  status as the safety net they sit beside.
+- **The trigger is new prior art.** No other table in this schema enforces
+  immutability in the database. If that convention is unwanted, it is one
+  migration to drop.
