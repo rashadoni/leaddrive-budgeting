@@ -1057,6 +1057,7 @@ Commit `a8c5b7fa`.
 | **Accidental financial change** | Both engine diffs are **pure insertions**, 54 added / 0 removed; no `value`/`status`/`formula`/`threshold` line touched. 1,269 IVs before and after, all still null. Full suite green. |
 | **Premature un-provisioning** | Not possible today: nothing stamps a revisionId, and `requireLineage` still defaults to false. A traced-but-stale cell stays provisional (tested). |
 | **Rollback** | Drop the column. Nothing reads it; every row is null. |
+| **API serialization exposing another org** | Covered on three independent layers, none of them new: the matrix handler already scopes its IndicatorValue query by `organizationId` (asserted at `src/app/api/indicators/matrix/handler.test.ts:116`); `indicator_values` carries the `tenant_isolation` RLS policy at the DB layer; and `revisionId` is not emitted on the wire at all yet. |
 
 ### The one design correction worth review
 
