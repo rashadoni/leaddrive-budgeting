@@ -571,7 +571,37 @@ export function createPrismaDataSource(
       sparkline,
       valueSource,
       confidence,
+      revisionId,
     }) {
+      // Phase 10 / Stage B5 — lineage guard. A revisionId is only meaningful
+      // if it names a revision of THIS organization: a pointer into another
+      // tenant would render as evidence while being a leak, which is strictly
+      // worse than the honest `null` that legacy rows carry.
+      //
+      // Verified here rather than at the caller because this adapter is the
+      // single place an IndicatorValue is written — a check upstream could be
+      // bypassed by the next caller, and the FK alone only proves the revision
+      // exists somewhere, not that it belongs to this org. Runs inside the
+      // caller's transaction (this closure's `prisma` IS the tx client when one
+      // was passed), so the revision cannot vanish between check and write, and
+      // a rollback discards both.
+      //
+      // Cost is zero on every existing path: no caller passes revisionId yet,
+      // and `undefined` skips the query entirely.
+      if (revisionId != null) {
+        const revision = await prisma.dataRevision.findFirst({
+          where: { id: revisionId, organizationId },
+          select: { id: true },
+        });
+        if (!revision) {
+          // One message for both "missing" and "belongs to another org": the
+          // caller must not be able to probe another tenant's revision ids by
+          // distinguishing the two.
+          throw new Error(
+            `upsertIndicatorValue: revision ${revisionId} not found in organization ${organizationId}`,
+          );
+        }
+      }
       // Phase 7.E phase 2 — sparkline write semantics:
       //   - CREATE: caller-supplied array OR `[]` (the original first-write
       //     default). `[]` keeps the schema invariant `sparkline != null` so
@@ -606,6 +636,9 @@ export function createPrismaDataSource(
           // Phase 7.H F4.v2.2.1 — model-confidence tier written on
           // CREATE; null when caller omits.
           confidence: confidence ?? null,
+          // Stage B5 — lineage. Omitted → null, i.e. untraced, exactly like
+          // every legacy row.
+          revisionId: revisionId ?? null,
         },
         update: {
           value,
@@ -625,6 +658,11 @@ export function createPrismaDataSource(
           ...(sparkline !== undefined && {
             sparkline: sparkline as Prisma.InputJsonValue,
           }),
+          // Stage B5 — mirrors the sparkline rule: `undefined` MUST NOT touch
+          // the column. A bulk recompute that does not thread a revision must
+          // not silently erase lineage a traced write established earlier.
+          // Passing `null` explicitly still clears it.
+          ...(revisionId !== undefined && { revisionId }),
         },
       });
     },

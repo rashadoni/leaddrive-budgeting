@@ -290,6 +290,26 @@ export interface RecomputeDataSource {
      * legacy fixtures that don't yet thread the resolver aggregate.
      */
     confidence?: 'A' | 'B' | 'C' | 'D' | null;
+    /**
+     * Phase 10 / Stage B5 — lineage. The DataRevision whose pinned source and
+     * mapping state produced this value.
+     *
+     * This is the **only** place a `revisionId` is stamped onto an
+     * IndicatorValue; no other writer may set it. The Prisma adapter verifies
+     * the revision exists **and belongs to the same organization** before
+     * writing, and throws otherwise — a lineage pointer into another tenant
+     * would be worse than no lineage, because it would look like evidence.
+     *
+     * Optional and defaulting to untraced: omit it and the row keeps
+     * `revisionId = null`, exactly like the 1,269 legacy rows, which A5's gate
+     * already treats as not decision-grade. Passing one is *evidence of
+     * lineage*, not a promise of correctness — reconciliation, coverage and
+     * approval are separate gates.
+     *
+     * `undefined` never clears an existing pointer on UPDATE; pass `null`
+     * explicitly to do that.
+     */
+    revisionId?: string | null;
   }): Promise<void>;
 
   /**

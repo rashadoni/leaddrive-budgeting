@@ -28,6 +28,7 @@ function goodCell(over: Partial<HeatMapCell> = {}): HeatMapCell {
     status: 'green',
     computedAt: FRESH,
     lastReconciledAt: FRESH,
+    revisionId: 'rev-1',
     signalConfidence: 'high',
     ...over,
   };
@@ -98,9 +99,9 @@ describe('decision-grade gate', () => {
   });
 
   describe('untraced values cannot look decision-grade', () => {
-    it('demotes a cell with no lineage once lineage is required', () => {
+    it('demotes a cell with no revisionId once lineage is required', () => {
       const v = classifyObservationGrade(
-        goodCell({ lastReconciledAt: undefined }),
+        goodCell({ revisionId: null }),
         NOW,
         { requireLineage: true },
       );
@@ -109,13 +110,10 @@ describe('decision-grade gate', () => {
     });
 
     it('does not demote for lineage while the requirement is off — the documented default', () => {
-      // 0 of 1,269 rows carry lastReconciledAt (measured 2026-07-16), so a
+      // 0 of 1,269 rows carry a revisionId (measured 2026-07-16), so a
       // default-on requirement would grey the entire product the moment this
-      // module gained a caller. Stage B populates lineage and flips this.
-      const v = classifyObservationGrade(
-        goodCell({ lastReconciledAt: undefined }),
-        NOW,
-      );
+      // module gained a caller. The stage that populates lineage flips this.
+      const v = classifyObservationGrade(goodCell({ revisionId: null }), NOW);
       expect(v.grade).toBe('decision-grade');
       expect(v.reasons).not.toContain('no_lineage');
     });
@@ -124,6 +122,32 @@ describe('decision-grade gate', () => {
       expect(
         classifyObservationGrade(goodCell(), NOW, { requireLineage: true }).grade,
       ).toBe('decision-grade');
+    });
+
+    it('does not accept a reconciliation stamp as lineage', () => {
+      // The conflation this test exists to prevent: lastReconciledAt answers
+      // "was it checked against source?", revisionId answers "where did it come
+      // from?". One must never stand in for the other.
+      const v = classifyObservationGrade(
+        goodCell({ revisionId: null, lastReconciledAt: FRESH }),
+        NOW,
+        { requireLineage: true },
+      );
+      expect(v.grade).toBe('provisional');
+      expect(v.reasons).toContain('no_lineage');
+    });
+
+    it('lineage alone does not make a cell decision-grade', () => {
+      // B5's whole caveat: a revisionId is evidence, not a verdict. A traced
+      // but stale cell stays provisional.
+      const v = classifyObservationGrade(
+        goodCell({ revisionId: 'rev-9', computedAt: OLD }),
+        NOW,
+        { requireLineage: true },
+      );
+      expect(v.grade).toBe('provisional');
+      expect(v.reasons).toContain('stale');
+      expect(v.reasons).not.toContain('no_lineage');
     });
   });
 
@@ -187,7 +211,7 @@ describe('decision-grade gate', () => {
       const v = classifyObservationGrade(
         goodCell({
           computedAt: OLD,
-          lastReconciledAt: undefined,
+          revisionId: null,
           signalConfidence: 'low',
           error: { code: 'eval', reason: 'x' },
         }),
@@ -232,8 +256,8 @@ describe('decision-grade gate', () => {
     it('reports the real state of this database: every coloured cell untraced', () => {
       // The measured 2026-07-16 shape — 498/498 coloured cells with no lineage.
       const cells = [
-        goodCell({ lastReconciledAt: undefined }),
-        goodCell({ status: 'red', lastReconciledAt: undefined }),
+        goodCell({ revisionId: null }),
+        goodCell({ status: 'red', revisionId: null }),
       ];
       const s = summarizeSurfaceGrade(cells, NOW, { requireLineage: true });
       expect(s.coloured).toBe(2);

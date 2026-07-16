@@ -1324,10 +1324,29 @@ model IndicatorValue {
   lastReconciledAt  DateTime?
   reconciledBy      String?
   sanityBand        String?
+  // Phase 10 / Stage B5 — lineage. The DataRevision whose pinned source and
+  // mapping state produced this value (03-DATA-KPI-TRUST-SPEC §5, ADR Trust
+  // Core §4). Nullable and additive on purpose: every one of the 1,269 IVs
+  // that predates this column is legacy and stays valid with `revisionId =
+  // null`. There is no backfill — a revision cannot be invented for a value
+  // whose sources were never recorded, and pretending otherwise is exactly the
+  // false assurance Phase 10 exists to remove.
+  //
+  // Null means "untraced", which A5's gate already treats as not
+  // decision-grade. A non-null revisionId is *evidence of lineage*, not a
+  // promise of correctness: reconciliation, coverage and approval are separate
+  // gates and remain unmet.
+  //
+  // Restrict (not Cascade/SetNull): deleting a revision that observations point
+  // at would either destroy those observations or silently orphan their
+  // lineage. Revisions are superseded, never deleted (§5.2).
+  revisionId        String?
+  revision          DataRevision? @relation(fields: [revisionId], references: [id], onDelete: Restrict)
 
   @@unique([companyId, indicatorId, period])
   @@index([organizationId, companyId, period])
   @@index([indicatorId])
+  @@index([revisionId])
   @@map("indicator_values")
 }
 
@@ -2634,6 +2653,9 @@ model DataRevision {
   // §5.1 "deterministic content hash" — SHA-256 over canonical JSON of
   // scope + reason. See computeRevisionContentHash().
   contentHash String
+
+  /// Observations produced under this revision (Stage B5 lineage).
+  indicatorValues IndicatorValue[]
 
   // Idempotency + duplicate protection (§5.2 "a source change creates a new
   // revision" — so an unchanged source state must NOT create one). The hash

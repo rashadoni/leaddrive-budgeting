@@ -162,6 +162,17 @@ export interface HeatMapCell {
    * Optional + back-compat — old clients ignore the field.
    */
   signalConfidence?: 'high' | 'medium' | 'low';
+  /**
+   * Phase 10 / Stage B5 — lineage. The DataRevision this value's sources were
+   * pinned under, or null/absent when untraced (every legacy row, i.e. all
+   * 1,269 of them today). Opaque id, same organization by construction — the
+   * writer rejects any other.
+   *
+   * Evidence that the value can name where it came from. NOT a claim that it
+   * is reconciled, covered or approved — those are separate gates, and
+   * `decision-grade.ts` still withholds decision-grade without them.
+   */
+  revisionId?: string | null;
 }
 
 /**

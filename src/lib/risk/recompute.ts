@@ -536,6 +536,18 @@ export async function recomputeIndicator(
      * a misleading zero.
      */
     industry?: string | null;
+    /**
+     * Phase 10 / Stage B5 — lineage. Threaded straight through to
+     * `ds.upsertIndicatorValue`, the single writer allowed to stamp it; the
+     * adapter verifies the revision belongs to `organizationId` and throws
+     * otherwise.
+     *
+     * Optional. Omitted → the row stays `revisionId = null` (untraced), which
+     * is what every legacy row and every current caller does. Passing one is
+     * evidence of lineage, not a claim of correctness — reconciliation,
+     * coverage and approval remain separate, unmet gates.
+     */
+    revisionId?: string | null;
   },
 ): Promise<RecomputeResult> {
   const period = parsePeriod(args.period);
@@ -829,6 +841,10 @@ export async function recomputeIndicator(
     status,
     inputs: finalInputs,
     sparkline,
+    // Stage B5 — pass-through only. `undefined` leaves the column untouched
+    // on UPDATE, so a bulk recompute that threads no revision never erases
+    // lineage an earlier traced write established.
+    revisionId: args.revisionId,
     // Phase 7.H F4.v2.1 — fall back to `computed` when the caller omits
     // the field (legacy / pre-v2.1 IndicatorDefinitionLike fixtures).
     // The matrix API + IndicatorDetail UI rely on this stamp to render

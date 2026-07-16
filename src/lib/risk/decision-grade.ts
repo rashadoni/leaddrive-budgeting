@@ -13,10 +13,12 @@
  *
  * **Why the gate is not applied per-cell to the legacy Expert matrix (yet).**
  * Measured against the local dev database on 2026-07-16: of 1,269
- * `IndicatorValue` rows, **0 have `lastReconciledAt`** — the field is written
- * only by `scripts/audit-company.cjs`, which has never run over this data. All
- * 498 coloured cells are therefore untraced, and 294 of them are also >30 days
- * old. Applying `no lineage → no colour` per cell today would demote 100% of
+ * `IndicatorValue` rows, **0 carry lineage** — Stage B5 added `revisionId` as a
+ * nullable column with no backfill, and no production path stamps one yet, so
+ * every legacy row is honestly `null`. (Reconciliation is equally absent: 0
+ * rows have `lastReconciledAt`, written only by `scripts/audit-company.cjs`,
+ * which has never run over this data.) All 498 coloured cells are therefore
+ * untraced, and 294 of them are also >30 days old. Applying `no lineage → no colour` per cell today would demote 100% of
  * the coloured matrix. That is a cutover, not the "smallest protective
  * presentation" the handoff asks for (§11), and it collides with "keep the
  * current Expert Matrix available" (§4). So: the gate is defined and tested
@@ -39,7 +41,7 @@ export type ProvisionalReason =
   | 'calculation_error'
   /** Zombie guard fired (no_budget_lines / rollup_no_children / out_of_range). */
   | 'unreliable_signal'
-  /** Never reconciled: no lineage, so nothing to trace the number back to. */
+  /** No `revisionId`: the value cannot name the source state it came from. */
   | 'no_lineage'
   /** Computed too long ago to speak for the current period. */
   | 'stale'
@@ -73,13 +75,14 @@ export interface GradeOptions {
   /** Freshness window. Defaults to the shipped 30 days. */
   staleAfterMs?: number;
   /**
-   * Require lineage (`lastReconciledAt`) for decision-grade.
+   * Require lineage (a `revisionId`) for decision-grade.
    *
    * Defaults to **false** — not because lineage is optional (the ADR says it
-   * is mandatory), but because no row in this database has it yet, so
-   * defaulting to `true` would silently demote every cell in the product the
-   * moment this module gained a caller. Stage B populates lineage; flipping
-   * this default is that stage's job, under review.
+   * is mandatory), but because no row in this database carries a `revisionId`
+   * yet, so defaulting to `true` would silently demote every cell in the
+   * product the moment this module gained a caller. Stage B5 added the column
+   * and a writer that can stamp it; flipping this default belongs to the stage
+   * that actually populates it, under review.
    */
   requireLineage?: boolean;
 }
@@ -109,7 +112,13 @@ export function classifyObservationGrade(
 
   if (cell.error) reasons.push('calculation_error');
   if (cell.signalConfidence === 'low') reasons.push('unreliable_signal');
-  if (requireLineage && !cell.lastReconciledAt) reasons.push('no_lineage');
+  // Lineage is `revisionId` — "can this value name the source state it came
+  // from?" (Stage B5). It is deliberately NOT `lastReconciledAt`: that field
+  // answers a different question ("was it checked against the source?"), and
+  // conflating the two would let a reconciliation stamp masquerade as
+  // provenance, or vice versa. Both are required for decision-grade; they fail
+  // for different reasons and are recorded separately.
+  if (requireLineage && !cell.revisionId) reasons.push('no_lineage');
 
   if (isStale(cell.computedAt, now, staleAfterMs)) reasons.push('stale');
 
@@ -168,7 +177,7 @@ export interface SurfaceGradeSummary {
 /**
  * Summarise a whole matrix so the surface can state its posture once instead of
  * marking hundreds of cells. This is what makes the A5 presentation minimal:
- * with 0/1269 rows reconciled, the honest message is one badge, not 498.
+ * with 0/1269 rows carrying lineage, the honest message is one badge, not 498.
  */
 export function summarizeSurfaceGrade(
   cells: readonly HeatMapCell[],
