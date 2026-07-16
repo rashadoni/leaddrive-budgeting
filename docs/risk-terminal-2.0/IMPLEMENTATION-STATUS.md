@@ -1017,3 +1017,106 @@ retractable. Do NOT wire invalidatedPeriodKeys() into the recompute trigger
 (§13 blocker: the trigger has no month input and YTD/LTM have never been
 served). Do not start B1 until T-1 is answered, or B4 until T-5 is.
 ```
+
+---
+
+## 15. Slice B-PR4 — lineage on IndicatorValue, B5 (2026-07-16)
+
+**Status: `implemented` + `tested` (12 live-DB + 29 gate tests). Not reviewed.
+Lineage is now *recordable*; it is not yet *recorded* in production.**
+
+Commit `a8c5b7fa`.
+
+### Outcome
+
+- **Behavior changed for users: none.** No row carries a `revisionId`, so the
+  A5 badge still reads `LEGACY · NOT DECISION-GRADE`. **Provisional is NOT
+  lifted** — deliberately.
+- **What is now possible:** an observation can name the source state it came
+  from. That is the missing half of why every coloured cell is provisional.
+
+### Files
+
+- `prisma/schema.prisma` — `IndicatorValue.revisionId` + relation
+- `prisma/migrations/20260716055905_indicator_value_revision/` — **migration**
+- `src/lib/risk/data-revision-writer.ts` (new) — `ensureDataRevision`
+- `src/lib/risk/lineage.integration.test.ts` (new — 12 tests)
+- `recompute-types.ts` / `recompute-data-source.ts` / `recompute.ts` — the
+  writer + its guard (pure insertions)
+- `heatmap-matrix.ts` — `HeatMapCell.revisionId`
+- `decision-grade.ts` + `.test.ts` — lineage now means `revisionId`
+
+### Review (the one the task asked for)
+
+| Risk | Finding |
+|---|---|
+| **Cross-org leakage** | Guarded in the single writer and tested. Foreign and missing ids return an **identical** error, so ids are not probeable. |
+| **Wrong writer** | Exactly one DB write site (`recompute-data-source.ts:641/665`), verified by grep. `recompute.ts` is pass-through. |
+| **Orphan records** | `onDelete: Restrict` — deleting a referenced revision throws (tested). A failed write leaves no row (tested). |
+| **Race conditions** | `ensureDataRevision` recovers from P2002 by re-reading the winner. The unique index arbitrates. |
+| **Accidental financial change** | Both engine diffs are **pure insertions**, 54 added / 0 removed; no `value`/`status`/`formula`/`threshold` line touched. 1,269 IVs before and after, all still null. Full suite green. |
+| **Premature un-provisioning** | Not possible today: nothing stamps a revisionId, and `requireLineage` still defaults to false. A traced-but-stale cell stays provisional (tested). |
+| **Rollback** | Drop the column. Nothing reads it; every row is null. |
+
+### The one design correction worth review
+
+A5's gate treated `lastReconciledAt` as lineage. It is not: that field says "was
+this checked against source?", while lineage says "where did it come from?".
+Now that a real lineage column exists, `no_lineage` keys off `revisionId`, and a
+reconciliation stamp can no longer masquerade as provenance (tested explicitly).
+Behaviour is identical — both are absent on 100% of rows — but the *reasons* are
+now honest, which is what §10.7 asks for.
+
+### Limits — what is NOT done
+
+- **Not reviewed.** Stage A's review (A4-A6) is still outstanding too.
+- **No production writer stamps a revisionId.** Every real path still calls the
+  writer without one. Choosing which import/recompute path constructs a
+  revision — and what its `sourceArtifactIds`/`mappingVersionIds` are — is a
+  real modelling decision about the import pipeline, not a mechanical wiring,
+  and it deserves its own slice. **This is the honest gap: lineage is
+  recordable, not recorded.**
+- **The matrix API does not select `revisionId`**, so `HeatMapCell.revisionId`
+  is always undefined on the wire. Emitting a column that is null for 100% of
+  rows adds payload for zero information; wire it when a writer produces one.
+  The gate already consumes it the moment it appears.
+- **`requireLineage` still defaults to false**, and must, until a writer
+  populates lineage — otherwise the first caller greys the product.
+- Tests are opt-in (`RLS_INTEGRATION=1`) and therefore not a CI gate.
+
+---
+
+## 16. Checkpoint (2026-07-16)
+
+### Commits this session — all path-scoped, no protected file ever staged
+
+`66722a02` A4 flags · `a613c276` A5+A6 gate + badge (BASELINE UPDATE) ·
+`7144256e` Stage A review · `a6231ef3` B2a PeriodContext · `0ccaa21e` B2b
+DataRevision · `0b504a8f` B2 docs · `82260568` B3 invalidation · `538d7a20` B3
+docs · `78bce9e0` DataRevision persistence (RLS + immutability) · `c6caecae`
+security review · `907bdbde` B3 wiring blocker · `a8c5b7fa` B5 lineage.
+
+- **Uncommitted: none** beyond this entry. All 8 protected paths untouched.
+- **Final checks.** tsc 0 · full vitest 506 files / 6,578 passed / 54 skipped /
+  0 failed · prisma generate + validate ok · live-DB suites 35 passed
+  (23 DataRevision + 12 lineage) · existing RLS 21 passed.
+
+### Blockers
+
+- **Human review** of A4-A6 and all of Stage B.
+- **T-1** blocks B1 *and* the B3 wiring (§13).
+- **T-5** blocks B4.
+- **E-1** blocks V2 enablement; allowlist ships empty = off.
+
+**Resume command:**
+
+```text
+Continue Risk Terminal 2.0 from IMPLEMENTATION-STATUS.md §16. Next
+dependency-ready slice: give lineage a production writer — pick ONE import
+path (e.g. the staging apply route), have it ensureDataRevision() inside its
+existing transaction with real sourceArtifactIds/mappingVersionIds, and pass
+the revisionId to recomputeIndicator. That is what makes A5's provisional
+badge retractable. Then wire revisionId into the matrix API select so the
+gate can see it. Do NOT wire invalidatedPeriodKeys (§13). B1 needs T-1; B4
+needs T-5; do not enable V2.
+```
