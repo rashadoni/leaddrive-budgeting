@@ -908,3 +908,112 @@ superuser run above already provides that evidence, so nothing is missing.
 - **The trigger is new prior art.** No other table in this schema enforces
   immutability in the database. If that convention is unwanted, it is one
   migration to drop.
+
+---
+
+## 13. Blocker — wiring `invalidatedPeriodKeys()` into the recompute trigger (2026-07-16)
+
+**Status: `blocked`. Not started, and deliberately not faked.**
+
+The queued next task was to wire B3's fan-out into the recompute trigger. It is
+not a safe drop-in, for two measured reasons rather than a judgement call.
+
+### Evidence
+
+| Fact | Source |
+|---|---|
+| `RecomputeAffected` is `{ companyId, year }` — **no month input exists** | `src/lib/risk/recompute-trigger.ts:39-42` |
+| The trigger computes `const period = String(year)` — it only ever writes FY | `recompute-trigger.ts:347` |
+| IVs carrying a **YTD or LTM** period: **0** | read-only SQL, local dev DB |
+| Existing IV period shapes: FY 677 · MONTH 444 · QUARTER 148 | read-only SQL |
+| Monthly/quarterly IVs come from `POST /api/indicators` recomputing **exactly the requested period** — there is no automatic fan-out anywhere | `src/app/api/indicators/route.ts:345`, `recompute.ts:501` |
+
+### Why this is a stop, not a chore
+
+`invalidatedPeriodKeys(changedMonth)` needs a changed **month**. The trigger
+never receives one. Giving it one means:
+
+1. **Changing the canonical financial path's input contract** (year → month) —
+   handoff §4 has exactly one canonical aggregation path and §2.8 says stop when
+   a slice needs a materially broader change than the documentation authorizes.
+2. **Fabricating YTD and LTM observations that have never existed** in this
+   product (0 rows). Those are not refreshes of stale aggregates; they are new
+   financial figures appearing on screen, from a path with no golden
+   reconciliation behind it.
+
+Both are Stage B1/B5 work. **B1 is blocked on T-1** (the reconciliation
+tolerance): without it there is no pass/fail line, so no such change could be
+called `reconciled` without inventing the control. 05 §4.4's recompute
+assertions likewise presume the mart that B1 builds.
+
+Wiring it anyway would produce numbers I could not reconcile, on the one path
+whose defects are the reason Phase 10 exists. The fan-out therefore stays a
+tested pure function with no caller — which is what B3 claimed and all it
+claimed.
+
+### What would unblock it
+
+Either owner decision **T-1** (making B1 startable, after which the mart owns
+period fan-out), or an explicit owner decision that YTD/LTM become served
+periods — a product decision, not a technical one.
+
+---
+
+## 14. Checkpoint (2026-07-16, session end)
+
+### Commits this session — all path-scoped, no protected file ever staged
+
+| SHA | Slice |
+|---|---|
+| `66722a02` | A4 — server-resolved rollout flags |
+| `a613c276` | A5+A6 — decision-grade gate + Legacy badge (BASELINE UPDATE) |
+| `7144256e` | Stage A review + checkpoint |
+| `a6231ef3` | B2a — PeriodContext contract |
+| `0ccaa21e` | B2b — DataRevision contract |
+| `0b504a8f` | B2 roadmap/status |
+| `82260568` | B3 — exact period invalidation |
+| `538d7a20` | B3 roadmap/status + checkpoint |
+| `78bce9e0` | B2 — DataRevision persistence (table + RLS + immutability trigger) |
+| `c6caecae` | DataRevision status + security review |
+
+- **Uncommitted work: none** beyond this entry. All 8 protected paths remain
+  dirty and untouched, exactly as at session start.
+- **Final checks.** tsc 0 · full vitest 506 files / 6,576 passed / 41 skipped /
+  0 failed · prisma generate + validate ok · `migrate status` clean · RLS
+  integration 23 passed · existing rls-leak + with-org-scope 21 passed.
+
+### State
+
+Stage A implemented (A1-A6), **unreviewed from A4 on**. Stage B: B2 complete
+(contracts + persisted table with isolation and immutability); B3 implemented as
+a pure function. Everything added this session is inert unless imported — the
+sole exception remains A5's badge, live by intent. `data_revisions` has a
+writer-shaped hole: nothing constructs a revision yet.
+
+### Blockers
+
+- **Human review of A4-A6** — handoff §5's gate.
+- **T-1** blocks B1 *and* the B3 wiring (§13).
+- **T-5** blocks B4.
+- **E-1** blocks any V2 enablement; the allowlist ships empty, i.e. off.
+
+### Known debt surfaced, not fixed
+
+- terminal-heatmap visual baseline is intermittently non-deterministic against
+  live local data (identical code → 1,598-px diff, then exit 0).
+- `visual-baseline-board-deck` fails on a clean tree (proven by path-scoped
+  stash). Pre-existing, untouched, unexplained.
+- The RLS integration suites are opt-in (`RLS_INTEGRATION=1`) and therefore not
+  a CI gate — same status as the safety net they sit beside.
+
+**Resume command:**
+
+```text
+Continue Risk Terminal 2.0 from IMPLEMENTATION-STATUS.md §14. The next
+dependency-ready slice is B5 (immutable observation + lineage): add
+revisionId to IndicatorValue as an additive, nullable FK to data_revisions
+and have one writer stamp it — that is what makes A5's provisional badge
+retractable. Do NOT wire invalidatedPeriodKeys() into the recompute trigger
+(§13 blocker: the trigger has no month input and YTD/LTM have never been
+served). Do not start B1 until T-1 is answered, or B4 until T-5 is.
+```
