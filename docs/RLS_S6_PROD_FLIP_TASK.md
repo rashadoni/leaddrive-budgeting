@@ -200,9 +200,20 @@ dropped with `DROP ROLE budgetpro_app;` / `DROP ROLE budgetpro_admin;` as superu
 
 ## 9. Out of scope / follow-ups for the human (NOT this task)
 
-- **Rotate the production demo admin password** before giving the 2nd tenant
-  (Mars Overseas) access. Its previously documented value is now redacted and
-  must be treated as compromised; rotation remains an owner credential action.
+- ~~**Rotate the production demo admin password** before giving the 2nd tenant
+  (Mars Overseas) access.~~ **DONE 2026-07-16:** production `admin@fo.az` now
+  has a new strong credential and authenticated smoke passed. `NEXTAUTH_SECRET`
+  was also rotated with an app force-recreate: a captured pre-rotation JWT was
+  rejected, while a fresh login succeeded and the terminal rendered 168 cells.
+  No secret value is recorded in this document.
 - Wiring `node scripts/rls-coverage-scan.mjs --enforce` into CI to block new
   unwrapped routes (a code/CI change, can be a separate PR).
-- TLS/domain + SMTP provider (separate, pre-existing items).
+- **TLS/domain remains OPEN and blocks client access:** `budget.fo.az`, `fo.az`
+  and `staging.budget.fo.az` are NXDOMAIN; `NEXTAUTH_URL` is the HTTP IP,
+  certbot/certificates are absent, and effective nginx listens only on 80
+  despite Docker publishing 443. A real FQDN + DNS control are required before
+  ACME issuance, HTTPS verification and redirect. SMTP remains a separate
+  pre-existing item.
+- Move the temporary root-only credential/recovery artifacts to an approved
+  vault and establish a break-glass admin/recovery path; there is currently one
+  active production admin.

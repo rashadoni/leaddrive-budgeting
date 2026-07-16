@@ -8,15 +8,17 @@ This doc is the **pre-deploy gate** — the checklist + reference an
 on-call reviewer walks through to confirm the stack is ready for
 real-customer load.
 
-**Phase status (updated 2026-05-29, Phase 8):** The app deploys via
-`deploy/README.md`'s Docker Compose flow (single-VM target). Since the v1 of
-this doc (2026-05-03), shipped + relevant to a deploy: **Phase 5.2 RLS** (two
-Postgres roles + `withOrgScope` on 16 routes — §1 + §8.2 updated), **Phase 6
-BullMQ/Redis** queue behind `QUEUE_BACKEND` (§1.1 updated), the **Phase 8 G3
-auth-gate audit** (`docs/AUTH_GATE_AUDIT.md` — 0 exposed endpoints; F1 SSE gate
-shipped, F3 `/api` middleware deferred — see §8.2), CI `tsc --noEmit` gate, and
-the M7 + visual-baseline regression gates. Vercel serverless is still a future
-target with the §4.3 gaps open.
+**Production status (verified 2026-07-16):** The app is deployed through
+`deploy/README.md`'s Docker Compose flow on a single VM. Release
+`19035f068a151f1717a197e44cb48180a1b6d962` passed CI run `29505074150`; local
+`origin/main`, production Git HEAD and `.deploy-revision` matched that SHA.
+The app was healthy with all 17 migrations applied and external smoke 8/8.
+Phase 5.2 RLS is enforced by the non-bypass `budgetpro_app` role, and the global
+Next.js 16 `/api` defence-in-depth gate already exists in `src/proxy.ts`
+(nginx `auth_request /api/authcheck` is an additional edge layer). The current
+production transport is nevertheless **HTTP-only**; trusted TLS remains blocked
+on a real FQDN and DNS control. Vercel serverless is still a future target with
+the §4.3 gaps open.
 
 ---
 
@@ -40,8 +42,8 @@ rotation cadence, and what breaks if it's wrong.
 | `POSTGRES_USER` | YES (deploy) | `docker-compose.yml` | DBA | Annual or on incident | DB container won't init |
 | `POSTGRES_PASSWORD` | YES (deploy) | `docker-compose.yml` | DBA | Annual or on incident | App can't connect; downstream of `DATABASE_URL` |
 | `POSTGRES_DB` | YES (deploy) | `docker-compose.yml` | DBA | Never | DB container won't init |
-| `NEXTAUTH_SECRET` | YES | next-auth (implicit at runtime) | SRE | Annual; rotate together with all sessions invalidating | Logins fail with cryptic JWT errors |
-| `NEXTAUTH_URL` | YES | next-auth (implicit) | SRE | When DNS / TLS / port changes | Login redirect loop; OAuth callback fails (if added) |
+| `NEXTAUTH_SECRET` | YES | next-auth (implicit at runtime) | SRE | Annual; rotate together with all sessions invalidating (last verified 2026-07-16) | Logins fail with cryptic JWT errors |
+| `NEXTAUTH_URL` | YES | next-auth (implicit) | SRE | When DNS / TLS / port changes | Login redirect loop; OAuth callback fails (if added). Current prod value is the HTTP IP until the TLS gate closes |
 | `ANTHROPIC_API_KEY` | NO | `src/lib/ai/client.ts:hasAnthropicKey()` + `runMapper`/explain endpoints | Product owner / SRE | Quarterly OR on suspected leak | AI Data Mapper analyze returns 503; Variance Explainer disabled (graceful degradation) |
 | `NODE_ENV` | YES | next-build, prisma | Build pipeline | Never | Wrong build output (dev mode in prod) |
 | `ADMIN_EMAIL` | NO (script-only) | `scripts/create-admin.ts` | Operator | Per-script-run | Script falls back to `admin@budgetpro.com` |
@@ -99,14 +101,33 @@ Backup: store a copy in 1Password / vault under "FO Holding —
 budgetpro production env". DO NOT store in S3 / GitHub Secrets / public
 cloud KMS without org sign-off.
 
+Current credential handling (verified 2026-07-16): the rotated
+`admin@fo.az` password is temporarily root-only at
+`/root/.budgetpro/admin-fo-az.password` (`0600`); the previous bcrypt and
+previous `NEXTAUTH_SECRET` recovery artifacts are also root-only (`0600`). No
+secret value belongs in this document, git, command output or chat. Moving the
+temporary artifacts into the approved organizational vault remains an
+operational follow-up.
+
 ### 2.3 Rotation playbook
 
 **Annual rotation (NEXTAUTH_SECRET):**
 1. Generate new secret (§2.1)
 2. Edit `.env.production` on VM
-3. `docker compose --env-file .env.production up -d` (no rebuild needed)
+3. `docker compose --env-file .env.production up -d --force-recreate app`
+   (no image rebuild needed; force-recreate is required so the container loads
+   the changed environment)
 4. **All existing sessions invalidate** — users must re-login
-5. Notify users 24h ahead
+5. Prove revocation with a session captured before the rotation, then prove a
+   fresh login and one authenticated critical path
+6. Notify users 24h ahead
+
+**Last production evidence (2026-07-16):** app force-recreated healthy and
+confirmed to load the current secret; the captured pre-rotation JWT was
+rejected, a fresh login succeeded, and the Risk Terminal rendered 168 cells.
+The observed cookie was `HttpOnly=true`, `SameSite=Lax`, `Secure=false`; the
+missing `Secure` flag reflects the current HTTP-only deployment and must be
+re-verified after trusted TLS + HTTPS `NEXTAUTH_URL` are enabled.
 
 **Postgres password rotation:**
 1. Connect to running DB: `docker compose exec db psql -U $POSTGRES_USER`
@@ -130,6 +151,9 @@ Document in your org's secrets vault. Minimum:
 - 1 backup SRE (can run rotation if primary unavailable)
 - 0 developers (developers should NEVER need prod secrets;
   staging/dev have separate keys)
+
+Current operational gaps: approved-vault handoff is pending and production has
+one active admin, so a break-glass admin/recovery path must be established.
 
 ---
 
@@ -255,7 +279,8 @@ constraints.
 ### 4.2 Docker Compose / single-VM (CURRENT prod target — `deploy/README.md`)
 
 - **What:** `docker compose up` starts 3 containers: `db` (Postgres 16),
-  `app` (Next.js 16 standalone), `nginx` (reverse proxy + TLS).
+  `app` (Next.js 16 standalone), `nginx` (reverse proxy; TLS-capable config,
+  but current production is HTTP-only).
 - **Where:** Single Ubuntu 22.04 VM at PASHA Technology data centre.
 - **Process model:** Single Node.js process per `app` container.
   Long-lived `pg.Client` connections work fine (used by SSE LISTEN/NOTIFY
@@ -266,6 +291,15 @@ constraints.
 - **Restart:** `docker compose --env-file .env.production restart app`.
 - **Logs:** `docker compose logs -f app`.
 - **Suitable for:** production deployment for FO Holding's internal use.
+
+**Current TLS gate (verified 2026-07-16):** `budget.fo.az`, `fo.az` and
+`staging.budget.fo.az` are NXDOMAIN; production `NEXTAUTH_URL` is the HTTP IP;
+certbot and certificates are absent; effective nginx listens only on port 80
+despite Docker publishing 443. Trusted TLS cannot be issued safely until the
+owner supplies a real FQDN and DNS control. After that: issue the certificate,
+validate HTTPS before redirecting HTTP, update `NEXTAUTH_URL`, force-recreate
+the app, and re-check auth-cookie security. Do not use a self-signed certificate
+as a client-access substitute.
 
 ### 4.3 Vercel serverless (FUTURE — multi-tenant SaaS path)
 
@@ -356,7 +390,9 @@ What is NOT covered (production gates — manual checklist below):
 - Migration risk classification (§3.2)
 - Secrets rotation cadence
 - Backup integrity (last successful run + restoration test)
-- Smoke test against staging environment (run `E2E_BASE_URL=https://staging.budget.fo.az npm run test:e2e` to extend)
+- Smoke test against staging environment (future example:
+  `E2E_BASE_URL=https://staging.budget.fo.az npm run test:e2e`; that hostname is
+  NXDOMAIN as of 2026-07-16 and is not a currently valid target)
 
 ### 5.2 Production gate checklist (manual, ~15 min)
 
@@ -384,6 +420,11 @@ What is NOT covered (production gates — manual checklist below):
       "API_KEY\|SECRET\|PASSWORD" --include="*.ts" --include="*.tsx"`)
 - [ ] `.gitignore` still excludes `.env*` files (except `.example`)
 - [ ] Last NEXTAUTH_SECRET rotation > 11 months → schedule rotation
+
+Current evidence: `NEXTAUTH_SECRET` was rotated 2026-07-16, the app was
+force-recreated healthy, a captured old JWT was rejected, and fresh
+authenticated terminal smoke passed (168 cells). Password rotation for
+`admin@fo.az` is also complete. Secret values were not recorded.
 
 **5. Backup:**
 - [ ] Last successful backup ≤ 24h old (`ls -lh /opt/budgetpro/backups/`)
@@ -581,11 +622,11 @@ What this app does + does not do, for security/compliance review:
 
 | Data class | Stored where | Encrypted at rest | Encrypted in transit |
 |---|---|---|---|
-| User credentials (bcrypt hashes) | `User.passwordHash` | Filesystem-level only (no column-level) | TLS 1.3 (nginx) |
-| Session JWTs | Browser cookie + `Session` table | Filesystem-level only | TLS 1.3 |
-| Financial data (BudgetLine, etc.) | Prisma tables | Filesystem-level only | TLS 1.3 |
-| AI prompts/responses (transient) | Anthropic API + ephemeral logs | TLS 1.3 in transit; not persisted by app | TLS 1.3 |
-| Audit events | `AuditEvent` table | Filesystem-level only | TLS 1.3 |
+| User credentials (bcrypt hashes) | `User.passwordHash` | Filesystem-level only (no column-level) | **No on current browser path** (production HTTP; TLS DNS-blocked) |
+| Session JWTs | Browser cookie + `Session` table | Filesystem-level only | **No on current browser path** (observed cookie `Secure=false`) |
+| Financial data (BudgetLine, etc.) | Prisma tables | Filesystem-level only | **No on current browser path** (production HTTP) |
+| AI prompts/responses (transient) | Anthropic API + ephemeral logs | Not persisted by app | App→Anthropic uses HTTPS; browser→app remains HTTP |
+| Audit events | `AuditEvent` table | Filesystem-level only | **No on current browser path** (production HTTP) |
 
 **No column-level encryption today.** For PII/PCI compliance, add
 `pgcrypto` + per-column AES on sensitive fields (User.email, etc.).
@@ -603,11 +644,12 @@ Roadmap; not Phase 7.
   `withOrgScope` (16 routes) so tenant isolation is enforced at the DB layer,
   not just the app layer (`where: { organizationId }`). Set `DATABASE_URL_APP`
   + `DATABASE_URL_ADMIN` (§1) to activate it on prod.
-- **API auth defence-in-depth (F3)**: a global `/api` middleware is DEFERRED —
-  attempted 2026-05-29 via a `getToken` edge middleware but it broke NextAuth's
-  `/api/auth/*` (Auth.js v5 catch-all interference); the correct split-config
-  approach is documented in `docs/AUTH_GATE_AUDIT.md` (F3) for the deploy. Not a
-  hole — every route already self-gates; this is the optional safety net.
+- **API auth defence-in-depth (F3)**: already satisfied by `src/proxy.ts`, the
+  Next.js 16 middleware, which globally gates non-public `/api/*` requests ahead
+  of each handler's own auth/org gate. nginx `auth_request /api/authcheck` is an
+  additional edge layer. The failed 2026-05-29 attempts added a second
+  `middleware.ts` alongside `proxy.ts`; they do not mean the global gate is
+  absent. See `docs/AUTH_GATE_AUDIT.md` (F3).
 - **Audit log**: `AuditEvent` records all state-changing operations
   with actorUserId + IP + userAgent. 365-day retention (daily physical-purge
   cron shipped Phase 1.4 / 7.M).

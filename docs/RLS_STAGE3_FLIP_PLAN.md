@@ -154,6 +154,22 @@ per RLS_RUNBOOK §1.
 
 ## Progress log
 
+- 2026-07-16 — **Credential/session follow-up COMPLETE; TLS remains a separate
+  external gate.** Production `admin@fo.az` was rotated to a new strong
+  password and authenticated smoke passed. The value is absent from git/chat
+  and temporarily stored root-only at
+  `/root/.budgetpro/admin-fo-az.password` (`0600`); the previous bcrypt is also
+  root-only. `NEXTAUTH_SECRET` was rotated and the app force-recreated healthy;
+  a session captured before rotation was rejected, while a fresh login
+  succeeded and the Risk Terminal rendered 168 cells. The current cookie is
+  `HttpOnly=true`, `SameSite=Lax`, `Secure=false` because the public endpoint
+  is still HTTP. The 2026-07-08 entries below remain the historical record of
+  the earlier rotate-then-revert sequence; their open follow-up is now closed.
+  Trusted TLS is still blocked on a real FQDN/DNS: `budget.fo.az`, `fo.az` and
+  `staging.budget.fo.az` are NXDOMAIN, `NEXTAUTH_URL` is the HTTP IP, no
+  certbot/certificate is installed and effective nginx listens only on 80.
+  Approved-vault handoff and a break-glass admin/recovery path remain open
+  operational follow-ups.
 - 2026-07-08 — **Post-S6 housekeeping: prod deploys unblocked + admin password
   rotated + operator scripts fixed in the image.** (1) The S6 flip left the prod
   git working tree dirty (Codex's SQL edits, byte-identical to the committed
