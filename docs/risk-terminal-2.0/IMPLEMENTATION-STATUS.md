@@ -1253,3 +1253,53 @@ a revision scope naming the companies it actually wrote. Do **not** wire
 staged). It widens Bash permissions to include `ssh root@<redacted-host> *` and
 drops `"hooks": {}`. Flagged for the owner because an unrestricted-shell
 allowlist entry is worth a deliberate decision; **not** modified by this slice.
+
+---
+
+## 18. Slice B-PR6 — lineage on the deterministic import, B5 cont'd (2026-07-16)
+
+**Status: `implemented` + `tested` (28 unit + 7 handler). Not owner-reviewed.
+Two of five import paths now record lineage. Provisional still NOT lifted.**
+
+Widens §17's contract to `POST /api/onboarding/import/budget` — the
+deterministic per-company import — on the same boundary: `ensureDataRevision()`
+inside the route's existing `$transaction` (`:247`), `revisionId` threaded to
+the post-commit recompute.
+
+### 18.1 Why this path's lineage is stronger, and where it is weaker
+
+It is not a copy of §17. The two paths hold different evidence, and each is
+honest about a different half:
+
+| | staging `/apply` | `/import/budget` |
+|---|---|---|
+| **Artifact** | `import-staging:<cuid>` — names the import *event*; bytes are not retained | `workbook-sha256:<digest>#<sheet>` — **byte-exact**, fingerprints what was read |
+| **Mapping** | `effective-mapping:<sha256>` of the proposal ⊕ overrides actually applied | `parser:sopl` / `parser:rollup#<column>` — names the parser, **not its code version** |
+
+So §17.6's "a staging id is not a byte fingerprint" is **closed on this path**:
+it holds the upload while it works, so it hashes it. In exchange its mapping id
+is the weaker one — editing `parseSoplSheet` does not move `parser:sopl`, so two
+revisions with the same mapping id could span a parser change across a deploy.
+Closing that needs a real adapter/parser version, which does not exist.
+
+This also makes idempotent **reuse** real rather than theoretical for the first
+time: the budget route permits re-upload (delete-then-insert converges), so
+re-importing byte-identical input hits the same content hash and reuses one
+revision. On the staging path the status claim 409s a repeat before it can.
+
+### 18.2 Evidence — commands actually run this turn
+
+- `npx tsc --noEmit` → 0
+- `npx vitest run --reporter=dot` → **507 files / 6,632 passed / 55 skipped / 0 failed**
+- live-DB (`RLS_INTEGRATION=1`) → **36 passed**
+- Reconciliation, read-only SQL: **1,269** IVs · **0** traced · **0** revisions ·
+  ΣIV **413,796,007.3851349** · ΣBudgetLine **1,062,640,716.182965** — unchanged.
+
+### 18.3 Limits
+
+- **Three paths still untraced:** `apply-multi`, `apply-multi-entity`,
+  `multi-file-orchestrator`. Each writes several companies per call, so each
+  needs a scope naming all of them — a wrong `companyIds` would be a false
+  claim, not a gap, which is why they are not bulk-copied here.
+- The parser mapping id does not version parser code (above).
+- Everything in §17.6 that is not listed as closed still stands.

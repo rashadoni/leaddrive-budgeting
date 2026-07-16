@@ -36,6 +36,8 @@ import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { getLogger } from "@/lib/log"
+import { ensureDataRevision } from "@/lib/risk/data-revision-writer"
+import { buildBudgetImportRevisionScope } from "@/lib/risk/import-lineage"
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
 const log = getLogger("api:import-budget")
@@ -70,6 +72,11 @@ interface ApplyResult {
   parentRollupsUnallocated: number
   planId: string
   planCreated: boolean
+  /**
+   * Phase 10 / Stage B5 — the DataRevision this import committed, and the one
+   * every IndicatorValue the follow-on recompute writes is traced to.
+   */
+  revisionId: string
 }
 
 export async function POST(request: NextRequest) {
@@ -182,9 +189,14 @@ export async function POST(request: NextRequest) {
   // Parse OUTSIDE the transaction — malformed workbook should fail fast
   // without holding a long-running DB lock.
   let workbook: XLSX.WorkBook
+  // Phase 10 / Stage B5 — kept in scope past the parse so the revision can
+  // fingerprint the bytes this import actually read. Not stored anywhere; it is
+  // hashed and dropped when the request ends.
+  let workbookBytes: Buffer
   try {
     const buf = await file.arrayBuffer()
-    workbook = XLSX.read(Buffer.from(buf), {
+    workbookBytes = Buffer.from(buf)
+    workbook = XLSX.read(workbookBytes, {
       type: "buffer",
       cellFormula: false,
       cellHTML: false,
@@ -287,6 +299,29 @@ export async function POST(request: NextRequest) {
           inserted += 1
         }
 
+        // Phase 10 / Stage B5 — pin the source state this import committed,
+        // inside the transaction that committed it. Same boundary and same
+        // reasoning as the staging apply route: a revision names SOURCE state,
+        // and this transaction is where source state becomes real, so the two
+        // commit or roll back together. Recompute stays post-commit below —
+        // per 03-DATA-KPI-TRUST-SPEC §6.1/§6.4 — so this guarantees
+        // import ↔ revision, not revision ↔ IndicatorValue. See
+        // IMPLEMENTATION-STATUS.md §17.
+        const revision = await ensureDataRevision(tx, {
+          scope: buildBudgetImportRevisionScope({
+            organizationId: orgId,
+            companyId: company.id,
+            workbookBytes,
+            sheetName: sheetNameRaw,
+            parser,
+            rollupColumnHeader:
+              parser === "rollup" ? (rollupColumnHeader as string) : null,
+            targetYear: year,
+          }),
+          reason: "import",
+          createdById: session.userId,
+        })
+
         return {
           inserted,
           deleted: del.count,
@@ -295,6 +330,7 @@ export async function POST(request: NextRequest) {
           parentRollupsUnallocated: parseResult.parentRollupsUnallocated.length,
           planId: plan.id,
           planCreated,
+          revisionId: revision.id,
         }
       },
       { timeout: 60_000 },
@@ -327,6 +363,10 @@ export async function POST(request: NextRequest) {
       recomputeLog.error(label, {
         err: err instanceof Error ? err.message : String(err),
       }),
+  }, {
+    // Phase 10 / Stage B5 — trace every IndicatorValue this run writes to the
+    // revision the import transaction committed above.
+    revisionId: result.revisionId,
   })
   const indicatorsStale = recomputeResult.failed > 0
 

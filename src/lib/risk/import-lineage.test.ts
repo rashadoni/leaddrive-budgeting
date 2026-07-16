@@ -10,9 +10,12 @@
 import { describe, it, expect } from 'vitest';
 import type { MappingProposal } from '@/lib/onboarding/ai-mapper/types';
 import {
+  buildBudgetImportRevisionScope,
   buildImportRevisionScope,
   effectiveMappingVersionId,
   importStagingArtifactId,
+  parserMappingVersionId,
+  workbookArtifactId,
 } from './import-lineage';
 import { computeRevisionContentHash } from './data-revision';
 
@@ -201,6 +204,127 @@ describe('buildImportRevisionScope', () => {
     const a = computeRevisionContentHash({ scope: buildImportRevisionScope(base), reason: 'import' });
     const b = computeRevisionContentHash({
       scope: buildImportRevisionScope({ ...base, effectiveMapping: remapped }),
+      reason: 'import',
+    });
+    expect(a).not.toBe(b);
+  });
+});
+
+describe('workbookArtifactId — the byte-exact half', () => {
+  const bytes = (s: string) => new TextEncoder().encode(s);
+
+  it('fingerprints the bytes, namespaced and sheet-qualified', () => {
+    expect(workbookArtifactId(bytes('hello'), 'SOPL')).toMatch(
+      /^workbook-sha256:[0-9a-f]{64}#SOPL$/,
+    );
+  });
+
+  it('is identical for identical bytes — a true re-upload reuses one revision', () => {
+    expect(workbookArtifactId(bytes('same'), 'SOPL')).toBe(
+      workbookArtifactId(bytes('same'), 'SOPL'),
+    );
+  });
+
+  it('moves on a single changed byte — this is what the staging path cannot see', () => {
+    expect(workbookArtifactId(bytes('v1'), 'SOPL')).not.toBe(
+      workbookArtifactId(bytes('v2'), 'SOPL'),
+    );
+  });
+
+  it('separates two sheets of the same workbook — an import applies one', () => {
+    expect(workbookArtifactId(bytes('wb'), 'SOPL')).not.toBe(
+      workbookArtifactId(bytes('wb'), 'BS'),
+    );
+  });
+});
+
+describe('parserMappingVersionId', () => {
+  it('names the parser variant in force', () => {
+    expect(parserMappingVersionId('sopl')).toBe('parser:sopl');
+  });
+
+  it('carries the entity column for a rollup — it selects which rows land', () => {
+    expect(parserMappingVersionId('rollup', 'Mərkəz')).toBe('parser:rollup#Mərkəz');
+  });
+
+  it('distinguishes two rollup columns of the same parser', () => {
+    expect(parserMappingVersionId('rollup', 'A')).not.toBe(
+      parserMappingVersionId('rollup', 'B'),
+    );
+  });
+
+  it('treats a blank header as absent rather than encoding whitespace', () => {
+    expect(parserMappingVersionId('sopl', '   ')).toBe('parser:sopl');
+  });
+});
+
+describe('buildBudgetImportRevisionScope', () => {
+  const base = {
+    organizationId: 'org_1',
+    companyId: 'co_1',
+    workbookBytes: new TextEncoder().encode('workbook-v1'),
+    sheetName: 'SOPL',
+    parser: 'sopl',
+    targetYear: 2026,
+  };
+
+  it('carries real ids derived from the bytes and the parser — no placeholders', () => {
+    const scope = buildBudgetImportRevisionScope(base);
+    expect(scope.companyIds).toEqual(['co_1']);
+    expect(scope.sourceArtifactIds).toEqual([
+      workbookArtifactId(base.workbookBytes, 'SOPL'),
+    ]);
+    expect(scope.mappingVersionIds).toEqual(['parser:sopl']);
+    expect(scope.periodFrom).toBe('2026-01');
+    expect(scope.periodTo).toBe('2026-12');
+    for (const id of [...scope.sourceArtifactIds, ...scope.mappingVersionIds]) {
+      expect(id).not.toMatch(/unknown|placeholder|todo|tbd/i);
+    }
+  });
+
+  it('re-importing byte-identical input reuses one revision identity', () => {
+    // This path allows re-upload (delete-then-insert converges), so this is a
+    // real idempotency guarantee here, not a theoretical one.
+    const a = computeRevisionContentHash({
+      scope: buildBudgetImportRevisionScope(base),
+      reason: 'import',
+    });
+    const b = computeRevisionContentHash({
+      scope: buildBudgetImportRevisionScope({
+        ...base,
+        workbookBytes: new TextEncoder().encode('workbook-v1'),
+      }),
+      reason: 'import',
+    });
+    expect(a).toBe(b);
+  });
+
+  it('a corrected workbook is a new revision — §5.2', () => {
+    const a = computeRevisionContentHash({
+      scope: buildBudgetImportRevisionScope(base),
+      reason: 'import',
+    });
+    const b = computeRevisionContentHash({
+      scope: buildBudgetImportRevisionScope({
+        ...base,
+        workbookBytes: new TextEncoder().encode('workbook-v2-one-cell-fixed'),
+      }),
+      reason: 'import',
+    });
+    expect(a).not.toBe(b);
+  });
+
+  it('the same bytes read by a different parser is a different source state', () => {
+    const a = computeRevisionContentHash({
+      scope: buildBudgetImportRevisionScope(base),
+      reason: 'import',
+    });
+    const b = computeRevisionContentHash({
+      scope: buildBudgetImportRevisionScope({
+        ...base,
+        parser: 'rollup',
+        rollupColumnHeader: 'Mərkəz',
+      }),
       reason: 'import',
     });
     expect(a).not.toBe(b);

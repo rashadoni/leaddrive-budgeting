@@ -181,3 +181,137 @@ describe('POST /api/onboarding/import/budget — handler', () => {
     expect(prismaMock.company.findFirst).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Phase 10 / Stage B5 — lineage on the deterministic per-company import.
+ *
+ * Runs the real `$transaction` callback so the revision write and its ids are
+ * the route's. This path's artifact id is the strongest in the product: it
+ * fingerprints the uploaded bytes rather than naming a row that described them.
+ */
+describe('POST /api/onboarding/import/budget — B5 lineage writer', () => {
+  const REVISION_ID = 'rev_budget_1';
+
+  function wireTx(opts: { onRevisionCreate?: () => unknown; failInsert?: boolean } = {}) {
+    const dataRevisionCreate = vi.fn(async () => {
+      if (opts.onRevisionCreate) return opts.onRevisionCreate();
+      return { id: REVISION_ID };
+    });
+    const budgetLineCreate = vi.fn(async () => {
+      if (opts.failInsert) throw new Error('INSERT_FAILED');
+      return { id: 'bl_1' };
+    });
+    prismaMock.$transaction.mockImplementation(
+      async (cb: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          budgetPlan: {
+            findFirst: vi.fn().mockResolvedValue({ id: PLAN_ID }),
+            create: vi.fn().mockResolvedValue({ id: PLAN_ID }),
+          },
+          budgetLine: {
+            deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+            create: budgetLineCreate,
+          },
+          chartOfAccount: {
+            findUnique: vi.fn().mockResolvedValue({ id: 'coa_1' }),
+            findFirst: vi.fn().mockResolvedValue({ id: 'coa_1' }),
+            create: vi.fn().mockResolvedValue({ id: 'coa_1' }),
+          },
+          dataRevision: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: dataRevisionCreate,
+          },
+        };
+        return await cb(tx);
+      },
+    );
+    return { dataRevisionCreate, budgetLineCreate };
+  }
+
+  function stageParse() {
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      organizationId: ORG_ID,
+      code: 'AAC',
+      baseCurrencyCode: 'AZN',
+    });
+    parserMock.parseSoplSheet.mockReturnValue({
+      lines: [
+        { code: '601-01', label: 'Revenue', plannedAnnual: 1200, accountType: 'revenue', perMonth: Array.from({ length: 12 }, () => 100) },
+      ],
+      warnings: [],
+      parentRollupsDropped: [],
+      parentRollupsUnallocated: [],
+    });
+  }
+
+  it('creates the revision inside the import transaction, fingerprinting the uploaded bytes', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageParse();
+    const spy = wireTx();
+
+    const res = await POST(await makeMultipartRequest());
+    expect(res.status).toBe(200);
+
+    expect(spy.dataRevisionCreate).toHaveBeenCalledTimes(1);
+    const data = (
+      spy.dataRevisionCreate.mock.calls as unknown as Array<
+        [{ data: Record<string, string[] & string> }]
+      >
+    )[0][0].data;
+    expect(data.organizationId).toBe(ORG_ID);
+    expect(data.companyIds).toEqual([COMPANY_ID]);
+    expect(data.reason).toBe('import');
+    expect(data.createdById).toBe('u_mgr');
+    // A real sha256 over the bytes the route read, qualified by the sheet.
+    expect(data.sourceArtifactIds).toHaveLength(1);
+    expect(data.sourceArtifactIds[0]).toMatch(/^workbook-sha256:[0-9a-f]{64}#SOPL$/);
+    // The deterministic parser is the mapping here.
+    expect(data.mappingVersionIds).toEqual(['parser:sopl']);
+    expect(data.periodFrom).toBe('2026-01');
+    expect(data.periodTo).toBe('2026-12');
+    for (const id of [...data.sourceArtifactIds, ...data.mappingVersionIds]) {
+      expect(id).not.toMatch(/unknown|placeholder|todo|tbd/i);
+    }
+  });
+
+  it('passes the committed revisionId to the recompute', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageParse();
+    wireTx();
+
+    await POST(await makeMultipartRequest());
+
+    const call = recomputeMock.runRecomputeForCompanies.mock.calls[0];
+    expect(call[4]).toMatchObject({ revisionId: REVISION_ID });
+    expect(call[2]).toEqual([{ companyId: COMPANY_ID, year: 2026 }]);
+  });
+
+  it('a failed revision write rolls back the import — no untraceable data lands', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageParse();
+    const spy = wireTx({
+      onRevisionCreate: () => {
+        throw new Error('REVISION_WRITE_FAILED');
+      },
+    });
+
+    const res = await POST(await makeMultipartRequest());
+
+    expect(res.status).toBe(500);
+    expect(spy.budgetLineCreate).toHaveBeenCalled(); // it tried, then rolled back
+    expect(recomputeMock.runRecomputeForCompanies).not.toHaveBeenCalled();
+  });
+
+  it('a failed source write means no revision and no recompute', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageParse();
+    const spy = wireTx({ failInsert: true });
+
+    const res = await POST(await makeMultipartRequest());
+
+    expect(res.status).toBe(500);
+    expect(spy.dataRevisionCreate).not.toHaveBeenCalled();
+    expect(recomputeMock.runRecomputeForCompanies).not.toHaveBeenCalled();
+  });
+});

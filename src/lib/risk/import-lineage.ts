@@ -26,10 +26,15 @@
  *
  * The limit this leaves, stated plainly: a staging id proves *which import
  * event* produced a value, not the byte-exact workbook behind it. Raw upload
- * bytes are not retained (`schema.prisma` — `xlsxTempPath` is a temp path the
- * caller cleans up), so byte-level artifact provenance is not available to any
- * writer today and `DataRevision.contentHash` must not be described as a
- * file-content hash.
+ * bytes are not retained on that path (`schema.prisma` — `xlsxTempPath` is a
+ * temp path the caller cleans up), so `DataRevision.contentHash` must not be
+ * described as a file-content hash for staged imports.
+ *
+ * The deterministic per-company import (`onboarding/import/budget`) is not
+ * subject to that limit: it holds the uploaded bytes while it works, so
+ * `workbookArtifactId` fingerprints what was actually read. Its mapping id is
+ * weaker instead — a named parser rather than a versioned one. The two paths
+ * are honest about different halves, and each says which half.
  */
 
 import { createHash } from 'node:crypto';
@@ -38,7 +43,9 @@ import type { RevisionScope } from './data-revision';
 
 /** Namespaces so an id in the DB says what kind of thing it points at. */
 const SOURCE_ARTIFACT_PREFIX = 'import-staging';
+const WORKBOOK_ARTIFACT_PREFIX = 'workbook-sha256';
 const MAPPING_VERSION_PREFIX = 'effective-mapping';
+const PARSER_MAPPING_PREFIX = 'parser';
 
 /**
  * The id of the artifact an `ImportStaging` row stands for.
@@ -95,6 +102,50 @@ export function effectiveMappingVersionId(mapping: MappingProposal): string {
   return `${MAPPING_VERSION_PREFIX}:${digest}`;
 }
 
+/**
+ * The id of a workbook that was uploaded and applied directly, by its bytes.
+ *
+ * This is the byte-exact artifact identity that `importStagingArtifactId` can
+ * only approximate — the deterministic-parser import receives the file itself,
+ * so it can fingerprint what it actually read instead of naming the row that
+ * described it. Two uploads of the same bytes for the same sheet are the same
+ * artifact and, all else equal, reuse one revision; a single changed cell
+ * produces a different digest and therefore a new revision, which is §5.2
+ * exactly.
+ *
+ * The sheet is part of the id because one workbook holds many, and an import
+ * applies one: the artifact is "this sheet of these bytes", not the file.
+ */
+export function workbookArtifactId(
+  workbookBytes: Uint8Array,
+  sheetName: string,
+): string {
+  const digest = createHash('sha256').update(workbookBytes).digest('hex');
+  return `${WORKBOOK_ARTIFACT_PREFIX}:${digest}#${sheetName}`;
+}
+
+/**
+ * The mapping id for a deterministic (non-AI) parser import.
+ *
+ * These imports carry no proposal — the mapping *is* the named parser variant,
+ * plus the column it was pointed at for a rollup sheet. Naming it is what an
+ * honest `mappingVersionIds` can say here, and it is more than `[]` says.
+ *
+ * **The limit, stated rather than glossed:** this names *which* parser was in
+ * force, not *which version of its code*. Editing `parseSoplSheet` does not move
+ * this id, so two revisions with the same mapping id could have been produced by
+ * different parser behaviour across a deploy. Closing that needs a real
+ * adapter/parser version — recorded in IMPLEMENTATION-STATUS.md §17.
+ */
+export function parserMappingVersionId(
+  parser: string,
+  rollupColumnHeader?: string | null,
+): string {
+  const base = `${PARSER_MAPPING_PREFIX}:${parser}`;
+  const header = rollupColumnHeader?.trim();
+  return header ? `${base}#${header}` : base;
+}
+
 export interface BuildImportRevisionScopeInput {
   organizationId: string;
   /** The company the staged sheet writes to. */
@@ -136,6 +187,52 @@ export function buildImportRevisionScope(
     companyIds: [companyId],
     sourceArtifactIds: [importStagingArtifactId(stagingId)],
     mappingVersionIds: [effectiveMappingVersionId(effectiveMapping)],
+    periodFrom: `${year}-01`,
+    periodTo: `${year}-12`,
+  };
+}
+
+export interface BuildBudgetImportRevisionScopeInput {
+  organizationId: string;
+  /** The company the sheet writes to. */
+  companyId: string;
+  /** Raw bytes of the uploaded workbook — fingerprinted, not stored. */
+  workbookBytes: Uint8Array;
+  /** The sheet inside the workbook this import applied. */
+  sheetName: string;
+  /** Deterministic parser variant in force (`sopl` | `rollup`). */
+  parser: string;
+  /** The entity column, when `parser === 'rollup'`. */
+  rollupColumnHeader?: string | null;
+  /** Fiscal year the import writes. */
+  targetYear: number;
+}
+
+/**
+ * Build the scope for the deterministic per-company budget import.
+ *
+ * Same contract as `buildImportRevisionScope`, from the identifiers that path
+ * actually holds: byte fingerprint instead of a staging row, named parser
+ * instead of an AI proposal.
+ */
+export function buildBudgetImportRevisionScope(
+  input: BuildBudgetImportRevisionScopeInput,
+): RevisionScope {
+  const {
+    organizationId,
+    companyId,
+    workbookBytes,
+    sheetName,
+    parser,
+    rollupColumnHeader,
+    targetYear,
+  } = input;
+  const year = String(targetYear);
+  return {
+    organizationId,
+    companyIds: [companyId],
+    sourceArtifactIds: [workbookArtifactId(workbookBytes, sheetName)],
+    mappingVersionIds: [parserMappingVersionId(parser, rollupColumnHeader)],
     periodFrom: `${year}-01`,
     periodTo: `${year}-12`,
   };
