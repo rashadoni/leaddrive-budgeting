@@ -102,9 +102,14 @@ export interface DataRevision {
  *   state?" — because approving a revision would change its content hash.
  *
  * Consequence, stated plainly: two revisions with an identical hash pin an
- * identical source/mapping state. They may still be distinct rows (a
- * re-import that changed nothing is a real event worth recording); the hash is
- * how you know nothing moved.
+ * identical source/mapping state — so they are the *same* revision. The
+ * persisted table enforces exactly that with
+ * `@@unique([organizationId, contentHash])`: a re-import that changed nothing
+ * collides and is a no-op rather than a phantom row, which is §5.2's "a source
+ * change creates a new revision" read in its contrapositive. Under concurrency
+ * the losing writer surfaces as Prisma `P2002`; a caller that reads that as
+ * "already recorded" is idempotent (proven in
+ * `data-revision.rls.integration.test.ts`).
  */
 export function computeRevisionContentHash(
   input: Pick<DataRevision, 'scope' | 'reason'>,

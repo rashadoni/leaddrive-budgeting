@@ -68,6 +68,7 @@ model Organization {
   importStaging         ImportStaging[]
   terminalLayouts       UserLayoutPreference[]
   auditEvents           AuditEvent[]
+  dataRevisions         DataRevision[]
   intelItems            IntelItem[]
   boardDeckNarrations   BoardDeckNarration[]
   // Phase 7.G Turn LXXXXI batch — back-relations for 5 NEW v2 models.
@@ -104,6 +105,7 @@ model User {
   importStagingCreated ImportStaging[]         @relation("ImportStagingCreator")
   terminalLayouts      UserLayoutPreference[]
   auditEvents          AuditEvent[]            @relation("AuditEventActor")
+  dataRevisions        DataRevision[]          @relation("DataRevisionCreatedBy")
 
   @@unique([organizationId, email])
   @@map("users")
@@ -2564,4 +2566,94 @@ model TradeImportBatch {
   @@unique([organizationId, kind, sourceSystem, fileHash])
   @@index([organizationId, kind, sourceDate, isActive])
   @@map("trade_import_batches")
+}
+
+/**
+ * Phase 10 / Stage B2 — DataRevision: the exact source/mapping state a
+ * downstream calculation used (03-DATA-KPI-TRUST-SPEC §5, ADR Trust Core §4).
+ *
+ * Makes one question answerable: given a number on screen, which sources and
+ * mappings produced it, and has anything moved since? Today that question has
+ * no answer — 0 of 1,269 IndicatorValue rows carry lineage — which is why A5
+ * marks every coloured cell provisional.
+ *
+ * Every field here maps 1:1 onto `src/lib/risk/data-revision.ts`, which is the
+ * contract of record. No field exists here that the spec does not name.
+ *
+ * **Immutability** (§5.2 / ADR §4) is enforced in the database by the
+ * `data_revisions_immutable` trigger, not by convention: the pinned source
+ * state (org, scope, reason, contentHash, createdAt/By) cannot be UPDATEd once
+ * written. Only lifecycle columns move — lockedAt / reconciledAt / approvedAt
+ * and supersededById — because §5.1 requires the revision to carry that state
+ * and §5.2 has revisions superseded rather than edited.
+ *
+ * **Isolation**: RLS `tenant_isolation` is enabled in the same migration that
+ * creates the table, so the table never exists without org isolation. Unset
+ * `app.organization_id` yields NULL, which is not TRUE — deny by default.
+ */
+model DataRevision {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // §5.1 "organization and scope". Empty companyIds = org-wide. Stored as
+  // arrays rather than join tables: a revision pins an immutable *snapshot* of
+  // ids, so there is nothing to query or update relationally, and the content
+  // hash already treats them as sets.
+  companyIds        String[]
+  // §5.1 "source batch/artifact identifiers".
+  sourceArtifactIds String[]
+  // §5.1 "mapping/version identifiers".
+  mappingVersionIds String[]
+
+  // §5.1 "period range" — period keys, per src/lib/risk/period-context.ts.
+  periodFrom String
+  periodTo   String
+
+  // §5.1 "reason code".
+  reason RevisionReason
+
+  // §5.1 "createdAt/createdBy". Null actor = cron / script / system path,
+  // matching AuditEvent.actorUserId. SetNull so deleting a user never erases
+  // the provenance trail.
+  createdAt   DateTime @default(now())
+  createdById String?
+  createdBy   User?    @relation("DataRevisionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  // §5.1 "supersedes/supersededBy". One-to-one self relation: a revision
+  // replaces at most one predecessor and is replaced by at most one successor.
+  supersedesId String?       @unique
+  supersedes   DataRevision? @relation("DataRevisionSupersedes", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy DataRevision? @relation("DataRevisionSupersedes")
+
+  // §5.1 "lock/reconciliation/approval state". The only mutable columns.
+  lockedAt     DateTime?
+  reconciledAt DateTime?
+  approvedAt   DateTime?
+
+  // §5.1 "deterministic content hash" — SHA-256 over canonical JSON of
+  // scope + reason. See computeRevisionContentHash().
+  contentHash String
+
+  // Idempotency + duplicate protection (§5.2 "a source change creates a new
+  // revision" — so an unchanged source state must NOT create one). The hash
+  // excludes createdAt/lifecycle, so re-running an import that changed nothing
+  // collides here and the write is a no-op rather than a phantom revision.
+  // Org-scoped because the hash includes organizationId anyway; the composite
+  // keeps the index useful under RLS.
+  @@unique([organizationId, contentHash])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, periodFrom, periodTo])
+  @@map("data_revisions")
+}
+
+/// §5.1's reason codes, verbatim. Mirrors RevisionReason in
+/// src/lib/risk/data-revision.ts.
+enum RevisionReason {
+  import
+  correction
+  mapping_change
+  late_adjustment
+  external_refresh
+  manual_override
 }
