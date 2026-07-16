@@ -56,7 +56,7 @@ interface WorkItem {
   companyId: string;
   companyCode: string;
   companyName: string;
-  industry: string;
+  industry: string | null;
   indicatorId: string;
   indicatorCode: string;
   indicatorLabel: string;

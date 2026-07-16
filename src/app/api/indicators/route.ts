@@ -20,13 +20,22 @@ import {
   recomputeIndicator,
   type IndicatorDefinitionLike,
 } from '@/lib/risk/recompute';
-import { filterOperationalCompanies } from '@/lib/risk/targets';
+import {
+  filterOperationalCompanies,
+  isRollupIndicator,
+  preferOrgScopedDefinitions,
+} from '@/lib/risk/targets';
+import {
+  loadPairApplicabilityResolver,
+  matchApplicablePairs,
+} from '@/lib/risk/pair-applicability';
 import { enqueue as enqueueRecomputeJob } from '@/lib/recompute/job-runner';
 // Phase 5.2 Stage 2 (2026-05-21) — RLS wrap for GET + POST sync paths.
 // Async (BullMQ) path runs in the worker process; wrap inside the
 // processor instead — tracked as ROADMAP Phase 8 §D5(b).
 import { withOrgScope } from '@/lib/db/with-org-scope';
 import { getLogger } from '@/lib/log';
+import type { Prisma, PrismaClient } from '@prisma/client';
 
 const logger = getLogger('api:indicators');
 
@@ -51,7 +60,7 @@ export const maxDuration = 60;
 async function resolveTargets(
   organizationId: string,
   filter: { companyId?: string; indicatorCode?: string },
-  db: typeof prisma = prisma,
+  db: PrismaClient | Prisma.TransactionClient = prisma,
 ) {
   const companies = await db.company.findMany({
     where: {
@@ -108,23 +117,19 @@ async function resolveTargets(
       byCode.set(d.code, d);
     }
   }
-  const defs = [...byCode.values()];
+  // This endpoint's target universe is operational level-2 companies.
+  // rollup()-bearing definitions are structurally parent-only and are
+  // refreshed by the canonical import trigger's parent pass instead.
+  const defs = [...byCode.values()].filter(
+    (definition) => !isRollupIndicator(definition),
+  );
 
-  const targets: Array<{
-    company: (typeof operational)[number];
-    definition: (typeof defs)[number];
-  }> = [];
-  for (const company of operational) {
-    for (const def of defs) {
-      if (
-        def.industries.length === 0 ||
-        def.industries.includes(company.industry)
-      ) {
-        targets.push({ company, definition: def });
-      }
-    }
-  }
-  return targets;
+  const pairApplicability = await loadPairApplicabilityResolver(db, {
+    organizationId,
+    companies: operational,
+    definitions: defs,
+  });
+  return matchApplicablePairs(operational, defs, pairApplicability);
 }
 
 // --- GET: list indicator definitions scoped to caller's org ------------------
@@ -167,23 +172,12 @@ export async function GET(request: NextRequest) {
         where: {
           isActive: true,
           OR: [{ organizationId: null }, { organizationId: session.orgId }],
-          // Industry scope: universal (empty industries) OR overlaps one of
-          // the org's company industries. `hasSome: []` (org with no companies
-          // yet) matches nothing, so a fresh org sees universal indicators
-          // only — they widen as companies are onboarded.
-          AND: [
-            {
-              OR: [
-                { industries: { isEmpty: true } },
-                { industries: { hasSome: orgIndustries } },
-              ],
-            },
-          ],
         },
         orderBy: { sortOrder: 'asc' },
         select: {
           id: true,
           organizationId: true,
+          isActive: true,
           code: true,
           nameEn: true,
           nameAz: true,
@@ -195,7 +189,24 @@ export async function GET(request: NextRequest) {
           sortOrder: true,
         },
       });
-      return NextResponse.json(indicators);
+      // Resolve a same-code tenant override before applying activity scope.
+      // Filtering in SQL first can discard a non-matching tenant override and
+      // incorrectly resurrect its matching global seed.
+      const orgIndustrySet = new Set(orgIndustries);
+      const scopedIndicators = preferOrgScopedDefinitions(indicators).filter(
+        (indicator) =>
+          indicator.industries.length === 0 ||
+          indicator.industries.some((industry) =>
+            orgIndustrySet.has(industry),
+          ),
+      );
+      // `isActive` is selected only to satisfy the canonical definition
+      // preference shape; the public lightweight catalog contract omits it.
+      return NextResponse.json(
+        scopedIndicators.map(({ isActive: _isActive, ...indicator }) =>
+          indicator,
+        ),
+      );
     });
   } catch (error) {
     logger.error('fetch indicators failed', {
@@ -242,7 +253,15 @@ export async function POST(request: NextRequest) {
 
   let targets: Awaited<ReturnType<typeof resolveTargets>>;
   try {
-    targets = await resolveTargets(session.orgId, { companyId, indicatorCode });
+    // Target resolution includes CompanyIndicator and therefore belongs in
+    // the same org-scoped read boundary as the company/definition lookups.
+    targets = await withOrgScope(session.orgId, (tx) =>
+      resolveTargets(
+        session.orgId,
+        { companyId, indicatorCode },
+        tx,
+      ),
+    );
   } catch (error) {
     logger.error('resolve recompute targets failed', {
       reason: error instanceof Error ? error.message : String(error),

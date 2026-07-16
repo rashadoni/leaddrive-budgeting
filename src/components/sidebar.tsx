@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
-import { hasRole, type Role } from "@/lib/api-auth"
+import { hasRole, type Role } from "@/lib/permissions"
 import {
   Calculator,
   Settings,

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Sparkline, type SparklineStatus } from "../Sparkline";
 import { resolveIndicatorLabel } from "../../lib/resolve-indicator-label";
+import type { ApplicabilityReason } from "../../lib/indicator-applicability";
 import { useAISummary, fetchAISummary } from "./ai-summary";
 import type { CompanyRow, IndicatorCol } from "./types";
 
@@ -105,8 +106,12 @@ type HeatMapCellTdProps = {
   co: CompanyRow;
   ind: IndicatorCol;
   cell: HeatMapCell | undefined;
+  /** Resolved from CompanyIndicator override first, then activity taxonomy. */
+  isApplicable: boolean;
+  /** Why a known N/A pair is excluded; null for applicable pairs. */
+  applicabilityReason: ApplicabilityReason | null;
   compactMode: boolean;
-  onCellClick: () => void;
+  onCellClick?: () => void;
   /** Phase 7.N — scenario delta: scenario status for this cell, or undefined if unchanged. */
   scenarioStatus?: string;
   /**
@@ -138,6 +143,8 @@ export function HeatMapCellTd({
   co,
   ind,
   cell,
+  isApplicable,
+  applicabilityReason,
   compactMode,
   scenarioStatus,
   onCellClick,
@@ -150,11 +157,7 @@ export function HeatMapCellTd({
   // "missing" (applicable but no computed value). Empty industries[]
   // means sector-agnostic indicator (applies everywhere). Status taxonomy
   // is local-only; matrix payload still uses the 4 core statuses.
-  const isNotApplicable =
-    !cell &&
-    Array.isArray(ind.industries) &&
-    ind.industries.length > 0 &&
-    !ind.industries.includes(co.industry);
+  const isNotApplicable = !isApplicable;
   const status = cell?.status ?? (isNotApplicable ? 'na' : 'missing');
   // M3 — only red/amber cells trigger LLM hover-summary. Green/missing
   // are noise; unknown often errors at LLM (no narrative to extract).
@@ -182,10 +185,9 @@ export function HeatMapCellTd({
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
     };
   }, []);
-  // CLI Tier 2 — 'na' cells render almost invisible (very low opacity, no
-  // glyph, no value). Other statuses use the shared palette helper. Cast
-  // 'na' to 'missing' for the shared color helper input type contract;
-  // the resulting color is overridden anyway when status === 'na'.
+  // N/A stays neutral but readable when the user reveals the full catalogue.
+  // Other statuses use the shared palette helper. Cast N/A to missing for the
+  // shared color helper input contract; its neutral color is overridden below.
   //
   // Financial-truth-infra Phase A.3 — `unknown` status also gets a neutral
   // background (no green/amber/red color band) + a "—" placeholder in
@@ -196,13 +198,17 @@ export function HeatMapCellTd({
   // distinction (industry-not-applicable vs no-data) is conveyed via
   // tooltip text. `missing` is also kept neutral.
   const baseColor = statusColor(status === 'na' || status === 'unknown' ? 'missing' : status);
-  const color = status === 'na' || status === 'unknown' ? '#0A0E27' : baseColor;
+  const color = status === 'na' ? '#111827' : status === 'unknown' ? '#0A0E27' : baseColor;
   // Phase 7.N — scenario overlay: if scenarioStatus set, use it as the effective color.
   // M7 gate: scenarioShape companion ensures color-blind safe glyph is rendered in the
   // scenario badge span below (aria-hidden=true, bottom-left corner of cell).
-  const effectiveStatus = scenarioStatus ?? status;
-  const scenarioColor = scenarioStatus ? statusColor(scenarioStatus as 'green' | 'amber' | 'red') : null;
-  const scenarioShape = scenarioStatus ? statusShape(scenarioStatus as Parameters<typeof statusShape>[0]) : null; // M7 shape companion
+  // An N/A pair cannot acquire risk colour from an out-of-scope scenario
+  // result. The HeatMap also suppresses it before this component; this local
+  // guard keeps the cell safe for direct/reused renders.
+  const resolvedScenarioStatus = isNotApplicable ? undefined : scenarioStatus;
+  const effectiveStatus = resolvedScenarioStatus ?? status;
+  const scenarioColor = resolvedScenarioStatus ? statusColor(resolvedScenarioStatus as 'green' | 'amber' | 'red') : null;
+  const scenarioShape = resolvedScenarioStatus ? statusShape(resolvedScenarioStatus as Parameters<typeof statusShape>[0]) : null; // M7 shape companion
   const cellBgColor = scenarioColor ?? color;
   const statusColorClass =
     effectiveStatus === 'red'
@@ -260,35 +266,55 @@ export function HeatMapCellTd({
   // against the green flash); when not flashing the confidence ring
   // shows.
   const isLowConfidence = cell?.signalConfidence === 'low';
+  const notApplicableReasonText =
+    applicabilityReason === 'explicit_disabled'
+      ? t('heatMap.notApplicableDisabled')
+      : applicabilityReason === 'entity_level_mismatch'
+        ? t('heatMap.notApplicableEntityLevel')
+        : t('heatMap.notApplicableActivity');
+  const localizedStatus =
+    status === 'na'
+      ? notApplicableReasonText
+      : status === 'missing'
+        ? t('heatMap.missingData')
+        : t(`status.${status}` as never);
+  const baseAriaLabel =
+    cell && cell.status !== 'unknown'
+      ? t('heatMap.cellAriaWithValue', {
+          company: co.code,
+          indicator: ind.code,
+          status: localizedStatus,
+          value: formatValue(cell.value, ind.unit),
+        })
+      : t('heatMap.cellAriaWithoutValue', {
+          company: co.code,
+          indicator: ind.code,
+          status: localizedStatus,
+        });
+  const materialityLabel =
+    cell?.materiality === 'not_material'
+      ? t('indicatorDetail.materiality.notMaterial')
+      : cell?.materiality === 'low_materiality'
+        ? t('indicatorDetail.materiality.lowMateriality')
+        : null;
+  const cellAriaLabel = [
+    baseAriaLabel,
+    materialityLabel
+      ? t('heatMap.cellAriaMateriality', { materiality: materialityLabel })
+      : null,
+    isLowConfidence ? t('heatMap.cellAriaLowConfidence') : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join('. ');
+  const staleStatusLabel =
+    staleInputStatus === 'critical_stale'
+      ? t('heatMap.staleInputCritical')
+      : t('heatMap.staleInputStale');
   return (
     <td
-      onClick={onCellClick}
-      onPointerEnter={handlePointerEnter}
-      onPointerLeave={handlePointerLeave}
-      className={`cursor-pointer border-b border-gray-800/40 p-0 transition-shadow ${
-        flashing
-          ? 'shadow-[inset_0_0_0_2px_#00D4AA]'
-          : isLowConfidence
-            ? 'shadow-[inset_0_0_0_1px_rgba(245,158,11,0.55)]'
-            : ''
-      }`}
-      style={{
-        backgroundColor: materialityBackground,
-        // CLI Tier 2 — 'na' is barely visible (0.05); 'missing' faded (0.25);
-        // all computed statuses fully visible (0.85).
-        // Phase 7.H F4.v2.4 — materiality scales the base opacity down
-        // for low/non-material ESG cells.
-        opacity:
-          (status === 'na' ? 0.05 : status === 'missing' ? 0.25 : 0.85) *
-          materialityOpacityScale,
-      }}
+      className="border-b border-gray-800/40 p-0"
       data-materiality={cell?.materiality ?? undefined}
       data-signal-confidence={cell?.signalConfidence ?? undefined}
-      aria-label={`${co.code} ${ind.code} ${status === 'na' ? 'not applicable' : `${status} ${statusShape(status)}`}${
-        cell?.materiality && cell.materiality !== 'material'
-          ? ` (${cell.materiality})`
-          : ''
-      }${isLowConfidence ? ' (low data confidence)' : ''}`}
     >
       {/* Dense matrix cells sit directly beside each other. Radix's default
           hoverable-content grace area can keep the previous cell's tooltip
@@ -298,8 +324,25 @@ export function HeatMapCellTd({
           soon as the trigger is left is both safe and keeps hover data exact. */}
       <Tooltip disableHoverableContent>
         <TooltipTrigger asChild>
-          <div
-            className="relative"
+          <button
+            type="button"
+            onClick={isNotApplicable ? undefined : onCellClick}
+            onPointerEnter={handlePointerEnter}
+            onPointerLeave={handlePointerLeave}
+            aria-disabled={isNotApplicable || undefined}
+            aria-label={cellAriaLabel}
+            data-applicability-reason={
+              isNotApplicable ? applicabilityReason : undefined
+            }
+            className={`relative block border-0 p-0 text-left transition-shadow focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#6AD5CB] ${
+              isNotApplicable ? 'cursor-help' : 'cursor-pointer'
+            } ${
+              flashing
+                ? 'shadow-[inset_0_0_0_2px_#00D4AA]'
+                : isLowConfidence
+                  ? 'shadow-[inset_0_0_0_1px_rgba(245,158,11,0.55)]'
+                  : ''
+            }`}
             style={{
               width: compactMode ? 40 : 54,
               // CLI Bloomberg-sweep: normal cells expand 18 → 30 to host
@@ -307,6 +350,13 @@ export function HeatMapCellTd({
               // Compact mode unchanged to preserve density (sparkline +
               // value only show in tooltip there).
               height: compactMode ? 12 : 30,
+              backgroundColor: materialityBackground,
+              // N/A is intentionally neutral, but fully legible after the
+              // user reveals the complete catalogue. Missing remains muted;
+              // computed statuses keep their established visual weight.
+              opacity:
+                (status === 'na' ? 1 : status === 'missing' ? 0.25 : 0.85) *
+                materialityOpacityScale,
             }}
           >
             {/* Tier-3 sub-29 M7 — color-blind safe redundant signal.
@@ -440,7 +490,10 @@ export function HeatMapCellTd({
                 data-testid="heatmap-stale-input-marker"
                 data-source-code={staleInputSourceCode}
                 data-stale-status={staleInputStatus}
-                title={`Input «${staleInputSourceCode}» is ${staleInputStatus?.replace('_', ' ')} — open Drift Dashboard to refresh`}
+                title={t('heatMap.staleInputTitle', {
+                  source: staleInputSourceCode,
+                  status: staleStatusLabel,
+                })}
                 className="absolute pointer-events-none select-none rounded-full"
                 style={{
                   top: 1,
@@ -471,15 +524,26 @@ export function HeatMapCellTd({
                 }}
               />
             )}
-            {/* Missing cell label — no IndicatorValue row exists yet.
-                Shows "н/д" (нет данных) so the cell is not mistaken for
-                a zero or an n/a.  Compact: tiny centered dot instead of
-                text (40×12 px is too narrow for Cyrillic). */}
+            {/* N/A is deliberately visible after Show all, but stays neutral
+                and non-actionable. The localized short label distinguishes it
+                from an applicable cell whose observation is missing. */}
+            {status === 'na' && (
+              <span
+                aria-hidden="true"
+                className="absolute inset-0 flex items-center justify-center font-mono font-medium leading-none text-gray-400 select-none pointer-events-none"
+                style={{ fontSize: 11 }}
+              >
+                {compactMode ? '—' : t('heatMap.notApplicableShort')}
+              </span>
+            )}
+            {/* Missing cell label — no IndicatorValue row exists yet. The
+                localized short label prevents an empty cell from looking like
+                a zero. Compact mode keeps the tiny dot for matrix density. */}
             {!cell && status !== 'na' && (
               compactMode ? (
                 <span
                   className="absolute inset-0 flex items-center justify-center font-mono leading-none select-none pointer-events-none"
-                  style={{ fontSize: 6, color: 'rgba(156,163,175,0.5)' }}
+                  style={{ fontSize: 11, color: 'rgba(156,163,175,0.5)' }}
                   aria-hidden="true"
                 >
                   ·
@@ -487,10 +551,10 @@ export function HeatMapCellTd({
               ) : (
                 <span
                   className="absolute inset-0 flex items-center justify-center font-mono leading-none select-none pointer-events-none"
-                  style={{ fontSize: 8, color: 'rgba(156,163,175,0.45)' }}
+                  style={{ fontSize: 11, color: 'rgba(156,163,175,0.45)' }}
                   aria-hidden="true"
                 >
-                  н/д
+                  {t('heatMap.noDataShort')}
                 </span>
               )
             )}
@@ -544,7 +608,7 @@ export function HeatMapCellTd({
                 </span>
               </div>
             ) : null}
-          </div>
+          </button>
         </TooltipTrigger>
         <TooltipContent
           side="top"
@@ -576,11 +640,11 @@ export function HeatMapCellTd({
                   <span aria-hidden="true" className="mr-0.5 opacity-80">
                     {statusShape(cell.status)}
                   </span>
-                  {cell.status.toUpperCase()}
+                  {t(`status.${cell.status}` as never)}
                 </span>
                 {cell.status === 'unknown' ? (
                   <span className="ml-1 text-muted-foreground/80 italic">
-                    — нет данных / no data ingested
+                    {t('heatMap.tooltipNoData')}
                   </span>
                 ) : (
                   <>
@@ -666,12 +730,15 @@ export function HeatMapCellTd({
               </div>
             </>
           ) : status === 'na' ? (
-            <div className="text-[11px] text-muted-foreground mt-1">
-              {t('heatMap.notApplicable', { industry: co.industry })}
+            <div className="mt-1 space-y-1 text-[11px] text-muted-foreground">
+              <div>{notApplicableReasonText}</div>
+              <div className="text-[11px] text-muted-foreground/70">
+                {t('heatMap.notApplicableNoActionHint')}
+              </div>
             </div>
           ) : (
             <div className="text-[11px] text-muted-foreground mt-1">
-              нет данных
+              {t('heatMap.tooltipNoData')}
             </div>
           )}
         </TooltipContent>

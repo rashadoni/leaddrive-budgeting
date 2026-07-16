@@ -49,7 +49,7 @@ export function TradeBudget() {
     } catch {
       setError(t("loadFailed"));
     }
-  }, [year, t]);
+  }, [year, t, setPools, setError]);
 
   useEffect(() => {
     void load();

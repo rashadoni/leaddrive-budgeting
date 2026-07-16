@@ -62,21 +62,18 @@ export interface MatchResult<
  *
  * The catalogue contract is intentionally fail-open for missing taxonomy:
  * a company without a known industry or a definition without industry tags
- * cannot be proved non-applicable. A non-unknown persisted observation also
- * keeps a legacy/per-company override reachable even if today's catalogue
- * tags disagree. Persisted `unknown` placeholders are not evidence and must
- * not rescue an explicit mismatch.
+ * cannot be proved non-applicable. Once both sides have explicit taxonomy, a
+ * mismatch is non-applicable. A persisted result is output of the computation,
+ * not evidence that the computation was allowed for that activity profile.
  */
 export function isIndicatorApplicableToCompany(
   company: { industry?: string | null },
   definition: { industries?: readonly string[] | null },
-  observedStatus?: string | null,
 ): boolean {
   if (!company.industry) return true;
   const industries = definition.industries ?? [];
   if (industries.length === 0) return true;
-  if (industries.includes(company.industry)) return true;
-  return observedStatus != null && observedStatus !== 'unknown';
+  return industries.includes(company.industry);
 }
 
 /**

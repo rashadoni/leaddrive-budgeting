@@ -331,12 +331,13 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     //     opts-in level=1 parent cos for any indicator carrying a
     //     `rollup:` requiredInput → parent-co IVs are written to DB.
     //   • Sub-44 cont'd render-path (2026-05-03) closed (a) + matrix
-    //     visibility: `src/app/api/indicators/matrix/route.ts` now
+    //     visibility. The canonical target fan-out now treats rollup-bearing
+    //     definitions as structurally parent-only; the matrix endpoint
     //     (i) keeps rollup-bearing internal indicators in the visible
     //     indicators list, (ii) emits real parent-co cells with drill-
     //     downable `indicatorValueId` (priority over Turn 33.5 synthetic
-    //     averages), (iii) suppresses op-co cells for rollup-bearing
-    //     internals so the misleading amber-everywhere is gone.
+    //     averages), and (iii) marks the leaf pair N/A rather than exposing a
+    //     false missing/recompute affordance. Legacy leaf IVs are ignored.
     //   • The seed STAYS `category: "internal"` because the relaxed
     //     matrix-side filter is the correct gate point: "internal"
     //     remains the seed-author signal for "not user-facing on op-co

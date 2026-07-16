@@ -16,6 +16,16 @@ import type { RecomputeDataSource, ValueSource } from './recompute-types';
 
 // --- Prisma adapter ----------------------------------------------------------
 
+export interface PrismaDataSourceOptions {
+  /**
+   * `preview` keeps every resolver read available while making the adapter's
+   * sole write method a no-op. Scenario previews must use this mode: they call
+   * the same recompute engine as persisted refreshes, and that engine always
+   * invokes `upsertIndicatorValue` after evaluating a formula.
+   */
+  mode?: 'persist' | 'preview';
+}
+
 /**
  * Wraps a real PrismaClient into `RecomputeDataSource`. Every read includes
  * `organizationId` in `where:` for cross-tenant safety. Writes also carry
@@ -28,6 +38,7 @@ import type { RecomputeDataSource, ValueSource } from './recompute-types';
  */
 export function createPrismaDataSource(
   prisma: PrismaClient | Prisma.TransactionClient,
+  options: PrismaDataSourceOptions = {},
 ): RecomputeDataSource {
   return {
     async listBookings({ organizationId, companyId, start, end }) {
@@ -573,6 +584,13 @@ export function createPrismaDataSource(
       confidence,
       revisionId,
     }) {
+      // Quick Preview evaluates the canonical recompute path but must never
+      // replace the live IndicatorValue cache with scenario values. Keep this
+      // guard at the adapter's single write boundary (and before the lineage
+      // lookup) so a preview cannot mutate even if a caller forgets that
+      // recomputeIndicator persists unconditionally.
+      if (options.mode === 'preview') return;
+
       // Phase 10 / Stage B5 — lineage guard. A revisionId is only meaningful
       // if it names a revision of THIS organization whose immutable company
       // scope explicitly contains the company being written. A pointer into

@@ -11,9 +11,8 @@
  *
  * Contract under test (HeatMap.tsx onCellClick handler):
  *   onCellClick fires →
- *     1. setCompany(co.code)             ALWAYS
- *     2. setActivePanel(3)               ALWAYS — panel always opens
- *                                        on cell click, no silent skip
+ *     1. setCompany(co.code)             for every applicable cell
+ *     2. setActivePanel(3)               for every applicable cell
  *     3. branch on cell.indicatorValueId:
  *        • present  → setActiveIndicatorValue(ivId)  (computed cell drill-down)
  *        • missing  → setPendingMissingCell({company,indicator metadata})
@@ -21,8 +20,9 @@
  *
  * Phase 7.D regression-architect closure: previously missing-cell click
  * silently no-op'd Panel 3 — user reported "клики не работают" twice.
- * New contract guarantees Panel 3 always opens; no-data state shows the
- * codes the user clicked so the action is never silently swallowed.
+ * New contract guarantees Panel 3 opens for every applicable cell; no-data
+ * state shows the codes the user clicked so the action is never silently
+ * swallowed. Known N/A pairs are covered by the applicability-filter suite.
  *
  * What this test does NOT cover (separate concerns):
  *   - The Panel 3 (`IndicatorDetail`) component's render contract —
@@ -193,6 +193,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function findCellButton(
+  companyCode: string,
+  indicatorCode: string,
+): HTMLElement | undefined {
+  const labelPrefix = `${companyCode}, ${indicatorCode}:`;
+  return screen
+    .getAllByRole("button")
+    .find((button) => button.getAttribute("aria-label")?.startsWith(labelPrefix));
+}
+
 describe("HeatMap cell-click → store contract (Phase 7.D regression)", () => {
   it("click on cell WITH indicatorValueId fires setCompany + setActivePanel(3) + setActiveIv (no pending)", async () => {
     render(<HeatMap />);
@@ -200,15 +210,10 @@ describe("HeatMap cell-click → store contract (Phase 7.D regression)", () => {
       expect(screen.getByText("AAC-MAIN")).toBeTruthy();
     });
 
-    // Find the cell td via aria-label "<co.code> <ind.code> <status> <shape>".
-    // The matchers in the component build it as `${co.code} ${ind.code} ${status} ${statusShape(status)}`.
-    // We anchor on the start of the label (co.code + ind.code) which is unique
-    // per (company, indicator) pair regardless of status text changes.
-    const cell = screen
-      .getAllByRole("cell")
-      .find((td) =>
-        td.getAttribute("aria-label")?.startsWith("AAC-MAIN IND_NET_MARGIN"),
-      );
+    // The cell trigger is a native button so focus plus Enter/Space work
+    // without custom keyboard event emulation. Its localized aria-label starts
+    // with the stable company/indicator pair.
+    const cell = findCellButton("AAC-MAIN", "IND_NET_MARGIN");
     expect(cell, "expected to find AAC-MAIN × IND_NET_MARGIN cell").toBeTruthy();
 
     fireEvent.click(cell!);
@@ -235,13 +240,9 @@ describe("HeatMap cell-click → store contract (Phase 7.D regression)", () => {
       expect(screen.getByText("AAC-MAIN")).toBeTruthy();
     });
 
-    // ind_missing has no matrix cell → renders as "missing" gray td.
-    // The aria-label starts with "AAC-MAIN IND_FX_EXPOSURE missing".
-    const missingCell = screen
-      .getAllByRole("cell")
-      .find((td) =>
-        td.getAttribute("aria-label")?.startsWith("AAC-MAIN IND_FX_EXPOSURE"),
-      );
+    // ind_missing has no matrix cell and therefore renders a localized
+    // no-data button rather than a non-semantic clickable table cell.
+    const missingCell = findCellButton("AAC-MAIN", "IND_FX_EXPOSURE");
     expect(missingCell, "expected to find AAC-MAIN × IND_FX_EXPOSURE missing cell").toBeTruthy();
 
     fireEvent.click(missingCell!);
@@ -283,11 +284,7 @@ describe("HeatMap cell-click → store contract (Phase 7.D regression)", () => {
       expect(screen.getByText("AAC-MAIN")).toBeTruthy();
     });
 
-    const cell = screen
-      .getAllByRole("cell")
-      .find((td) =>
-        td.getAttribute("aria-label")?.startsWith("AAC-MAIN IND_NET_MARGIN"),
-      );
+    const cell = findCellButton("AAC-MAIN", "IND_NET_MARGIN");
     expect(cell).toBeTruthy();
 
     fireEvent.click(cell!);
@@ -304,22 +301,15 @@ describe("HeatMap cell-click → store contract (Phase 7.D regression)", () => {
       expect(screen.getByText("AAC-MAIN")).toBeTruthy();
     });
 
-    const cells = screen.getAllByRole("cell");
-    const missingCell = cells.find((td) =>
-      td.getAttribute("aria-label")?.startsWith("AAC-MAIN IND_FX_EXPOSURE"),
-    );
-    const computedCell = cells.find((td) =>
-      td.getAttribute("aria-label")?.startsWith("AAC-MAIN IND_NET_MARGIN"),
-    );
-    const missingTrigger = missingCell?.querySelector(":scope > div");
-    const computedTrigger = computedCell?.querySelector(":scope > div");
+    const missingTrigger = findCellButton("AAC-MAIN", "IND_FX_EXPOSURE");
+    const computedTrigger = findCellButton("AAC-MAIN", "IND_NET_MARGIN");
 
     expect(missingTrigger).toBeTruthy();
     expect(computedTrigger).toBeTruthy();
 
     fireEvent.pointerMove(missingTrigger!, { pointerType: "mouse" });
     await waitFor(() => {
-      expect(screen.getByRole("tooltip").textContent).toContain("нет данных");
+      expect(screen.getByRole("tooltip").textContent).toContain("no data");
     });
 
     fireEvent.pointerLeave(missingTrigger!, { pointerType: "mouse" });
@@ -328,7 +318,7 @@ describe("HeatMap cell-click → store contract (Phase 7.D regression)", () => {
       const tooltip = screen.getByRole("tooltip");
       expect(tooltip.textContent).toContain("IND_NET_MARGIN");
       expect(tooltip.textContent).toContain("-9.46 %");
-      expect(tooltip.textContent).not.toContain("нет данных");
+      expect(tooltip.textContent).not.toContain("no data");
     });
   });
 
@@ -341,13 +331,7 @@ describe("HeatMap cell-click → store contract (Phase 7.D regression)", () => {
       expect(screen.getByText("AAC")).toBeTruthy();
     });
 
-    // Sub-group row label: "AAC IND_NET_MARGIN red <shape>" — same
-    // start-with anchor as the op-co tests above.
-    const cell = screen
-      .getAllByRole("cell")
-      .find((td) =>
-        td.getAttribute("aria-label")?.startsWith("AAC IND_NET_MARGIN"),
-      );
+    const cell = findCellButton("AAC", "IND_NET_MARGIN");
     expect(cell, "expected synthetic-rollup cell to render").toBeTruthy();
 
     fireEvent.click(cell!);

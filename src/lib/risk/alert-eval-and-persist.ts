@@ -12,7 +12,10 @@
  */
 
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { filterOperationalCompanies } from './targets';
+import {
+  filterOperationalCompanies,
+  preferOrgScopedDefinitions,
+} from './targets';
 import {
   evaluateAlertRules,
   DEFAULT_ALERT_RULES,
@@ -21,6 +24,7 @@ import {
 import { readAlertThresholdsFromOrgSettings } from './alert-thresholds-config';
 import { type HeatMapCell } from './heatmap-matrix';
 import { persistAlertEvents } from './alert-events';
+import { loadPairApplicabilityResolver } from './pair-applicability';
 
 export interface EvalAndPersistArgs {
   organizationId: string;
@@ -81,9 +85,13 @@ export async function evaluateAndPersistAlertsForPeriods(
   const thresholds = readAlertThresholdsFromOrgSettings(org?.settings);
 
   // Fetch operational cos + indicators once (period-independent).
-  const [companiesRaw, indicators] = await Promise.all([
+  const [companiesRaw, indicatorsRaw] = await Promise.all([
     prisma.company.findMany({
-      where: { organizationId, isActive: true },
+      where: {
+        organizationId,
+        isActive: true,
+        status: { not: 'pending' },
+      },
       select: {
         id: true,
         code: true,
@@ -92,6 +100,7 @@ export async function evaluateAndPersistAlertsForPeriods(
         level: true,
         isActive: true,
         role: true,
+        status: true,
       },
     }),
     prisma.indicatorDefinition.findMany({
@@ -99,12 +108,27 @@ export async function evaluateAndPersistAlertsForPeriods(
         isActive: true,
         OR: [{ organizationId: null }, { organizationId }],
       },
-      select: { id: true, code: true },
+      select: {
+        id: true,
+        code: true,
+        organizationId: true,
+        industries: true,
+        isActive: true,
+        category: true,
+        requiredInputs: true,
+      },
     }),
   ]);
   type CompanyRawShape = (typeof companiesRaw)[number];
-  const operational =
-    filterOperationalCompanies<CompanyRawShape>(companiesRaw);
+  const operational = filterOperationalCompanies<CompanyRawShape>(
+    companiesRaw.filter((company) => company.status !== 'pending'),
+  );
+  // Alert rules evaluate operational leaf cells only. Matrix-visible internal
+  // definitions are rollup-bearing and parent-only, so no internal definition
+  // belongs on this leaf alert surface (ordinary internals are hidden too).
+  const indicators = preferOrgScopedDefinitions(indicatorsRaw).filter(
+    (indicator) => indicator.category !== 'internal',
+  );
   const operationalIds = operational.map((c) => c.id);
   const indicatorIds = indicators.map((i) => i.id);
 
@@ -128,6 +152,16 @@ export async function evaluateAndPersistAlertsForPeriods(
     return result;
   }
 
+  const pairApplicability = await loadPairApplicabilityResolver(prisma, {
+    organizationId,
+    companies: operational,
+    definitions: indicators,
+  });
+  const companyById = new Map(operational.map((company) => [company.id, company]));
+  const indicatorById = new Map(
+    indicators.map((indicator) => [indicator.id, indicator]),
+  );
+
   for (const period of periods) {
     try {
       const valuesRaw = await prisma.indicatorValue.findMany({
@@ -148,7 +182,16 @@ export async function evaluateAndPersistAlertsForPeriods(
       // guarantees one of HeatMapCell["status"] literals — cast through
       // unknown for type-safety without runtime check (same pattern as
       // matrix endpoint route.ts:184).
-      const values = valuesRaw as unknown as Array<{
+      const applicableValuesRaw = valuesRaw.filter((value) => {
+        const company = companyById.get(value.companyId);
+        const definition = indicatorById.get(value.indicatorId);
+        return Boolean(
+          company &&
+            definition &&
+            pairApplicability.isApplicable(company, definition),
+        );
+      });
+      const values = applicableValuesRaw as unknown as Array<{
         companyId: string;
         indicatorId: string;
         value: number | null;

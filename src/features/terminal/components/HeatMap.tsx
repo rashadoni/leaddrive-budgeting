@@ -51,6 +51,7 @@ export function HeatMap({ period }: Props) {
     setAlertThresholds, refetchTimerRef, cellMap, compositeByCompany,
     provisionalSummary,
     filteredCompanies, summary, indicators, displayIndicators,
+    applicabilityDecisionForPair,
     hiddenIndicatorCount, indicatorQuery, setIndicatorQuery,
     indicatorSearchInputRef,
   } = useHeatMapModel(period);
@@ -207,7 +208,7 @@ export function HeatMap({ period }: Props) {
         <button
           type="button"
           onClick={() => setShowAllIndicators((visible) => !visible)}
-          className={`shrink-0 px-1.5 py-0.5 border rounded text-[9px] uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4AA] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0A0E27] ${
+          className={`shrink-0 min-h-8 px-2.5 py-1 border rounded text-[11px] uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4AA] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0A0E27] ${
             !showAllIndicators
               ? 'border-[#00D4AA] text-[#00D4AA]'
               : 'border-gray-700 text-gray-500 hover:border-gray-500'
@@ -217,7 +218,13 @@ export function HeatMap({ period }: Props) {
               ? 'heatMap.showAllIndicatorsExpandedHint'
               : 'heatMap.showAllIndicatorsCollapsedHint',
           )}
-          aria-label={t('heatMap.hideIrrelevantIndicators')}
+          aria-label={
+            !showAllIndicators && hiddenIndicatorCount > 0
+              ? t('heatMap.hideIrrelevantIndicatorsAriaCount', {
+                  count: hiddenIndicatorCount,
+                })
+              : t('heatMap.hideIrrelevantIndicators')
+          }
           aria-pressed={!showAllIndicators}
           aria-controls="risk-heatmap-table"
           data-testid="show-all-indicators-toggle"
@@ -228,7 +235,10 @@ export function HeatMap({ period }: Props) {
             : ''}
         </button>
         {(dbSummary || summary) && (
-          <span className="tabular-nums shrink-0" title={dbSummary ? 'Counts from DB (all entities incl. admin)' : 'Counts from matrix view (admin filtered)'}>
+          <span
+            className="tabular-nums shrink-0"
+            title={t('heatMap.statusSummaryTitle')}
+          >
             <span style={{ color: statusColor('green') }}>
               {statusShape('green')} {(dbSummary ?? summary)!.green}G
             </span>
@@ -546,8 +556,15 @@ export function HeatMap({ period }: Props) {
                       </Tooltip>
                     </th>
                     {displayIndicators.map((ind) => {
-                      const c = cellMap.get(cellKey(co.id, ind.id));
-                      const scenarioStatus = scenarioDelta?.get(`${co.id}:${ind.code}`) ?? undefined;
+                      const applicabilityDecision =
+                        applicabilityDecisionForPair(co.id, ind);
+                      const pairApplicable = applicabilityDecision.applicable;
+                      const c = pairApplicable
+                        ? cellMap.get(cellKey(co.id, ind.id))
+                        : undefined;
+                      const scenarioStatus = pairApplicable
+                        ? scenarioDelta?.get(`${co.id}:${ind.code}`) ?? undefined
+                        : undefined;
                       // 2026-05-27 — drift bridge: derive per-cell flags
                       // from the global drift-health snapshot.
                       let staleInputSourceCode: string | undefined;
@@ -569,14 +586,16 @@ export function HeatMap({ period }: Props) {
                           co={co}
                           ind={ind}
                           cell={c}
+                          isApplicable={pairApplicable}
+                          applicabilityReason={applicabilityDecision.reason}
                           compactMode={compactMode}
                           scenarioStatus={scenarioStatus}
                           staleInputSourceCode={staleInputSourceCode}
                           staleInputStatus={staleInputStatus}
                           driftedRecently={driftedRecently}
-                          onCellClick={() => {
-                            // Cell click ALWAYS selects company. Two
-                            // panel-3 paths split on whether the cell
+                          onCellClick={pairApplicable ? () => {
+                            // Every APPLICABLE cell selects its company. Two
+                            // Panel-3 paths split on whether the cell
                             // has a computed IndicatorValue:
                             //
                             //  • cell with `indicatorValueId` →
@@ -589,9 +608,11 @@ export function HeatMap({ period }: Props) {
                             // Phase 7.D regression-architect closure:
                             // user reported clicks "не работают" on
                             // missing cells (silent no-Panel-3). New
-                            // contract guarantees Panel 3 ALWAYS opens
-                            // on cell click — the cell either drives a
-                            // drill-down or a self-explanatory hint.
+                            // contract guarantees Panel 3 opens for every
+                            // applicable cell — the cell either drives a
+                            // drill-down or a self-explanatory missing-data
+                            // hint. A known N/A pair is informational only and
+                            // never routes to the missing/recompute flow.
                             setCompany(co.code);
                             setActivePanel(3);
                             if (c?.indicatorValueId) {
@@ -650,7 +671,7 @@ export function HeatMap({ period }: Props) {
                                 indicatorName: resolveIndicatorLabel(ind, locale),
                               });
                             }
-                          }}
+                          } : undefined}
                         />
                       );
                     })}

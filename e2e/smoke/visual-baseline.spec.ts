@@ -50,6 +50,11 @@ import { loginAs } from '../fixtures/auth';
 
 test.describe('Phase 7.G Turn E — visual-regression baseline', () => {
   test('terminal HeatMap layout matches committed baseline', async ({ page }) => {
+    // A clean Turbopack process compiles the large terminal route lazily. On
+    // this project that cold path can take ~20s after authentication, so the
+    // suite-level 60s budget is too tight for login + compile + data settle.
+    // Warm runs remain fast; 120s is a cold-start ceiling, not a sleep.
+    test.setTimeout(120_000);
     // Pre-set the WelcomeHint dismissal flag so the modal does NOT render.
     // Without this, every fresh-context Playwright run sees the welcome modal
     // overlay the right half of the HeatMap — the baseline ends up gating the
@@ -71,8 +76,30 @@ test.describe('Phase 7.G Turn E — visual-regression baseline', () => {
     // Authenticate via the real form (same contract as DOM-level smokes).
     await loginAs(page);
 
-    // Navigate to the highest-leverage layout surface.
+    // Navigate to the highest-leverage layout surface. Register the response
+    // waiter before navigation: HeatMap first renders its matrix-derived
+    // fallback summary, then replaces it with the DB-backed status summary.
+    // Capturing on opposite sides of that async transition changes both the
+    // counter text (fallback adds `missing·`) and flex wrapping, producing a
+    // false visual diff even when the UI code and data are unchanged.
+    const statusSummaryReady = page.waitForResponse(
+      (response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname === '/api/indicators/status-summary' && response.ok()
+        );
+      },
+      { timeout: 60_000 },
+    );
     await page.goto('/budgeting/terminal');
+    await statusSummaryReady;
+    // Next.js injects its local dev indicator through `nextjs-portal`. Its
+    // independent `Compiling…` ↔ `N` state changed 221 pixels between two
+    // otherwise identical captures. It is tooling chrome, not BudgetPro UI,
+    // so remove only that portal from the visual surface under test.
+    await page.addStyleTag({
+      content: 'nextjs-portal { display: none !important; }',
+    });
 
     // Wait for HeatMap to mount AND its data to settle. The first matrix
     // fetch involves prisma + recompute pipeline — generous timeout matches

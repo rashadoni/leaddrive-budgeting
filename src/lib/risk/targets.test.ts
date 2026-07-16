@@ -227,22 +227,11 @@ describe('isIndicatorApplicableToCompany', () => {
     ).toBe(true);
   });
 
-  it('keeps a real legacy observation despite a catalogue mismatch', () => {
+  it('does not treat a persisted coloured result as an applicability override', () => {
     expect(
       isIndicatorApplicableToCompany(
         { industry: 'agro_crops' },
         { industries: ['hospitality'] },
-        'green',
-      ),
-    ).toBe(true);
-  });
-
-  it('does not let an unknown placeholder rescue an explicit mismatch', () => {
-    expect(
-      isIndicatorApplicableToCompany(
-        { industry: 'agro_crops' },
-        { industries: ['hospitality'] },
-        'unknown',
       ),
     ).toBe(false);
   });

@@ -30,8 +30,11 @@ import {
   filterRollupParentCompanies,
   isRollupIndicator,
   preferOrgScopedDefinitions,
-  matchCompaniesToIndicators,
 } from './targets';
+import {
+  loadPairApplicabilityResolver,
+  matchApplicablePairs,
+} from './pair-applicability';
 import { evaluateAndPersistAlertsForPeriods } from './alert-eval-and-persist';
 import { verifyPeriodSnapshot } from '../budgeting/period-snapshot';
 import { parseLockedPeriods, isPeriodLockedInList } from '../budgeting/period-lock';
@@ -203,9 +206,6 @@ export async function runRecomputeForCompanies(
     return { ...EMPTY_RESULT };
   }
 
-  const operationalIndustries = [
-    ...new Set(operational.map((c) => c.industry)),
-  ];
   // Sub-44 prereq #2 cont'd — `options.codeFilter` narrows the catalog
   // to specific indicator codes when supplied + non-empty. Empty /
   // undefined → no filter (back-compat). De-duped to avoid sending
@@ -220,14 +220,10 @@ export async function runRecomputeForCompanies(
         code: { in: codeFilterDedupe },
       }),
       OR: [{ organizationId: null }, { organizationId }],
-      AND: [
-        {
-          OR: [
-            { industries: { isEmpty: true } },
-            { industries: { hasSome: operationalIndustries } },
-          ],
-        },
-      ],
+      // Do not pre-filter by the org's taxonomy here. An explicit enabled
+      // CompanyIndicator may intentionally assign a cross-industry KPI; the
+      // canonical pair resolver below is the only place that can combine the
+      // explicit assignment with the taxonomy fallback correctly.
     },
     select: {
       id: true,
@@ -262,15 +258,20 @@ export async function runRecomputeForCompanies(
   // Sub-44 architect 💡 closure (industries-empty guard): rollup-bearing
   // defs MUST be sector-agnostic (`industries.length === 0`). A future
   // seed declaring `requiredInputs: ['rollup:...']` with non-empty
-  // `industries` would silently fire on ALL parent cos here (parent
-  // targets bypass `matchCompaniesToIndicators` industry-filter at
-  // `:230`), violating the indicator's own sector restriction. Strict
+  // `industries` has no sound taxonomy match at parent level because parent
+  // companies normally have `industry=null` (the canonical fallback is
+  // intentionally fail-open there). Explicit disabled assignments are still
+  // honored below, but cannot repair an ambiguous seed default. Strict
   // layer-up belongs at seed-author time (`validateRollupSeed` rejects
   // such seeds in `seed-indicators.ts`); this runtime filter is
   // belt-and-braces — drops sector-restricted rollups from the parent
   // pass + logs a warning so any seed that slipped past the loader
   // surfaces in ops logs rather than silently double-counting.
   const allRollupCandidates = defs.filter((d) => isRollupIndicator(d));
+  // rollup() consumes direct children and is therefore a parent-only formula.
+  // Keeping it out of the operational pass prevents zombie leaf IVs with
+  // `rollup_no_children` inputs from being recreated on every import.
+  const operationalDefs = defs.filter((d) => !isRollupIndicator(d));
   const rollupDefs: typeof allRollupCandidates = [];
   for (const d of allRollupCandidates) {
     if (d.industries.length === 0) {
@@ -307,6 +308,17 @@ export async function runRecomputeForCompanies(
     parentCompanies = filterRollupParentCompanies(parents);
   }
 
+  const pairApplicability = await loadPairApplicabilityResolver(prisma, {
+    organizationId,
+    companies: [...operational, ...parentCompanies],
+    definitions: defs,
+  });
+  const applicableParentTargets = matchApplicablePairs(
+    parentCompanies,
+    rollupDefs,
+    pairApplicability,
+  );
+
   // Pre-count total pairs (across all years) so the start message is honest.
   // Parent-co × rollup-def pairs do NOT depend on `byYear` membership —
   // the parent rollup needs to refresh for every year a child touched
@@ -329,17 +341,27 @@ export async function runRecomputeForCompanies(
     const yearOperational = operational.filter((c) =>
       yearCompanyIds.has(c.id),
     );
-    totalPairs += matchCompaniesToIndicators(yearOperational, defs).length;
-    totalPairs += parentCompanies.length * rollupDefs.length;
+    totalPairs += matchApplicablePairs(
+      yearOperational,
+      operationalDefs,
+      pairApplicability,
+    ).length;
+    totalPairs += applicableParentTargets.length;
   }
   if (totalPairs === 0) {
     logger.noop?.('Recompute: no matching indicators for affected companies.');
     return { ...EMPTY_RESULT };
   }
 
+  const applicableParentCount = new Set(
+    applicableParentTargets.map(({ company }) => company.id),
+  ).size;
+  const applicableParentIndicatorCount = new Set(
+    applicableParentTargets.map(({ definition }) => definition.id),
+  ).size;
   const parentSummary =
-    parentCompanies.length > 0 && rollupDefs.length > 0
-      ? ` (incl. ${parentCompanies.length} parent × ${rollupDefs.length} rollup-bearing indicator${rollupDefs.length === 1 ? '' : 's'})`
+    applicableParentTargets.length > 0
+      ? ` (incl. ${applicableParentCount} parent × ${applicableParentIndicatorCount} rollup-bearing indicator${applicableParentIndicatorCount === 1 ? '' : 's'}; ${applicableParentTargets.length} applicable pair${applicableParentTargets.length === 1 ? '' : 's'})`
       : '';
   logger.start?.(
     `Recompute: ${totalPairs} (company × indicator) pair${totalPairs === 1 ? '' : 's'} ` +
@@ -357,16 +379,15 @@ export async function runRecomputeForCompanies(
       yearCompanyIds.has(c.id),
     );
     const period = String(year);
-    const operationalTargets = matchCompaniesToIndicators(yearOperational, defs);
-    // Parent-co × rollup-def cartesian. Industry-match is bypassed
-    // (rollup-bearing indicators are sector-agnostic by design — their
-    // `industries` array is empty so they'd match anyway, but we skip
-    // the matchCompaniesToIndicators call because parent-cos lack the
-    // `industry: string` invariant that helper enforces).
-    const parentTargets = parentCompanies.flatMap((p) =>
-      rollupDefs.map((d) => ({ company: p, definition: d })),
+    const operationalTargets = matchApplicablePairs(
+      yearOperational,
+      operationalDefs,
+      pairApplicability,
     );
-    const targets = [...operationalTargets, ...parentTargets];
+    // Parent rollup targets are resolved once through the same canonical
+    // assignment-before-taxonomy contract. Rollup definitions are universal
+    // by seed contract, but an explicit disabled CompanyIndicator still wins.
+    const targets = [...operationalTargets, ...applicableParentTargets];
     for (const { company, definition } of targets) {
       const defLike: IndicatorDefinitionLike = {
         id: definition.id,

@@ -16,6 +16,7 @@ const { prismaMock } = vi.hoisted(() => ({
     company: { findMany: vi.fn() },
     indicatorDefinition: { findMany: vi.fn() },
     indicatorValue: { findMany: vi.fn() },
+    companyIndicator: { findMany: vi.fn() },
     alertEvent: {
       deleteMany: vi.fn(),
       createMany: vi.fn(),
@@ -43,12 +44,20 @@ beforeEach(() => {
       level: 2,
       isActive: true,
       role: 'operational',
+      status: 'active',
     },
   ]);
   prismaMock.indicatorDefinition.findMany.mockReset().mockResolvedValue([
-    { id: 'ind_x', code: 'IND_GROSS_MARGIN' },
+    {
+      id: 'ind_x',
+      code: 'IND_GROSS_MARGIN',
+      organizationId: null,
+      industries: ['hospitality'],
+      isActive: true,
+    },
   ]);
   prismaMock.indicatorValue.findMany.mockReset().mockResolvedValue([]);
+  prismaMock.companyIndicator.findMany.mockReset().mockResolvedValue([]);
   // $transaction proxies callback-style usage so persistAlertEvents runs
   // its tx body normally; alertEvent.deleteMany/createMany live on the
   // outer mock (same object passed in).
@@ -96,6 +105,33 @@ describe('evaluateAndPersistAlertsForPeriods', () => {
       totalDeleted: 7,
       failed: 0,
     });
+  });
+
+  it('treats a pending onboarding shell as outside the alert decision surface', async () => {
+    prismaMock.company.findMany.mockResolvedValue([
+      {
+        id: 'co_pending',
+        code: 'PENDING',
+        name: 'Pending company',
+        industry: 'hospitality',
+        level: 2,
+        isActive: true,
+        role: 'operational',
+        status: 'pending',
+      },
+    ]);
+    prismaMock.alertEvent.deleteMany.mockResolvedValue({ count: 2 });
+
+    const out = await evaluateAndPersistAlertsForPeriods(
+      prismaMock as unknown as Parameters<
+        typeof evaluateAndPersistAlertsForPeriods
+      >[0],
+      { organizationId: ORG_ID, periods: ['2026'] },
+    );
+
+    expect(prismaMock.indicatorValue.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.alertEvent.createMany).not.toHaveBeenCalled();
+    expect(out).toMatchObject({ periodsPersisted: 1, totalDeleted: 2 });
   });
 
   it('iterates periods + persist runs once per period', async () => {
@@ -177,5 +213,129 @@ describe('evaluateAndPersistAlertsForPeriods', () => {
       where: { id: ORG_ID },
       select: { settings: true },
     });
+  });
+
+  it('does not create alerts from an explicitly disabled matching pair', async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({
+      settings: { alertThresholds: { mostlyRed: { redCountMin: 1 } } },
+    });
+    prismaMock.companyIndicator.findMany.mockResolvedValue([
+      { companyId: 'co_a', indicatorId: 'ind_x', enabled: false },
+    ]);
+    prismaMock.indicatorValue.findMany.mockResolvedValue([
+      {
+        companyId: 'co_a',
+        indicatorId: 'ind_x',
+        value: -10,
+        status: 'red',
+      },
+    ]);
+
+    await evaluateAndPersistAlertsForPeriods(
+      prismaMock as unknown as Parameters<
+        typeof evaluateAndPersistAlertsForPeriods
+      >[0],
+      { organizationId: ORG_ID, periods: ['2026'] },
+    );
+
+    expect(prismaMock.alertEvent.deleteMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.alertEvent.createMany).not.toHaveBeenCalled();
+  });
+
+  it('allows an explicitly enabled cross-industry pair to create alerts', async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({
+      settings: { alertThresholds: { mostlyRed: { redCountMin: 1 } } },
+    });
+    prismaMock.company.findMany.mockResolvedValue([
+      {
+        id: 'co_a',
+        code: 'AAA',
+        name: 'A',
+        industry: 'agriculture',
+        level: 2,
+        isActive: true,
+        role: 'operational',
+        status: 'active',
+      },
+    ]);
+    prismaMock.companyIndicator.findMany.mockResolvedValue([
+      { companyId: 'co_a', indicatorId: 'ind_x', enabled: true },
+    ]);
+    prismaMock.indicatorValue.findMany.mockResolvedValue([
+      {
+        companyId: 'co_a',
+        indicatorId: 'ind_x',
+        value: -10,
+        status: 'red',
+      },
+    ]);
+    prismaMock.alertEvent.createMany.mockResolvedValue({ count: 1 });
+
+    const out = await evaluateAndPersistAlertsForPeriods(
+      prismaMock as unknown as Parameters<
+        typeof evaluateAndPersistAlertsForPeriods
+      >[0],
+      { organizationId: ORG_ID, periods: ['2026'] },
+    );
+
+    expect(prismaMock.alertEvent.createMany).toHaveBeenCalledTimes(1);
+    expect(out.totalCreated).toBe(1);
+  });
+
+  it('evaluates only the org-scoped definition when its code overrides a global seed', async () => {
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+      {
+        id: 'ind_global',
+        code: 'IND_GROSS_MARGIN',
+        organizationId: null,
+        industries: ['hospitality'],
+        isActive: true,
+      },
+      {
+        id: 'ind_org',
+        code: 'IND_GROSS_MARGIN',
+        organizationId: ORG_ID,
+        industries: ['hospitality'],
+        isActive: true,
+      },
+    ]);
+
+    await evaluateAndPersistAlertsForPeriods(
+      prismaMock as unknown as Parameters<
+        typeof evaluateAndPersistAlertsForPeriods
+      >[0],
+      { organizationId: ORG_ID, periods: ['2026'] },
+    );
+
+    expect(prismaMock.indicatorValue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ indicatorId: { in: ['ind_org'] } }),
+      }),
+    );
+  });
+
+  it('does not evaluate hidden internal definitions on the operational leaf alert surface', async () => {
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+      {
+        id: 'ind_internal',
+        code: 'INTERNAL_HELPER',
+        organizationId: null,
+        industries: [],
+        isActive: true,
+        category: 'internal',
+        requiredInputs: ['budgetLine'],
+      },
+    ]);
+
+    await evaluateAndPersistAlertsForPeriods(
+      prismaMock as unknown as Parameters<
+        typeof evaluateAndPersistAlertsForPeriods
+      >[0],
+      { organizationId: ORG_ID, periods: ['2026'] },
+    );
+
+    expect(prismaMock.indicatorValue.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.alertEvent.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.alertEvent.deleteMany).toHaveBeenCalledTimes(1);
   });
 });

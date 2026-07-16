@@ -14,27 +14,7 @@ import {
   isContraRevenueCode,
   pnlSectionFromRole,
 } from "@/lib/budgeting/coa-role"
-
-export type Section =
-  | "pnl-report"
-  | "pl"
-  | "balance-sheet"
-  | "cogs"
-  | "cash-flow"
-  | "assumptions"
-  | "workspace"
-  | "forecast"
-
-export const SECTION_LABELS: Record<Section, string> = {
-  "pnl-report": "P&L Report",
-  "pl": "P&L (Plan)",
-  "balance-sheet": "Balance Sheet",
-  "cogs": "COGS",
-  "cash-flow": "Cash Flow",
-  "assumptions": "Assumptions",
-  "workspace": "Workspace Overview",
-  "forecast": "Forecast",
-}
+import type { Section } from "@/lib/ai/section-meta"
 
 function isParent(code: string, allCodes: Set<string>): boolean {
   for (const c of allCodes) {

@@ -64,12 +64,14 @@ export async function loginAs(
   // rather than waiting for any specific element (which would be
   // page-content-dependent).
   await Promise.all([
-    // 25s (was 10s): the post-login redirect waits on the credentials callback
+    // 60s (was 25s): the post-login redirect waits on the credentials callback
     // + session write + a first-hit compile of the /budgeting route on a cold
     // dev server. 10s was too tight and flaked ~4 specs at login under load
-    // (2026-06-03). The redirect is <2s on a warm server; this is headroom for
-    // the cold/contended case, not an expected duration.
-    page.waitForURL(/\/budgeting(\?|$|\/)/, { timeout: 25_000 }),
+    // (2026-06-03). The redirect is normally <2s on a warm server, but the
+    // password-hash callback alone reached 21.3s under concurrent local load;
+    // session hydration + dashboard navigation then legitimately crossed the
+    // old 25s ceiling. This remains a timeout, not a sleep.
+    page.waitForURL(/\/budgeting(\?|$|\/)/, { timeout: 60_000 }),
     page.getByRole('button', { name: /sign in|log in/i }).click(),
   ]);
 

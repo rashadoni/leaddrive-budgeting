@@ -42,7 +42,9 @@ import { useCompanies, buildRiskTagsByCompanyId } from '../hooks/use-companies';
 import { getMateriality, isMaterialityScoped } from '@/lib/risk/esg-materiality';
 import { filterIndicatorsByQuery } from '../lib/indicator-search';
 import {
+  collectScopeCompanyIds,
   collectScopeIndustries,
+  createApplicabilityDecisionResolver,
   partitionIndicatorsByScope,
 } from '../lib/indicator-applicability';
 
@@ -425,17 +427,54 @@ export function useHeatMapModel(period: string | undefined) {
     () => new Set(filteredCompanies.map((company) => company.id)),
     [filteredCompanies],
   );
+  const activeCompanyId = useMemo(
+    () =>
+      activeCompanyCode && data
+        ? data.companies.find((company) => company.code === activeCompanyCode)
+            ?.id ?? null
+        : null,
+    [data, activeCompanyCode],
+  );
+  const scopeCompanyIds = useMemo(
+    () =>
+      new Set(
+        data
+          ? collectScopeCompanyIds(
+              data.companies,
+              visibleCompanyIds,
+              activeCompanyId,
+            )
+          : [],
+      ),
+    [data, visibleCompanyIds, activeCompanyId],
+  );
+  const scopeCompanies = useMemo(
+    () =>
+      data?.companies.filter((company) => scopeCompanyIds.has(company.id)) ?? [],
+    [data, scopeCompanyIds],
+  );
+  const applicabilityDecisionForPair = useMemo(
+    () =>
+      createApplicabilityDecisionResolver({
+        companies: data?.companies ?? [],
+        applicabilityOverrides: data?.applicabilityOverrides,
+      }),
+    [data?.companies, data?.applicabilityOverrides],
+  );
+  const isApplicablePair = useMemo(
+    () =>
+      (companyId: string, indicator: { id: string; industries?: string[] }) =>
+        applicabilityDecisionForPair(companyId, indicator).applicable,
+    [applicabilityDecisionForPair],
+  );
   const activeCompanyIndustries = useMemo<readonly string[]>(() => {
     if (!data) return [];
-    const activeCompanyId = activeCompanyCode
-      ? data.companies.find((company) => company.code === activeCompanyCode)?.id
-      : null;
     return collectScopeIndustries(
       data.companies,
       visibleCompanyIds,
       activeCompanyId,
     );
-  }, [data, activeCompanyCode, visibleCompanyIds]);
+  }, [data, visibleCompanyIds, activeCompanyId]);
   // Back-compat single-industry alias used by materiality lookups. When
   // the active company resolves to exactly ONE industry (leaf op-co OR a
   // sub-group whose descendants share one industry, e.g. AAC = pure
@@ -450,11 +489,10 @@ export function useHeatMapModel(period: string | undefined) {
     () =>
       partitionIndicatorsByScope({
         indicators: rawIndicators,
-        cells: data?.cells ?? [],
-        visibleCompanyIds,
-        scopeIndustries: activeCompanyIndustries,
+        scopeCompanies,
+        applicabilityOverrides: data?.applicabilityOverrides,
       }),
-    [rawIndicators, data?.cells, visibleCompanyIds, activeCompanyIndustries],
+    [rawIndicators, scopeCompanies, data?.applicabilityOverrides],
   );
 
   const indicatorResolution = useMemo(() => {
@@ -551,6 +589,7 @@ export function useHeatMapModel(period: string | undefined) {
     provisionalSummary,
     filteredCompanies, summary, activeCompanyIndustries, activeCompanyIndustry,
     rawIndicators, indicators, displayIndicators,
+    isApplicablePair, applicabilityDecisionForPair,
     hiddenIndicatorCount, indicatorQuery, setIndicatorQuery,
     indicatorSearchInputRef,
   };

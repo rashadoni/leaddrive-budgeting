@@ -20,6 +20,7 @@ const {
   prismaMock: {
     indicatorDefinition: { findMany: vi.fn() },
     company: { findMany: vi.fn() },
+    companyIndicator: { findMany: vi.fn() },
     // Phase 5.2 Stage 2 (2026-05-21) — withOrgScope wraps GET handler.
     $transaction: vi.fn(
       async (
@@ -39,8 +40,10 @@ vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 vi.mock("@/lib/risk/recompute", () => ({
   createPrismaDataSource: createPrismaDataSourceMock,
   recomputeIndicator: recomputeIndicatorMock,
+  ROLLUP_INPUT_PREFIX: "rollup:",
 }))
-vi.mock("@/lib/risk/targets", () => ({
+vi.mock("@/lib/risk/targets", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/risk/targets")>()),
   filterOperationalCompanies: filterOperationalCompaniesMock,
 }))
 vi.mock("@/lib/recompute/job-runner", () => ({
@@ -55,6 +58,7 @@ const ORG_ID = "cm3rlswraporg00000001demo"
 beforeEach(() => {
   prismaMock.indicatorDefinition.findMany.mockReset().mockResolvedValue([])
   prismaMock.company.findMany.mockReset().mockResolvedValue([])
+  prismaMock.companyIndicator.findMany.mockReset().mockResolvedValue([])
   recomputeIndicatorMock.mockReset().mockResolvedValue({ value: 100, status: "green" })
   createPrismaDataSourceMock.mockReset().mockReturnValue({})
   filterOperationalCompaniesMock.mockReset().mockImplementation((arr: unknown[]) => arr)
@@ -71,7 +75,10 @@ describe("GET /api/indicators", () => {
   it("200 returns indicators (org + global), filtered by isActive", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     prismaMock.indicatorDefinition.findMany.mockResolvedValue([
-      { id: "i1", code: "IND_DSO", organizationId: null },
+      {
+        id: "i1", code: "IND_DSO", organizationId: null,
+        isActive: true, industries: [],
+      },
     ])
     const res = await GET(makeRequest("/api/indicators"))
     expect(res.status).toBe(200)
@@ -86,30 +93,52 @@ describe("GET /api/indicators", () => {
   })
 
   // Phase 8 F1 — catalog scoped to the org's active industries (multi-org-safe).
-  it("scopes the catalog to the org's company industries (query-time)", async () => {
+  it("scopes the preferred catalog to the org's company industries", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     // Org operates in agro_crops + food_processing.
     prismaMock.company.findMany.mockResolvedValue([
       { industry: "agro_crops" },
       { industry: "food_processing" },
     ])
-    prismaMock.indicatorDefinition.findMany.mockResolvedValue([])
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+      { id: "i-all", code: "UNIVERSAL", organizationId: null, isActive: true, industries: [] },
+      { id: "i-agro", code: "AGRO_ONLY", organizationId: null, isActive: true, industries: ["agro_crops"] },
+      { id: "i-pharma", code: "PHARMA_ONLY", organizationId: null, isActive: true, industries: ["pharma"] },
+    ])
     const res = await GET(makeRequest("/api/indicators"))
     expect(res.status).toBe(200)
     // Distinct industries pulled from the org's companies.
     expect(prismaMock.company.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ distinct: ["industry"] }),
     )
-    // The findMany where carries the industry-overlap scope (universal OR hasSome).
+    expect((await res.json()).map((indicator: { code: string }) => indicator.code)).toEqual([
+      "UNIVERSAL",
+      "AGRO_ONLY",
+    ])
+    // Both global and tenant rows must reach the preference step; activity
+    // filtering in SQL would be too early.
     const call = prismaMock.indicatorDefinition.findMany.mock.calls[0][0]
-    expect(call.where.AND).toEqual([
+    expect(call.where.AND).toBeUndefined()
+  })
+
+  it("does not resurrect a matching global definition when its tenant override is out of scope", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.company.findMany.mockResolvedValue([{ industry: "agro_crops" }])
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([
       {
-        OR: [
-          { industries: { isEmpty: true } },
-          { industries: { hasSome: ["agro_crops", "food_processing"] } },
-        ],
+        id: "i-global", code: "SAME_CODE", organizationId: null,
+        isActive: true, industries: ["agro_crops"],
+      },
+      {
+        id: "i-tenant", code: "SAME_CODE", organizationId: ORG_ID,
+        isActive: true, industries: ["pharma"],
       },
     ])
+
+    const res = await GET(makeRequest("/api/indicators"))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual([])
   })
 })
 
@@ -178,6 +207,93 @@ describe("POST /api/indicators (recompute)", () => {
       expect.anything(),
       expect.objectContaining({ withSparkline: true }),
     )
+  })
+
+  it("does not target a parent-only rollup definition on an operational company", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
+    prismaMock.company.findMany.mockResolvedValue([
+      { id: "c1", code: "AAC", industry: "tech", level: 2, isActive: true, role: "operational" },
+    ])
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+      {
+        id: "i-rollup", organizationId: null, code: "PUBLIC_HOLDING_ROLLUP", formula: {},
+        sparklineFormula: null, thresholds: {},
+        requiredInputs: ["rollup:IND_REVENUE_TOTAL"],
+        industries: [], isActive: true, unit: "AZN", defaultValueSource: "computed",
+      },
+    ])
+    // Structural level eligibility is stronger than an explicit enable.
+    prismaMock.companyIndicator.findMany.mockResolvedValue([
+      { companyId: "c1", indicatorId: "i-rollup", enabled: true },
+    ])
+
+    const res = await POST(
+      makeRequest("/api/indicators", {
+        method: "POST",
+        json: { period: "2026", companyId: "c1", indicatorCode: "PUBLIC_HOLDING_ROLLUP" },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).processed).toBe(0)
+    expect(prismaMock.companyIndicator.findMany).not.toHaveBeenCalled()
+    expect(recomputeIndicatorMock).not.toHaveBeenCalled()
+  })
+
+  it("recomputes an explicitly enabled cross-industry pair", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
+    prismaMock.company.findMany.mockResolvedValue([
+      { id: "c1", code: "AAC", industry: "tech", level: 2, isActive: true, role: "operational" },
+    ])
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+      {
+        id: "i_retail", organizationId: null, code: "RET_FOOD_CPI", formula: {},
+        sparklineFormula: null, thresholds: {}, requiredInputs: [],
+        industries: ["retail"], isActive: true, unit: "%", defaultValueSource: "computed",
+      },
+    ])
+    prismaMock.companyIndicator.findMany.mockResolvedValue([
+      { companyId: "c1", indicatorId: "i_retail", enabled: true },
+    ])
+
+    const res = await POST(
+      makeRequest("/api/indicators", {
+        method: "POST",
+        json: { period: "2026", companyId: "c1", indicatorCode: "RET_FOOD_CPI" },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).processed).toBe(1)
+    expect(recomputeIndicatorMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not recompute an explicitly disabled taxonomy-matching pair", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
+    prismaMock.company.findMany.mockResolvedValue([
+      { id: "c1", code: "AAC", industry: "tech", level: 2, isActive: true, role: "operational" },
+    ])
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+      {
+        id: "i_tech", organizationId: null, code: "TECH_KPI", formula: {},
+        sparklineFormula: null, thresholds: {}, requiredInputs: [],
+        industries: ["tech"], isActive: true, unit: "%", defaultValueSource: "computed",
+      },
+    ])
+    prismaMock.companyIndicator.findMany.mockResolvedValue([
+      { companyId: "c1", indicatorId: "i_tech", enabled: false },
+    ])
+
+    const res = await POST(
+      makeRequest("/api/indicators", {
+        method: "POST",
+        json: { period: "2026", companyId: "c1", indicatorCode: "TECH_KPI" },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).processed).toBe(0)
+    expect(recomputeIndicatorMock).not.toHaveBeenCalled()
   })
 
   it("202 async path — fan-out > 50 pairs enqueues job", async () => {

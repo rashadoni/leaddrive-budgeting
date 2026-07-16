@@ -25,6 +25,7 @@ const { prismaMock } = vi.hoisted(() => ({
     company: { findMany: vi.fn() },
     indicatorDefinition: { findMany: vi.fn() },
     indicatorValue: { findMany: vi.fn() },
+    companyIndicator: { findMany: vi.fn() },
     // Phase 7.F sub-group RBAC — getCompanyScope reads user.allowedSubGroupIds
     // for non-admin roles. Default empty array = full access (legacy behavior).
     user: { findFirst: vi.fn() },
@@ -48,6 +49,7 @@ beforeEach(() => {
   prismaMock.company.findMany.mockReset().mockResolvedValue([]);
   prismaMock.indicatorDefinition.findMany.mockReset().mockResolvedValue([]);
   prismaMock.indicatorValue.findMany.mockReset().mockResolvedValue([]);
+  prismaMock.companyIndicator.findMany.mockReset().mockResolvedValue([]);
   prismaMock.user.findFirst.mockReset().mockResolvedValue({ allowedSubGroupIds: [] });
 });
 
@@ -218,17 +220,34 @@ describe('GET /api/indicators/matrix — handler', () => {
 
   describe("sub-44 cont'd render-path — parent-co rollup IVs", () => {
     /**
-     * Mock company.findMany to honor where clauses:
-     *   - 1st call: full company list for the org
-     *   - 2nd call: child cos by parentCompanyId (Turn 33.5 path)
+     * Mock company.findMany with the full company list. Older fixtures keep
+     * hierarchy edges in `childCos`; merge those edges into the primary result
+     * because the production query now selects parentCompanyId in one pass.
      */
     function setupCompaniesMock(allCos: unknown[], childCos: unknown[]): void {
+      const parentByChildId = new Map(
+        childCos.map((child) => [
+          (child as { id: string }).id,
+          (child as { parentCompanyId?: string | null }).parentCompanyId ?? null,
+        ]),
+      );
       prismaMock.company.findMany.mockImplementation(
         async (
           arg: { where?: { parentCompanyId?: { in?: string[] } } } = {},
         ) => {
           if (arg.where?.parentCompanyId) return childCos;
-          return allCos;
+          // The production top-level select already carries parentCompanyId.
+          // Older fixtures kept that edge in a separate second-query payload;
+          // merge it here so the fixture mirrors the one-query contract.
+          return allCos.map((company) => {
+            const id = (company as { id: string }).id;
+            return parentByChildId.has(id)
+              ? {
+                  ...(company as Record<string, unknown>),
+                  parentCompanyId: parentByChildId.get(id),
+                }
+              : company;
+          });
         },
       );
     }
@@ -402,6 +421,14 @@ describe('GET /api/indicators/matrix — handler', () => {
         (c: { companyId: string }) => c.companyId === 'co_op',
       );
       expect(opCells).toEqual([]);
+      // The leaf query itself is skipped when the only visible definition is
+      // rollup-bearing. A stale zombie IV must not be read and then hidden.
+      expect(
+        prismaMock.indicatorValue.findMany.mock.calls.some(
+          (call) =>
+            call[0]?.where?.companyId?.in?.includes('co_op'),
+        ),
+      ).toBe(false);
 
       // Parent-co cell present with drill-downable IV.
       const parentCells = body.cells.filter(
@@ -471,7 +498,7 @@ describe('GET /api/indicators/matrix — handler', () => {
       expect(body.lastComputedAt).toBe(newest.toISOString());
     });
 
-    it("real parent IV beats Turn 33.5 synthetic-average when both could apply (priority lock)", async () => {
+    it("ignores a stale non-rollup parent IV so the current child consolidation wins", async () => {
       await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
       const subgroup = {
         id: 'co_holding',
@@ -498,9 +525,8 @@ describe('GET /api/indicators/matrix — handler', () => {
         [{ id: 'co_op', parentCompanyId: 'co_holding' }],
       );
       // Operational-category indicator (NOT rollup-bearing, NOT internal).
-      // Op-co has a cell → Turn 33.5 would synthesize a parent average from
-      // it. Parent ALSO has a real IV (e.g. some org seeds an org-scoped
-      // override that fires on parents). Real IV must win.
+      // The canonical recompute trigger never targets a level-1 parent for
+      // this definition, so a legacy parent row cannot be kept current.
       prismaMock.indicatorDefinition.findMany.mockResolvedValue([
         {
           id: 'i_op_kpi',
@@ -547,14 +573,17 @@ describe('GET /api/indicators/matrix — handler', () => {
         (c: { companyId: string }) => c.companyId === 'co_holding',
       );
       expect(parentCells).toHaveLength(1);
-      // Real IV (99.9) wins over synthetic average that would have been 12.5.
-      expect(parentCells[0].value).toBe(99.9);
-      expect(parentCells[0].indicatorValueId).toBe('iv_parent_real');
-      expect(parentCells[0].kind).toBe('real-rollup');
-      // No synthetic-rollup cell for the same pair (priority lock).
+      // The fresh child-derived value wins; the stale/unrefreshable 99.9 IV
+      // is not emitted and therefore cannot suppress this consolidation.
+      expect(parentCells[0]).toMatchObject({
+        value: 12.5,
+        indicatorValueId: null,
+        kind: 'synthetic-rollup',
+      });
       expect(
-        parentCells.some(
-          (c: { kind?: string }) => c.kind === 'synthetic-rollup',
+        body.cells.some(
+          (cell: { indicatorValueId: string | null }) =>
+            cell.indicatorValueId === 'iv_parent_real',
         ),
       ).toBe(false);
     });
@@ -746,6 +775,446 @@ describe('GET /api/indicators/matrix — handler', () => {
     const res = await GET(makeRequest('/api/indicators/matrix'));
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('private, max-age=10');
+  });
+});
+
+describe('GET /api/indicators/matrix — server-side activity applicability', () => {
+  const subgroup = {
+    id: 'sg_1',
+    code: 'GROUP',
+    name: 'Mixed Group',
+    industry: null,
+    level: 1,
+    isActive: true,
+    role: 'operational',
+    sortOrder: 1,
+    parentCompanyId: null,
+  };
+  const agro = {
+    id: 'co_agro',
+    code: 'AGRO',
+    name: 'Agro Co',
+    industry: 'agriculture',
+    level: 2,
+    isActive: true,
+    role: 'operational',
+    sortOrder: 2,
+    parentCompanyId: 'sg_1',
+  };
+  const hotel = {
+    id: 'co_hotel',
+    code: 'HOTEL',
+    name: 'Hotel Co',
+    industry: 'hospitality',
+    level: 2,
+    isActive: true,
+    role: 'operational',
+    sortOrder: 3,
+    parentCompanyId: 'sg_1',
+  };
+
+  const indicator = (
+    id: string,
+    code: string,
+    industries: string[],
+    organizationId: string | null = null,
+  ) => ({
+    id,
+    code,
+    organizationId,
+    isActive: true,
+    nameEn: code,
+    nameAz: code,
+    nameRu: code,
+    direction: 'higher_is_better',
+    unit: '%',
+    sortOrder: 1,
+    category: 'operational',
+    requiredInputs: ['budgetLine'],
+    industries,
+    weight: 1,
+  });
+
+  const iv = (
+    id: string,
+    companyId: string,
+    indicatorId: string,
+    value: number,
+    computedAt = new Date('2026-07-16T10:00:00.000Z'),
+  ) => ({
+    id,
+    companyId,
+    indicatorId,
+    value,
+    status: 'green',
+    inputs: {},
+    sparkline: null,
+    valueSource: 'computed',
+    revisionId: null,
+    sanityBand: null,
+    lastReconciledAt: null,
+    computedAt,
+  });
+
+  function setupMatrix({
+    companies,
+    definitions,
+    leafValues,
+    parentValues = [],
+    assignments = [],
+  }: {
+    companies: unknown[];
+    definitions: unknown[];
+    leafValues: unknown[];
+    parentValues?: unknown[];
+    assignments?: unknown[];
+  }): void {
+    prismaMock.company.findMany.mockImplementation(
+      async (arg: { where?: { parentCompanyId?: { in?: string[] } } } = {}) => {
+        if (arg.where?.parentCompanyId) {
+          return companies
+            .filter((company) =>
+              arg.where?.parentCompanyId?.in?.includes(
+                (company as { parentCompanyId?: string }).parentCompanyId ?? '',
+              ),
+            )
+            .map((company) => ({
+              id: (company as { id: string }).id,
+              parentCompanyId: (company as { parentCompanyId?: string })
+                .parentCompanyId,
+            }));
+        }
+        return companies;
+      },
+    );
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue(definitions);
+    prismaMock.companyIndicator.findMany.mockResolvedValue(assignments);
+    const parentIds = new Set(
+      companies
+        .filter((company) => (company as { level?: number }).level === 1)
+        .map((company) => (company as { id: string }).id),
+    );
+    prismaMock.indicatorValue.findMany.mockImplementation(
+      async (
+        arg: {
+          distinct?: string[];
+          where?: { companyId?: { in?: string[] } };
+        } = {},
+      ) => {
+        if (arg.distinct?.includes('period')) return [{ period: '2026' }];
+        const ids = arg.where?.companyId?.in ?? [];
+        return ids.some((id) => parentIds.has(id)) ? parentValues : leafValues;
+      },
+    );
+  }
+
+  it('drops stale cross-industry leaf IVs before leaf emission and subgroup aggregation, while keeping universal indicators', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    const hospitality = indicator(
+      'ind_hospitality',
+      'HOSP_TOURISM_SIGNAL',
+      ['hospitality'],
+    );
+    const universal = indicator('ind_universal', 'FX_USD_SIGNAL', []);
+    setupMatrix({
+      companies: [subgroup, agro, hotel],
+      definitions: [hospitality, universal],
+      leafValues: [
+        // This is a valid-looking, non-unknown cache row, but it was computed
+        // for the wrong activity and must not be allowed to rescue itself.
+        iv(
+          'iv_stale_cross_industry',
+          agro.id,
+          hospitality.id,
+          1_000,
+          new Date('2026-07-16T12:00:00.000Z'),
+        ),
+        iv('iv_hotel', hotel.id, hospitality.id, 20),
+        iv('iv_universal', agro.id, universal.id, 7),
+      ],
+    });
+
+    const res = await GET(
+      makeRequest('/api/indicators/matrix?period=2026'),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(
+      body.cells.find(
+        (cell: { indicatorValueId: string | null }) =>
+          cell.indicatorValueId === 'iv_stale_cross_industry',
+      ),
+    ).toBeUndefined();
+    expect(
+      body.cells.find(
+        (cell: { indicatorValueId: string | null }) =>
+          cell.indicatorValueId === 'iv_universal',
+      ),
+    ).toBeTruthy();
+
+    const hospitalityRollup = body.cells.find(
+      (cell: { companyId: string; indicatorId: string }) =>
+        cell.companyId === subgroup.id &&
+        cell.indicatorId === hospitality.id,
+    );
+    // Only the applicable hotel contributes. The stale agro value (1000)
+    // cannot distort the subgroup to 510.
+    expect(hospitalityRollup).toMatchObject({
+      kind: 'synthetic-rollup',
+      value: 20,
+      contributingChildCount: 1,
+    });
+    // Freshness likewise ignores the newer cross-industry cache row.
+    expect(body.lastComputedAt).toBe('2026-07-16T10:00:00.000Z');
+  });
+
+  it('honors CompanyIndicator as the explicit override in both directions', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    const retail = indicator('ind_retail', 'RET_FOOD_CPI', ['retail']);
+    const agriculture = indicator(
+      'ind_agriculture',
+      'AGRO_DROUGHT',
+      ['agriculture'],
+    );
+    const hiddenInternal = {
+      ...indicator('ind_internal', 'INTERNAL_REVENUE_INPUT', []),
+      category: 'internal',
+      requiredInputs: ['budgetLine'],
+    };
+    setupMatrix({
+      companies: [agro],
+      definitions: [retail, agriculture, hiddenInternal],
+      leafValues: [
+        iv('iv_explicit_enable', agro.id, retail.id, 11),
+        iv('iv_explicit_disable', agro.id, agriculture.id, 22),
+      ],
+      assignments: [
+        { companyId: agro.id, indicatorId: retail.id, enabled: true },
+        { companyId: agro.id, indicatorId: agriculture.id, enabled: false },
+      ],
+    });
+
+    const res = await GET(
+      makeRequest('/api/indicators/matrix?period=2026'),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(
+      body.cells.map(
+        (cell: { indicatorValueId: string | null }) => cell.indicatorValueId,
+      ),
+    ).toEqual(['iv_explicit_enable']);
+    expect(body.applicabilityOverrides).toEqual([
+      { companyId: agro.id, indicatorId: retail.id, enabled: true },
+      { companyId: agro.id, indicatorId: agriculture.id, enabled: false },
+    ]);
+    expect(prismaMock.companyIndicator.findMany).toHaveBeenCalledWith({
+      where: {
+        companyId: { in: [agro.id] },
+        indicatorId: { in: [retail.id, agriculture.id] },
+        company: { organizationId: ORG_ID },
+        indicator: {
+          OR: [{ organizationId: null }, { organizationId: ORG_ID }],
+        },
+      },
+      select: { companyId: true, indicatorId: true, enabled: true },
+    });
+  });
+
+  it('propagates an explicit child enable into its subgroup applicability', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    const retail = indicator('ind_retail', 'RET_FOOD_CPI', ['retail']);
+    setupMatrix({
+      companies: [subgroup, agro],
+      definitions: [retail],
+      leafValues: [iv('iv_explicit_child_enable', agro.id, retail.id, 11)],
+      assignments: [
+        { companyId: agro.id, indicatorId: retail.id, enabled: true },
+      ],
+    });
+
+    const res = await GET(
+      makeRequest('/api/indicators/matrix?period=2026'),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(body.cells).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          indicatorValueId: 'iv_explicit_child_enable',
+          companyId: agro.id,
+          indicatorId: retail.id,
+        }),
+        expect.objectContaining({
+          kind: 'synthetic-rollup',
+          companyId: subgroup.id,
+          indicatorId: retail.id,
+          value: 11,
+          contributingChildCount: 1,
+        }),
+      ]),
+    );
+  });
+
+  it('derives a null-industry parent from descendants instead of failing open to every indicator', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    const retail = indicator('ind_retail', 'RET_FOOD_CPI', ['retail']);
+    const agriculture = indicator(
+      'ind_agriculture',
+      'AGRO_DROUGHT',
+      ['agriculture'],
+    );
+    setupMatrix({
+      companies: [subgroup, agro],
+      definitions: [retail, agriculture],
+      // Same definition is inapplicable to the agriculture leaf.
+      leafValues: [
+        iv('iv_wrong_leaf', agro.id, retail.id, 5),
+        iv('iv_matching_leaf', agro.id, agriculture.id, 25),
+      ],
+    });
+
+    const res = await GET(
+      makeRequest('/api/indicators/matrix?period=2026'),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.cells).toHaveLength(2);
+    expect(body.cells).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          indicatorValueId: 'iv_matching_leaf',
+          companyId: agro.id,
+          indicatorId: agriculture.id,
+        }),
+        expect.objectContaining({
+          indicatorValueId: null,
+          companyId: subgroup.id,
+          indicatorId: agriculture.id,
+          kind: 'synthetic-rollup',
+          value: 25,
+        }),
+      ]),
+    );
+    expect(
+      body.cells.some(
+        (cell: { indicatorId: string }) => cell.indicatorId === retail.id,
+      ),
+    ).toBe(false);
+  });
+
+  it('derives subgroup applicability only from serialized operational descendants, never admin or unclassified shells', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    const hospitality = indicator(
+      'ind_hospitality',
+      'HOSP_TOURISM_SIGNAL',
+      ['hospitality'],
+    );
+    const adminChild = {
+      id: 'co_admin_hotel',
+      code: 'HQ-HOTEL',
+      name: 'Hotel Admin Shell',
+      industry: 'hospitality',
+      level: 2,
+      isActive: true,
+      role: 'admin',
+      sortOrder: 3,
+      parentCompanyId: subgroup.id,
+    };
+    const unknownShell = {
+      id: 'co_unknown',
+      code: 'UNKNOWN',
+      name: 'Unclassified Shell',
+      industry: null,
+      level: 2,
+      isActive: true,
+      role: 'operational',
+      sortOrder: 4,
+      parentCompanyId: subgroup.id,
+    };
+    setupMatrix({
+      companies: [subgroup, agro, adminChild, unknownShell],
+      definitions: [hospitality],
+      leafValues: [],
+      // Before this fix, the admin child's hospitality taxonomy (and the
+      // unknown shell's fail-open taxonomy) incorrectly authorized this
+      // otherwise inapplicable parent cache row.
+      parentValues: [
+        iv('iv_parent_drift', subgroup.id, hospitality.id, 50),
+      ],
+    });
+
+    const res = await GET(
+      makeRequest('/api/indicators/matrix?period=2026'),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(body.companies.map((company: { id: string }) => company.id)).toEqual(
+      expect.arrayContaining([subgroup.id, agro.id]),
+    );
+    expect(body.companies).toHaveLength(2);
+    expect(body.cells).toEqual([]);
+    expect(prismaMock.companyIndicator.findMany).toHaveBeenCalledWith({
+      where: {
+        companyId: { in: [agro.id, subgroup.id] },
+        indicatorId: { in: [hospitality.id] },
+        company: { organizationId: ORG_ID },
+        indicator: {
+          OR: [{ organizationId: null }, { organizationId: ORG_ID }],
+        },
+      },
+      select: { companyId: true, indicatorId: true, enabled: true },
+    });
+  });
+
+  it('prefers the tenant definition for a duplicate code before rendering and IV reads', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    const globalDefinition = indicator(
+      'ind_duplicate_global',
+      'DUPLICATE_KPI',
+      ['agriculture'],
+    );
+    const tenantDefinition = indicator(
+      'ind_duplicate_tenant',
+      'DUPLICATE_KPI',
+      ['agriculture'],
+      ORG_ID,
+    );
+    setupMatrix({
+      companies: [agro],
+      definitions: [globalDefinition, tenantDefinition],
+      // The mock deliberately returns both rows even though the handler query
+      // is narrowed. This proves the projection also fails closed and cannot
+      // serialize a stale global duplicate if a DB adapter ignores the filter.
+      leafValues: [
+        iv('iv_duplicate_global', agro.id, globalDefinition.id, 10),
+        iv('iv_duplicate_tenant', agro.id, tenantDefinition.id, 20),
+      ],
+    });
+
+    const res = await GET(
+      makeRequest('/api/indicators/matrix?period=2026'),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(body.indicators.map((definition: { id: string }) => definition.id))
+      .toEqual([tenantDefinition.id]);
+    expect(
+      body.cells.map((cell: { indicatorValueId: string | null }) =>
+        cell.indicatorValueId,
+      ),
+    ).toEqual(['iv_duplicate_tenant']);
+
+    const ivCall = prismaMock.indicatorValue.findMany.mock.calls.find(
+      (call) => call[0]?.where?.companyId?.in?.includes(agro.id),
+    )?.[0];
+    expect(ivCall?.where?.indicatorId).toEqual({
+      in: [tenantDefinition.id],
+    });
   });
 });
 

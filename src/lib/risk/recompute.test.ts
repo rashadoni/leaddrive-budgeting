@@ -2054,6 +2054,15 @@ describe('createPrismaDataSource.upsertIndicatorValue — sparkline write semant
     expect(args.update.sparkline).toEqual(sl);
   });
 
+  it('PREVIEW: suppresses the IndicatorValue write at the adapter boundary', async () => {
+    const { prisma, upsert } = makePrismaSpy();
+    const ds = createPrismaDataSource(prisma, { mode: 'preview' });
+
+    await ds.upsertIndicatorValue(baseArgs);
+
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
   // Phase 7.H F4.v2.1 — provenance stamp on CREATE and UPDATE. Locks the
   // contract that every IV row carries the seed-defined source tag so
   // panel-3 + heatmap-cell can show the right "ОБЩАЯ ОЦЕНКА" / "МАКРО"

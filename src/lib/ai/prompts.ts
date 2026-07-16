@@ -1,4 +1,4 @@
-import type { Section } from "./section-context"
+import type { Section } from "./section-meta"
 
 export type Language = "en" | "ru" | "az"
 

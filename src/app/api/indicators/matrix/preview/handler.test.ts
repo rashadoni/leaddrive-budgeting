@@ -21,6 +21,7 @@ const {
     company: { findMany: vi.fn() },
     indicatorDefinition: { findMany: vi.fn() },
     indicatorValue: { findMany: vi.fn() },
+    companyIndicator: { findMany: vi.fn() },
   },
   enforceRateLimitMock: vi.fn(),
   getCompanyScopeMock: vi.fn(),
@@ -40,6 +41,7 @@ vi.mock("@/lib/rbac/company-scope", () => ({
 vi.mock("@/lib/risk/recompute", () => ({
   recomputeIndicator: recomputeIndicatorMock,
   createPrismaDataSource: createPrismaDataSourceMock,
+  ROLLUP_INPUT_PREFIX: "rollup:",
 }))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
@@ -56,6 +58,7 @@ interface CompanyRow {
   isActive: boolean
   role: "operational" | "admin" | "holding"
   parentCompanyId: string | null
+  status: string
 }
 
 interface IndicatorRow {
@@ -70,6 +73,7 @@ interface IndicatorRow {
   requiredInputs: string[]
   industries: string[]
   isActive: boolean
+  category: string | null
   aggregation: "snapshot" | "flow"
 }
 
@@ -83,6 +87,7 @@ function company(overrides: Partial<CompanyRow> = {}): CompanyRow {
     isActive: true,
     role: "operational",
     parentCompanyId: "p1",
+    status: "active",
     ...overrides,
   }
 }
@@ -100,6 +105,7 @@ function indicator(overrides: Partial<IndicatorRow> = {}): IndicatorRow {
     requiredInputs: ["currencyRate"],
     industries: [],
     isActive: true,
+    category: "operational",
     aggregation: "snapshot",
     ...overrides,
   }
@@ -109,6 +115,7 @@ beforeEach(() => {
   prismaMock.company.findMany.mockReset().mockResolvedValue([])
   prismaMock.indicatorDefinition.findMany.mockReset().mockResolvedValue([])
   prismaMock.indicatorValue.findMany.mockReset().mockResolvedValue([])
+  prismaMock.companyIndicator.findMany.mockReset().mockResolvedValue([])
   enforceRateLimitMock.mockReset().mockReturnValue(null)
   getCompanyScopeMock.mockReset().mockResolvedValue({ ids: null })
   recomputeIndicatorMock.mockReset().mockResolvedValue({ value: 100, status: "green" })
@@ -240,6 +247,38 @@ describe("POST /api/indicators/matrix/preview", () => {
         where: expect.objectContaining({ organizationId: ORG_ID }),
       }),
     )
+    expect(createPrismaDataSourceMock).toHaveBeenCalledWith(
+      expect.anything(),
+      { mode: "preview" },
+    )
+  })
+
+  it("excludes a rollup-bearing definition from the operational preview even when it is public", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "editor" })
+    prismaMock.company.findMany.mockResolvedValue([company()])
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+      indicator({
+        id: "i-rollup",
+        code: "PUBLIC_HOLDING_ROLLUP",
+        category: "operational",
+        requiredInputs: ["currencyRate", "rollup:IND_REVENUE_TOTAL"],
+      }),
+    ])
+
+    const res = await POST(
+      makeRequest("/api/indicators/matrix/preview", {
+        method: "POST",
+        json: { period: "2026", overrides: { fx_usd: 1.8 } },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({
+      affectedIndicatorCount: 0,
+      pairsAttempted: 0,
+      cells: [],
+    })
+    expect(recomputeIndicatorMock).not.toHaveBeenCalled()
   })
 
   it("filters mixed-sector pairs and reports only indicators applicable somewhere", async () => {
@@ -305,7 +344,7 @@ describe("POST /api/indicators/matrix/preview", () => {
     )
   })
 
-  it("keeps a mismatched legacy calculation but not an unknown placeholder", async () => {
+  it("does not let a coloured baseline rescue a cross-industry mismatch", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "editor" })
     prismaMock.company.findMany.mockResolvedValue([
       company({ industry: "agro_crops" }),
@@ -314,33 +353,106 @@ describe("POST /api/indicators/matrix/preview", () => {
       indicator({ industries: ["hospitality"] }),
     ])
     prismaMock.indicatorValue.findMany.mockResolvedValue([
-      { companyId: "c1", indicatorId: "i1", value: 80, status: "unknown" },
-    ])
-
-    const unknownRes = await POST(
-      makeRequest("/api/indicators/matrix/preview", {
-        method: "POST",
-        json: { period: "2026-Q1", overrides: { fx_usd: 1.8 } },
-      }),
-    )
-    const unknownBody = await unknownRes.json()
-    expect(unknownBody.pairsAttempted).toBe(0)
-    expect(unknownBody.affectedIndicatorCount).toBe(0)
-    expect(recomputeIndicatorMock).not.toHaveBeenCalled()
-
-    prismaMock.indicatorValue.findMany.mockResolvedValue([
       { companyId: "c1", indicatorId: "i1", value: 80, status: "green" },
     ])
-    const calculatedRes = await POST(
+
+    const res = await POST(
       makeRequest("/api/indicators/matrix/preview", {
         method: "POST",
         json: { period: "2026-Q1", overrides: { fx_usd: 1.8 } },
       }),
     )
-    const calculatedBody = await calculatedRes.json()
-    expect(calculatedBody.pairsAttempted).toBe(1)
-    expect(calculatedBody.affectedIndicatorCount).toBe(1)
+    const body = await res.json()
+    expect(body.pairsAttempted).toBe(0)
+    expect(body.affectedIndicatorCount).toBe(0)
+    expect(recomputeIndicatorMock).not.toHaveBeenCalled()
+  })
+
+  it("uses explicit CompanyIndicator overrides in both directions", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "editor" })
+    prismaMock.company.findMany.mockResolvedValue([
+      company({ id: "agro", code: "AGRO", industry: "agro_crops" }),
+    ])
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+      indicator({ id: "retail", code: "RET_ONLY", industries: ["retail"] }),
+      indicator({ id: "agro-ind", code: "AGRO_ONLY", industries: ["agro_crops"] }),
+    ])
+    prismaMock.companyIndicator.findMany.mockResolvedValue([
+      { companyId: "agro", indicatorId: "retail", enabled: true },
+      { companyId: "agro", indicatorId: "agro-ind", enabled: false },
+    ])
+
+    const res = await POST(
+      makeRequest("/api/indicators/matrix/preview", {
+        method: "POST",
+        json: { period: "2026-Q1", overrides: { fx_usd: 1.8 } },
+      }),
+    )
+    const body = await res.json()
+
+    expect(body.pairsAttempted).toBe(1)
+    expect(body.affectedIndicatorCount).toBe(1)
+    expect(body.cells).toHaveLength(1)
+    expect(body.cells[0]).toMatchObject({
+      companyId: "agro",
+      indicatorId: "retail",
+      indicatorCode: "RET_ONLY",
+    })
     expect(recomputeIndicatorMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not preview hidden internal definitions on the operational leaf surface", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "editor" })
+    prismaMock.company.findMany.mockResolvedValue([company()])
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+      indicator({
+        id: "internal",
+        code: "INTERNAL_HELPER",
+        category: "internal",
+        requiredInputs: ["currencyRate"],
+      }),
+    ])
+
+    const res = await POST(
+      makeRequest("/api/indicators/matrix/preview", {
+        method: "POST",
+        json: { period: "2026-Q1", overrides: { fx_usd: 1.8 } },
+      }),
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body).toMatchObject({
+      affectedIndicatorCount: 0,
+      pairsAttempted: 0,
+      cells: [],
+    })
+    expect(recomputeIndicatorMock).not.toHaveBeenCalled()
+  })
+
+  it("does not preview onboarding-pending companies", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "editor" })
+    prismaMock.company.findMany.mockResolvedValue([
+      company({ id: "pending", status: "pending" }),
+    ])
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([indicator()])
+
+    const res = await POST(
+      makeRequest("/api/indicators/matrix/preview", {
+        method: "POST",
+        json: { period: "2026-Q1", overrides: { fx_usd: 1.8 } },
+      }),
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body).toMatchObject({
+      affectedIndicatorCount: 0,
+      pairsAttempted: 0,
+      cells: [],
+    })
+    expect(prismaMock.indicatorValue.findMany).not.toHaveBeenCalled()
+    expect(recomputeIndicatorMock).not.toHaveBeenCalled()
   })
 
   it("per-pair error caught + counted (doesn't abort full preview)", async () => {

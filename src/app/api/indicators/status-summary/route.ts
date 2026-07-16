@@ -1,17 +1,13 @@
 /**
- * Phase 7.G CXLVI — honest status counts from DB.
+ * Phase 7.G CXLVI — honest decision-surface status counts.
  *
  * GET /api/indicators/status-summary?period=YYYY[-MM]
  *
- * Returns total counts of IndicatorValue rows by status for the period,
- * grouping by raw DB state (no admin/rollup filtering applied). Used by
- * the HeatMap header badge so the displayed `OG / 5A / 9R / 102?` numbers
- * reflect what's ACTUALLY in the database — not a filtered matrix view
- * that drops admin entities (e.g. ATL-MRKZ cost centre with legitimate
- * red indicators that the matrix view hides).
- *
- * Distinct from `/api/indicators/matrix` which serves the renderable
- * grid (excludes admin to prevent "fake red" admin alarms in HeatMap).
+ * Returns counts over the same decision surface as the matrix leaf rows:
+ * active, RBAC-scoped level-2 operational companies; active renderable
+ * indicators; and only applicable company/indicator pairs. A stale cache row
+ * for the wrong industry, an explicit CompanyIndicator disable, or an admin
+ * cost-centre row must not inflate the HeatMap header badge.
  *
  * Response:
  *   { period, green, amber, red, unknown, total }
@@ -21,6 +17,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { currentBakuYear, parsePeriod, PeriodParseError } from "@/lib/risk/periods"
+import {
+  filterOperationalCompanies,
+  preferOrgScopedDefinitions,
+} from "@/lib/risk/targets"
+import { getCompanyScope } from "@/lib/rbac/company-scope"
+import { loadPairApplicabilityResolver } from "@/lib/risk/pair-applicability"
 
 export async function GET(req: NextRequest) {
   const session = await requireAuth(req)
@@ -40,20 +42,104 @@ export async function GET(req: NextRequest) {
     throw e
   }
 
-  const counts = await withOrgScope(orgId, (tx) =>
-    tx.indicatorValue.groupBy({
-      by: ["status"],
-      where: { organizationId: orgId, period: periodParam },
-      _count: { _all: true },
-    }),
-  )
+  const includePending = req.nextUrl.searchParams.get("includePending") === "true"
+  const scope = await getCompanyScope(orgId, session.userId, session.role)
+
+  const applicableStatuses = await withOrgScope(orgId, async (tx) => {
+    const [companiesRaw, indicatorRows] = await Promise.all([
+      tx.company.findMany({
+        where: {
+          organizationId: orgId,
+          isActive: true,
+          ...(includePending ? {} : { status: { not: "pending" } }),
+          ...(scope.ids ? { id: { in: Array.from(scope.ids) } } : {}),
+        },
+        select: {
+          id: true,
+          code: true,
+          industry: true,
+          level: true,
+          isActive: true,
+          role: true,
+        },
+      }),
+      // Fetch the complete active global+tenant catalogue first. Visibility
+      // is resolved only after same-code tenant precedence below; filtering
+      // internal rows in SQL would drop an internal tenant override and let
+      // the shadowed global definition leak back into the status count.
+      tx.indicatorDefinition.findMany({
+        where: {
+          isActive: true,
+          OR: [{ organizationId: null }, { organizationId: orgId }],
+        },
+        select: {
+          id: true,
+          code: true,
+          organizationId: true,
+          industries: true,
+          isActive: true,
+          category: true,
+          requiredInputs: true,
+        },
+      }),
+    ])
+
+    const operational = filterOperationalCompanies(companiesRaw)
+    // A tenant definition replaces the global definition with the same code;
+    // counting both ids would double-count one logical KPI and could report
+    // contradictory statuses for the same company/code pair.
+    // Internal indicators never produce rendered operational leaf cells in
+    // the matrix. Prefer the tenant definition first, then apply that leaf
+    // visibility rule so a same-code global cannot bypass a tenant override.
+    const indicators = preferOrgScopedDefinitions(indicatorRows).filter(
+      (indicator) => indicator.category !== "internal",
+    )
+    const companyIds = operational.map((company) => company.id)
+    const indicatorIds = indicators.map((indicator) => indicator.id)
+    if (companyIds.length === 0 || indicatorIds.length === 0) return []
+
+    const [pairApplicability, values] = await Promise.all([
+      loadPairApplicabilityResolver(tx, {
+        organizationId: orgId,
+        companies: operational,
+        definitions: indicators,
+      }),
+      tx.indicatorValue.findMany({
+        where: {
+          organizationId: orgId,
+          period: periodParam,
+          companyId: { in: companyIds },
+          indicatorId: { in: indicatorIds },
+        },
+        select: { companyId: true, indicatorId: true, status: true },
+      }),
+    ])
+
+    const companyById = new Map(
+      operational.map((company) => [company.id, company]),
+    )
+    const indicatorById = new Map(
+      indicators.map((indicator) => [indicator.id, indicator]),
+    )
+    return values
+      .filter((value) => {
+        const company = companyById.get(value.companyId)
+        const indicator = indicatorById.get(value.indicatorId)
+        return Boolean(
+          company &&
+            indicator &&
+            pairApplicability.isApplicable(company, indicator),
+        )
+      })
+      .map((value) => value.status)
+  })
 
   const summary = { period: periodParam, green: 0, amber: 0, red: 0, unknown: 0, total: 0 }
-  for (const c of counts) {
-    const s = c.status as keyof typeof summary
+  for (const status of applicableStatuses) {
+    const s = status as keyof typeof summary
     if (s === "green" || s === "amber" || s === "red" || s === "unknown") {
-      summary[s] = c._count._all
-      summary.total += c._count._all
+      summary[s] += 1
+      summary.total += 1
     }
   }
 

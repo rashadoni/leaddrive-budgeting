@@ -44,7 +44,7 @@ export interface MatrixCompanyRow {
   id: string;
   code: string;
   name: string;
-  industry: string;
+  industry: string | null;
   /** Runtime hierarchy edge used for subgroup activity/profile roll-ups. */
   parentCompanyId?: string | null;
   /** Set true on sub-group rollup rows (Turn 33.5); leaf ops cos omit. */
@@ -111,6 +111,12 @@ export interface MatrixIndicatorCol {
   requiredInputs?: string[];
 }
 
+export interface MatrixApplicabilityOverride {
+  companyId: string;
+  indicatorId: string;
+  enabled: boolean;
+}
+
 export interface MatrixResponse {
   period: string;
   /** 2026-07-15 — every year with any IndicatorValue plus the current Baku
@@ -120,6 +126,9 @@ export interface MatrixResponse {
   availableYears?: number[];
   companies: MatrixCompanyRow[];
   indicators: MatrixIndicatorCol[];
+  /** Explicit per-company applicability assignments. When absent, clients
+   *  fall back to IndicatorDefinition.industries for backwards compatibility. */
+  applicabilityOverrides?: MatrixApplicabilityOverride[];
   cells: HeatMapCell[];
   /** 2026-05-27 A4 — max(IndicatorValue.computedAt) across all rendered
    *  cells, ISO 8601 string. Null when matrix has no cells (empty org /
@@ -168,7 +177,12 @@ function isMatrixResponseShape(v: unknown): v is MatrixResponse {
     typeof (v as { period: unknown }).period === "string" &&
     Array.isArray((v as { companies: unknown }).companies) &&
     Array.isArray((v as { indicators: unknown }).indicators) &&
-    Array.isArray((v as { cells: unknown }).cells)
+    Array.isArray((v as { cells: unknown }).cells) &&
+    ((v as { applicabilityOverrides?: unknown }).applicabilityOverrides ===
+      undefined ||
+      Array.isArray(
+        (v as { applicabilityOverrides?: unknown }).applicabilityOverrides,
+      ))
   );
 }
 

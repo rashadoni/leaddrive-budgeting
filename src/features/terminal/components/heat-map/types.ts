@@ -10,7 +10,7 @@ export type CompanyRow = {
   id: string;
   code: string;
   name: string;
-  industry: string;
+  industry: string | null;
   /** Set true on sub-group rollup rows (Turn 33.5); leaf ops cos omit. */
   isSubgroup?: boolean;
   /** CLI follow-up — surfaces hierarchy so CompanyTree can derive parent

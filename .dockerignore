@@ -12,6 +12,12 @@ yarn-error.log*
 # Next.js build artifacts (rebuilt inside the image)
 .next
 out
+output
+
+# Runtime/deploy artifacts. Production DB backups and the local revision
+# stamp must never enter the Docker build context or BuildKit cache.
+backups
+.deploy-revision
 
 # Environment (never baked into image — injected at runtime)
 .env

@@ -37,6 +37,77 @@ import { simulateByDrivers } from '@/lib/risk/scenario-rederive'
 import { aiErrorBody } from '@/lib/ai/ai-error'
 import { runCrisisBrief, type BriefLanguage } from '@/lib/risk/scenario-narrative'
 import { hasAnthropicKey } from '@/lib/ai/client'
+import {
+  loadPairApplicabilityResolver,
+  type PairApplicabilityDefinition,
+  type PairApplicabilityResolver,
+} from '@/lib/risk/pair-applicability'
+import { getCompanyScope } from '@/lib/rbac/company-scope'
+import {
+  filterOperationalCompanies,
+  isIndicatorApplicableToCompany,
+  isRollupIndicator,
+  preferOrgScopedDefinitions,
+} from '@/lib/risk/targets'
+
+function scenarioVisibleDefinitions<
+  I extends {
+    id: string
+    code: string
+    organizationId: string | null
+    industries: string[]
+    isActive: boolean
+    category: string | null
+    requiredInputs: string[]
+  },
+>(definitions: I[]): I[] {
+  return preferOrgScopedDefinitions(definitions).filter(
+    (definition) =>
+      definition.category !== 'internal' || isRollupIndicator(definition),
+  )
+}
+
+function createScenarioPairPredicate<
+  C extends {
+    id: string
+    industry: string | null
+    level: number | null
+    parentCompanyId: string | null
+  },
+>(companies: readonly C[], resolver: PairApplicabilityResolver) {
+  const explicitByPair = new Map(
+    resolver.overrides.map((override) => [
+      `${override.companyId}::${override.indicatorId}`,
+      override.enabled,
+    ]),
+  )
+  const childrenByParentId = new Map<string, C[]>()
+  for (const company of companies) {
+    if (!company.parentCompanyId) continue
+    const children = childrenByParentId.get(company.parentCompanyId) ?? []
+    children.push(company)
+    childrenByParentId.set(company.parentCompanyId, children)
+  }
+
+  return (company: C, definition: PairApplicabilityDefinition): boolean => {
+    const key = `${company.id}::${definition.id}`
+    if (explicitByPair.has(key)) return explicitByPair.get(key) === true
+    if (company.level !== 1) return resolver.isApplicable(company, definition)
+
+    // A level-1 subgroup with null taxonomy derives applicability from the
+    // operational children visible in this RBAC scope. It must not inherit
+    // the base predicate's unknown-industry fail-open and expose every KPI.
+    if (
+      company.industry &&
+      isIndicatorApplicableToCompany(company, definition)
+    ) {
+      return true
+    }
+    return (childrenByParentId.get(company.id) ?? []).some((child) =>
+      resolver.isApplicable(child, definition),
+    )
+  }
+}
 
 export async function GET(
   request: NextRequest,
@@ -47,6 +118,12 @@ export async function GET(
   if (!session.orgId) {
     return NextResponse.json({ error: 'User has no organization' }, { status: 403 })
   }
+
+  const scope = await getCompanyScope(
+    session.orgId,
+    session.userId,
+    session.role,
+  )
 
   const { id } = await params
   const { searchParams } = new URL(request.url)
@@ -72,17 +149,61 @@ export async function GET(
       )
     }
     const rawShock = readShock(scenario.overrides)!
-    const [companies, indicators, baselineRows, fxRows, intelRows] = await Promise.all([
+    const [companiesRaw, indicatorsRaw, baselineRows, fxRows, intelRows] = await Promise.all([
       prisma.company.findMany({
-        where: { organizationId: session.orgId },
-        select: { id: true, code: true, name: true, parentCompanyId: true, industry: true },
+        where: {
+          organizationId: session.orgId,
+          isActive: true,
+          status: { not: 'pending' },
+          role: 'operational',
+          ...(scope.ids ? { id: { in: Array.from(scope.ids) } } : {}),
+          OR: [
+            { level: 1 },
+            { level: 2, industry: { not: null } },
+          ],
+        },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          parentCompanyId: true,
+          industry: true,
+          level: true,
+          isActive: true,
+          role: true,
+          status: true,
+        },
       }),
       prisma.indicatorDefinition.findMany({
-        where: { isActive: true },
-        select: { id: true, code: true, formula: true, thresholds: true, requiredInputs: true, weight: true, aggregation: true, unit: true },
+        where: {
+          isActive: true,
+          // prismaAdmin bypasses RLS on this long-running read-only path.
+          OR: [{ organizationId: null }, { organizationId: session.orgId }],
+        },
+        select: { id: true, organizationId: true, code: true, formula: true, thresholds: true, requiredInputs: true, industries: true, isActive: true, category: true, weight: true, aggregation: true, unit: true },
       }),
       prisma.indicatorValue.findMany({
-        where: { organizationId: session.orgId, period },
+        where: {
+          organizationId: session.orgId,
+          period,
+          ...(scope.ids
+            ? { companyId: { in: Array.from(scope.ids) } }
+            : {}),
+          company: {
+            organizationId: session.orgId,
+            isActive: true,
+            status: { not: 'pending' },
+            role: 'operational',
+            OR: [
+              { level: 1 },
+              { level: 2, industry: { not: null } },
+            ],
+          },
+          indicator: {
+            isActive: true,
+            OR: [{ organizationId: null }, { organizationId: session.orgId }],
+          },
+        },
         select: { companyId: true, indicatorId: true, value: true, status: true, inputs: true },
       }),
       // Phase 2 — latest live feed for shock-target anchoring.
@@ -99,6 +220,53 @@ export async function GET(
         select: { metric: true, value: true, datetime: true },
       }),
     ])
+
+    // Keep scenario simulation on the same decision surface as the matrix:
+    // active/non-pending operational leaves plus operational level-1
+    // subgroup rows. Admin, holding and unclassified shells must not enter
+    // through taxonomy's intentional unknown-industry fail-open rule.
+    const activeCompaniesRaw = companiesRaw.filter(
+      (company) =>
+        company.status !== 'pending' &&
+        (!scope.ids || scope.ids.has(company.id)),
+    )
+    const companies = [
+      ...filterOperationalCompanies(activeCompaniesRaw),
+      ...activeCompaniesRaw.filter(
+        (company) =>
+          company.isActive &&
+          company.level === 1 &&
+          company.role === 'operational',
+      ),
+    ]
+    // A same-code org definition replaces its global seed everywhere on this
+    // surface. Otherwise duplicate baselines would be simulated twice.
+    const indicators = scenarioVisibleDefinitions(indicatorsRaw)
+    const pairApplicability = await loadPairApplicabilityResolver(prisma, {
+      organizationId: session.orgId,
+      companies,
+      definitions: indicators,
+    })
+    const isApplicablePair = createScenarioPairPredicate(
+      companies,
+      pairApplicability,
+    )
+    const companyById = new Map(companies.map((company) => [company.id, company]))
+    const indicatorById = new Map(
+      indicators.map((indicator) => [indicator.id, indicator]),
+    )
+    const applicableBaselineRows = baselineRows.filter((row) => {
+      const company = companyById.get(row.companyId)
+      const definition = indicatorById.get(row.indicatorId)
+      return Boolean(
+        company &&
+          definition &&
+          (company.level === 1
+            ? isRollupIndicator(definition)
+            : !isRollupIndicator(definition)) &&
+          isApplicablePair(company, definition),
+      )
+    })
 
     // Build the feed snapshot + resolve any absolute target → its drives fraction.
     const nowMs = Date.now()
@@ -122,7 +290,7 @@ export async function GET(
 
     // Revenue per company = MAX(inputs.resolved.revenue) — NO company.revenue column (spec §B).
     const revenueByCompanyId = new Map<string, number>()
-    for (const r of baselineRows) {
+    for (const r of applicableBaselineRows) {
       const rev = (r.inputs as { resolved?: { revenue?: unknown } } | null)?.resolved?.revenue
       if (typeof rev === 'number' && Number.isFinite(rev)) {
         const cur = revenueByCompanyId.get(r.companyId) ?? -Infinity
@@ -130,7 +298,10 @@ export async function GET(
       }
     }
 
-    const ds = createPrismaDataSource(prisma)
+    // Defense in depth: the simulator also suppresses its writer internally,
+    // but the adapter itself must be read-only so a future simulator refactor
+    // cannot turn this GET endpoint into an IndicatorValue write path.
+    const ds = createPrismaDataSource(prisma, { mode: 'preview' })
     const sim = await simulateByDrivers(ds, {
       organizationId: session.orgId,
       scenario: { code: scenario.code, overrides: { shock: resolvedShock } },
@@ -152,7 +323,7 @@ export async function GET(
         weight: i.weight ?? null,
         unit: i.unit ?? null,
       })),
-      baselineIVs: baselineRows.map((iv) => ({
+      baselineIVs: applicableBaselineRows.map((iv) => ({
         companyId: iv.companyId,
         indicatorId: iv.indicatorId,
         value: iv.value,
@@ -268,19 +439,99 @@ export async function GET(
   }
 
   // ── Fetch current IndicatorValues ───────────────────────────────────────
-  const rawValues = await prisma.indicatorValue.findMany({
-    where: {
-      organizationId: session.orgId,
-      period,
-    },
-    select: {
-      companyId: true,
-      value: true,
-      status: true,
-      company: { select: { code: true, name: true } },
-      indicator: { select: { code: true } },
-    },
-  })
+  const [rawValues, defaultIndicatorsRaw, defaultCompaniesRaw] = await Promise.all([
+    prisma.indicatorValue.findMany({
+      where: {
+        organizationId: session.orgId,
+        period,
+        ...(scope.ids
+          ? { companyId: { in: Array.from(scope.ids) } }
+          : {}),
+        company: {
+          organizationId: session.orgId,
+          isActive: true,
+          status: { not: 'pending' },
+          role: 'operational',
+          OR: [
+            { level: 1 },
+            { level: 2, industry: { not: null } },
+          ],
+        },
+        indicator: {
+          isActive: true,
+          OR: [{ organizationId: null }, { organizationId: session.orgId }],
+        },
+      },
+      select: {
+        companyId: true,
+        indicatorId: true,
+        value: true,
+        status: true,
+        company: {
+          select: {
+            code: true,
+            name: true,
+            industry: true,
+            level: true,
+            isActive: true,
+            role: true,
+            status: true,
+          },
+        },
+        indicator: {
+          select: {
+            id: true,
+            organizationId: true,
+            code: true,
+            industries: true,
+            isActive: true,
+          },
+        },
+      },
+    }),
+    // Fetch the catalogue independently of existing values: if an org override
+    // exists but has no IV yet, a stale global IV with the same code must not
+    // become the simulated definition by default.
+    prisma.indicatorDefinition.findMany({
+      where: {
+        isActive: true,
+        OR: [{ organizationId: null }, { organizationId: session.orgId }],
+      },
+      select: {
+        id: true,
+        organizationId: true,
+        code: true,
+        industries: true,
+        isActive: true,
+        category: true,
+        requiredInputs: true,
+      },
+    }),
+    prisma.company.findMany({
+      where: {
+        organizationId: session.orgId,
+        isActive: true,
+        status: { not: 'pending' },
+        role: 'operational',
+        ...(scope.ids ? { id: { in: Array.from(scope.ids) } } : {}),
+        OR: [
+          { level: 1 },
+          { level: 2, industry: { not: null } },
+        ],
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        parentCompanyId: true,
+        industry: true,
+        level: true,
+        isActive: true,
+        role: true,
+        status: true,
+      },
+    }),
+  ])
 
   if (rawValues.length === 0) {
     return NextResponse.json(
@@ -292,7 +543,52 @@ export async function GET(
     )
   }
 
-  const flat = rawValues.map((v: (typeof rawValues)[number]) => ({
+  const activeDefaultCompanyCandidates = defaultCompaniesRaw.filter(
+    (company) =>
+      company.status !== 'pending' &&
+      (!scope.ids || scope.ids.has(company.id)),
+  )
+  const defaultCompanies = [
+    ...filterOperationalCompanies(activeDefaultCompanyCandidates),
+    ...activeDefaultCompanyCandidates.filter(
+      (company) =>
+        company.isActive &&
+        company.level === 1 &&
+        company.role === 'operational',
+    ),
+  ]
+  const defaultDefinitions = scenarioVisibleDefinitions(
+    defaultIndicatorsRaw,
+  )
+  const pairApplicability = await loadPairApplicabilityResolver(prisma, {
+    organizationId: session.orgId,
+    companies: defaultCompanies,
+    definitions: defaultDefinitions,
+  })
+  const isApplicablePair = createScenarioPairPredicate(
+    defaultCompanies,
+    pairApplicability,
+  )
+  const defaultCompanyById = new Map(
+    defaultCompanies.map((company) => [company.id, company]),
+  )
+  const defaultIndicatorById = new Map(
+    defaultDefinitions.map((definition) => [definition.id, definition]),
+  )
+  const applicableRawValues = rawValues.filter((value) => {
+    const company = defaultCompanyById.get(value.companyId)
+    const definition = defaultIndicatorById.get(value.indicatorId)
+    return Boolean(
+      company &&
+        definition &&
+        (company.level === 1
+          ? isRollupIndicator(definition)
+          : !isRollupIndicator(definition)) &&
+        isApplicablePair(company, definition),
+    )
+  })
+
+  const flat = applicableRawValues.map((v: (typeof rawValues)[number]) => ({
     companyId: v.companyId,
     companyCode: v.company.code,
     companyName: v.company.name,

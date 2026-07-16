@@ -44,9 +44,13 @@ import { mapWithConcurrency } from '@/lib/risk/concurrency'
 import { parsePeriod, PeriodParseError } from '@/lib/risk/periods'
 import {
   filterOperationalCompanies,
-  isIndicatorApplicableToCompany,
+  isRollupIndicator,
   preferOrgScopedDefinitions,
 } from '@/lib/risk/targets'
+import {
+  loadPairApplicabilityResolver,
+  matchApplicablePairs,
+} from '@/lib/risk/pair-applicability'
 import type { IndicatorStatus } from '@/lib/risk/formula-engine'
 
 export const maxDuration = 30
@@ -182,6 +186,7 @@ export async function POST(request: NextRequest) {
       where: {
         organizationId: session.orgId,
         isActive: true,
+        status: { not: 'pending' },
         ...(scope.ids ? { id: { in: Array.from(scope.ids) } } : {}),
       },
       select: {
@@ -195,6 +200,7 @@ export async function POST(request: NextRequest) {
         isActive: true,
         role: true,
         parentCompanyId: true,
+        status: true,
       },
     }),
     prisma.indicatorDefinition.findMany({
@@ -217,20 +223,29 @@ export async function POST(request: NextRequest) {
         requiredInputs: true,
         industries: true,
         isActive: true,
+        category: true,
         aggregation: true, // 2026-05-31 — snapshot/flow → ctx.aggregation
       },
     }),
   ])
 
-  const companies = filterOperationalCompanies(companiesRaw)
+  const companies = filterOperationalCompanies(
+    companiesRaw.filter((company) => company.status !== 'pending'),
+  )
   type IndRow = (typeof indicators)[number]
   // Keep the same definition-selection contract as the canonical recompute
   // path: a tenant override wins over the global seed with the same code.
   const preferredIndicators = preferOrgScopedDefinitions(
     indicators as IndRow[],
   )
-  const affectedIndicators = preferredIndicators.filter((i: IndRow) =>
-    isAffected({ requiredInputs: i.requiredInputs }, overrideKeys),
+  // Quick Preview is an operational-leaf surface. Ordinary internal helpers
+  // are hidden by the matrix; rollup-bearing internals are parent-only there.
+  // Neither belongs in this leaf preview's pairs/counts/cells.
+  const affectedIndicators = preferredIndicators.filter(
+    (i: IndRow) =>
+      i.category !== 'internal' &&
+      !isRollupIndicator(i) &&
+      isAffected({ requiredInputs: i.requiredInputs }, overrideKeys),
   )
 
   if (affectedIndicators.length === 0) {
@@ -257,9 +272,9 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // Load baseline IVs before building the pair list. A real non-unknown
-  // observation is evidence of a legacy/per-company applicability override;
-  // an `unknown` placeholder is not. The explicit organizationId predicate is
+  // Load baseline IVs for the comparison table. They do NOT decide
+  // applicability: a persisted calculation is output, not an explicit
+  // activity-profile override. The explicit organizationId predicate is
   // defense in depth because this route deliberately uses prismaAdmin.
   const baselineIvs = await prisma.indicatorValue.findMany({
     where: {
@@ -286,28 +301,19 @@ export async function POST(request: NextRequest) {
   // Applicability is pair-specific, not a catalogue-wide property. Avoid the
   // broad company x affected-indicator product: an agro KPI must not appear
   // on a food-processing company merely because the same shock affects both
-  // formula families. Empty `industries` remains universal and real legacy
-  // observations follow the HeatMap fail-open contract. Company eligibility
-  // itself stays canonical: `filterOperationalCompanies` admits only active,
-  // industry-classified level-2 operating entities.
-  const pairs: Array<{
-    company: (typeof companies)[number]
-    definition: (typeof affectedIndicators)[number]
-  }> = []
-  for (const company of companies) {
-    for (const definition of affectedIndicators) {
-      const baseline = baselineByKey.get(`${company.id}:${definition.id}`)
-      if (
-        isIndicatorApplicableToCompany(
-          company,
-          definition,
-          baseline?.status,
-        )
-      ) {
-        pairs.push({ company, definition })
-      }
-    }
-  }
+  // formula families. Empty `industries` remains universal. Company
+  // eligibility itself stays canonical: `filterOperationalCompanies` admits
+  // only active, industry-classified level-2 operating entities.
+  const pairApplicability = await loadPairApplicabilityResolver(prisma, {
+    organizationId: session.orgId,
+    companies,
+    definitions: affectedIndicators,
+  })
+  const pairs = matchApplicablePairs(
+    companies,
+    affectedIndicators,
+    pairApplicability,
+  )
   const applicableIndicatorIds = [
     ...new Set(pairs.map(({ definition }) => definition.id)),
   ]
@@ -324,11 +330,11 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // Run preview recomputes — NO DB writes. createPrismaDataSource exposes
-  // upsertIndicatorValue but we never call recomputeIndicator's persist
-  // path; the function itself doesn't persist (caller does), so we get a
-  // pure result.
-  const ds = createPrismaDataSource(prisma)
+  // Run preview recomputes — NO DB writes. `recomputeIndicator` normally
+  // persists unconditionally, so the adapter must be created in preview mode;
+  // its single write boundary becomes a no-op while all resolver reads remain
+  // canonical.
+  const ds = createPrismaDataSource(prisma, { mode: 'preview' })
   const results: Array<{
     companyId: string
     companyCode: string

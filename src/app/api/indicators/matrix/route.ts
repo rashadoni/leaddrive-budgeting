@@ -22,6 +22,8 @@
  *                  filter is relaxed (e.g. a holding-tree view that
  *                  intentionally includes admin entities greyed-out).
  *     indicators: Array<{ id, code, nameEn, direction, unit }>, active, ordered
+ *     applicabilityOverrides: Array<{ companyId, indicatorId, enabled }>,
+ *                  explicit CompanyIndicator rows for the scoped matrix only
  *     cells: Array<{ companyId, indicatorId, value, status }>  sparse
  *   }
  *
@@ -47,7 +49,13 @@ import { withOrgScope } from '@/lib/db/with-org-scope';
 import type { IndicatorStatus } from '@/lib/risk/formula-engine';
 import { currentBakuYearNumber, headlinePeriod, parsePeriod, PeriodParseError } from '@/lib/risk/periods';
 import type { Prisma } from '@prisma/client';
-import { filterOperationalCompanies, isRollupIndicator } from '@/lib/risk/targets';
+import {
+  filterOperationalCompanies,
+  isIndicatorApplicableToCompany,
+  isRollupIndicator,
+  preferOrgScopedDefinitions,
+} from '@/lib/risk/targets';
+import { loadPairApplicabilityResolver } from '@/lib/risk/pair-applicability';
 import { getCompanyScope } from '@/lib/rbac/company-scope';
 import {
   getMateriality,
@@ -216,6 +224,8 @@ export async function GET(request: NextRequest) {
         select: {
           id: true,
           code: true,
+          organizationId: true,
+          isActive: true,
           nameEn: true,
           nameAz: true,
           nameRu: true,
@@ -247,20 +257,30 @@ export async function GET(request: NextRequest) {
       requiredInputs: string[];
     };
     const indicatorsTyped = indicators as RawIndicatorShape[];
-    const rollupBearingInternalIds = new Set<string>();
-    const visibleIndicators = indicatorsTyped.filter((ind) => {
+    // One logical KPI code can have a global seed plus a tenant override.
+    // Resolve that override before the visible/internal predicate so every
+    // downstream surface (columns, applicability, IV reads, rollups) uses one
+    // canonical definition id and never double-counts the duplicate code.
+    const preferredIndicators = preferOrgScopedDefinitions(indicatorsTyped);
+    const visibleIndicators = preferredIndicators.filter((ind) => {
       if (ind.category !== 'internal') return true;
       // Internal-category — keep ONLY if rollup-bearing (parent-co IVs
       // give it visible meaning at the holding-level row).
-      if (isRollupIndicator(ind)) {
-        rollupBearingInternalIds.add(ind.id);
-        return true;
-      }
-      return false;
+      return isRollupIndicator(ind);
     });
     // Re-bind so downstream code uses the filtered list. Original
     // variable name kept (`indicators`) to minimize churn.
     const indicatorsForRender = visibleIndicators;
+    // Parent IndicatorValues are trustworthy only for definitions the
+    // canonical recompute trigger can actually write at level 1. Today that
+    // contract is exactly `rollup:`-bearing definitions. A legacy/non-rollup
+    // parent row is otherwise never refreshed and must not outrank the live
+    // synthetic consolidation assembled from its operational children.
+    const rollupBearingIndicatorIds = new Set(
+      indicatorsForRender
+        .filter((indicator) => isRollupIndicator(indicator))
+        .map((indicator) => indicator.id),
+    );
 
     // Phase 7.N C5 v2 — weight lookup map: indicatorId → weight.
     // Built once per request; used below when assembling cells.
@@ -283,8 +303,105 @@ export async function GET(request: NextRequest) {
     // when handed to a generic.
     const operational =
       filterOperationalCompanies<CompanyRawShape>(companiesRaw);
+    const subgroups = companiesRaw.filter(
+      (company: CompanyRawShape) =>
+        company.level === 1 && company.role === 'operational',
+    );
     const operationalIds = operational.map((c) => c.id);
-    const indicatorIds = indicatorsForRender.map((i: IndicatorShape) => i.id);
+    // Persisted rollup observations belong to level-1 parents only. Do not
+    // even read legacy leaf rollup rows: they are zombie cache entries from
+    // the old broad target fan-out, not valid operational observations.
+    const operationalIndicatorIds = indicatorsForRender
+      .filter((indicator) => !isRollupIndicator(indicator))
+      .map((indicator: IndicatorShape) => indicator.id);
+
+    // This is the exact entity universe serialized below: scored operational
+    // leaves plus operational level-1 subgroup rows. Applicability inheritance
+    // and synthetic subgroup membership must never inspect a broader company
+    // query, otherwise an admin cost centre or an unclassified level-2 shell
+    // can make a parent appear applicable while that child is absent from the
+    // client matrix.
+    const matrixEntities: CompanyRawShape[] = [...operational, ...subgroups];
+
+    // CompanyIndicator is the explicit per-company contract: a present row
+    // wins (enabled=true includes an intentional cross-industry assignment;
+    // enabled=false suppresses even a taxonomy match). When no row exists,
+    // fall back to IndicatorDefinition.industries via the shared canonical
+    // predicate. Its fail-open rules are deliberate: an empty industries list
+    // is universal, and a company with unknown taxonomy cannot be proved
+    // inapplicable. One batched read covers both operational leaves and the
+    // level=1 parent rows emitted later in this handler.
+    const pairApplicability = await loadPairApplicabilityResolver(tx, {
+      organizationId: session.orgId,
+      companies: matrixEntities,
+      definitions: indicatorsForRender,
+    });
+    const applicabilityOverrides = pairApplicability.overrides;
+    const companyById = new Map(matrixEntities.map((c) => [c.id, c]));
+    const indicatorById = new Map(
+      indicatorsForRender.map((indicator) => [indicator.id, indicator]),
+    );
+    const childrenByParentId = new Map<string, CompanyRawShape[]>();
+    for (const company of matrixEntities) {
+      if (!company.parentCompanyId) continue;
+      const siblings = childrenByParentId.get(company.parentCompanyId) ?? [];
+      siblings.push(company);
+      childrenByParentId.set(company.parentCompanyId, siblings);
+    }
+    const assignmentByPair = new Map(
+      applicabilityOverrides.map((row) => [
+        `${row.companyId}::${row.indicatorId}`,
+        row.enabled,
+      ]),
+    );
+    const resolveApplicablePair = (
+      companyId: string,
+      indicatorId: string,
+      visiting: ReadonlySet<string>,
+    ): boolean => {
+      const company = companyById.get(companyId);
+      const indicator = indicatorById.get(indicatorId);
+      // Both ids came from the scoped queries above. Fail closed if a future
+      // refactor lets an orphan row through rather than serializing an
+      // unclassifiable cache entry. The cycle guard protects malformed trees.
+      if (!company || !indicator || visiting.has(companyId)) return false;
+      const rollupBearing = isRollupIndicator(indicator);
+      // Entity level is a structural formula constraint, not a taxonomy
+      // preference. A CompanyIndicator(enabled=true) cannot turn a leaf into
+      // a parent with children to aggregate.
+      if (rollupBearing && company.level !== 1) return false;
+
+      const key = `${companyId}::${indicatorId}`;
+      if (assignmentByPair.has(key)) return assignmentByPair.get(key) === true;
+      // A real rollup is evaluated on the parent itself. Do not derive its
+      // applicability by recursing into leaves: leaves are structurally
+      // ineligible for this definition by the gate above.
+      if (rollupBearing) {
+        return pairApplicability.isApplicable(company, indicator);
+      }
+
+      const children = childrenByParentId.get(company.id) ?? [];
+      if (company.level !== 1) {
+        return pairApplicability.isApplicable(company, indicator);
+      }
+
+      // A subgroup represents its own declared activity (when present) plus
+      // every serialized operational descendant activity. A null parent
+      // industry therefore means "derive from children", not "show the whole
+      // catalogue"; unclassified level-2 shells never enter matrixEntities.
+      if (
+        company.industry &&
+        isIndicatorApplicableToCompany(company, indicator)
+      ) {
+        return true;
+      }
+      const nextVisiting = new Set(visiting).add(companyId);
+      return children.some((child) =>
+        resolveApplicablePair(child.id, indicatorId, nextVisiting),
+      );
+    };
+    const isApplicablePair = (companyId: string, indicatorId: string) =>
+      resolveApplicablePair(companyId, indicatorId, new Set());
 
     // Resolve the period: explicit `?period=` (validated above) wins. Otherwise
     // the data-aware default (latest complete year WITH data). Gated on having
@@ -303,14 +420,14 @@ export async function GET(request: NextRequest) {
     const period = explicitPeriod ?? periodCtx.defaultPeriod;
 
     const values =
-      operationalIds.length === 0 || indicatorIds.length === 0
+      operationalIds.length === 0 || operationalIndicatorIds.length === 0
         ? []
         : await tx.indicatorValue.findMany({
             where: {
               organizationId: session.orgId,
               period,
               companyId: { in: operationalIds },
-              indicatorId: { in: indicatorIds },
+              indicatorId: { in: operationalIndicatorIds },
             },
             select: {
               // `id` is the IndicatorValue primary key — Phase 7.D cell-
@@ -360,6 +477,13 @@ export async function GET(request: NextRequest) {
           });
 
     type ValueShape = (typeof values)[number];
+    // IndicatorValue is a cache, not applicability evidence. Old recomputes
+    // may have left perfectly non-unknown rows for the wrong industry; remove
+    // them before any downstream projection (leaf cell, revenue weight,
+    // synthetic subgroup rollup, resolved-input consolidation, freshness).
+    const applicableValues = values.filter((value: ValueShape) =>
+      isApplicablePair(value.companyId, value.indicatorId),
+    );
 
     // Phase 7.M Step 5 (2026-05-19) — one batched fetch of per-company
     // readiness. Joined into the company rows below so CompanyTree
@@ -382,7 +506,7 @@ export async function GET(request: NextRequest) {
     // so a stray partial 0 can't win). 0 when no P&L is loaded → 0 weight
     // in the parent roll-up, so a no-data shell can't inflate the holding.
     const revenueByCompanyId = new Map<string, number>();
-    for (const v of values) {
+    for (const v of applicableValues) {
       const rev = (v.inputs as { resolved?: { revenue?: unknown } } | null)?.resolved?.revenue;
       if (typeof rev === 'number' && Number.isFinite(rev)) {
         const cur = revenueByCompanyId.get(v.companyId) ?? -Infinity;
@@ -436,21 +560,7 @@ export async function GET(request: NextRequest) {
       return getMateriality(industry, indCode);
     };
 
-    const cells = values
-      .filter((v: ValueShape) => {
-        // Sub-44 cont'd render-path closure: suppress op-co cells for
-        // rollup-bearing internals (e.g. IND_HOLDING_REVENUE). On op-cos
-        // the rollup() formula has no children → returns 0 → falls in
-        // amber band. Showing this would give every op-co a misleading
-        // amber column for a holding-level metric. Keep the IV in DB
-        // (recompute pipeline still wrote it; deletion would cause a
-        // re-run on next trigger) but skip emission for the operational
-        // matrix render. Parent-co cells for these indicators ARE
-        // emitted below (real IVs from the rollup() resolver).
-        if (rollupBearingInternalIds.has(v.indicatorId)) return false;
-        return true;
-      })
-      .map((v: ValueShape) => {
+    const cells = applicableValues.map((v: ValueShape) => {
         const inputs = v.inputs as { error?: { code: string; reason: string } } | null;
         const error = inputs?.error;
         // sparkline column is `Json`; runtime shape is `(number | null)[]`
@@ -516,7 +626,6 @@ export async function GET(request: NextRequest) {
     // 33.5 synthetic-average path stays for everything else; pairs that
     // get a real cell are excluded via `realParentCellKeys` (priority:
     // real IV > Turn 33.5 average).
-    const subgroups = companiesRaw.filter((c: CompanyRawShape) => c.level === 1 && c.role === 'operational');
     const subgroupCompanies = subgroups.map((sg: CompanyRawShape) => ({
       id: sg.id,
       code: sg.code,
@@ -531,38 +640,29 @@ export async function GET(request: NextRequest) {
     // companies whose parentCompanyId points to a sub-group's id.
     const childToSubgroup = new Map<string, string>();
     const subgroupIds = new Set(subgroups.map((s: CompanyRawShape) => s.id));
-    const fullCompaniesRaw = await tx.company.findMany({
-      where: {
-        organizationId: session.orgId,
-        isActive: true,
-        // Truth-infra C.3 — same pending-exclusion as the top-level
-        // findMany so pending children don't propagate into subgroup
-        // composite scores. Admin toggle includes them via the same
-        // `includePending` flag.
-        ...(includePending ? {} : { status: { not: 'pending' } }),
-        parentCompanyId: { in: Array.from(subgroupIds) },
-      },
-      select: { id: true, parentCompanyId: true },
-    });
-    for (const c of fullCompaniesRaw) {
-      if (c.parentCompanyId) childToSubgroup.set(c.id, c.parentCompanyId);
+    for (const company of operational) {
+      if (
+        company.parentCompanyId &&
+        subgroupIds.has(company.parentCompanyId)
+      ) {
+        childToSubgroup.set(company.id, company.parentCompanyId);
+      }
     }
 
-    // Sub-44 cont'd render-path closure: fetch parent-co (level=1) IVs
-    // for any indicator (NOT just rollup-bearing — e.g. seed authors may
-    // add operational-category indicators that fire on parent cos via
-    // future formulas). Conditional: only if at least one sub-group exists
-    // AND at least one indicator is in scope. Cost: one extra findMany,
-    // bounded by `subgroupIds.size × indicatorIds.length`.
+    // Sub-44 cont'd render-path closure: fetch parent-co (level=1) IVs only
+    // for rollup-bearing definitions. This mirrors the recompute trigger's
+    // parent target contract. Accepting an arbitrary legacy parent IV here
+    // would let an unrefreshable non-rollup cache row suppress the current
+    // child-derived synthetic consolidation.
     const parentValues =
-      subgroupIds.size === 0 || indicatorIds.length === 0
+      subgroupIds.size === 0 || rollupBearingIndicatorIds.size === 0
         ? []
         : await tx.indicatorValue.findMany({
             where: {
               organizationId: session.orgId,
               period,
               companyId: { in: Array.from(subgroupIds) },
-              indicatorId: { in: indicatorIds },
+              indicatorId: { in: Array.from(rollupBearingIndicatorIds) },
             },
             select: {
               id: true,
@@ -597,8 +697,12 @@ export async function GET(request: NextRequest) {
           });
 
     type ParentValueShape = (typeof parentValues)[number];
+    const applicableParentValues = parentValues.filter(
+      (value: ParentValueShape) =>
+        isApplicablePair(value.companyId, value.indicatorId),
+    );
     const realParentCellKeys = new Set<string>();
-    const parentCells = parentValues.map((v: ParentValueShape) => {
+    const parentCells = applicableParentValues.map((v: ParentValueShape) => {
       realParentCellKeys.add(`${v.companyId}::${v.indicatorId}`);
       const inputs = v.inputs as { error?: { code: string; reason: string } } | null;
       const error = inputs?.error;
@@ -665,7 +769,7 @@ export async function GET(request: NextRequest) {
     };
     // `cells` doesn't carry inputs; `values` does. Build (co::ind) → resolved.
     const resolvedByCell = new Map<string, Record<string, unknown>>();
-    for (const v of values) {
+    for (const v of applicableValues) {
       const r = (v.inputs as { resolved?: Record<string, unknown> } | null)?.resolved;
       if (r && typeof r === 'object') resolvedByCell.set(`${v.companyId}::${v.indicatorId}`, r);
     }
@@ -679,6 +783,10 @@ export async function GET(request: NextRequest) {
     for (const cell of cells) {
       const sgId = childToSubgroup.get(cell.companyId);
       if (!sgId) continue;
+      // A subgroup may have its own explicit CompanyIndicator disable (or,
+      // less commonly, a known industry taxonomy). Do not recreate a disabled
+      // parent cell synthetically after filtering its persisted IV above.
+      if (!isApplicablePair(sgId, cell.indicatorId)) continue;
       const key = `${sgId}::${cell.indicatorId}`;
       // Sub-44 cont'd render-path: real parent IV beats synthetic average.
       if (realParentCellKeys.has(key)) continue;
@@ -778,8 +886,8 @@ export async function GET(request: NextRequest) {
     // — UI degrades to «No data yet».
     //
     // 2026-06-03 fix (terminal-audit run-2 #7): read computedAt from the raw
-    // `values` / `parentValues` rows (which select it), NOT from the emitted
-    // cell objects. The leaf/parent cell `.map()`s never copied `computedAt`
+    // applicability-filtered raw leaf/parent rows (which select it), NOT from
+    // the emitted cell objects. The leaf/parent cell `.map()`s never copied `computedAt`
     // onto the cell, so the previous loop over `cells` always saw `undefined`,
     // `lastComputedAt` stayed null, and the badge (gated on it in HeatMap)
     // NEVER rendered. Subgroup cells are synthetic averages with no real
@@ -790,8 +898,8 @@ export async function GET(request: NextRequest) {
       const iso = ts instanceof Date ? ts.toISOString() : String(ts);
       if (!lastComputedAt || iso > lastComputedAt) lastComputedAt = iso;
     };
-    for (const v of values) considerTs(v.computedAt);
-    for (const v of parentValues) considerTs(v.computedAt);
+    for (const v of applicableValues) considerTs(v.computedAt);
+    for (const v of applicableParentValues) considerTs(v.computedAt);
 
     return NextResponse.json(
       {
@@ -799,6 +907,9 @@ export async function GET(request: NextRequest) {
         availableYears: periodCtx.availableYears,
         companies: [...companies, ...subgroupCompanies],
         indicators: indicatorsForRender,
+        // Explicit only. The client applies this per company/pair before the
+        // same taxonomy fallback; persisted cells never act as overrides.
+        applicabilityOverrides,
         cells: allCellsForFreshness,
         lastComputedAt,
       },

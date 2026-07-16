@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "./auth"
+import { hasRole, type Role } from "./permissions"
+
+// Preserve the existing server-side import surface while keeping the pure
+// hierarchy in a client-safe module for components such as Sidebar.
+export { hasRole, type Role } from "./permissions"
 
 interface AuthResult {
   orgId: string
@@ -58,33 +63,6 @@ export async function requireAuth(req: NextRequest): Promise<AuthResult | NextRe
 
 export function isAuthError(result: AuthResult | NextResponse): result is NextResponse {
   return result instanceof NextResponse
-}
-
-/**
- * Role hierarchy used for plan write operations.
- *  - admin   — full control (organization owner)
- *  - manager — can edit/apply templates, create versions, but cannot delete org-level data
- *  - editor  — can edit lines/actuals, cannot touch plan structure
- *  - viewer  — read-only
- *
- * `viewer` is the default for users created without explicit role; deny by default.
- */
-export type Role = "admin" | "manager" | "editor" | "viewer"
-
-const ROLE_RANK: Record<string, number> = {
-  admin: 40,
-  manager: 30,
-  editor: 20,
-  viewer: 10,
-}
-
-/**
- * Check whether `role` has at least the privilege level of `minRole`.
- * Unknown roles are treated as lowest (deny).
- */
-export function hasRole(role: string | undefined | null, minRole: Role): boolean {
-  const r = ROLE_RANK[role ?? ""] ?? 0
-  return r >= ROLE_RANK[minRole]
 }
 
 /**
