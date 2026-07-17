@@ -253,6 +253,58 @@ Daily Postgres dump (add to crontab — `crontab -e`):
 
 Create the directory first: `mkdir -p /opt/budgetpro/backups`.
 
+### Scheduled free-feed refresh (systemd)
+
+The Docker VM does not use `vercel.json`, so `/api/cron/refresh-feeds` needs a
+host scheduler. The tracked timer calls only the scheduled free-feed route. It
+does **not** start the Anthropic web crawler, and its adapter policy excludes
+the paid Google Trends proxy even when a key exists.
+
+First configure `CRON_SECRET` in `/opt/budgetpro/.env.production` and the
+organization-owned provider keys in **Admin → API keys**. Then install the unit
+files. This command does not enable or start a disabled timer:
+
+```bash
+cd /opt/budgetpro
+sudo bash deploy/install-refresh-feeds-timer.sh
+```
+
+After the EIA key (and any other desired free-provider keys) is present, run
+one explicitly approved canary. This calls providers and writes the resulting
+points/recomputations, but it does not enable retries or the daily timer:
+
+```bash
+sudo /opt/budgetpro/deploy/run-refresh-feeds.sh --canary
+```
+
+Inspect the JSON result, the source cards and the dedicated
+`feedRefreshLastRun*` organization heartbeat. Only after that evidence is
+accepted, enable the daily 06:00 UTC timer within 60 minutes of the successful
+canary:
+
+```bash
+sudo bash deploy/install-refresh-feeds-timer.sh --enable
+systemctl list-timers budgetpro-refresh-feeds.timer --no-pager
+```
+
+Disable without deleting the unit files:
+
+```bash
+sudo systemctl disable --now budgetpro-refresh-feeds.timer
+```
+
+The runner parses only `CRON_SECRET` from the root-owned environment file; it
+does not execute the dotenv or export database/NextAuth/Anthropic credentials
+to curl. The bearer passes through a mode-0600 temporary header file, never a
+process argument. Missing secret, HTTP error, timeout, total feed failure,
+recompute failure or heartbeat failure makes the service fail visibly.
+Scheduled failures retry at most twice, 15 minutes apart; the direct canary
+runs exactly once. The timer deliberately does not catch up a missed calendar
+event after reboot, preventing an unreviewed immediate run. A PostgreSQL
+session advisory lock also prevents overlap with direct calls or another host.
+Installation pre-verifies both units and restores their previous files and
+enable/active state if any later step fails.
+
 ### Restore
 
 ```bash

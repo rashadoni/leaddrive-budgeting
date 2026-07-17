@@ -1,0 +1,40 @@
+[Unit]
+Description=BudgetPro free market-data and indicator refresh
+Documentation=file:/opt/budgetpro/deploy/README.md
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+StartLimitIntervalSec=45min
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/budgetpro
+ExecStart=/opt/budgetpro/deploy/run-refresh-feeds.sh
+TimeoutStartSec=10min
+Restart=on-failure
+RestartSec=15min
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=budgetpro-refresh-feeds
+
+# The caller only reads the deployment and makes one loopback HTTP request.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

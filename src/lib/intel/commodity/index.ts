@@ -11,7 +11,7 @@ import { createSugarYahooAdapter } from "./sugar-yahoo"
 // Phase 7.K — Phase 1: official replacements for the 3 broken adapters
 // (tcmb-fx-rates / commodities-rss-brent / worldbank-sugar).
 import { createCBARFXAdapter } from "./cbar-fx"
-import { createEIAEnergyAdapter } from "./eia-energy"
+import { createEIAEnergyAdapter, EIA_ENERGY_SOURCE } from "./eia-energy"
 import { createFAOFoodPricesAdapter } from "./fao-food-prices"
 // Phase 7.K — Phase 2: cross-sector data feeds covering ≥5 sectors each.
 import { createYahooGrainsAdapter } from "./yahoo-grains"
@@ -19,11 +19,14 @@ import { createYahooMetalsAdapter } from "./yahoo-metals"
 import { createOpenMeteoForecastAdapter } from "./openmeteo-forecast"
 import { createAzStatCpiAdapter } from "./az-stat-cpi"
 // Phase 7.K — Phase 3: sector-specific feeds (poultry / logistics / services / hospitality+edu / retail).
-import { createUSDANassAdapter } from "./usda-nass"
+import { createUSDANassAdapter, USDA_NASS_SOURCE } from "./usda-nass"
 import { createYahooFuelBdiAdapter } from "./yahoo-fuel-bdi"
 import { createUnComtradeAzAdapter } from "./un-comtrade-az"
 import { createWbIndicatorsAdapter } from "./wb-indicators"
-import { createGoogleTrendsAzAdapter } from "./google-trends-az"
+import {
+  createGoogleTrendsAzAdapter,
+  GOOGLE_TRENDS_AZ_SOURCE,
+} from "./google-trends-az"
 import type { CommodityAdapter, CommodityAdapterOptions } from "./types"
 
 /** Extended adapter options. Phase 7.K Phase 5a wires per-org API keys
@@ -38,6 +41,63 @@ export interface ExtendedAdapterOptions extends CommodityAdapterOptions {
    *    Google Trends; null disables the adapter gracefully)
    */
   apiKeys?: Partial<Record<"eia" | "usda" | "gtrends", string | null>>
+}
+
+export interface ScheduledFeedSkip {
+  source: string
+  reason: "api_key_missing" | "paid_source_disabled"
+}
+
+export interface ScheduledFreeFeedAdapterSet {
+  adapters: CommodityAdapter[]
+  skipped: ScheduledFeedSkip[]
+}
+
+/**
+ * Adapter set for the unattended production scheduler.
+ *
+ * Unlike the broad manual factory below, this contract is intentionally
+ * spend-safe: Google Trends' paid proxy is never present, and key-gated free
+ * sources are omitted (and reported as skipped) when the organization has not
+ * configured the corresponding credential. A missing optional key is a
+ * configuration state, not a failed scheduler run.
+ */
+export function getScheduledFreeFeedAdapters(
+  opts: ExtendedAdapterOptions = {},
+): ScheduledFreeFeedAdapterSet {
+  const adapters: CommodityAdapter[] = [
+    createCBARFXAdapter(opts),
+    createWorldBankCPIAdapter(opts),
+    createFAOFoodPricesAdapter(opts),
+    createYahooGrainsAdapter(opts),
+    createYahooMetalsAdapter(opts),
+    createOpenMeteoForecastAdapter(opts),
+    createAzStatCpiAdapter(opts),
+    createYahooFuelBdiAdapter(opts),
+    createUnComtradeAzAdapter(opts),
+    createWbIndicatorsAdapter(opts),
+    createOpenMeteoWeatherAdapter(opts),
+    createSugarYahooAdapter(opts),
+  ]
+  const skipped: ScheduledFeedSkip[] = [
+    { source: GOOGLE_TRENDS_AZ_SOURCE, reason: "paid_source_disabled" },
+  ]
+
+  const eiaKey = opts.apiKeys?.eia?.trim()
+  if (eiaKey) {
+    adapters.push(createEIAEnergyAdapter({ ...opts, apiKey: eiaKey }))
+  } else {
+    skipped.push({ source: EIA_ENERGY_SOURCE, reason: "api_key_missing" })
+  }
+
+  const usdaKey = opts.apiKeys?.usda?.trim()
+  if (usdaKey) {
+    adapters.push(createUSDANassAdapter({ ...opts, apiKey: usdaKey }))
+  } else {
+    skipped.push({ source: USDA_NASS_SOURCE, reason: "api_key_missing" })
+  }
+
+  return { adapters, skipped }
 }
 
 export function getCommodityAdapters(

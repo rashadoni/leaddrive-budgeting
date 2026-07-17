@@ -1,0 +1,11 @@
+[Unit]
+Description=Run BudgetPro free-feed refresh daily
+
+[Timer]
+OnCalendar=*-*-* 06:00:00 UTC
+RandomizedDelaySec=5m
+Persistent=false
+Unit=budgetpro-refresh-feeds.service
+
+[Install]
+WantedBy=timers.target

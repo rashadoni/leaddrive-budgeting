@@ -320,7 +320,7 @@ as a client-access substitute.
     gap.** (This is the Vercel-SaaS recompute gap. NOTE — separate from
     the **intel feed scheduler** below, which the manual-VM prod CAN run.)
 
-## Intel feed scheduler (Crisis Brief feed freshness — manual-VM prod)
+## Intel feed schedulers (manual-VM prod)
 
 The Crisis Brief features added 2026-05-30 read the live intel feed:
 Phase 2 scenario anchors (FX/commodity levels), Phase 3 price/weather
@@ -328,7 +328,25 @@ signal triggers, and Phase 3b news triggers. These **degrade gracefully
 when the feed is stale** (each surfaces an honest staleness date / ⚠
 flag — they never break), but to stay FRESH in prod the feed must be
 refreshed periodically. On the manual-VM deployment, run the intel
-scheduler under systemd / cron / a LaunchAgent:
+scheduler under systemd / cron / a LaunchAgent.
+
+For routine FX, CPI, commodity, weather and EIA refreshes, use the tracked
+**free-feed-only** systemd timer. It calls `/api/cron/refresh-feeds`, never the
+Anthropic crawler, and explicitly excludes the paid Google Trends proxy. It
+stays disabled until organization-owned free-provider keys are configured and
+an owner-approved one-shot canary succeeds:
+
+```bash
+sudo bash deploy/install-refresh-feeds-timer.sh
+# After provider keys are ready — one write-capable canary, no retries:
+sudo /opt/budgetpro/deploy/run-refresh-feeds.sh --canary
+# After reviewing its data + feedRefreshLastRun* heartbeat:
+sudo bash deploy/install-refresh-feeds-timer.sh --enable
+```
+
+The older long-lived scheduler below is a separate, optional AI-news process.
+It can consume Anthropic tokens and must not be enabled as a substitute for the
+free-feed timer without explicit spend approval:
 
 ```bash
 # 24h cadence (default); fetches FX/CPI/commodity/weather + the AI news
