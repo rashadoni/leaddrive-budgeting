@@ -16,6 +16,13 @@ const roleProvisioning = readFileSync(
 );
 
 describe('DataRevision scope-guard migration contract', () => {
+  it('applies all guard and policy changes atomically', () => {
+    const statements = executableMigration.trim();
+
+    expect(statements).toMatch(/^BEGIN;/);
+    expect(statements).toMatch(/COMMIT;$/);
+  });
+
   it('removes the custom-GUC bypass from DataRevision policies', () => {
     expect(executableMigration).not.toContain('app.bypass_rls');
     expect(executableMigration).toContain('CREATE POLICY tenant_isolation');

@@ -141,7 +141,6 @@ export async function seedMultiOrg(prisma: PrismaClient): Promise<MultiOrgFixtur
       code: COMPANY_A_CODE,
       name: COMPANY_A_CODE,
       level: 1,
-      industry: "industrial",
     },
     select: { id: true, code: true },
   });
@@ -151,7 +150,6 @@ export async function seedMultiOrg(prisma: PrismaClient): Promise<MultiOrgFixtur
       code: COMPANY_B_CODE,
       name: COMPANY_B_CODE,
       level: 1,
-      industry: "industrial",
     },
     select: { id: true, code: true },
   });

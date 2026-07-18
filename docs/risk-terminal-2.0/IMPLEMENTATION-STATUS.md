@@ -90,8 +90,9 @@ open gate.*
 - **B2 PeriodContext + DataRevision:** contracts, persistence, tenant-scoped
   canonical writer and UPDATE immutability are implemented and tested. A
   2026-07-18 technical review found DB-level retention/lifecycle/supersession
-  and systemic RLS-bypass gaps (§21). A narrow migration candidate is prepared
-  but intentionally unapplied (§22); B2 remains open and not owner-reviewed.
+  and systemic RLS-bypass gaps (§21). The narrow migration candidate passed an
+  isolated PostgreSQL 16 live gate but remains unapplied to every persistent,
+  shared and production database (§22); B2 remains open and not owner-reviewed.
 - **B3 exact M/Q/YTD/FY/LTM invalidation:** pure fan-out implemented and tested;
   runtime wiring remains blocked until the canonical mart/period mutation path
   can supply the exact changed month and downstream dependency set.
@@ -1515,30 +1516,32 @@ production migration without explicit approval.
 
 ---
 
-## 22. Unapplied DataRevision DB-hardening candidate (2026-07-18)
+## 22. Isolated-validated DataRevision DB-hardening candidate (2026-07-18)
 
-**Status: candidate `implemented` + hermetic-tested; live-RLS `not tested`;
-`not applied`; not owner-reviewed.**
+**Status: candidate `implemented` + hermetic-tested + isolated-live-tested;
+not applied to any persistent/shared/production database; not owner-reviewed.**
 
 ### 22.1 Migration boundary
 
 `prisma/migrations/20260718070000_data_revision_scope_guards/migration.sql`
 contains only DataRevision-specific hardening:
 
-1. A preflight aborts if any existing child/predecessor link crosses
+1. Explicit `BEGIN`/`COMMIT` boundaries make the preflight, trigger and policy
+   replacement one atomic change rather than a partially deployable DDL chain.
+2. A preflight aborts if any existing child/predecessor link crosses
    organizations. It never silently blesses legacy false provenance.
-2. A `BEFORE INSERT OR UPDATE` trigger rejects self-supersession and requires
+3. A `BEFORE INSERT OR UPDATE` trigger rejects self-supersession and requires
    the predecessor to share `organizationId`. The id-only FK and one-to-one
    unique index remain unchanged.
-3. The old `FOR ALL tenant_isolation` policy is replaced by explicit
+4. The old `FOR ALL tenant_isolation` policy is replaced by explicit
    SELECT/INSERT/UPDATE policies. They use only `app.organization_id`, carry
    explicit write `WITH CHECK`, ignore `app.bypass_rls`, and intentionally
    provide no request-role DELETE policy.
-4. `scripts/sql/create-app-role.sql` re-applies an explicit DELETE revoke after
+5. `scripts/sql/create-app-role.sql` re-applies an explicit DELETE revoke after
    its broad CRUD grants. The revoke stays in the superuser provisioning script,
    not the Prisma migration: the migration role may have DDL/BYPASSRLS without
    owning the original grant, and a grantor mismatch must not abort deploy.
-5. Native `budgetpro_admin BYPASSRLS` remains the sole documented escape hatch
+6. Native `budgetpro_admin BYPASSRLS` remains the sole documented escape hatch
    for Organization cascade/tenant erasure and break-glass operations.
 
 ### 22.2 Deliberately excluded
@@ -1555,19 +1558,33 @@ contains only DataRevision-specific hardening:
 - The candidate does not change formulas, financial values, observation
   lineage, authentication or feature flags.
 
-### 22.3 Evidence and mandatory pre-apply gate
+### 22.3 Isolated evidence and remaining production gate
 
-- Hermetic migration/data-revision suites: **3 files / 41 passed**.
-- Opt-in live suite: **1 file / 27 skipped** by default; new assertions cover
-  request-role DELETE denial, custom-GUC negative control, cross-org and
-  self-supersession, while the existing suite covers native-admin org cascade.
-- Full Vitest: **521 files / 6,787 passed / 62 skipped / 0 failed**.
+- A disposable `postgres:16` container used loopback-only port binding, no host
+  or named volume, and tmpfs for the data directory. All **18 migrations**
+  replayed cleanly from zero; a separate predecessor database upgraded from 17
+  to 18 with valid existing revisions; both ended `migrate status` up to date.
+- A negative predecessor database contained an intentional cross-org chain.
+  The candidate failed closed, was not marked finished, left the legacy `FOR
+  ALL` policy intact and installed **0** candidate triggers.
+- Project provisioning created real-shape roles: `budgetpro_app` was non-super,
+  `NOBYPASSRLS` and lacked table DELETE; `budgetpro_admin` was non-super with
+  native `BYPASSRLS` and retained DELETE for tenant erasure/cascade.
+- Complete opt-in live gate: **3 files / 53 passed / 0 failed**, covering
+  DataRevision, lineage and the shared RLS leak suite. The first run exposed and
+  fixed two testability defects: Prisma hid the trigger message under SQLSTATE
+  `foreign_key_violation`, and the multi-org fixture depended on seeded
+  `Industry`; the trigger now uses `restrict_violation` and the level-1 fixture
+  is seed-independent.
+- Full default Vitest: **521 files / 6,788 passed / 62 skipped / 0 failed**.
 - RLS coverage scanner: **179 routes / 70 org-scoped delegates / 0 unwrapped**.
-- `npx tsc --noEmit` → 0; `git diff --check` clean.
-- Independent read-only RLS audit completed; its grantor-risk recommendation is
-  reflected by keeping REVOKE out of the Prisma migration.
+- `npx tsc --noEmit` and `npx prisma validate` → 0.
+- The exact disposable container and tmpfs data are removed after this gate;
+  no shared/production DB, production credential, authentication setting,
+  paid provider, push or deploy is involved.
 
-Before application, create or prove an isolated PostgreSQL target, apply the
-candidate there with the real migration role, provision `budgetpro_app`, then
-run the complete opt-in RLS suite. No shared/production DB is an acceptable
-test target. Production apply/deploy remains separately owner-authorized.
+Before production application: obtain explicit owner authorization, perform a
+read-only preflight for invalid legacy chains, take the approved backup, apply
+with the production migration role, re-run role/catalog/live-RLS checks, and
+record the deployed SHA and migration count. Lifecycle semantics and the
+remaining systemic `app.bypass_rls` policies are separate open decisions.

@@ -13,6 +13,8 @@
 -- app.bypass_rls clauses on other tenant tables require a separate systemic
 -- migration that preserves each table's special policy shape.
 
+BEGIN;
+
 -- Fail before installing the guard if legacy/direct SQL already created an
 -- invalid cross-tenant chain. Silently accepting it would preserve false
 -- provenance under a stronger-looking constraint.
@@ -59,7 +61,7 @@ BEGIN
       AND predecessor."organizationId" = NEW."organizationId"
   ) THEN
     RAISE EXCEPTION 'data_revisions supersedesId must reference the same organization'
-      USING ERRCODE = 'foreign_key_violation';
+      USING ERRCODE = 'restrict_violation';
   END IF;
 
   RETURN NEW;
@@ -111,3 +113,5 @@ CREATE POLICY tenant_update ON "data_revisions"
 -- roles are provisioned by a superuser. It is deliberately not revoked here:
 -- the migration role may be allowed DDL without being the grantor of
 -- budgetpro_app's privileges, and a grantor mismatch must not break deploy.
+
+COMMIT;
