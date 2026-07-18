@@ -108,9 +108,12 @@ open gate.*
 *Every financial surface still needs golden reconciliation and the named owner
 decisions before it can be described as decision-grade.*
 
-### Stage C — zero-visual-change UI extraction (blocked on B contracts)
-C1 pure view-model builders · C2 `TerminalOverlayHost` · C3 `ExpertWorkspace` isolation ·
-C4 preserve events/shortcuts/layout keys/visual output · C5 overview façade/provider.
+### Stage C — zero-visual-change UI extraction (shell seam partial; certified view models remain blocked on B contracts)
+C1 pure view-model builders ⬜ blocked · C2 `TerminalOverlayHost` 🟡 implemented +
+unit/SSR-tested · C3 `ExpertWorkspace` isolation 🟡 implemented + unit/SSR-tested ·
+C4 event/shortcut/layout compatibility code-tested, visual gate pending · C5 overview
+façade/provider ⬜ blocked. Expert remains mounted because alerts still originate in
+HeatMap; no Decision shell or V2 view is enabled.
 
 ### Stage D — modern Decision shell (blocked on C provider contract)
 D1 server-resolved view flags · D2 URL view state · D3 shell/header/nav ·
@@ -2054,3 +2057,48 @@ budgetpro_admin BYPASSRLS. External unauthenticated smoke passed 8/8. No
 financial data, auth setting, password/passwordHash, paid provider or feature
 flag changed. The next auth-neutral target needs a fresh operation/FK audit;
 users and budget_department_owners remain auth-sensitive.
+
+---
+
+## 33. Risk Terminal Stage C shell seam — C2/C3 (2026-07-18)
+
+**Status: implemented + TypeScript-clean + focused unit/SSR-tested; required
+visual verification pending the release gate. No Decision shell or V2 view is
+enabled.**
+
+The route now owns a continuously mounted `TerminalOverlayHost`. It contains
+the same 16 event-driven modal/export mounts that previously lived inside
+`PanelGrid`, preserving their existing `terminal:*` CustomEvent contracts.
+The host retains the old SSR/client hydration gate, so server rendering and first-paint
+hydration do not start browser-only listeners earlier than before.
+
+The unchanged 2×2 legacy terminal is exported explicitly as
+`ExpertWorkspace`; `PanelGrid` remains a compatibility alias for existing
+callers and SSR tests. Mobile viewport guidance, first-run Expert help, all
+splitter keys, keyboard handling, market/audit tickers and the four financial
+panels remain owned by Expert. The route mounts the overlay host before Expert,
+creating the C2/C3 seam without adding view routing or reading the dormant V2
+flags.
+
+Evidence before release:
+
+- TypeScript `tsc --noEmit`: clean;
+- focused `TerminalOverlayHost` + `PanelGrid` SSR: 2 files / 5 tests passed;
+- full Vitest: 531 files passed + 13 skipped / 6,843 tests passed + 121 skipped;
+- Next.js production build: 158 routes generated successfully;
+- source contract proves all 16 global mounts occur exactly once in the host,
+  no longer inside Expert, and the route mounts host before Expert;
+- SSR contract proves the host emits no pre-mount markup and the legacy grid
+  keeps its hydration placeholder;
+- no formula, KPI, threshold, value, database, migration, password,
+  authentication setting, paid provider or production feature flag changed.
+
+The mandatory visual command was attempted locally twice. The first attempt
+failed before browser work because the credential is intentionally env-only.
+The authenticated retry proved that port 3000 is occupied by an unrelated
+IT-audit application, whose login correctly rejected the BudgetPro production
+account; it never reached screenshot comparison. That foreign process was not
+stopped. The exact visual gate must run against the newly deployed BudgetPro
+release before this slice can be called visually verified. C1/C5 and modern
+Decision UI remain blocked on the certified Stage B/provider contracts; alerts
+still originate in HeatMap, so Expert must not yet unmount.

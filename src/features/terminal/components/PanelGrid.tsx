@@ -26,26 +26,10 @@ import { HeatMap } from './HeatMap';
 import { IndicatorDetail } from './IndicatorDetail';
 import { VarianceExplainerPanel } from './VarianceExplainerPanel';
 import { LayoutMenu } from './LayoutMenu';
-import { AuditModal } from './AuditModal';
 import { AuditTicker } from './AuditTicker';
 import { MarketTicker } from './MarketTicker';
-import { HelpModal } from './HelpModal';
-import { ComparePanel } from './ComparePanel';
-import { PeerPanel } from './PeerPanel';
-import { ExportPdfTrigger } from './ExportPdfButton';
-import { ExportXlsxTrigger } from './ExportXlsxButton';
-import { AlertsPanel } from './AlertsPanel';
-import { ScenarioPanel } from './ScenarioPanel';
-import { ActionCenterPanel } from './ActionCenterPanel';
-import { CommentsLayer } from './CommentsLayer';
-import { SubCoFinanceChat } from './SubCoFinanceChat';
-import { AISubscriptions } from './AISubscriptions';
-import { IntelFeedPanel } from './IntelFeedPanel';
-import { BreachForecastPanel } from './BreachForecastPanel';
-import { WhatIfPreviewPanel } from './WhatIfPreviewPanel';
 import { MobileViewportBanner } from './MobileViewportBanner';
 import { WelcomeHint } from './WelcomeHint';
-import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import {
   DEFAULT_LAYOUT_SIZES,
   PANEL_IDS,
@@ -127,7 +111,7 @@ function readSavedLayout(storageKey: string): Layout | undefined {
   }
 }
 
-export function PanelGrid() {
+export function ExpertWorkspace() {
   const t = useTranslations('terminal');
   const activePanelId = useTerminalStore((s) => s.activePanelId);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
@@ -258,75 +242,8 @@ export function PanelGrid() {
 
   return (
     <div className="flex-1 bg-gray-800 relative flex flex-col">
-      {/* CompactModeToggle + LayoutMenu were absolute-positioned floats
-       *  at top-2 right-{2,24}; they overlapped Panel 2's popout button
-       *  in the PanelShell header. Phase 7.K 2026-05-18 — moved inline
-       *  into Panel 2's header via the `headerExtra` slot below. */}
-      {/* Phase 7.F (Turn 13) — opens on `terminal:open-audit` event
-          fired by CommandBar's `AUD GO` dispatch + AuditTicker click.
-          Renders nothing when closed; Escape / backdrop / Close all dismiss. */}
-      <AuditModal />
-      {/* CLI Bloomberg-sweep — opens on `terminal:open-help` event fired
-          by CommandBar's `HELP GO` dispatch. Renders command reference +
-          recent-commands sidebar. Same dismiss pattern as AuditModal. */}
-      <HelpModal />
-      {/* Phase B5 — opens on `terminal:open-compare` event fired by
-          CommandBar's `CMP <LHS> <RHS> GO` dispatch. Side-by-side
-          indicator view + Δ column. Same dismiss pattern as AuditModal. */}
-      <ComparePanel />
-      {/* CLI Tier 2 #6 — opens on `terminal:open-peer` event fired by
-          CommandBar's `<A>,<B>,<C> PEER GO` dispatch. Multi-company
-          (2-5) side-by-side comparison with best/worst markers. */}
-      <PeerPanel />
-      {/* CLI Tier 3 — listens for `terminal:export-pdf` and builds the
-          Risk Matrix PDF on demand (lazy-loads @react-pdf/renderer). */}
-      <ExportPdfTrigger />
-      {/* Tier 3 closer — listens for `terminal:export-xlsx` and builds a
-          3-sheet workbook (lazy-loads xlsx). Companion to PDF for analyst
-          consumers who want raw values in Excel. */}
-      <ExportXlsxTrigger />
-      {/* Phase C6 v2 — opens on `terminal:open-alerts` event fired by
-          CommandBar's `[alerts]` strip click. Lists rule-engine matches
-          grouped by severity. Same dismiss pattern as AuditModal. */}
-      <AlertsPanel />
-      {/* Phase C4 v1 — opens on `terminal:open-scenario` event fired by
-          CommandBar's `SCN <code> GO` dispatch. What-if scenario inspector
-          + queue-apply. Same dismiss pattern as AuditModal. */}
-      <ScenarioPanel />
-      {/* Tier-3 sub-28 (v1 cells) + sub-31 (v2 alerts wiring) — opens on
-          `terminal:open-action-center` event fired by CommandBar's `ACT GO`
-          dispatch. Two-section pending-review queue: (a) rule-engine alert
-          matches above, (b) red+amber leaf cells below. Same dismiss
-          pattern as AuditModal / AlertsPanel. */}
-      <ActionCenterPanel />
-      {/* Tier-3 sub-30 — Bloomberg IB Internal Chat equivalent.
-          Per-cell @mention threads. Opens on `terminal:open-comments`
-          (CommandBar `CMT GO`). v1 in-memory + localStorage. */}
-      <CommentsLayer />
-      {/* Tier-3 sub-30 — Bloomberg counterparty-chat equivalent.
-          Per-sub-co finance threads. Opens on `terminal:open-subco-chat`
-          (CommandBar `CHT GO`). v1 in-memory + localStorage. */}
-      <SubCoFinanceChat />
-      {/* Tier-3 sub-30 — "notify-me-when-X" subscription manager.
-          Opens on `terminal:open-subscriptions` (CommandBar `SUB GO`).
-          v1 in-memory + localStorage; v2 backend persistence + email. */}
-      <AISubscriptions />
-      {/* Phase 7.G D.4 — IntelFeedPanel: AI Web Crawler feed of
-          per-org news items scored by relevance to portfolio
-          industries + companies. Opens on `terminal:open-intel`
-          (CommandBar `INT GO`). Admin-only Refresh button inside the
-          panel triggers a fresh crawl via POST /api/intel/refresh. */}
-      <IntelFeedPanel />
-      {/* Phase 7.G Turn CI (E.2d UI) — BreachForecastPanel: predictive
-          breach forecasts read from GET /api/indicators/breaches. Opens on
-          `terminal:open-breach` (CommandBar `BREACH GO`). Filters by period
-          and minConfidenceBand (default medium+). */}
-      <BreachForecastPanel />
-      {/* Phase 7.E ad-hoc Scenario "What-If" preview overlay. Opens on
-          `terminal:open-whatif` (HotkeyToolbar WHAT-IF button). FX
-          sliders → POST /api/indicators/matrix/preview → side-by-side
-          baseline vs scenario per affected (co × indicator). */}
-      <WhatIfPreviewPanel />
+      {/* Expert-only viewport guidance remains with the workspace. Global
+          event-driven overlays are mounted by TerminalOverlayHost. */}
       {/* Tier-3 sub-30 Stage 3f — M8-lite mobile viewport advisory.
           CSS-media-query-driven (Tailwind lg:hidden); auto-hidden on
           ≥1024px viewports. Dismissable + localStorage-persisted. */}
@@ -335,9 +252,6 @@ export function PanelGrid() {
           terminal visit (localStorage-flagged). Locale-aware copy via
           next-intl. Auto-dismiss 12s OR explicit close. */}
       <WelcomeHint />
-      {/* Round-8 M6 — `?` keypress opens keyboard cheatsheet. Discovers
-          F-keys + search shortcuts + command-bar verbs in one modal. */}
-      <KeyboardShortcutsModal />
       {/* Phase A3 (Bloomberg uplift plan) — Group wrapped in flex-1 + min-h-0
           so AuditTicker can claim a fixed bottom strip without breaking the
           resizable-panels height calculation. */}
@@ -435,6 +349,12 @@ export function PanelGrid() {
     </div>
   );
 }
+
+/**
+ * Backward-compatible export for callers and tests that still use the legacy
+ * component name. The route uses ExpertWorkspace explicitly.
+ */
+export const PanelGrid = ExpertWorkspace;
 
 /**
  * Phase A5 — top-right toggle button for compact mode. Sits to the LEFT

@@ -1,7 +1,8 @@
 import React, { Suspense } from 'react';
 import { CommandBar } from '@/features/terminal/components/CommandBar';
 import { SignalsStrip } from '@/features/terminal/components/SignalsStrip';
-import { PanelGrid } from '@/features/terminal/components/PanelGrid';
+import { ExpertWorkspace } from '@/features/terminal/components/PanelGrid';
+import { TerminalOverlayHost } from '@/features/terminal/components/TerminalOverlayHost';
 import { HotkeyToolbar } from '@/features/terminal/components/HotkeyToolbar';
 import { TerminalDeepLinkHandler } from '@/features/terminal/components/TerminalDeepLinkHandler';
 import { TerminalLockedPeriodBanner } from '@/features/terminal/components/TerminalLockedPeriodBanner';
@@ -42,8 +43,13 @@ export default function TerminalPage() {
           Renders nothing when there are no signals. */}
       <SignalsStrip />
 
-      {/* 2. Multi-pane Workspace (Center) */}
-      <PanelGrid />
+      {/* Route-owned listeners and overlays stay mounted independently of the
+          active terminal workspace. This preserves all existing CustomEvents
+          and is the zero-visual-change seam required before view switching. */}
+      <TerminalOverlayHost />
+
+      {/* 2. Legacy multi-pane workspace, preserved as Expert mode. */}
+      <ExpertWorkspace />
     </div>
   );
 }
