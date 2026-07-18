@@ -326,3 +326,44 @@ owner-reviewed physical-erasure boundary because an organization cascade can
 bypass per-table DELETE revokes. `budget_cost_types` is the next analogous
 auth-neutral candidate after its own FK-consumer audit; `users` remains blocked
 on the global-email versus organization-qualified login decision.
+
+## 13. Budget cost-type stacked candidate
+
+`20260718190000_budget_cost_type_guards` follows the six unapplied
+candidates and is also candidate-only.
+
+- Runtime reads, creates and updates cost types; its DELETE endpoint only sets
+  `isActive=false`. Request traffic therefore retains exact tenant
+  SELECT/INSERT/UPDATE, has no DELETE policy, and receives an idempotent DELETE
+  privilege revoke.
+- Five consumers store both `organizationId` and `costTypeId`, while the
+  legacy FKs validate only the ID. Fixed-search-path `SECURITY DEFINER`
+  guards reject missing/cross-org references on budget lines, actuals,
+  forecast entries, direction templates and expense forecasts.
+- A paired parent guard rejects moving a referenced cost type across tenants.
+  Both write and reassignment paths take the same namespaced transaction
+  advisory lock; the migration locks all six tables during preflight.
+- Existing FK actions remain unchanged: four SET NULL relations preserve
+  financial history, while expense forecasts retain CASCADE for native-admin
+  erasure.
+- Fresh replay: 25 migrations. Valid 24→25 upgrade preserved the cost type and
+  all five consumer types. Cross-org predecessor data and unexpected policy
+  drift failed atomically with predecessor rows/policies intact and no
+  candidate function installed.
+- Both consumer-insert/cost-type-move race directions passed. Full live RLS:
+  9 files / 84 tests. Post-stack catalog: 86 policies, 60 remaining GUC
+  policies, three cost-type policies and six enabled guards.
+- Full default: 528 files passed + 11 skipped / 6,829 tests passed + 109
+  skipped; Prisma validate, TypeScript, 179-route scanner and the 158-page
+  production build are clean.
+- Disposable PostgreSQL containers/tmpfs and temporary migration copies were
+  removed.
+
+All seven candidates remain unapplied. Production was not migrated or deployed
+and remains on the last verified `ded040c2`, migration 18 and 68 GUC policies;
+direct SSH verification remains unavailable from remote-dev. No password,
+passwordHash, login/JWT behavior, financial row or paid provider changed. The
+broad request-role DELETE grant on `Organization` remains the separate
+owner-reviewed physical-erasure boundary. The next auth-neutral table will be
+selected by a read-only operation/FK audit; `users` remains blocked on the
+global-email versus organization-qualified login decision.

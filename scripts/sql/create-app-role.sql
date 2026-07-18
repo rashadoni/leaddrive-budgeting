@@ -110,3 +110,9 @@ WHERE to_regclass('public.ai_token_usage') IS NOT NULL
 SELECT 'REVOKE DELETE ON TABLE public.budget_departments FROM budgetpro_app'
 WHERE to_regclass('public.budget_departments') IS NOT NULL
 \gexec
+
+-- Cost types use the same retirement contract as departments: request traffic
+-- sets isActive=false and never physically deletes the catalog row.
+SELECT 'REVOKE DELETE ON TABLE public.budget_cost_types FROM budgetpro_app'
+WHERE to_regclass('public.budget_cost_types') IS NOT NULL
+\gexec

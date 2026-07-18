@@ -1911,3 +1911,46 @@ DELETE grant on `Organization` is recorded as a separate physical-erasure
 boundary. `budget_cost_types` is next after an equivalent FK-consumer audit;
 `users` remains blocked on the global-email versus organization-qualified
 login decision.
+
+---
+
+## 30. Budget cost-type RLS candidate (2026-07-18)
+
+**Status: auth-neutral configuration slice implemented, hermetic-tested and
+isolated-live-tested; not applied to production and not owner-reviewed.**
+
+Request traffic never physically deletes a cost type: the endpoint retires it
+with `isActive=false`. The candidate exposes tenant SELECT/INSERT/UPDATE only,
+revokes request-role DELETE and leaves the four SET NULL plus one CASCADE FK
+actions unchanged for native-admin erasure.
+
+Five consumer tables previously accepted a cost-type ID from another
+organization because their FKs referenced only `costTypeId`. Five
+fixed-search-path write guards now enforce same-org references, and a paired
+parent guard rejects moving a referenced cost type across organizations.
+Matching namespaced advisory locks close both insert/reassignment race
+directions. No auth, user policy or financial row is changed.
+
+Evidence:
+
+- hermetic migration contract: 5/5;
+- disposable PostgreSQL 16: all 25 migrations fresh;
+- valid 24→25 upgrade preserved the parent plus all five consumer types;
+- cross-org predecessor data and unexpected policy drift failed atomically;
+- both consumer-insert/cost-type-move concurrency directions passed;
+- real-shaped app/admin gate: 9 live RLS files / 84 tests;
+- catalog: 86 policies, 60 remaining GUC policies, three cost-type policies and
+  six enabled SECURITY DEFINER guards;
+- full default: 528 files passed + 11 skipped / 6,829 tests passed + 109
+  skipped;
+- Prisma validate, TypeScript, 179-route RLS scanner and 158-page production
+  build clean;
+- disposable containers/tmpfs and temporary migration copies removed.
+
+All seven stacked candidates remain unapplied. Production remains on the last
+verified `ded040c2`, migration 18 and 68 GUC policies; direct SSH verification
+from remote-dev is unavailable. No production data, financial row,
+authentication setting, password or paid provider changed. Broad app-role
+DELETE on `Organization` remains a separate owner-reviewed boundary. The next
+auth-neutral target requires a fresh operation/FK audit; `users` remains
+blocked on the global-email versus organization-qualified login decision.
