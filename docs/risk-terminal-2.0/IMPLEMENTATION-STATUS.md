@@ -1821,3 +1821,46 @@ All four stacked candidates remain unapplied. Production remains on
 `ded040c2`, migration 18 and 68 GUC-bypass policies. Identity/config is next;
 the `users` table remains blocked on choosing globally unique versus
 organization-qualified login.
+
+---
+
+## 28. User layout-preference RLS candidate (2026-07-18)
+
+**Status: auth-neutral identity/config slice implemented, hermetic-tested and
+isolated-live-tested; not applied to production and not owner-reviewed.**
+
+The login-sensitive `users` policy remains unchanged. This slice only hardens
+`user_layout_preferences`: exact tenant CRUD policies replace the legacy
+custom-GUC bypass, while paired fixed-search-path triggers enforce same-org
+user ownership and reject moving a user who still owns layouts. Shared
+transaction advisory locking closes the concurrent layout-insert/user-move
+race; migration table locks keep its preflight stable.
+
+The DB boundary is intentionally tenant-level. Because every request uses one
+shared `budgetpro_app` role, there is no trusted DB identity for the current
+human user. Existing layout routes continue to filter every read/upsert/delete
+by `session.userId`; user-level RLS needs a separate actor-context design.
+
+Evidence:
+
+- hermetic migration contract: 5/5;
+- disposable PostgreSQL 16: all 23 migrations fresh;
+- valid 22→23 upgrade preserved the predecessor layout;
+- cross-org data drift and unexpected policy drift both failed atomically with
+  the predecessor policy/data and absence of candidate guards intact;
+- concurrency regression proved the user move waits and is rejected after the
+  layout insert commits;
+- real-shaped app/admin gate: 8 live RLS files / 88 tests;
+- catalog: 82 policies, 62 remaining GUC policies, four layout policies, two
+  enabled SECURITY DEFINER guards, app NOBYPASSRLS and no direct guard EXECUTE;
+- full default: 526 files passed + 9 skipped / 6,819 tests passed + 97 skipped;
+- Prisma validate, TypeScript, 179-route RLS scanner and 158-page production
+  build clean;
+- disposable container/tmpfs and temporary migration copy removed.
+
+All five candidates remain unapplied. Production was not deployed or migrated
+and remains on the last verified `ded040c2`, migration 18 and 68 GUC policies;
+remote-dev currently lacks direct production SSH authorization. No password,
+passwordHash, login/JWT behavior, role, financial row or paid provider changed.
+`budget_departments` is next after its FK-consumer audit. `users` remains
+blocked on the global-email versus organization-qualified login decision.

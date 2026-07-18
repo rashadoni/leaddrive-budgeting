@@ -2,9 +2,9 @@
 
 **Date:** 2026-07-18
 **Status:** read-only production catalog audit complete; global-catalog,
-evidence-core, standalone Trade-ledger and AI-accounting candidates
-isolated-live-tested; no production migration or authentication change from
-this audit.
+evidence-core, standalone Trade-ledger, AI-accounting and user-layout
+preference candidates isolated-live-tested; no production migration or
+authentication change from this audit.
 
 ## 1. Exact production inventory
 
@@ -118,8 +118,10 @@ A mechanical `FOR ALL` rewrite would miss domain semantics:
 4. **System accounting (current stacked candidate):** AI usage is request-role
    SELECT-only; native admin keeps non-negative correction semantics and RLS
    configuration fails closed without its dedicated URL.
-5. **Identity/config:** users only after the duplicate-email decision; then
-   companies, user preferences, departments, CoA and currencies.
+5. **Identity/config:** user layout preferences are now isolated as an
+   auth-neutral tenant/integrity candidate. Users wait for the duplicate-email
+   decision; then departments, currencies, CoA and companies follow as
+   operation-specific slices.
 6. **Financial truth:** plans, lines, actuals, BS/CF/COGS/sales and forecasts.
 7. **Risk/intel/alerts/caches:** preserve alert replace semantics.
 8. **Imports/integrations/staging/AI + Trade remainder:** preserve cleanup,
@@ -240,3 +242,42 @@ candidates and is also candidate-only.
 All four candidates remain unapplied. Production remains on `ded040c2`,
 migration 18 and 68 GUC policies. Identity/config is the next cohort; users are
 blocked on the globally-unique-versus-org-qualified login contract.
+
+## 11. User layout-preference stacked candidate
+
+`20260718170000_user_layout_preference_guards` follows the four unapplied
+candidates and is also candidate-only.
+
+- It replaces the legacy GUC-trusting `FOR ALL` policy with exact tenant
+  SELECT, INSERT, UPDATE and DELETE policies. Existing request CRUD semantics
+  are preserved.
+- A fixed-search-path `SECURITY DEFINER` trigger rejects a layout whose user
+  belongs to another organization. A paired users trigger rejects moving a
+  user across organizations while saved layouts exist.
+- Both triggers take the same transaction advisory lock. The migration also
+  takes `SHARE ROW EXCLUSIVE` locks before its integrity preflight, closing the
+  concurrent insert/reassignment and preflight TOCTOU windows.
+- This is tenant isolation, not user-identity RLS: the shared request DB role
+  has no trusted per-user identity. Existing layout routes continue to enforce
+  ownership with `session.userId`; a separate trusted actor-context design is
+  required before user-level DB policy can be claimed.
+- The `users` policy, login lookup, JWT refresh, email uniqueness, passwordHash
+  and role behavior are unchanged. Duplicate-email login remains an owner
+  decision.
+- Fresh replay: 23 migrations. Valid upgrade: 22 → 23 preserving the existing
+  layout. Intentional cross-org data drift and unexpected policy drift both
+  failed atomically with predecessor state intact.
+- The concurrency regression proved a user move waits for a concurrent layout
+  insert and is then rejected. User deletion still cascades layouts.
+- Full live RLS: 8 files / 88 tests. Post-stack catalog: 82 policies, 62 GUC
+  policies, four layout policies and two enabled guards; app is NOBYPASSRLS
+  and has no direct EXECUTE on the guard functions.
+- Full default: 526 files passed + 9 skipped / 6,819 tests passed + 97 skipped;
+  Prisma, TypeScript, 179-route scanner and 158-page build are clean.
+- Disposable PostgreSQL/tmpfs and temporary migration copy were removed.
+
+All five candidates remain unapplied. Production was not migrated or deployed
+and remains on the last verified `ded040c2`, migration 18 and 68 GUC policies;
+direct SSH re-verification is unavailable from remote-dev. The next
+auth-neutral slice is `budget_departments` after its FK-consumer audit. Users
+remain blocked on globally unique versus organization-qualified login.
