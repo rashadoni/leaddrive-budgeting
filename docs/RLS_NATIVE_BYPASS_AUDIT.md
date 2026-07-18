@@ -2,8 +2,9 @@
 
 **Date:** 2026-07-18
 **Status:** read-only production catalog audit complete; global-catalog,
-evidence-core and standalone Trade-ledger candidates isolated-live-tested; no
-production migration or authentication change from this audit.
+evidence-core, standalone Trade-ledger and AI-accounting candidates
+isolated-live-tested; no production migration or authentication change from
+this audit.
 
 ## 1. Exact production inventory
 
@@ -114,8 +115,9 @@ A mechanical `FOR ALL` rewrite would miss domain semantics:
 3. **Trade ledger standalone (current stacked candidate):** add the missing
    Organization/same-org spend-type integrity and permit only the one-time void
    transition.
-4. **System accounting:** AI usage only after native-admin fail-fast and
-   correction/monotonicity semantics are confirmed.
+4. **System accounting (current stacked candidate):** AI usage is request-role
+   SELECT-only; native admin keeps non-negative correction semantics and RLS
+   configuration fails closed without its dedicated URL.
 5. **Identity/config:** users only after the duplicate-email decision; then
    companies, user preferences, departments, CoA and currencies.
 6. **Financial truth:** plans, lines, actuals, BS/CF/COGS/sales and forecasts.
@@ -207,3 +209,34 @@ All three candidates remain unapplied. Production remains on SHA `ded040c2`,
 migration 18 and 68 GUC-bypass policies. The next cohort is system accounting
 (`ai_token_usage`) only after native-admin fail-fast and correction/monotonicity
 semantics are approved.
+
+## 10. AI token-accounting stacked candidate
+
+`20260718163000_ai_token_usage_guards` follows the three unapplied
+candidates and is also candidate-only.
+
+- Request traffic only reads tenant usage; all runtime writes remain atomic
+  native-admin upserts.
+- The request role receives one tenant SELECT policy with no custom-GUC bypass;
+  provisioning revokes INSERT, UPDATE and DELETE.
+- A validated DB constraint prevents negative input, output or call counters.
+  Native admin may still correct over-counting downward while totals stay
+  non-negative; strict monotonicity is deliberately not imposed.
+- `checkBudget` fails before a paid provider call when RLS has an app URL but
+  no native-admin URL. `recordUsage` rejects negative, fractional, infinite
+  and unsafe token increments.
+- Production read-only evidence: 7 rows, 36 calls, 840,507 input tokens, 61,859
+  output tokens, 0 negative rows, 0 orphan organizations. The current app role
+  still has CRUD because this candidate is not deployed.
+- Fresh replay: 22 migrations; valid upgrade: 21 → 22 preserving 150 synthetic
+  tokens; intentional negative predecessor rejected atomically with the legacy
+  policy and row intact.
+- Full live RLS: 7 files / 80 tests. Post-stack catalog: 79 policies, 63 GUC
+  policies; app SELECT=true and all DML=false.
+- Full default: 525 files passed + 8 skipped / 6,814 tests passed + 89 skipped;
+  TypeScript, Prisma, 179-route scanner and 158-page build are clean.
+- Disposable PostgreSQL/tmpfs and temporary migration copy were removed.
+
+All four candidates remain unapplied. Production remains on `ded040c2`,
+migration 18 and 68 GUC policies. Identity/config is the next cohort; users are
+blocked on the globally-unique-versus-org-qualified login contract.

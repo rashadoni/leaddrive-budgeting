@@ -18,6 +18,7 @@ import {
   getMonthlyUsage,
   clearBudgetForTests,
   DEFAULT_BUDGET,
+  assertNativeAdminForTokenAccounting,
 } from "./cost-budget"
 
 beforeEach(() => {
@@ -98,6 +99,56 @@ describe("recordUsage + getDailyUsage", () => {
     expect(m.tokensOut).toBe(1500)
     expect(m.calls).toBe(2)
     expect(m.total).toBe(4500)
+  })
+
+  it.each([
+    { inputTokens: -1, outputTokens: 0 },
+    { inputTokens: 0, outputTokens: -1 },
+    { inputTokens: 1.5, outputTokens: 0 },
+    { inputTokens: Number.NaN, outputTokens: 0 },
+    { inputTokens: Number.POSITIVE_INFINITY, outputTokens: 0 },
+  ])("rejects invalid usage increments: %j", async (usage) => {
+    await expect(recordUsage("org_a", usage)).rejects.toThrow(
+      /non-negative safe integer/,
+    )
+    await expect(getDailyUsage("org_a")).resolves.toEqual({
+      tokensIn: 0,
+      tokensOut: 0,
+      calls: 0,
+      total: 0,
+    })
+  })
+})
+
+describe("native-admin accounting guard", () => {
+  it("fails closed when the app role is configured without an admin role", () => {
+    expect(() =>
+      assertNativeAdminForTokenAccounting({
+        NODE_ENV: "production",
+        DATABASE_URL_APP: "postgresql://app",
+        DATABASE_URL_ADMIN: undefined,
+        VITEST: undefined,
+      }),
+    ).toThrow(/requires DATABASE_URL_ADMIN/)
+  })
+
+  it("allows paired app/admin URLs and single-role local development", () => {
+    expect(() =>
+      assertNativeAdminForTokenAccounting({
+        NODE_ENV: "production",
+        DATABASE_URL_APP: "postgresql://app",
+        DATABASE_URL_ADMIN: "postgresql://admin",
+        VITEST: undefined,
+      }),
+    ).not.toThrow()
+    expect(() =>
+      assertNativeAdminForTokenAccounting({
+        NODE_ENV: "development",
+        DATABASE_URL_APP: undefined,
+        DATABASE_URL_ADMIN: undefined,
+        VITEST: undefined,
+      }),
+    ).not.toThrow()
   })
 })
 

@@ -98,6 +98,41 @@ function emptyStats(): UsageStats {
   return { tokensIn: 0, tokensOut: 0, calls: 0, total: 0 }
 }
 
+type AdminRoleEnv = Partial<
+  Pick<
+    NodeJS.ProcessEnv,
+    "NODE_ENV" | "VITEST" | "DATABASE_URL_APP" | "DATABASE_URL_ADMIN"
+  >
+>
+
+/**
+ * Fail before a paid provider call when RLS is active but the native-admin
+ * connection is missing. Falling back to the request role would make the
+ * budget read look empty and silently disable the spend ceiling.
+ */
+export function assertNativeAdminForTokenAccounting(
+  env: AdminRoleEnv = process.env,
+): void {
+  if (env.NODE_ENV === "test" || env.VITEST) return
+  if (env.DATABASE_URL_APP && !env.DATABASE_URL_ADMIN) {
+    throw new Error(
+      "AI token accounting requires DATABASE_URL_ADMIN when DATABASE_URL_APP is configured",
+    )
+  }
+}
+
+function assertUsageIncrement(
+  usage: { inputTokens: number; outputTokens: number },
+): void {
+  for (const [name, value] of Object.entries(usage)) {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(
+        `AI token usage ${name} must be a non-negative safe integer`,
+      )
+    }
+  }
+}
+
 /** Get aggregated daily usage for an org+date.
  *  Reads Prisma `AITokenUsage` (primary), falls back to in-memory map. */
 export async function getDailyUsage(
@@ -200,6 +235,7 @@ export async function checkBudget(
   budget: TokenBudget = { daily: DEFAULT_DAILY_TOKEN_CAP, monthly: DEFAULT_MONTHLY_TOKEN_CAP },
   expectedInput: number = 0,
 ): Promise<BudgetCheckResult> {
+  assertNativeAdminForTokenAccounting()
   const today = await getDailyUsage(orgId)
   const month = await getMonthlyUsage(orgId)
 
@@ -236,6 +272,8 @@ export async function recordUsage(
   orgId: string,
   usage: { inputTokens: number; outputTokens: number },
 ): Promise<void> {
+  assertNativeAdminForTokenAccounting()
+  assertUsageIncrement(usage)
   const date = new Date()
   const dateStr = date.toISOString().slice(0, 10)
   const key = todayKey(orgId, date)

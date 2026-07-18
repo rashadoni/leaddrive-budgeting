@@ -1786,3 +1786,38 @@ The three stacked candidates are not deployed. Production remains on
 passwordHash, authentication flow, financial row, paid provider or production
 setting changed. The next systemic slice is `ai_token_usage`, gated on
 native-admin fail-fast and explicit correction/monotonicity semantics.
+
+---
+
+## 27. AI token-accounting RLS candidate (2026-07-18)
+
+**Status: operation audit complete; candidate implemented, hermetic-tested and
+isolated-live-tested; not applied to production and not owner-reviewed.**
+
+Request traffic only reads `ai_token_usage`; every runtime writer is the atomic
+native-admin upsert in `recordUsage`. The selected contract therefore exposes
+tenant SELECT only to the request role. It does not impose strict monotonicity:
+native admin may correct over-counting downward, but no stored counter may be
+negative.
+
+Migration `20260718163000_ai_token_usage_guards` removes the user-settable GUC
+bypass, adds the validated non-negative constraint, and pairs with idempotent
+app-role INSERT/UPDATE/DELETE revokes. Runtime budget checks now fail before a
+paid provider call when RLS is active without `DATABASE_URL_ADMIN`; usage
+increments must be non-negative safe integers.
+
+Production read-only evidence is 7 daily rows, 36 calls, 840,507 input tokens,
+61,859 output tokens, zero negative rows and zero orphan organizations. The
+production app role still has CRUD because this candidate is not deployed.
+
+Evidence: 29 focused tests; 22 migrations fresh; valid 21→22 upgrade preserving
+the existing usage total; intentional negative predecessor rejected atomically;
+7 live RLS files / 80 tests; catalog 79 policies / 63 remaining GUC policies;
+full default 525 files passed + 8 skipped / 6,814 tests passed + 89 skipped;
+clean TypeScript, Prisma, 179-route RLS scanner and 158-page production build.
+The disposable database/tmpfs was removed.
+
+All four stacked candidates remain unapplied. Production remains on
+`ded040c2`, migration 18 and 68 GUC-bypass policies. Identity/config is next;
+the `users` table remains blocked on choosing globally unique versus
+organization-qualified login.

@@ -96,3 +96,9 @@ WHERE to_regclass('public.trade_spend_ledger') IS NOT NULL
 SELECT 'GRANT UPDATE ("voidedAt", "voidedBy") ON TABLE public.trade_spend_ledger TO budgetpro_app'
 WHERE to_regclass('public.trade_spend_ledger') IS NOT NULL
 \gexec
+
+-- AI usage is system accounting. Request handlers read their own tenant rows;
+-- only native budgetpro_admin metering paths may create or correct counters.
+SELECT 'REVOKE INSERT, UPDATE, DELETE ON TABLE public.ai_token_usage FROM budgetpro_app'
+WHERE to_regclass('public.ai_token_usage') IS NOT NULL
+\gexec
