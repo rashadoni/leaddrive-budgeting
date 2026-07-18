@@ -1588,3 +1588,44 @@ read-only preflight for invalid legacy chains, take the approved backup, apply
 with the production migration role, re-run role/catalog/live-RLS checks, and
 record the deployed SHA and migration count. Lifecycle semantics and the
 remaining systemic `app.bypass_rls` policies are separate open decisions.
+
+---
+
+## 23. DataRevision production hardening rollout (2026-07-18)
+
+**Status: owner-authorized, deployed and production-catalog-verified; B2 stays
+in progress because lifecycle semantics and the systemic GUC-policy migration
+remain separate decisions.**
+
+- Release `54f0b24375b03edeba34daa70706ee41fc34d697` passed the complete
+  GitHub Actions `CI` run `29643432036`. Production `HEAD` and
+  `.deploy-revision` matched that exact SHA after rollout.
+- The read-only preflight found zero invalid cross-organization supersession
+  links and zero existing DataRevision rows. The deploy created backup
+  `/opt/budgetpro/backups/pre-deploy-2026-07-18T124926Z-54f0b24375b0.sql.gz`
+  before applying migration `20260718070000_data_revision_scope_guards`.
+- Production reports 18 completed migrations and three DataRevision policies:
+  SELECT `tenant_isolation`, INSERT `tenant_insert`, and UPDATE
+  `tenant_update`. There is no DELETE/FOR ALL policy and none references
+  `app.bypass_rls`.
+- Both `data_revisions_immutable` and
+  `data_revisions_supersedes_org_guard` are enabled. `budgetpro_app` is a
+  non-superuser with `NOBYPASSRLS`; `budgetpro_admin` is a non-superuser with
+  native `BYPASSRLS`.
+- The old broad table grant had left `budgetpro_app` with DELETE even though
+  RLS denied it. Production explicitly revoked that grant and the follow-up
+  privilege check returned false. `scripts/sql/create-app-role.sql` already
+  makes this revoke idempotent after its broad CRUD/default grants.
+- App, PostgreSQL and nginx remained healthy; both runtime app/admin DB URLs
+  were present. The public unauthenticated smoke passed 8/8, including 401 for
+  companies, analytics and SSE data routes.
+- Docker builder-cache cleanup reclaimed 53.22 GB without removing images,
+  running containers or volumes. Disk use was 22% after the rebuilt image was
+  exported.
+- No password/passwordHash, authentication setting, financial record, paid
+  provider, or Risk Terminal V2 feature flag changed in this rollout.
+
+The next B2 slice is not another deployment of this migration. It is the owner
+decision on lifecycle transition/actor semantics; the roughly 69 remaining
+tenant policies that trust the user-settable GUC are a separate systemic RLS
+migration with their own rollback and special global-row review.
