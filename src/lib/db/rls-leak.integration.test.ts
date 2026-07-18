@@ -106,19 +106,11 @@ describeIntegration("RLS cross-tenant leak (Phase 5.2 safety net)", () => {
     expect(result[0].organizationId).toBe(fixture.orgB.id);
   });
 
-  it("withOrgScope(orgA.id, { bypass: true }) returns BOTH orgs (admin escape hatch)", async () => {
-    const result = await withOrgScope(
-      fixture.orgA.id,
-      async (tx) => {
-        return tx.indicatorValue.findMany({
-          where: { indicatorId: fixture.indicator.id },
-          select: { id: true, organizationId: true },
-        });
-      },
-      { ...scopeOpts, bypass: true },
-    );
-    // With bypass, the policy short-circuits → both orgs' rows visible.
-    // This is the cron/migration/admin-cross-org-read path.
+  it("native admin client returns BOTH orgs without a custom GUC", async () => {
+    const result = await prisma.indicatorValue.findMany({
+      where: { indicatorId: fixture.indicator.id },
+      select: { id: true, organizationId: true },
+    });
     expect(result).toHaveLength(2);
     const orgIds = result.map((r) => r.organizationId).sort();
     expect(orgIds).toEqual([fixture.orgA.id, fixture.orgB.id].sort());
@@ -165,17 +157,11 @@ describeIntegration("RLS cross-tenant leak (Phase 5.2 safety net)", () => {
     expect(result[0].id).toBe(fixture.approvalA.id);
   });
 
-  it("Tier 2 bypass escape hatch returns BOTH orgs (admin cross-org)", async () => {
-    const result = await withOrgScope(
-      fixture.orgA.id,
-      async (tx) => {
-        return tx.auditEvent.findMany({
-          where: { entityType: "RLSLeakTest" },
-          select: { id: true, organizationId: true },
-        });
-      },
-      { ...scopeOpts, bypass: true },
-    );
+  it("native admin client returns BOTH Tier 2 orgs", async () => {
+    const result = await prisma.auditEvent.findMany({
+      where: { entityType: "RLSLeakTest" },
+      select: { id: true, organizationId: true },
+    });
     expect(result).toHaveLength(2);
   });
 

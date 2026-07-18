@@ -67,3 +67,11 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 SELECT 'REVOKE DELETE ON TABLE public.data_revisions FROM budgetpro_app'
 WHERE to_regclass('public.data_revisions') IS NOT NULL
 \gexec
+
+-- Industry is a product-owned shared taxonomy with no organizationId. RLS
+-- keeps it globally readable, while writes belong only to native
+-- budgetpro_admin seed/migration paths. Revoke DML after the broad grants above
+-- and on every idempotent provisioning rerun.
+SELECT 'REVOKE INSERT, UPDATE, DELETE ON TABLE public.industries FROM budgetpro_app'
+WHERE to_regclass('public.industries') IS NOT NULL
+\gexec

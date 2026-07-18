@@ -1553,8 +1553,8 @@ contains only DataRevision-specific hardening:
   between them is an owner decision.
 - Other tenant tables still trust `app.bypass_rls`. Runtime has no production
   `{bypass:true}` caller (helper/tests only), and native admin already exists,
-  but removing the clause from roughly 69 policies is a separate systemic
-  migration that must preserve special global-row policies.
+  but removing the clause from the 68 active production policies is a
+  separate systemic migration that must preserve special global-row policies.
 - The candidate does not change formulas, financial values, observation
   lineage, authentication or feature flags.
 
@@ -1626,6 +1626,54 @@ remain separate decisions.**
   provider, or Risk Terminal V2 feature flag changed in this rollout.
 
 The next B2 slice is not another deployment of this migration. It is the owner
-decision on lifecycle transition/actor semantics; the roughly 69 remaining
+decision on lifecycle transition/actor semantics; the 68 remaining production
 tenant policies that trust the user-settable GUC are a separate systemic RLS
 migration with their own rollback and special global-row review.
+
+---
+
+## 24. Native-bypass audit + global catalog candidate (2026-07-18)
+
+**Status: audit complete; runtime prevention and global-catalog candidate
+implemented, hermetic-tested and isolated-live-tested; not applied to
+production and not owner-reviewed.**
+
+Production read-only catalog evidence corrected the approximation: 70 tables
+have RLS, exactly 68 active policies trust the user-settable
+`app.bypass_rls` GUC, DataRevision is already native-bypass-only, and
+`industries` uses `FOR ALL USING (true)`. The last two global shapes were
+more urgent than a mechanical 68-table rewrite: all 110 indicator definitions
+are global and the app role can currently CRUD them; the 14-row industries
+catalog is also app-role CRUD despite having no tenant column.
+
+The first candidate is therefore deliberately narrow:
+
+- `withOrgScope` no longer accepts or sets a custom-GUC bypass; stale untyped
+  callers fail closed and the live leak suite now proves cross-org admin reads
+  through the native admin client.
+- The unsafe historical RLS generator is retired.
+- Migration `20260718133000_global_catalog_rls_guards` splits global-definition
+  SELECT from tenant-only DML and makes industries request-role SELECT-only.
+- `create-app-role.sql` re-applies an industries DML revoke after its broad
+  grants.
+- A new opt-in live suite proves global+own visibility, foreign override
+  hiding even after `SET LOCAL app.bypass_rls=true`, global write denial,
+  own-override CRUD, and industries read-only privileges.
+
+Evidence: focused default **3 files passed + 1 skipped / 16 passed / 6 skipped**;
+full Vitest **522 files passed / 6,790 tests passed / 68 skipped / 0 failed**;
+`tsc --noEmit`, Prisma validate and the **158-page** Next.js production build
+clean. Disposable PostgreSQL 16 proved all **19 migrations** from zero, valid
+18→19 upgrade, and intentional predecessor catalog drift failing closed with
+an unchanged policy fingerprint. Live RLS gate: **4 files / 59 passed**. The
+container/tmpfs was removed.
+
+The systemic work is not complete: production still has 68 GUC policies; the
+candidate would reduce that to 67. The audit also found 22 scanner opt-outs,
+26 API routes importing `prismaAdmin`, production client fallbacks that only
+log, append-only tables hidden behind generic FOR ALL policies, FK-derived
+tenant-child tables without direct RLS, and an auth ambiguity where email is
+org-unique but login searches globally without an org selector. Authentication
+was not changed; the duplicate-email contract is an owner decision before the
+users cohort. Full findings and cohort gates are in
+`docs/RLS_NATIVE_BYPASS_AUDIT.md`.

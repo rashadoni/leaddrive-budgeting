@@ -118,21 +118,7 @@ describe("withOrgScope — input validation", () => {
     expect(execRaw.mock.calls[0][0]).toContain("cmockji6c0000u6oseeuz5ipq");
   });
 
-  it("emits SET LOCAL app.bypass_rls when bypass:true", async () => {
-    const execRaw = vi.fn().mockResolvedValue(0);
-    txMock.mockImplementation(async (fn: (tx: unknown) => unknown) => {
-      const tx = { $executeRawUnsafe: execRaw };
-      return fn(tx);
-    });
-    await withOrgScope("cmockji6c0000u6oseeuz5ipq", async () => "ok", {
-      bypass: true,
-    });
-    expect(execRaw).toHaveBeenCalledTimes(2);
-    expect(execRaw.mock.calls[1][0]).toContain('SET LOCAL "app.bypass_rls"');
-    expect(execRaw.mock.calls[1][0]).toContain("'true'");
-  });
-
-  it("does NOT emit bypass when bypass option absent or false", async () => {
+  it("never emits a custom-GUC bypass in normal scope", async () => {
     const execRaw = vi.fn().mockResolvedValue(0);
     txMock.mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const tx = { $executeRawUnsafe: execRaw };
