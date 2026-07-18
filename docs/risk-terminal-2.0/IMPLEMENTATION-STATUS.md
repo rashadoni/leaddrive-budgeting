@@ -2062,9 +2062,9 @@ users and budget_department_owners remain auth-sensitive.
 
 ## 33. Risk Terminal Stage C shell seam — C2/C3 (2026-07-18)
 
-**Status: implemented + TypeScript-clean + focused unit/SSR-tested; required
-visual verification pending the release gate. No Decision shell or V2 view is
-enabled.**
+**Status: C2/C3 implemented, tested, visually inspected and production-verified.
+C4 remains partial because only one representative CustomEvent was browser-driven.
+No Decision shell or V2 view is enabled.**
 
 The route now owns a continuously mounted `TerminalOverlayHost`. It contains
 the same 16 event-driven modal/export mounts that previously lived inside
@@ -2080,7 +2080,7 @@ panels remain owned by Expert. The route mounts the overlay host before Expert,
 creating the C2/C3 seam without adding view routing or reading the dormant V2
 flags.
 
-Evidence before release:
+Evidence:
 
 - TypeScript `tsc --noEmit`: clean;
 - focused `TerminalOverlayHost` + `PanelGrid` SSR: 2 files / 5 tests passed;
@@ -2093,12 +2093,30 @@ Evidence before release:
 - no formula, KPI, threshold, value, database, migration, password,
   authentication setting, paid provider or production feature flag changed.
 
-The mandatory visual command was attempted locally twice. The first attempt
-failed before browser work because the credential is intentionally env-only.
-The authenticated retry proved that port 3000 is occupied by an unrelated
-IT-audit application, whose login correctly rejected the BudgetPro production
-account; it never reached screenshot comparison. That foreign process was not
-stopped. The exact visual gate must run against the newly deployed BudgetPro
-release before this slice can be called visually verified. C1/C5 and modern
-Decision UI remain blocked on the certified Stage B/provider contracts; alerts
-still originate in HeatMap, so Expert must not yet unmount.
+The local visual command could not target BudgetPro because port 3000 belongs to
+an unrelated IT-audit application; that foreign process was not stopped. After
+deployment, the production visual suite authenticated and rendered all three
+surfaces. Linux baselines were absent from Git (the documented cross-platform
+gap), so the first run created temporary actuals rather than comparing pixels.
+The terminal actual was inspected at 1280×720: Company Tree occupied the upper
+left (x257–614, y168–441), HeatMap the upper right (x620–1279, y168–441),
+Indicator Detail the lower left (x257–764, y447–668), and Company Snapshot the
+lower right (x770–1279, y447–668); no panel was missing or displaced. A second
+run against those temporary Linux snapshots passed 3/3, proving deterministic
+production rendering; the uncommitted temporary baselines were then removed.
+
+Release `a7b6602a003eeaab3e35ccc0d15757e47b1d5514` passed exact-SHA GitHub
+Actions CI run `29660763787` (secret scan, Prisma, TypeScript, RLS gate, M7,
+full Vitest and build). Backup
+`/opt/budgetpro/backups/pre-deploy-2026-07-18T211057Z-a7b6602a003e.sql.gz`
+is gzip-valid, 982,137 bytes and mode 0600. Production HEAD and
+`.deploy-revision` match; app/db are healthy, all 27 migrations are current,
+and runtime reports `budgetpro_app` with no bypass. External unauthenticated
+smoke passed 8/8. Authenticated smoke returned 200 for the terminal, companies,
+matrix and audit endpoints; found all four panel headers; opened the route-owned
+Help overlay via `terminal:open-help`; and recorded zero console, page or 5xx
+errors on desktop/mobile. The 390px screenshot also confirms the pre-existing
+mobile P1 remains: the global sidebar consumes most width and Expert panels are
+crushed into narrow strips. C1/C5 and modern Decision UI remain blocked on the
+certified Stage B/provider contracts; alerts still originate in HeatMap, so
+Expert must not yet unmount.
