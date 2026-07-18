@@ -56,3 +56,14 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO budgetpro_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO budgetpro_app;
+
+-- DataRevision is append-only evidence. Its RLS migration exposes no DELETE
+-- policy to this request role; the explicit privilege revoke is defence in
+-- depth and keeps this provisioning script idempotent after the broad grants
+-- above. Native BYPASSRLS budgetpro_admin retains tenant-erasure/org-cascade.
+-- This script is run as the owning superuser, so it is the correct grantor
+-- boundary for REVOKE (the Prisma migration role may not own the original
+-- grant). \gexec keeps the statement conditional on the table existing.
+SELECT 'REVOKE DELETE ON TABLE public.data_revisions FROM budgetpro_app'
+WHERE to_regclass('public.data_revisions') IS NOT NULL
+\gexec

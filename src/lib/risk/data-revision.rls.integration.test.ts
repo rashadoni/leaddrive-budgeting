@@ -178,6 +178,54 @@ d('DataRevision persistence (live DB)', () => {
     expect(rows).toHaveLength(0);
   });
 
+  it('does not trust app.bypass_rls on the regular app role', async () => {
+    const own = await admin.dataRevision.findFirstOrThrow({
+      where: { organizationId: ORG_A },
+    });
+    const foreign = await admin.dataRevision.create({
+      data: revisionData(ORG_B, {
+        sourceArtifactIds: ['artifact-guc-bypass-negative-control'],
+      }),
+    });
+
+    try {
+      const rows = await prismaApp!.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          `SET LOCAL "app.organization_id" = '${ORG_A}'`,
+        );
+        // Any regular Postgres role can set a custom GUC. The policy must
+        // ignore it; native role BYPASSRLS is the admin mechanism.
+        await tx.$executeRawUnsafe(`SET LOCAL "app.bypass_rls" = 'true'`);
+        return tx.dataRevision.findMany({
+          where: { id: { in: [own.id, foreign.id] } },
+          select: { id: true, organizationId: true },
+        });
+      });
+
+      expect(rows).toEqual([{ id: own.id, organizationId: ORG_A }]);
+    } finally {
+      await admin.dataRevision.delete({ where: { id: foreign.id } });
+    }
+  });
+
+  it('denies direct DELETE to the regular app role', async () => {
+    const own = await admin.dataRevision.findFirstOrThrow({
+      where: { organizationId: ORG_A },
+    });
+
+    await expect(
+      withOrgScope(
+        ORG_A,
+        (tx) => tx.dataRevision.delete({ where: { id: own.id } }),
+        scopeOpts,
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      admin.dataRevision.findUnique({ where: { id: own.id } }),
+    ).resolves.not.toBeNull();
+  });
+
   it('rejects a malformed org context at the helper boundary', async () => {
     await expect(withOrgScope('', async () => null, scopeOpts)).rejects.toThrow(
       /organizationId is required/,
@@ -402,6 +450,46 @@ d('DataRevision persistence (live DB)', () => {
     });
     expect(link.supersededBy?.id).toBe(next.id);
     await admin.dataRevision.delete({ where: { id: next.id } });
+  });
+
+  it('rejects a cross-organization supersedesId even for the admin writer', async () => {
+    const predecessor = await admin.dataRevision.create({
+      data: revisionData(ORG_B, {
+        sourceArtifactIds: ['artifact-foreign-predecessor'],
+      }),
+    });
+
+    try {
+      await expect(
+        admin.dataRevision.create({
+          data: {
+            ...revisionData(ORG_A, {
+              sourceArtifactIds: ['artifact-cross-org-successor'],
+            }),
+            reason: 'correction',
+            supersedesId: predecessor.id,
+          },
+        }),
+      ).rejects.toThrow(/same organization/i);
+    } finally {
+      await admin.dataRevision.delete({ where: { id: predecessor.id } });
+    }
+  });
+
+  it('rejects a self-superseding revision even for the admin writer', async () => {
+    const id = 'zzdatarevtestselflink0001';
+    await expect(
+      admin.dataRevision.create({
+        data: {
+          id,
+          ...revisionData(ORG_A, {
+            sourceArtifactIds: ['artifact-self-successor'],
+          }),
+          reason: 'correction',
+          supersedesId: id,
+        },
+      }),
+    ).rejects.toThrow(/cannot supersede itself/i);
   });
 });
 

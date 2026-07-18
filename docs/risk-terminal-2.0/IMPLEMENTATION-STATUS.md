@@ -90,7 +90,8 @@ open gate.*
 - **B2 PeriodContext + DataRevision:** contracts, persistence, tenant-scoped
   canonical writer and UPDATE immutability are implemented and tested. A
   2026-07-18 technical review found DB-level retention/lifecycle/supersession
-  and systemic RLS-bypass gaps (§21); B2 remains open and not owner-reviewed.
+  and systemic RLS-bypass gaps (§21). A narrow migration candidate is prepared
+  but intentionally unapplied (§22); B2 remains open and not owner-reviewed.
 - **B3 exact M/Q/YTD/FY/LTM invalidation:** pure fan-out implemented and tested;
   runtime wiring remains blocked until the canonical mart/period mutation path
   can supply the exact changed month and downstream dependency set.
@@ -1489,17 +1490,17 @@ ready for the existing opt-in RLS suite when an isolated target is available.
 
 ### 21.2 Open findings — B2 must not be marked complete
 
-1. The DB trigger blocks immutable-field **UPDATE**, but unreferenced
-   `DataRevision` rows can still be directly **DELETE**d. This contradicts the
-   “superseded, never deleted” contract. A migration needs explicit retention
-   semantics that preserve intentional organization cascade behavior.
+1. The deployed DB trigger blocks immutable-field **UPDATE**, but unreferenced
+   `DataRevision` rows can still be directly **DELETE**d. §22's unapplied
+   candidate removes DELETE from the request role while preserving native-admin
+   Organization cascade/tenant erasure; whether evidence must outlive deleting
+   an organization remains an owner retention decision.
 2. `lockedAt`, `reconciledAt` and `approvedAt` can currently be cleared,
    backdated or reordered. The owner must approve allowed transitions and actor
    semantics before a DB constraint/transition API is designed.
-3. `supersedesId` is an id-only self-FK, so the database does not prove the
-   predecessor belongs to the same organization. The current writer never sets
-   it; any future supersession writer must validate it, with a composite FK or
-   equivalent migration preferred for defense in depth.
+3. `supersedesId` is an id-only self-FK in the deployed DB, so it does not prove
+   predecessor ownership. §22's unapplied trigger candidate rejects cross-org
+   and self links without complicating Prisma/SetNull with a composite FK.
 4. The shared tenant policy trusts `app.bypass_rls`, a custom GUC that an app
    role may be able to set. Dedicated administrative roles already have native
    `BYPASSRLS`; removing the GUC escape hatch is systemic RLS work, not a
@@ -1511,3 +1512,62 @@ ready for the existing opt-in RLS suite when an isolated target is available.
 
 These findings do not change financial formulas or values and do not justify a
 production migration without explicit approval.
+
+---
+
+## 22. Unapplied DataRevision DB-hardening candidate (2026-07-18)
+
+**Status: candidate `implemented` + hermetic-tested; live-RLS `not tested`;
+`not applied`; not owner-reviewed.**
+
+### 22.1 Migration boundary
+
+`prisma/migrations/20260718070000_data_revision_scope_guards/migration.sql`
+contains only DataRevision-specific hardening:
+
+1. A preflight aborts if any existing child/predecessor link crosses
+   organizations. It never silently blesses legacy false provenance.
+2. A `BEFORE INSERT OR UPDATE` trigger rejects self-supersession and requires
+   the predecessor to share `organizationId`. The id-only FK and one-to-one
+   unique index remain unchanged.
+3. The old `FOR ALL tenant_isolation` policy is replaced by explicit
+   SELECT/INSERT/UPDATE policies. They use only `app.organization_id`, carry
+   explicit write `WITH CHECK`, ignore `app.bypass_rls`, and intentionally
+   provide no request-role DELETE policy.
+4. `scripts/sql/create-app-role.sql` re-applies an explicit DELETE revoke after
+   its broad CRUD grants. The revoke stays in the superuser provisioning script,
+   not the Prisma migration: the migration role may have DDL/BYPASSRLS without
+   owning the original grant, and a grantor mismatch must not abort deploy.
+5. Native `budgetpro_admin BYPASSRLS` remains the sole documented escape hatch
+   for Organization cascade/tenant erasure and break-glass operations.
+
+### 22.2 Deliberately excluded
+
+- Lifecycle timestamps remain mutable exactly as deployed. The specification
+  names the fields but does not approve transition order, actor, reason,
+  clearing or backdating semantics. Independent review recommended either
+  temporary fail-closed timestamps or append-only lifecycle events; choosing
+  between them is an owner decision.
+- Other tenant tables still trust `app.bypass_rls`. Runtime has no production
+  `{bypass:true}` caller (helper/tests only), and native admin already exists,
+  but removing the clause from roughly 69 policies is a separate systemic
+  migration that must preserve special global-row policies.
+- The candidate does not change formulas, financial values, observation
+  lineage, authentication or feature flags.
+
+### 22.3 Evidence and mandatory pre-apply gate
+
+- Hermetic migration/data-revision suites: **3 files / 41 passed**.
+- Opt-in live suite: **1 file / 27 skipped** by default; new assertions cover
+  request-role DELETE denial, custom-GUC negative control, cross-org and
+  self-supersession, while the existing suite covers native-admin org cascade.
+- Full Vitest: **521 files / 6,787 passed / 62 skipped / 0 failed**.
+- RLS coverage scanner: **179 routes / 70 org-scoped delegates / 0 unwrapped**.
+- `npx tsc --noEmit` → 0; `git diff --check` clean.
+- Independent read-only RLS audit completed; its grantor-risk recommendation is
+  reflected by keeping REVOKE out of the Prisma migration.
+
+Before application, create or prove an isolated PostgreSQL target, apply the
+candidate there with the real migration role, provision `budgetpro_app`, then
+run the complete opt-in RLS suite. No shared/production DB is an acceptable
+test target. Production apply/deploy remains separately owner-authorized.
