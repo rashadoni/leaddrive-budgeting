@@ -28,7 +28,6 @@ import { VarianceExplainerPanel } from './VarianceExplainerPanel';
 import { LayoutMenu } from './LayoutMenu';
 import { AuditTicker } from './AuditTicker';
 import { MarketTicker } from './MarketTicker';
-import { MobileViewportBanner } from './MobileViewportBanner';
 import { WelcomeHint } from './WelcomeHint';
 import {
   DEFAULT_LAYOUT_SIZES,
@@ -242,12 +241,6 @@ export function ExpertWorkspace() {
 
   return (
     <div className="flex-1 bg-gray-800 relative flex flex-col">
-      {/* Expert-only viewport guidance remains with the workspace. Global
-          event-driven overlays are mounted by TerminalOverlayHost. */}
-      {/* Tier-3 sub-30 Stage 3f — M8-lite mobile viewport advisory.
-          CSS-media-query-driven (Tailwind lg:hidden); auto-hidden on
-          ≥1024px viewports. Dismissable + localStorage-persisted. */}
-      <MobileViewportBanner />
       {/* Round-7 M2 — first-run welcome hint. Renders only on first
           terminal visit (localStorage-flagged). Locale-aware copy via
           next-intl. Auto-dismiss 12s OR explicit close. */}

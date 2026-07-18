@@ -109,11 +109,14 @@ open gate.*
 decisions before it can be described as decision-grade.*
 
 ### Stage C — zero-visual-change UI extraction (shell seam partial; certified view models remain blocked on B contracts)
-C1 pure view-model builders ⬜ blocked · C2 `TerminalOverlayHost` 🟡 implemented +
-unit/SSR-tested · C3 `ExpertWorkspace` isolation 🟡 implemented + unit/SSR-tested ·
-C4 event/shortcut/layout compatibility code-tested, visual gate pending · C5 overview
-façade/provider ⬜ blocked. Expert remains mounted because alerts still originate in
-HeatMap; no Decision shell or V2 view is enabled.
+C1 pure view-model builders ⬜ blocked · C2 `TerminalOverlayHost` ✅ production-verified ·
+C3 `ExpertWorkspace` isolation ✅ production-verified · C4 event/shortcut/layout
+compatibility 🟡 partial · C5 overview façade/provider ⬜ blocked. The legacy Expert
+mobile P1 guard is 🟡 implemented + unit/SSR/build-tested, with production visual
+verification pending: below 768 px the four-panel route tree is not mounted and an
+EN/RU/AZ desktop recommendation is shown; on supported widths Expert remains
+mounted because alerts still originate in HeatMap. No Decision shell or V2 view is
+enabled.
 
 ### Stage D — modern Decision shell (blocked on C provider contract)
 D1 server-resolved view flags · D2 URL view state · D3 shell/header/nav ·
@@ -2120,3 +2123,49 @@ mobile P1 remains: the global sidebar consumes most width and Expert panels are
 crushed into narrow strips. C1/C5 and modern Decision UI remain blocked on the
 certified Stage B/provider contracts; alerts still originate in HeatMap, so
 Expert must not yet unmount.
+
+---
+
+## 34. Risk Terminal Expert mobile P1 guard (2026-07-18)
+
+**Status: implemented + unit/SSR/build-tested. Not yet visually verified or
+production-verified.**
+
+The old mobile behavior rendered the 256 px dashboard sidebar and then squeezed
+the four Expert panels into the remaining phone width. The dismissible
+`MobileViewportBanner` warned about that failure but did not prevent it.
+`ExpertViewportGate` now implements the approved responsive contract:
+
+- below 768 px, the route shows the EN/RU/AZ desktop recommendation and a
+  keyboard/touch-accessible 44 px `Back to Budgeting` action;
+- the terminal sidebar is hidden only on that mobile route;
+- Expert panels, deep-link handling, terminal toolbars and their background
+  requests are not mounted on mobile; the route-owned overlay host remains
+  mounted independently;
+- at 768 px and above, the same route children and `ExpertWorkspace` are
+  mounted, with the existing splitter keys, shortcuts and four panels intact.
+
+Evidence before release:
+
+- targeted viewport/layout/host/SSR suite: 4 files / 13 tests passed;
+- TypeScript `tsc --noEmit`: clean;
+- full Vitest: 531 files passed + 13 skipped / 6,839 tests passed + 121 skipped;
+- Next.js production build: 158 routes generated successfully;
+- JSON parsing passed for all three message bundles;
+- `git diff --check`: clean.
+
+The required local visual gate was attempted against a separate port so the
+unrelated process on port 3000 was not disturbed. The production-mode local app
+could render the login page, but authentication failed before terminal
+navigation because the configured local `budgetpro_admin` database credential
+is stale. No database credential, password/passwordHash or authentication
+setting was changed to work around that boundary. Visual status therefore
+remains **not visually verified** until the exact CI-passed release is exercised
+on production at desktop and 390 px widths. Linux snapshot baselines are still
+absent from Git, so the production gate must include manual pixel inspection and
+a repeat stability run, as in slice 33.
+
+No financial logic, formula, KPI, threshold, value, database row, migration,
+paid provider, Anthropic/Google call, Decision UI or V2 feature flag changed.
+C1/C5 and the modern responsive Decision shell remain blocked on their certified
+provider/trust contracts.

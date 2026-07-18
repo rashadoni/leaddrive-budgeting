@@ -26,7 +26,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <QueryClientProvider client={queryClient}>
       <div className="flex h-screen">
-        <Sidebar />
+        <div
+          data-testid="dashboard-sidebar-slot"
+          className={isFullBleed ? "hidden md:contents" : "contents"}
+        >
+          <Sidebar />
+        </div>
         <div className="flex flex-1 flex-col overflow-hidden">
           <Header
             orgName={user?.organizationName || "BudgetPro"}

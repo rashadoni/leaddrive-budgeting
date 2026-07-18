@@ -1672,6 +1672,15 @@
     }
   },
   "terminal": {
+    "v2": {
+      "mobileExpert": {
+        "eyebrow": "Ekspert matrisi",
+        "title": "Ekspert rejimini kompüterdə açın",
+        "description": "Dörd panelli matris üçün telefon ekranından daha çox yer lazımdır. Sübutların gizlənməməsi və maliyyə müqayisələrinin yoxlanmasının çətinləşməməsi üçün matris dar görünüşə sıxılmır.",
+        "availability": "Ekspert rejimi eni ən azı 768 piksel olan ekranlarda əlçatandır.",
+        "backToBudgeting": "Büdcələşdirməyə qayıt"
+      }
+    },
     "lockedPeriodBanner": {
       "title": "{period} dövrü kilidlənib",
       "subtitle": "Dəyişikliklər rədd edilir",

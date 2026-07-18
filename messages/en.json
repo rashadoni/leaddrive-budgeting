@@ -1672,6 +1672,15 @@
     }
   },
   "terminal": {
+    "v2": {
+      "mobileExpert": {
+        "eyebrow": "Expert Matrix",
+        "title": "Open Expert Mode on desktop",
+        "description": "The four-panel matrix needs more room than a phone can provide. It is not compressed into a narrow view because that can hide evidence and make financial comparisons harder to verify.",
+        "availability": "Expert Mode remains available on screens at least 768 pixels wide.",
+        "backToBudgeting": "Back to Budgeting"
+      }
+    },
     "lockedPeriodBanner": {
       "title": "Period {period} is locked",
       "subtitle": "Mutations rejected",

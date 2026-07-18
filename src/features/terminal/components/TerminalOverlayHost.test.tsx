@@ -49,12 +49,14 @@ describe('TerminalOverlayHost', () => {
     }
   });
 
-  it('is mounted by the route before the isolated Expert workspace', () => {
+  it('keeps the host outside the viewport gate and before the isolated Expert workspace', () => {
     const route = readFileSync(ROUTE_PATH, 'utf8');
     const hostIndex = route.indexOf('<TerminalOverlayHost />');
+    const gateIndex = route.indexOf('<ExpertViewportGate>');
     const expertIndex = route.indexOf('<ExpertWorkspace />');
 
     expect(hostIndex).toBeGreaterThan(-1);
-    expect(expertIndex).toBeGreaterThan(hostIndex);
+    expect(gateIndex).toBeGreaterThan(hostIndex);
+    expect(expertIndex).toBeGreaterThan(gateIndex);
   });
 });

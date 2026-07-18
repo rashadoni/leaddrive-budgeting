@@ -57,6 +57,7 @@ describe("DashboardLayout — route-conditional <main> className (sub-37)", () =
       </DashboardLayout>,
     );
     const main = screen.getByRole("main");
+    expect(screen.getByTestId("dashboard-sidebar-slot").className).toBe("hidden md:contents");
     expect(main.className).toMatch(/min-h-0/);
     expect(main.className).toMatch(/overflow-hidden/);
     expect(main.className).not.toMatch(/\bp-8\b/);
@@ -71,6 +72,7 @@ describe("DashboardLayout — route-conditional <main> className (sub-37)", () =
       </DashboardLayout>,
     );
     const main = screen.getByRole("main");
+    expect(screen.getByTestId("dashboard-sidebar-slot").className).toBe("contents");
     expect(main.className).toMatch(/\bp-8\b/);
     expect(main.className).toMatch(/overflow-y-auto/);
     expect(main.className).not.toMatch(/min-h-0/);
