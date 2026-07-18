@@ -1954,3 +1954,48 @@ authentication setting, password or paid provider changed. Broad app-role
 DELETE on `Organization` remains a separate owner-reviewed boundary. The next
 auth-neutral target requires a fresh operation/FK audit; `users` remains
 blocked on the global-email versus organization-qualified login decision.
+
+---
+
+## 31. Budget direction-template RLS candidate (2026-07-18)
+
+**Status: auth-neutral configuration slice implemented, hermetic-tested and
+isolated-live-tested; not applied to production and not owner-reviewed.**
+
+The direction-template runtime requires full CRUD, including physical DELETE.
+The candidate therefore replaces the legacy FOR ALL/custom-GUC policy with
+exact tenant SELECT/INSERT/UPDATE/DELETE. It also closes the model gap by
+adding the missing Organization relation/FK with CASCADE tenant-erasure
+semantics.
+
+Department and cost-type references keep their existing SET NULL behavior.
+Their two same-organization SECURITY DEFINER guards were already installed by
+the preceding department and cost-type candidates; this migration verifies
+their exact fixed-search-path catalog shape and refuses to proceed without
+them. No auth, user policy, role, password or financial row is changed.
+
+Evidence:
+
+- hermetic migration contract: 5/5;
+- focused template runtime + migration gate: 4 files / 27 passed;
+- disposable PostgreSQL 16: all 26 migrations fresh;
+- valid 25->26 upgrade preserved the predecessor template and both references;
+- intentional orphan-data and unexpected-policy drift failed atomically with
+  the predecessor policy and absence of candidate FK/policies intact;
+- real-shaped app/admin gate: 9 live RLS files / 62 passed;
+- catalog: 89 policies, 59 remaining GUC policies, four template policies, one
+  validated Organization FK and two enabled fixed-path predecessor guards;
+- full default: 529 files passed + 12 skipped / 6,834 tests passed + 114
+  skipped;
+- Prisma validate/generate, TypeScript, 179-route RLS scanner and 158-page
+  production build clean;
+- disposable container/tmpfs and temporary migration copy removed.
+
+All eight stacked candidates remain unapplied. Production remains on the last
+verified ded040c2, migration 18 and 68 GUC policies; direct SSH verification
+from remote-dev is unavailable. No production data, authentication setting,
+password, paid provider, migration or deployment changed. Existing template
+mutations are authenticated but have no manager-role gate; reviewing that
+authorization is a separate auth-sensitive decision. budget_sections is the
+next auth-neutral candidate after a plan-reference/race audit; users and
+budget_department_owners remain auth-sensitive.

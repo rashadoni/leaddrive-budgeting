@@ -367,3 +367,42 @@ broad request-role DELETE grant on `Organization` remains the separate
 owner-reviewed physical-erasure boundary. The next auth-neutral table will be
 selected by a read-only operation/FK audit; `users` remains blocked on the
 global-email versus organization-qualified login decision.
+
+## 14. Budget direction-template stacked candidate
+
+20260718200000_budget_direction_template_guards follows the seven unapplied
+candidates and is also candidate-only.
+
+- Runtime uses SELECT, INSERT, UPDATE and physical DELETE, so the request role
+  retains exact tenant CRUD. The four policies no longer trust the
+  user-settable app.bypass_rls GUC.
+- The Prisma model and database now add the previously missing
+  budget_direction_templates.organizationId -> Organization FK, preserving
+  CASCADE on tenant deletion and organization-id update.
+- The existing departmentId and costTypeId relations remain SET NULL. Their
+  fixed-search-path same-organization triggers from migrations 24 and 25 are
+  verified as mandatory predecessors rather than duplicated or rewritten.
+- Preflight locks Organization, departments, cost types and templates, rejects
+  orphan/cross-organization rows, checks the exact legacy policy/FKs, and
+  fails closed when either predecessor guard is absent.
+- Fresh replay: all 26 migrations. Valid 25->26 upgrade preserved the existing
+  template and both references. Intentional orphan-data and policy-catalog
+  drift both failed atomically with the predecessor policy intact and no
+  Organization FK or new policies left behind.
+- Focused runtime/migration tests: 4 files / 27 passed. Full live RLS:
+  9 files / 62 passed. Post-stack catalog: 89 policies, 59 remaining GUC
+  policies, four template policies and two fixed-path guards.
+- Full default: 529 files passed + 12 skipped / 6,834 tests passed + 114
+  skipped; Prisma validate/generate, TypeScript, 179-route scanner and the
+  158-page production build are clean.
+- Disposable PostgreSQL/tmpfs and temporary migration copy were removed.
+
+All eight candidates remain unapplied. Production was not migrated or deployed
+and remains on the last verified ded040c2, migration 18 and 68 GUC policies;
+direct SSH verification remains unavailable from remote-dev. No password,
+passwordHash, login/JWT behavior, financial row or paid provider changed.
+Template mutation routes still use their pre-existing authenticated getOrgId
+gate without a manager-role requirement; that authorization review is recorded
+as a separate auth-sensitive decision, not silently changed in this RLS slice.
+budget_sections is the next auth-neutral candidate after a plan-reference and
+race audit; users and budget_department_owners remain auth-sensitive.
