@@ -172,6 +172,9 @@ function isStale(
   if (!computedAt) return true;
   const t = Date.parse(computedAt);
   if (Number.isNaN(t)) return true;
+  // A future observation timestamp is evidence of clock/data corruption, not
+  // evidence of freshness. Exact `now` remains valid.
+  if (t > now) return true;
   return now - t > staleAfterMs;
 }
 

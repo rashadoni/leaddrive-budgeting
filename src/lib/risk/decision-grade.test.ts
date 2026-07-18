@@ -77,6 +77,18 @@ describe('decision-grade gate', () => {
       expect(v.reasons).toContain('stale');
     });
 
+    it('treats a future computedAt as stale rather than extra-fresh', () => {
+      const future = new Date(NOW + 1).toISOString();
+      const atNow = new Date(NOW).toISOString();
+
+      expect(
+        classifyObservationGrade(goodCell({ computedAt: future }), NOW).reasons,
+      ).toContain('stale');
+      expect(
+        classifyObservationGrade(goodCell({ computedAt: atNow }), NOW).grade,
+      ).toBe('decision-grade');
+    });
+
     it('holds the boundary: exactly at the window is still fresh, one ms past is not', () => {
       const at = new Date(NOW - DEFAULT_STALE_AFTER_MS).toISOString();
       const past = new Date(NOW - DEFAULT_STALE_AFTER_MS - 1).toISOString();

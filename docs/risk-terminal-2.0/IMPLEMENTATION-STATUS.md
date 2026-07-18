@@ -584,6 +584,14 @@ Stage A review that handoff §5 gates Stage B on.
 A1–A3 `implemented` + owner-reviewed 2026-07-16. A4, A5, A6 `implemented` +
 `tested`; A5 also `visually verified`. **A4–A6 have had no human review.**
 
+Repeat technical review on 2026-07-18 confirmed the A4 fail-closed rollout
+contract and the HeatMap's explicit lineage + reconciliation pairing. It found
+one A5 boundary defect: a future `computedAt` was treated as fresh because its
+age was negative. Future timestamps now fail closed as `stale` (exact `now`
+remains valid), with a regression test. Focused evidence: 4 files / 97 tests,
+`tsc --noEmit` and diff-check green. No financial or visual output changed.
+This additional technical review does not replace the open human gate.
+
 ### 8.3 Why Stage B is not started here
 
 Not fatigue, and not the override — the work itself is not ready:
