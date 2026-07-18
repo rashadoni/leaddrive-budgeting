@@ -2192,7 +2192,7 @@ provider/trust contracts.
 
 ## 35. Risk Terminal mobile overlay data deferral (2026-07-18)
 
-**Status: implemented and code-tested; production network verification pending.**
+**Status: implemented, code/browser-tested and production-verified.**
 
 The route-owned overlay host remains continuously mounted, so all existing
 `terminal:*` CustomEvents stay registered. Closed event-driven panels now pass
@@ -2214,3 +2214,23 @@ passed + 13 skipped / 6,842 tests passed + 121 skipped; TypeScript is clean;
 the Next.js production build generated 158 routes. No visual/CSS geometry,
 financial logic, formula, KPI, threshold, value, database, migration,
 password/passwordHash, authentication setting, paid provider or V2 flag changed.
+
+
+Exact release `db220a1fd8a4dee316193f2a6e770afdfdf57062` passed GitHub
+Actions CI run `29664428834` (secret scan, Prisma, TypeScript, RLS, M7,
+full Vitest and build). It deployed after gzip-valid root-only backup
+`/opt/budgetpro/backups/pre-deploy-2026-07-18T231047Z-db220a1fd8a4.sql.gz`
+(983,759 bytes, mode 0600). Production HEAD and `.deploy-revision` match; app
+and DB are healthy, all 27 migrations are current, and runtime uses
+`budgetpro_app` with no bypass. External unauthenticated smoke passed 8/8.
+
+The authenticated 390×844 browser check recorded **zero** initial company or
+matrix resources, zero Expert panels, the visible mobile fallback and no
+sidebar. That removes the measured 122,671 body bytes (100% of the two target
+payloads) before user action. Dispatching `terminal:open-compare` and
+`terminal:open-alerts` opened one dialog each and then loaded the matrix
+(86,185 bytes) and companies (36,486 bytes), proving listener compatibility.
+At 1280×720 all four F-key panels remain present in their previous geometry:
+F1 x256/y169/w356.30/h270.88, F2 x618.30/y169/w661.70/h270.88, F3
+x256/y445.88/w509/h221.63 and F4 x771/y445.88/w509/h221.63. The desktop
+fallback is hidden; console, page and 5xx error lists were empty.
