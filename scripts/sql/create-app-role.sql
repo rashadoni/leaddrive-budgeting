@@ -102,3 +102,11 @@ WHERE to_regclass('public.trade_spend_ledger') IS NOT NULL
 SELECT 'REVOKE INSERT, UPDATE, DELETE ON TABLE public.ai_token_usage FROM budgetpro_app'
 WHERE to_regclass('public.ai_token_usage') IS NOT NULL
 \gexec
+
+-- Departments are retired through isActive=false; request traffic never
+-- physically deletes them. Keep native budgetpro_admin deletion for explicit
+-- tenant erasure while preventing request-role FK cascades into forecasts and
+-- owner assignments.
+SELECT 'REVOKE DELETE ON TABLE public.budget_departments FROM budgetpro_app'
+WHERE to_regclass('public.budget_departments') IS NOT NULL
+\gexec

@@ -281,3 +281,48 @@ and remains on the last verified `ded040c2`, migration 18 and 68 GUC policies;
 direct SSH re-verification is unavailable from remote-dev. The next
 auth-neutral slice is `budget_departments` after its FK-consumer audit. Users
 remain blocked on globally unique versus organization-qualified login.
+
+## 12. Budget department stacked candidate
+
+`20260718180000_budget_department_guards` follows the five unapplied
+candidates and is also candidate-only.
+
+- Runtime reads, creates and updates departments; the DELETE endpoint only
+  performs `isActive=false`. The request role therefore receives exact tenant
+  SELECT/INSERT/UPDATE policies, no DELETE policy, and an idempotent DELETE
+  privilege revoke. Native admin keeps explicit tenant-erasure deletion.
+- Seven consumers store both `organizationId` and `departmentId`, but their
+  legacy FKs validate only the department ID. Fixed-search-path
+  `SECURITY DEFINER` guards now reject missing/cross-org references on budget
+  lines, actuals, forecast entries, direction templates, sales forecasts,
+  expense forecasts and department owners.
+- Department-owner writes additionally require the user to belong to the same
+  organization. Paired department and user reassignment guards prevent a
+  referenced identity/config row from being moved across tenants.
+- All write/reassignment paths use matching transaction advisory locks; the
+  migration locks all nine involved tables during preflight. This closes both
+  consumer-insert/department-move race directions and preflight TOCTOU.
+- Existing FK delete semantics are deliberately unchanged: four SET NULL
+  relations preserve financial history; sales/expense forecasts and owner
+  assignments retain their three CASCADE relations for native-admin erasure.
+- Fresh replay: 24 migrations. Valid 23→24 upgrade preserved the department
+  and all seven consumer types. Cross-org predecessor data and unexpected
+  policy drift both failed atomically with the predecessor rows/policies and
+  absence of candidate functions intact.
+- Full live RLS: 8 files / 78 tests. Post-stack catalog: 84 policies, 61
+  remaining GUC policies, three department policies and nine enabled guards.
+- Full default: 527 files passed + 10 skipped / 6,824 tests passed + 103
+  skipped; Prisma validate, TypeScript, 179-route scanner and the 158-page
+  production build are clean.
+- Disposable PostgreSQL containers/tmpfs and temporary migration copies were
+  removed.
+
+All six candidates remain unapplied. Production was not migrated or deployed
+and remains on the last verified `ded040c2`, migration 18 and 68 GUC policies;
+direct SSH re-verification remains unavailable from remote-dev. No password,
+passwordHash, login/JWT behavior, financial row or paid provider changed.
+The broad request-role DELETE grant on `Organization` remains a separate
+owner-reviewed physical-erasure boundary because an organization cascade can
+bypass per-table DELETE revokes. `budget_cost_types` is the next analogous
+auth-neutral candidate after its own FK-consumer audit; `users` remains blocked
+on the global-email versus organization-qualified login decision.

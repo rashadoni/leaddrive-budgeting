@@ -1864,3 +1864,50 @@ remote-dev currently lacks direct production SSH authorization. No password,
 passwordHash, login/JWT behavior, role, financial row or paid provider changed.
 `budget_departments` is next after its FK-consumer audit. `users` remains
 blocked on the global-email versus organization-qualified login decision.
+
+---
+
+## 29. Budget department RLS candidate (2026-07-18)
+
+**Status: auth-neutral configuration slice implemented, hermetic-tested and
+isolated-live-tested; not applied to production and not owner-reviewed.**
+
+The operation audit found no physical department delete in request traffic:
+the API retires a department with `isActive=false`. The candidate therefore
+exposes tenant SELECT/INSERT/UPDATE only and revokes request-role DELETE. It
+does not change the existing four SET NULL and three CASCADE FK actions used by
+native-admin tenant erasure.
+
+The seven department consumers previously accepted an ID from another
+organization because every FK referenced only `departmentId`. Nine
+fixed-search-path guards now enforce same-org department references, same-org
+department-owner users, and both parent reassignment sides. Matching transaction
+advisory locks close both directions of the insert/reassignment race. No users
+policy, login lookup, email uniqueness, passwordHash, JWT or role behavior
+changed.
+
+Evidence:
+
+- hermetic migration contract: 5/5;
+- disposable PostgreSQL 16: all 24 migrations fresh;
+- valid 23→24 upgrade preserved the department plus all seven consumer types;
+- cross-org predecessor data and unexpected policy drift failed atomically;
+- concurrency regression passed in both consumer-insert/department-move
+  directions;
+- real-shaped app/admin gate: 8 live RLS files / 78 tests;
+- catalog: 84 policies, 61 remaining GUC policies, three department policies
+  and nine enabled SECURITY DEFINER guards;
+- full default: 527 files passed + 10 skipped / 6,824 tests passed + 103
+  skipped;
+- Prisma validate, TypeScript, 179-route RLS scanner and 158-page production
+  build clean;
+- disposable containers/tmpfs and temporary migration copies removed.
+
+All six stacked candidates remain unapplied. Production remains on the last
+verified `ded040c2`, migration 18 and 68 GUC policies; direct SSH verification
+from remote-dev is unavailable. No production data, financial row,
+authentication setting, password or paid provider changed. The broad app-role
+DELETE grant on `Organization` is recorded as a separate physical-erasure
+boundary. `budget_cost_types` is next after an equivalent FK-consumer audit;
+`users` remains blocked on the global-email versus organization-qualified
+login decision.
