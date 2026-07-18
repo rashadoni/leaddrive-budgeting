@@ -8,12 +8,13 @@ This doc is the **pre-deploy gate** — the checklist + reference an
 on-call reviewer walks through to confirm the stack is ready for
 real-customer load.
 
-**Production status (verified 2026-07-16):** The app is deployed through
+**Production status (verified 2026-07-18):** The app is deployed through
 `deploy/README.md`'s Docker Compose flow on a single VM. Release
-`19035f068a151f1717a197e44cb48180a1b6d962` passed CI run `29505074150`; local
+`f1bce29e9524e2e73a8a6d4566f06cc5f25c11e1` passed CI run `29658383468`; local
 `origin/main`, production Git HEAD and `.deploy-revision` matched that SHA.
-The app was healthy with all 17 migrations applied and external smoke 8/8.
-Phase 5.2 RLS is enforced by the non-bypass `budgetpro_app` role, and the global
+The app was healthy with all 27 migrations applied and external smoke 8/8.
+The RLS catalog held 92 policies with 58 legacy custom-GUC policies remaining;
+`budgetpro_app` is NOBYPASSRLS and `budgetpro_admin` is BYPASSRLS. The global
 Next.js 16 `/api` defence-in-depth gate already exists in `src/proxy.ts`
 (nginx `auth_request /api/authcheck` is an additional edge layer). The current
 production transport is nevertheless **HTTP-only**; trusted TLS remains blocked

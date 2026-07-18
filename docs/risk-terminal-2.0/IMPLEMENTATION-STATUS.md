@@ -2002,10 +2002,10 @@ budget_department_owners remain auth-sensitive.
 
 ---
 
-## 32. Budget section RLS candidate (2026-07-18)
+## 32. Budget section RLS rollout (2026-07-18)
 
-**Status: auth-neutral configuration slice implemented, hermetic-tested and
-isolated-live-tested; not applied to production and not owner-reviewed.**
+**Status: auth-neutral configuration slice implemented, hermetic-tested,
+isolated-live-tested, owner-authorized and production-verified.**
 
 Budget-section reads remain available to authenticated viewers; physical
 create/update/delete remains manager+ and period-lock protected in the existing
@@ -2043,9 +2043,14 @@ Evidence:
   production build clean;
 - disposable container/tmpfs and temporary migration copy removed.
 
-All nine stacked candidates remain unapplied. Production remains on the last
-verified ded040c2, migration 18 and 68 GUC policies; direct SSH verification
-from remote-dev is unavailable. No production data, auth setting, password,
-paid provider, migration or deploy changed. The next auth-neutral target needs
-a fresh operation/FK audit; users and budget_department_owners remain
-auth-sensitive.
+Release f1bce29e9524e2e73a8a6d4566f06cc5f25c11e1 passed exact-SHA GitHub
+Actions CI run 29658383468 and was deployed after verified root-only backup
+backups/pre-deploy-2026-07-18T200132Z-f1bce29e9524.sql.gz. Production HEAD and
+.deploy-revision match; app/db/nginx are healthy; all 27 migrations are
+applied. Read-only catalog verification confirms 92 policies, 58 remaining GUC
+policies, four exact budget_sections CRUD policies, two enabled same-org
+plan/section guards, both CASCADE FKs, budgetpro_app NOBYPASSRLS and
+budgetpro_admin BYPASSRLS. External unauthenticated smoke passed 8/8. No
+financial data, auth setting, password/passwordHash, paid provider or feature
+flag changed. The next auth-neutral target needs a fresh operation/FK audit;
+users and budget_department_owners remain auth-sensitive.

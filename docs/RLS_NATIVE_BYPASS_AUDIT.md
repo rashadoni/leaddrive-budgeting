@@ -407,10 +407,10 @@ as a separate auth-sensitive decision, not silently changed in this RLS slice.
 budget_sections is the next auth-neutral candidate after a plan-reference and
 race audit; users and budget_department_owners remain auth-sensitive.
 
-## 15. Budget section stacked candidate
+## 15. Budget section stack and production rollout
 
-20260718210000_budget_section_guards follows the eight unapplied candidates and
-is also candidate-only.
+20260718210000_budget_section_guards follows the eight reviewed candidates and
+was deployed with the full stack on 2026-07-18.
 
 - Runtime GET is available to authenticated viewers. POST, PUT and physical
   DELETE require manager+ and keep the existing in-transaction period-lock
@@ -445,9 +445,15 @@ is also candidate-only.
   158-page production build are clean.
 - Disposable PostgreSQL/tmpfs and temporary migration copy were removed.
 
-All nine candidates remain unapplied. Production was not migrated or deployed
-and remains on the last verified ded040c2, migration 18 and 68 GUC policies;
-direct SSH verification remains unavailable from remote-dev. No password,
-passwordHash, login/JWT behavior, financial row or paid provider changed.
-The next auth-neutral target requires a fresh operation/FK audit; users and
-budget_department_owners remain auth-sensitive.
+Owner-authorized release f1bce29e9524e2e73a8a6d4566f06cc5f25c11e1 passed
+GitHub Actions CI run 29658383468 and was deployed from the reviewed main
+branch after a verified root-only backup
+backups/pre-deploy-2026-07-18T200132Z-f1bce29e9524.sql.gz. Production HEAD and
+.deploy-revision match the release; app/db/nginx are healthy and all 27
+migrations are applied. Catalog proof shows 92 policies, 58 remaining GUC
+policies, exact budget_sections tenant CRUD, both cross-plan guards, both
+CASCADE FKs, budgetpro_app NOBYPASSRLS and budgetpro_admin BYPASSRLS. External
+unauthenticated smoke passed 8/8. No password, passwordHash, login/JWT behavior,
+financial row, paid provider or feature flag changed. The next auth-neutral
+target requires a fresh operation/FK audit; users and budget_department_owners
+remain auth-sensitive.
