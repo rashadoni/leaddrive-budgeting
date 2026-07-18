@@ -50,11 +50,13 @@ export async function ensureDataRevision(
   prisma: PrismaClient | Prisma.TransactionClient,
   input: EnsureDataRevisionInput,
 ): Promise<EnsuredRevision> {
-  const { scope, reason } = input;
+  const scope = canonicalScope(input.scope);
+  const { reason } = input;
+  await assertCompanyScope(prisma, scope);
   const contentHash = computeRevisionContentHash({ scope, reason });
 
   const existing = await prisma.dataRevision.findFirst({
-    where: { organizationId: scope.organizationId, contentHash },
+    where: revisionIdentityWhere(scope, reason, contentHash),
     select: { id: true },
   });
   if (existing) return { id: existing.id, contentHash, created: false };
@@ -62,7 +64,11 @@ export async function ensureDataRevision(
   // Resolve the actor only on the create path — an existing revision already
   // recorded its author, and a re-import must never rewrite it (a revision is
   // immutable). This also spares the dedup path a `users` lookup.
-  const createdById = await resolveActor(prisma, input.createdById);
+  const createdById = await resolveActor(
+    prisma,
+    input.createdById,
+    scope.organizationId,
+  );
 
   try {
     const created = await prisma.dataRevision.create({
@@ -95,7 +101,7 @@ export async function ensureDataRevision(
     // retries. The recovery matters for non-transactional callers.
     if (isUniqueViolation(err)) {
       const won = await prisma.dataRevision.findFirst({
-        where: { organizationId: scope.organizationId, contentHash },
+        where: revisionIdentityWhere(scope, reason, contentHash),
         select: { id: true },
       });
       if (won) return { id: won.id, contentHash, created: false };
@@ -129,13 +135,73 @@ export async function ensureDataRevision(
 async function resolveActor(
   prisma: PrismaClient | Prisma.TransactionClient,
   createdById: string | null | undefined,
+  organizationId: string,
 ): Promise<string | null> {
   if (!createdById) return null;
-  const actor = await prisma.user.findUnique({
-    where: { id: createdById },
+  const actor = await prisma.user.findFirst({
+    where: { id: createdById, organizationId },
     select: { id: true },
   });
   return actor ? actor.id : null;
+}
+
+function canonicalIds(ids: readonly string[]): string[] {
+  return Array.from(new Set(ids)).sort();
+}
+
+/** Store exactly the same set semantics that the content hash represents. */
+function canonicalScope(scope: RevisionScope): RevisionScope {
+  return {
+    organizationId: scope.organizationId,
+    companyIds: canonicalIds(scope.companyIds),
+    sourceArtifactIds: canonicalIds(scope.sourceArtifactIds),
+    mappingVersionIds: canonicalIds(scope.mappingVersionIds),
+    periodFrom: scope.periodFrom,
+    periodTo: scope.periodTo,
+  };
+}
+
+/**
+ * Arrays cannot carry relational FKs. Enforce the company/org boundary at the
+ * one canonical writer so a BYPASSRLS caller cannot persist cross-tenant
+ * provenance. An empty company list is the documented org-wide scope.
+ */
+async function assertCompanyScope(
+  prisma: PrismaClient | Prisma.TransactionClient,
+  scope: RevisionScope,
+): Promise<void> {
+  if (scope.companyIds.length === 0) return;
+  const companies = await prisma.company.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      id: { in: [...scope.companyIds] },
+    },
+    select: { id: true },
+  });
+  if (companies.length !== scope.companyIds.length) {
+    throw new Error('DataRevision scope contains an unknown company');
+  }
+}
+
+/**
+ * Match the canonical scope as well as its hash. A directly inserted or
+ * corrupted row cannot poison dedupe merely by copying a valid contentHash.
+ */
+function revisionIdentityWhere(
+  scope: RevisionScope,
+  reason: RevisionReason,
+  contentHash: string,
+) {
+  return {
+    organizationId: scope.organizationId,
+    contentHash,
+    companyIds: { equals: [...scope.companyIds] },
+    sourceArtifactIds: { equals: [...scope.sourceArtifactIds] },
+    mappingVersionIds: { equals: [...scope.mappingVersionIds] },
+    periodFrom: scope.periodFrom,
+    periodTo: scope.periodTo,
+    reason,
+  };
 }
 
 function isUniqueViolation(err: unknown): boolean {

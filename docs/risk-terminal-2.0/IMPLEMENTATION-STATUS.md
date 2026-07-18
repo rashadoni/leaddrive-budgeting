@@ -87,8 +87,10 @@ open gate.*
 
 - **B1 canonical statement mart/service:** blocked on owner decision T-1 and
   golden reconciliation controls.
-- **B2 PeriodContext + DataRevision:** contracts, persistence, RLS and DB
-  immutability implemented and tested; human review remains open.
+- **B2 PeriodContext + DataRevision:** contracts, persistence, tenant-scoped
+  canonical writer and UPDATE immutability are implemented and tested. A
+  2026-07-18 technical review found DB-level retention/lifecycle/supersession
+  and systemic RLS-bypass gaps (§21); B2 remains open and not owner-reviewed.
 - **B3 exact M/Q/YTD/FY/LTM invalidation:** pure fan-out implemented and tested;
   runtime wiring remains blocked until the canonical mart/period mutation path
   can supply the exact changed month and downstream dependency set.
@@ -1440,10 +1442,72 @@ in `docs/ROADMAP.md`. This section supersedes the runtime-lineage claims in
    be false evidence. Recomputed observations remain `revisionId=null` and
    Provisional.
 4. The lower-level writer keeps explicit future plumbing, but accepts a non-null
-   revision only when it belongs to the same organization **and its immutable
-   `companyIds` contains the written company**. Missing, foreign and sibling-
-   company revisions fail before the IndicatorValue write with one opaque error.
+   revision only after proving the target company belongs to the organization,
+   and then requiring either that revision's immutable `companyIds` contains
+   the company or that the list is empty (the documented org-wide scope).
+   Missing, foreign and sibling-company revisions fail before the
+   IndicatorValue write with one opaque error.
 5. Observation lineage can advance only after the KPI registry exposes a
    complete per-indicator dependency manifest and the orchestrator can construct
    the revision that explains that one value. Changing the LLM cannot replace
    this deterministic contract.
+
+---
+
+## 21. B2 technical security review and writer hardening (2026-07-18)
+
+**Status: code boundary `implemented` + focused-tested; DB hardening `open`;
+not owner-reviewed. No migration, live DB, production or paid provider action.**
+
+The canonical writer now stores the same set semantics it hashes: company,
+artifact and mapping ids are sorted and de-duplicated before both lookup and
+create. Non-empty company scope is validated against `scope.organizationId` at
+the writer boundary, including callers using an administrative/BYPASSRLS
+client. `createdById` is likewise accepted only for a user in that organization;
+a missing or foreign actor records null under the existing nullable/SetNull
+contract. Dedupe queries match every canonical identity field in addition to
+the hash, so a directly inserted row cannot be reused merely by copying a valid
+`contentHash`.
+
+Observation lineage now handles both documented scope forms without opening a
+tenant gap: it first proves `companyId` belongs to `organizationId`, then accepts
+either an explicit company membership or an empty `companyIds` org-wide
+revision. The live-lineage fixture uses real in-org sibling/foreign companies,
+ready for the existing opt-in RLS suite when an isolated target is available.
+
+### 21.1 Evidence run in this slice
+
+- `npx vitest run` over PeriodContext, DataRevision, the canonical writer,
+  import-lineage, observation-lineage and all three wired import handlers →
+  **8 files / 190 passed / 0 failed**.
+- Full `npx vitest run --reporter=dot` → **520 files / 6,784 passed /
+  58 skipped / 0 failed**.
+- `npx tsc --noEmit` → 0.
+- Live RLS/integration tests were not run: the available connection target was
+  not proven isolated, and this slice was not authorized to mutate production
+  or shared data.
+
+### 21.2 Open findings — B2 must not be marked complete
+
+1. The DB trigger blocks immutable-field **UPDATE**, but unreferenced
+   `DataRevision` rows can still be directly **DELETE**d. This contradicts the
+   “superseded, never deleted” contract. A migration needs explicit retention
+   semantics that preserve intentional organization cascade behavior.
+2. `lockedAt`, `reconciledAt` and `approvedAt` can currently be cleared,
+   backdated or reordered. The owner must approve allowed transitions and actor
+   semantics before a DB constraint/transition API is designed.
+3. `supersedesId` is an id-only self-FK, so the database does not prove the
+   predecessor belongs to the same organization. The current writer never sets
+   it; any future supersession writer must validate it, with a composite FK or
+   equivalent migration preferred for defense in depth.
+4. The shared tenant policy trusts `app.bypass_rls`, a custom GUC that an app
+   role may be able to set. Dedicated administrative roles already have native
+   `BYPASSRLS`; removing the GUC escape hatch is systemic RLS work, not a
+   DataRevision-only patch, and needs a separately reviewed migration/role test.
+5. Concurrent identical creates inside an interactive transaction remain
+   integrity-safe via the unique constraint but one transaction may roll back
+   on P2002; caller-level retry policy is deferred until real contention is
+   observed.
+
+These findings do not change financial formulas or values and do not justify a
+production migration without explicit approval.

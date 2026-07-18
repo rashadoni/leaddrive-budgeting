@@ -76,7 +76,13 @@ function makeTxSpy(over: Record<string, unknown> = {}) {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: 'rev_me_1' }),
     },
-    user: { findUnique: vi.fn().mockResolvedValue({ id: 'u' }) },
+    company: {
+      findMany: vi.fn().mockImplementation(
+        ({ where }: { where: { id: { in: string[] } } }) =>
+          where.id.in.map((id) => ({ id })),
+      ),
+    },
+    user: { findFirst: vi.fn().mockResolvedValue({ id: 'u' }) },
     ...over,
   };
 }
@@ -801,7 +807,7 @@ describe('POST .../apply-multi-entity — B5 multi-company import revision', () 
     // the author, not a reason to reject the import.
     await mockSession({ orgId: ORG_ID, userId: 'u_gone', role: 'manager' });
     stageTwoEntities();
-    const spy = wireTx({ user: { findUnique: vi.fn().mockResolvedValue(null) } });
+    const spy = wireTx({ user: { findFirst: vi.fn().mockResolvedValue(null) } });
 
     const res = await POST(await reqWith({ entityMap: twoEntityMap }), paramsFor(STAGING_ID));
 

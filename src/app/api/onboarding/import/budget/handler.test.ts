@@ -217,12 +217,15 @@ describe('POST /api/onboarding/import/budget — B5 import revision writer', () 
             findFirst: vi.fn().mockResolvedValue({ id: 'coa_1' }),
             create: vi.fn().mockResolvedValue({ id: 'coa_1' }),
           },
+          company: {
+            findMany: vi.fn().mockResolvedValue([{ id: COMPANY_ID }]),
+          },
           dataRevision: {
             findFirst: vi.fn().mockResolvedValue(null),
             create: dataRevisionCreate,
           },
           // B5 actor resolution reads the user (nullable/SetNull contract).
-          user: { findUnique: vi.fn().mockResolvedValue({ id: 'u_mgr' }) },
+          user: { findFirst: vi.fn().mockResolvedValue({ id: 'u_mgr' }) },
         };
         return await cb(tx);
       },

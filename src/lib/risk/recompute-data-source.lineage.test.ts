@@ -13,15 +13,18 @@ const WRITE = {
 };
 
 function harness(revision: { id: string } | null) {
+  const companyFindFirst = vi.fn().mockResolvedValue({ id: 'co_1' });
   const findFirst = vi.fn().mockResolvedValue(revision);
   const upsert = vi.fn().mockResolvedValue({});
   const prisma = {
+    company: { findFirst: companyFindFirst },
     dataRevision: { findFirst },
     indicatorValue: { upsert },
   } as unknown as Parameters<typeof createPrismaDataSource>[0];
 
   return {
     dataSource: createPrismaDataSource(prisma),
+    companyFindFirst,
     findFirst,
     upsert,
   };
@@ -29,15 +32,22 @@ function harness(revision: { id: string } | null) {
 
 describe('createPrismaDataSource.upsertIndicatorValue — revision scope guard', () => {
   it('requires the revision to match both organization and company', async () => {
-    const { dataSource, findFirst, upsert } = harness({ id: 'rev_1' });
+    const { dataSource, companyFindFirst, findFirst, upsert } = harness({ id: 'rev_1' });
 
     await dataSource.upsertIndicatorValue({ ...WRITE, revisionId: 'rev_1' });
 
+    expect(companyFindFirst).toHaveBeenCalledWith({
+      where: { id: 'co_1', organizationId: 'org_1' },
+      select: { id: true },
+    });
     expect(findFirst).toHaveBeenCalledWith({
       where: {
         id: 'rev_1',
         organizationId: 'org_1',
-        companyIds: { has: 'co_1' },
+        OR: [
+          { companyIds: { isEmpty: true } },
+          { companyIds: { has: 'co_1' } },
+        ],
       },
       select: { id: true },
     });
@@ -60,7 +70,10 @@ describe('createPrismaDataSource.upsertIndicatorValue — revision scope guard',
         where: expect.objectContaining({
           id: 'rev_sibling',
           organizationId: 'org_1',
-          companyIds: { has: 'co_1' },
+          OR: [
+            { companyIds: { isEmpty: true } },
+            { companyIds: { has: 'co_1' } },
+          ],
         }),
       }),
     );
@@ -78,4 +91,40 @@ describe('createPrismaDataSource.upsertIndicatorValue — revision scope guard',
       expect(upsert).toHaveBeenCalledTimes(1);
     },
   );
+
+  it('accepts an org-wide revision only after verifying the company belongs to the org', async () => {
+    const { dataSource, companyFindFirst, findFirst, upsert } = harness({
+      id: 'rev_org_wide',
+    });
+
+    await dataSource.upsertIndicatorValue({
+      ...WRITE,
+      revisionId: 'rev_org_wide',
+    });
+
+    expect(companyFindFirst).toHaveBeenCalledOnce();
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([{ companyIds: { isEmpty: true } }]),
+        }),
+      }),
+    );
+    expect(upsert).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a foreign company before looking up even an org-wide revision', async () => {
+    const h = harness({ id: 'rev_org_wide' });
+    h.companyFindFirst.mockResolvedValue(null);
+
+    await expect(
+      h.dataSource.upsertIndicatorValue({
+        ...WRITE,
+        revisionId: 'rev_org_wide',
+      }),
+    ).rejects.toThrow(/not found in organization/);
+
+    expect(h.findFirst).not.toHaveBeenCalled();
+    expect(h.upsert).not.toHaveBeenCalled();
+  });
 });

@@ -610,11 +610,23 @@ export function createPrismaDataSource(
       // and `undefined` skips the query entirely. A future dependency-aware
       // caller pays this guard only when it has a complete revision to stamp.
       if (revisionId != null) {
+        const company = await prisma.company.findFirst({
+          where: { id: companyId, organizationId },
+          select: { id: true },
+        });
+        if (!company) {
+          throw new Error(
+            `upsertIndicatorValue: revision ${revisionId} not found in organization ${organizationId}`,
+          );
+        }
         const revision = await prisma.dataRevision.findFirst({
           where: {
             id: revisionId,
             organizationId,
-            companyIds: { has: companyId },
+            OR: [
+              { companyIds: { isEmpty: true } },
+              { companyIds: { has: companyId } },
+            ],
           },
           select: { id: true },
         });

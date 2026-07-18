@@ -26,6 +26,8 @@ const admin = new PrismaClient();
 const ORG_A = 'zzlineagetestorgaaaaa001';
 const ORG_B = 'zzlineagetestorgbbbbb002';
 const CO_A = 'zzlineagetestcoaaaaaa001';
+const CO_B = 'zzlineagetestcobbbbbb002';
+const CO_SIBLING = 'zzlineagetestcosibbbb003';
 const IND = 'zzlineagetestinddddd0001';
 
 function scopeFor(organizationId: string, over: Partial<RevisionScope> = {}): RevisionScope {
@@ -84,6 +86,26 @@ d('IndicatorValue lineage (live DB)', () => {
       },
       update: {},
     });
+    await admin.company.upsert({
+      where: { id: CO_B },
+      create: {
+        id: CO_B,
+        organizationId: ORG_B,
+        name: 'zz lineage foreign co',
+        code: 'ZZLINB',
+      },
+      update: {},
+    });
+    await admin.company.upsert({
+      where: { id: CO_SIBLING },
+      create: {
+        id: CO_SIBLING,
+        organizationId: ORG_A,
+        name: 'zz lineage sibling co',
+        code: 'ZZLINS',
+      },
+      update: {},
+    });
     await admin.indicatorDefinition.upsert({
       where: { id: IND },
       create: {
@@ -105,7 +127,9 @@ d('IndicatorValue lineage (live DB)', () => {
   afterAll(async () => {
     await admin.indicatorValue.deleteMany({ where: { companyId: CO_A } });
     await admin.indicatorDefinition.deleteMany({ where: { id: IND } });
-    await admin.company.deleteMany({ where: { id: CO_A } });
+    await admin.company.deleteMany({
+      where: { id: { in: [CO_A, CO_B, CO_SIBLING] } },
+    });
     await admin.dataRevision.deleteMany({
       where: { organizationId: { in: [ORG_A, ORG_B] } },
     });
@@ -144,7 +168,7 @@ d('IndicatorValue lineage (live DB)', () => {
     // The load-bearing guard: a lineage pointer into another tenant would
     // render as evidence while being a leak — strictly worse than null.
     const foreign = await ensureDataRevision(admin, {
-      scope: scopeFor(ORG_B, { companyIds: ['zz-other'] }),
+      scope: scopeFor(ORG_B, { companyIds: [CO_B] }),
       reason: 'import',
     });
     await expect(upsertIv(ORG_A, foreign.id)).rejects.toThrow(/not found in organization/);
@@ -156,7 +180,7 @@ d('IndicatorValue lineage (live DB)', () => {
     // as its provenance.
     const sibling = await ensureDataRevision(admin, {
       scope: scopeFor(ORG_A, {
-        companyIds: ['zz-lineage-sibling-company'],
+        companyIds: [CO_SIBLING],
         sourceArtifactIds: ['sibling-only.xlsx'],
       }),
       reason: 'import',
@@ -176,7 +200,7 @@ d('IndicatorValue lineage (live DB)', () => {
     // Same message for "missing" and "another org's" — otherwise a caller
     // could probe another tenant's revision ids by diffing the errors.
     const foreign = await ensureDataRevision(admin, {
-      scope: scopeFor(ORG_B, { companyIds: ['zz-other-2'] }),
+      scope: scopeFor(ORG_B, { companyIds: [CO_B] }),
       reason: 'correction',
     });
     const foreignErr = await upsertIv(ORG_A, foreign.id).catch((e) => String(e));
