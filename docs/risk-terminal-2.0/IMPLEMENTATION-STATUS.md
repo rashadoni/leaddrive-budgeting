@@ -112,11 +112,11 @@ decisions before it can be described as decision-grade.*
 C1 pure view-model builders ⬜ blocked · C2 `TerminalOverlayHost` ✅ production-verified ·
 C3 `ExpertWorkspace` isolation ✅ production-verified · C4 event/shortcut/layout
 compatibility 🟡 partial · C5 overview façade/provider ⬜ blocked. The legacy Expert
-mobile P1 guard is 🟡 implemented + unit/SSR/build-tested, with production visual
-verification pending: below 768 px the four-panel route tree is not mounted and an
-EN/RU/AZ desktop recommendation is shown; on supported widths Expert remains
-mounted because alerts still originate in HeatMap. No Decision shell or V2 view is
-enabled.
+mobile P1 guard is ✅ production-verified: below 768 px the four-panel route tree
+is not mounted and an EN/RU/AZ desktop recommendation is shown; the independent
+overlay host remains available with its existing shared subscriptions. On
+supported widths Expert remains mounted because alerts still originate in HeatMap.
+No Decision shell or V2 view is enabled.
 
 ### Stage D — modern Decision shell (blocked on C provider contract)
 D1 server-resolved view flags · D2 URL view state · D3 shell/header/nav ·
@@ -2128,7 +2128,7 @@ Expert must not yet unmount.
 
 ## 34. Risk Terminal Expert mobile P1 guard (2026-07-18)
 
-**Status: implemented + unit/SSR/build-tested. Not yet visually verified or
+**Status: implemented, unit/SSR/build-tested, visually verified and
 production-verified.**
 
 The old mobile behavior rendered the 256 px dashboard sidebar and then squeezed
@@ -2139,9 +2139,9 @@ the four Expert panels into the remaining phone width. The dismissible
 - below 768 px, the route shows the EN/RU/AZ desktop recommendation and a
   keyboard/touch-accessible 44 px `Back to Budgeting` action;
 - the terminal sidebar is hidden only on that mobile route;
-- Expert panels, deep-link handling, terminal toolbars and their background
-  requests are not mounted on mobile; the route-owned overlay host remains
-  mounted independently;
+- Expert panels, deep-link handling and terminal toolbars are not mounted on
+  mobile; the route-owned overlay host remains mounted independently and keeps
+  its existing shared company/matrix subscriptions;
 - at 768 px and above, the same route children and `ExpertWorkspace` are
   mounted, with the existing splitter keys, shortcuts and four panels intact.
 
@@ -2159,11 +2159,27 @@ unrelated process on port 3000 was not disturbed. The production-mode local app
 could render the login page, but authentication failed before terminal
 navigation because the configured local `budgetpro_admin` database credential
 is stale. No database credential, password/passwordHash or authentication
-setting was changed to work around that boundary. Visual status therefore
-remains **not visually verified** until the exact CI-passed release is exercised
-on production at desktop and 390 px widths. Linux snapshot baselines are still
-absent from Git, so the production gate must include manual pixel inspection and
-a repeat stability run, as in slice 33.
+setting was changed to work around that boundary.
+
+Exact release `f313876179aac5e837fe98cb4082647a5c0eb1c4` passed GitHub Actions
+CI run `29662572676` and was deployed after gzip-valid root-only backup
+`/opt/budgetpro/backups/pre-deploy-2026-07-18T220952Z-f313876179aa.sql.gz`
+(983,692 bytes, mode 0600). Production HEAD and `.deploy-revision` match; app
+and DB are healthy, all 27 migrations are current, and runtime uses
+`budgetpro_app` with no bypass. External unauthenticated smoke passed 8/8;
+authenticated terminal, companies, matrix and audit checks returned 200.
+
+The production browser gate verified both target contexts with zero console,
+page or 5xx errors. At 390×844 the fallback occupies x0–390/y40–844, the title
+is fully visible at x24–366/y318–382, the sidebar is hidden and no F1–F4 panel
+exists. The independent overlay host intentionally keeps its pre-existing
+shared company/matrix subscriptions, so endpoint traffic is not claimed to be
+zero; the verified contract is that the four-panel UI tree is not mounted. At
+1280×720 all four panels render in the preserved 2×2 geometry: F1
+x256–612/y169–440, F2 x618–1280/y169–440, F3 x256–765/y446–668 and F4
+x771–1280/y446–668. The mobile fallback is hidden on desktop. Because Git has no
+Linux baseline, the exact production image was written temporarily; the repeat
+visual run passed 1/1 and the temporary file was removed from the worktree.
 
 No financial logic, formula, KPI, threshold, value, database row, migration,
 paid provider, Anthropic/Google call, Decision UI or V2 feature flag changed.
