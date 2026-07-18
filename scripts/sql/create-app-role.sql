@@ -86,3 +86,13 @@ WHERE to_regclass('public.audit_events') IS NOT NULL
 SELECT 'REVOKE UPDATE, DELETE ON TABLE public.period_snapshots FROM budgetpro_app'
 WHERE to_regclass('public.period_snapshots') IS NOT NULL
 \gexec
+
+-- Trade spend is append-only except for the one-way void transition. Remove
+-- broad UPDATE/DELETE, then restore UPDATE only for the two void columns.
+-- RLS plus the ledger trigger enforce same-org, one-time semantics.
+SELECT 'REVOKE UPDATE, DELETE ON TABLE public.trade_spend_ledger FROM budgetpro_app'
+WHERE to_regclass('public.trade_spend_ledger') IS NOT NULL
+\gexec
+SELECT 'GRANT UPDATE ("voidedAt", "voidedBy") ON TABLE public.trade_spend_ledger TO budgetpro_app'
+WHERE to_regclass('public.trade_spend_ledger') IS NOT NULL
+\gexec

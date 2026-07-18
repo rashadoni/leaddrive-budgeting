@@ -78,6 +78,7 @@ model Organization {
   varianceExplanations  VarianceExplanation[]
   predictiveBreaches    PredictiveBreach[]
   feedImpactForecasts   FeedImpactForecast[]
+  tradeSpendLedgerEntries TradeSpendLedger[]
 }
 
 model User {
@@ -2388,6 +2389,7 @@ enum TradeSpendEntryKind {
 model TradeSpendLedger {
   id             String              @id @default(cuid())
   organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
   entryKind      TradeSpendEntryKind
   spendTypeId    String
   spendType      TradeSpendType      @relation(fields: [spendTypeId], references: [id])

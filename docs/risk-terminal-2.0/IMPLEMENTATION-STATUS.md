@@ -1735,3 +1735,54 @@ The two stacked candidates are not deployed. Production remains on
 `ded040c2`, 18 migrations and 68 GUC-trusting policies. No password,
 passwordHash, authentication flow, financial record, paid provider or feature
 flag changed.
+
+---
+
+## 26. Trade spend-ledger RLS candidate (2026-07-18)
+
+**Status: standalone candidate implemented, hermetic-tested and
+isolated-live-tested; not applied to production and not owner-reviewed.**
+
+The ledger cannot use a generic append-only evidence policy because the request
+path legitimately performs one UPDATE: a one-time void. The standalone slice
+also closes two pre-existing integrity gaps that application checks alone could
+not guarantee.
+
+Migration `20260718153000_trade_spend_ledger_guards`:
+
+- adds `TradeSpendLedger.organizationId → Organization.id` with tenant-erasure
+  cascade and organization-id update restriction;
+- rejects a missing or cross-organization spend type in a fixed-search-path
+  `SECURITY DEFINER` write trigger;
+- permits inserts only when both void fields are null and permits UPDATE only
+  when every non-void value is byte-equivalent and both void fields move
+  together from null to non-null exactly once;
+- replaces the broad GUC policy with tenant SELECT, unvoided INSERT and
+  one-time void UPDATE, with no request DELETE policy;
+- pairs with idempotent provisioning that revokes request-role DELETE and
+  table-wide UPDATE, then grants UPDATE only on `voidedAt`/`voidedBy`.
+
+Evidence:
+
+- Prisma validate/generate and the 6-test hermetic migration contract pass;
+- disposable PostgreSQL 16 replayed all 21 migrations from zero;
+- a valid predecessor upgraded 20 → 21 with its existing ledger row preserved;
+- an intentional cross-org spend-type row stopped the migration atomically,
+  leaving the legacy policy, row and absence of the candidate FK/trigger intact;
+- real-shaped app/admin roles passed 6 live RLS files / 74 tests;
+- post-stack catalog: 79 policies, 64 still trusting the legacy GUC; app Trade
+  DELETE=false, void-column UPDATE=true, amount UPDATE=false;
+- full Vitest: 524 files passed + 7 skipped, 6,802 tests passed + 83 skipped;
+- TypeScript, Prisma, RLS coverage (179 routes / 0 unwrapped) and the 158-page
+  production build are clean;
+- the temporary container, tmpfs and predecessor migration copy were removed.
+
+Deferred Trade integrity is explicit: `createdBy`/`voidedBy` and optional
+campaign/dimension IDs remain scalar references until their same-org and delete
+semantics are owner-approved.
+
+The three stacked candidates are not deployed. Production remains on
+`ded040c2`, 18 migrations and 68 GUC-bypass policies. No credential,
+passwordHash, authentication flow, financial row, paid provider or production
+setting changed. The next systemic slice is `ai_token_usage`, gated on
+native-admin fail-fast and explicit correction/monotonicity semantics.

@@ -1,9 +1,9 @@
 # Native-BYPASSRLS audit
 
 **Date:** 2026-07-18
-**Status:** read-only production catalog audit complete; first narrow migration
-candidate isolated-live-tested; no production migration or authentication
-change from this audit.
+**Status:** read-only production catalog audit complete; global-catalog,
+evidence-core and standalone Trade-ledger candidates isolated-live-tested; no
+production migration or authentication change from this audit.
 
 ## 1. Exact production inventory
 
@@ -111,8 +111,9 @@ A mechanical `FOR ALL` rewrite would miss domain semantics:
 2. **Evidence core (current stacked candidate):** audit events and period
    snapshots only; preserve audit actor nullification/retention and snapshot
    re-sign history.
-3. **Trade ledger standalone:** add the missing Organization/same-org
-   spend-type integrity and permit only the one-time void transition.
+3. **Trade ledger standalone (current stacked candidate):** add the missing
+   Organization/same-org spend-type integrity and permit only the one-time void
+   transition.
 4. **System accounting:** AI usage only after native-admin fail-fast and
    correction/monotonicity semantics are confirmed.
 5. **Identity/config:** users only after the duplicate-email decision; then
@@ -170,3 +171,39 @@ candidate and is also candidate-only.
 
 Production remains on migration 18 with 68 GUC policies. Trade ledger and AI
 usage are not part of this migration.
+
+## 9. Trade spend-ledger stacked candidate
+
+`20260718153000_trade_spend_ledger_guards` follows the two unapplied
+candidates and is also candidate-only.
+
+- Adds a real Organization FK with tenant-erasure cascade and organization-id
+  update restriction.
+- A fixed-search-path `SECURITY DEFINER` trigger rejects missing/cross-org
+  spend types, prevoided inserts, partial voids and every UPDATE except the
+  exact one-time `(voidedAt, voidedBy)` transition from both null to both set.
+- Request-role policies are SELECT, unvoided INSERT and one-time void UPDATE;
+  no DELETE policy or custom-GUC bypass remains on this table.
+- App-role DELETE and table-wide UPDATE are revoked; column UPDATE remains only
+  for `voidedAt` and `voidedBy`. Native admin retains tenant erasure and
+  break-glass deletion.
+- Fresh replay: 21 migrations; valid upgrade: 20 → 21 with the existing row
+  preserved; intentional cross-org predecessor drift rejected atomically with
+  the old policy, row and catalog unchanged.
+- Complete live RLS gate: 6 files / 74 tests under real-shaped roles. Catalog:
+  79 total policies, 64 remaining GUC-bypass policies, Trade DELETE=false,
+  void-column UPDATE=true, amount UPDATE=false.
+- Full default gate: 524 files passed + 7 skipped, 6,802 tests passed + 83
+  skipped; TypeScript, Prisma validate/generate, RLS scanner (179 routes / 0
+  unwrapped) and the 158-page production build are clean.
+- The disposable PostgreSQL container/tmpfs and temporary migration copy were
+  removed.
+- Deferred Trade remainder: `createdBy`/`voidedBy` and optional
+  campaign/dimension IDs are still scalar references. Their same-org and
+  `SET NULL`/`RESTRICT`/cascade semantics need a separate owner-reviewed
+  integrity slice.
+
+All three candidates remain unapplied. Production remains on SHA `ded040c2`,
+migration 18 and 68 GUC-bypass policies. The next cohort is system accounting
+(`ai_token_usage`) only after native-admin fail-fast and correction/monotonicity
+semantics are approved.
