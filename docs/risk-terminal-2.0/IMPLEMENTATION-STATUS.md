@@ -1677,3 +1677,61 @@ org-unique but login searches globally without an org selector. Authentication
 was not changed; the duplicate-email contract is an owner decision before the
 users cohort. Full findings and cohort gates are in
 `docs/RLS_NATIVE_BYPASS_AUDIT.md`.
+
+---
+
+## 25. Evidence-core RLS candidate (2026-07-18)
+
+**Status: operation audit complete; minimal audit/snapshot candidate implemented,
+hermetic-tested and isolated-live-tested; not applied to production and not
+owner-reviewed.**
+
+The independent operation inventory rejected a mechanical evidence-table
+rewrite. Request traffic only reads and inserts `audit_events` and
+`period_snapshots`, so those two form the smallest safe slice. Audit retention
+and tenant erasure remain native-admin operations; deleting a User must still
+null `actorUserId` through the existing FK. A PeriodSnapshot is a signed
+fingerprint: UPDATE is invalid, while unlock/edit/relock intentionally inserts a
+second historical row.
+
+Migration `20260718143000_evidence_core_rls_guards` therefore:
+
+- preflights the exact single `FOR ALL`/GUC predecessor on both tables and
+  aborts before change on catalog drift;
+- exposes only tenant SELECT and INSERT policies, with no custom-GUC bypass;
+- preserves `audit_events_notify_trg`;
+- rejects every PeriodSnapshot UPDATE at the DB layer;
+- pairs with idempotent request-role UPDATE/DELETE revokes in
+  `create-app-role.sql`; native admin keeps retention/cascade DELETE.
+
+Trade ledger is deliberately not in this slice. Its legitimate one-time void
+UPDATE needs a transition trigger, and the schema currently has no Organization
+FK or same-organization spend-type constraint. Production is clean
+(8 rows, 0 partial voids, 0 orphan organizations and 0 cross-org spend types),
+but those constraints require a standalone migration and schema review.
+`ai_token_usage` is also separate: it is mutable native-admin upsert accounting,
+not append-only evidence, and admin-client fail-fast must precede tightening it.
+
+Read-only production evidence for the current two tables: 161 audit rows,
+0 cross-organization actors, 0 PeriodSnapshots. The predecessor policy/grant
+fingerprint exactly matches the candidate assumptions; the audit NOTIFY trigger
+is present.
+
+Evidence:
+
+- focused default: **6 passed / 8 live skipped**;
+- disposable PostgreSQL 16: all **20 migrations** from zero, valid 19→20
+  upgrade, intentional predecessor-policy drift rejected with the policy
+  fingerprint unchanged, and expected post-stack **65** GUC policies;
+- real-shaped `budgetpro_app`/native-admin live gate:
+  **5 files / 67 passed**;
+- full Vitest: **523 files passed / 6,796 tests passed / 76 skipped / 0 failed**;
+- TypeScript and Prisma validate clean; RLS scanner
+  **179 routes / 70 org-scoped delegates / 0 unwrapped**;
+- Next.js production build generated **158/158** static pages;
+- disposable containers and tmpfs data were removed.
+
+The two stacked candidates are not deployed. Production remains on
+`ded040c2`, 18 migrations and 68 GUC-trusting policies. No password,
+passwordHash, authentication flow, financial record, paid provider or feature
+flag changed.

@@ -75,3 +75,14 @@ WHERE to_regclass('public.data_revisions') IS NOT NULL
 SELECT 'REVOKE INSERT, UPDATE, DELETE ON TABLE public.industries FROM budgetpro_app'
 WHERE to_regclass('public.industries') IS NOT NULL
 \gexec
+
+-- Audit events and period snapshots are append-only evidence for the request
+-- role. Reads/inserts remain available through their operation-specific RLS
+-- policies. Native budgetpro_admin retains DELETE for retention and tenant
+-- erasure; period snapshot UPDATE is also rejected by a DB trigger.
+SELECT 'REVOKE UPDATE, DELETE ON TABLE public.audit_events FROM budgetpro_app'
+WHERE to_regclass('public.audit_events') IS NOT NULL
+\gexec
+SELECT 'REVOKE UPDATE, DELETE ON TABLE public.period_snapshots FROM budgetpro_app'
+WHERE to_regclass('public.period_snapshots') IS NOT NULL
+\gexec

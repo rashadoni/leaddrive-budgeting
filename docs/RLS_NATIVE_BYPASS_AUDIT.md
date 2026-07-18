@@ -108,15 +108,19 @@ A mechanical `FOR ALL` rewrite would miss domain semantics:
 1. **Runtime + global catalogs (current candidate):** remove helper bypass,
    retire generator, split `indicator_definitions`, make `industries`
    request-role read-only.
-2. **Evidence/immutable:** audit events, period snapshots, Trade ledger, then AI
-   usage after its accounting semantics are confirmed.
-3. **Identity/config:** users only after the duplicate-email decision; then
+2. **Evidence core (current stacked candidate):** audit events and period
+   snapshots only; preserve audit actor nullification/retention and snapshot
+   re-sign history.
+3. **Trade ledger standalone:** add the missing Organization/same-org
+   spend-type integrity and permit only the one-time void transition.
+4. **System accounting:** AI usage only after native-admin fail-fast and
+   correction/monotonicity semantics are confirmed.
+5. **Identity/config:** users only after the duplicate-email decision; then
    companies, user preferences, departments, CoA and currencies.
-4. **Financial truth:** plans, lines, actuals, BS/CF/COGS/sales and forecasts.
-5. **Risk/intel/alerts/caches:** preserve alert replace semantics.
-6. **Imports/integrations/staging/AI:** preserve cleanup and retry deletion.
-7. **Trade remainder:** separate master data, replaceable derived snapshots and
-   immutable ledger behavior.
+6. **Financial truth:** plans, lines, actuals, BS/CF/COGS/sales and forecasts.
+7. **Risk/intel/alerts/caches:** preserve alert replace semantics.
+8. **Imports/integrations/staging/AI + Trade remainder:** preserve cleanup,
+   retry deletion, replaceable derived snapshots and master-data behavior.
 
 Each cohort needs: fresh replay, predecessor upgrade, intentional preflight
 failure with atomic rollback, app/admin role assertions, absent-scope denial,
@@ -142,3 +146,27 @@ any owner-approved deployment.
 - Expected post-candidate count: 67 ordinary GUC policies remain.
 - Production is still on migration 18 and retains 68 GUC policies until an
   explicit later deployment approval.
+
+## 8. Evidence-core stacked candidate
+
+`20260718143000_evidence_core_rls_guards` follows the unapplied global-catalog
+candidate and is also candidate-only.
+
+- Scope is only `audit_events` and `period_snapshots`; both become
+  request-role SELECT+INSERT with no GUC clause.
+- Request-role UPDATE/DELETE is revoked on both tables.
+- The existing audit INSERT notification trigger is preserved. Audit retention,
+  actor `ON DELETE SET NULL`, and tenant erasure remain native-admin behavior.
+- PeriodSnapshot UPDATE is rejected even for native admin; re-signing remains
+  a new INSERT.
+- Fresh replay: 20 migrations; valid upgrade: 19 → 20.
+- Intentional predecessor-policy drift: rejected atomically with an unchanged
+  policy fingerprint.
+- Full live RLS gate: 5 files / 67 tests under real-shaped roles.
+- Full default gate: 523 files passed, 6,796 tests passed, 76 skipped.
+- Expected post-stack GUC count: 65.
+- TypeScript, Prisma validate, RLS scanner and 158-page production build: clean.
+- Disposable PostgreSQL containers/tmpfs removed.
+
+Production remains on migration 18 with 68 GUC policies. Trade ledger and AI
+usage are not part of this migration.
