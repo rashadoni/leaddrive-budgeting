@@ -38,6 +38,7 @@ import { Bell, X, Trash2, Pause, Play } from "lucide-react";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
 import { useMatrix, type MatrixResponse } from "../hooks/use-matrix";
 import { useCompanies, buildRiskTagsByCompanyId } from "../hooks/use-companies";
+import { useExpertViewport } from "../hooks/use-expert-viewport";
 import {
   computeCompositeByCompany,
   type CompositeScore,
@@ -223,21 +224,23 @@ export function AISubscriptions() {
    * matrix changes via useMatrix() and evaluates each active sub on
    * every matrix-fetch resolve. Updates `lastFiredAt` for matches,
    * debounced by FIRE_DEBOUNCE_MS to avoid spam-firing on cell-click
-   * navigation that re-emits matrix state. Component stays mounted
-   * by PanelGrid even when modal is closed, so the matcher runs
-   * across the entire session.
+   * navigation that re-emits matrix state. The matcher runs throughout
+   * desktop Expert sessions. On the mobile fallback it stays cold until the
+   * subscription overlay is explicitly opened, because Expert is unavailable.
    *
    * Match-firing path is purely localStorage-side-effect; UI surface
    * is the `lastFiredAt` badge in the list rendered when modal opens.
    * v2 will fan-out to in-app toast / email / Slack — this is the
    * v1 plumbing those v2 channels will subscribe to.
    */
-  const { matrix } = useMatrix();
+  const supportsExpert = useExpertViewport();
+  const dataEnabled = supportsExpert || open;
+  const { matrix } = useMatrix(undefined, false, { enabled: dataEnabled });
   // Phase 7.N — riskTags from the shared `/api/companies` source so the
   // subscription matcher evaluates against the SAME penalized composite the
   // HeatMap / CompanyTree show (e.g. "fire when EDEN composite < 90" must use
   // the penalized 88, not the raw 100). The matrix payload carries no riskTags.
-  const { companies: companyTree } = useCompanies();
+  const { companies: companyTree } = useCompanies({ enabled: dataEnabled });
   const composites = useMemo(() => {
     if (!matrix) return new Map<string, CompositeScore>();
     const riskTagsByCompanyId = companyTree

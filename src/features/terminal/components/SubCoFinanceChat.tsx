@@ -113,7 +113,9 @@ export function SubCoFinanceChat() {
   const [store, setStore] = useState<ChatStore>({});
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const { codeToId, loading: companiesLoading } = useCompanies();
+  const { codeToId, loading: companiesLoading } = useCompanies({
+    enabled: open,
+  });
 
   // Hydrate from localStorage after mount.
   useEffect(() => {

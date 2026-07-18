@@ -41,7 +41,7 @@ export function PeerPanel() {
   const locale = useLocale();
   const [open, setOpen] = useState(false);
   const [codes, setCodes] = useState<string[]>([]);
-  const { matrix } = useMatrix();
+  const { matrix } = useMatrix(undefined, false, { enabled: open });
 
   useEffect(() => {
     const onOpen = (e: Event) => {

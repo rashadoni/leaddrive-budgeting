@@ -81,7 +81,7 @@ export function AlertsPanel() {
   // hook — single fetch shared via module cache; same loading-state
   // semantics (companiesFetched derived from `loading` flag).
   const { idToCode, loading: companiesLoading, error: companyFetchError } =
-    useCompanies();
+    useCompanies({ enabled: open });
   const companiesFetched = !companiesLoading;
 
   useEffect(() => {

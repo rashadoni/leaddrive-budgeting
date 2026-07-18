@@ -19,6 +19,8 @@
  *  - Hook returns `{companies, idToCode, codeToId, loading, error,
  *    refresh}`. Refresh purges cache + re-fetches; useful after
  *    onboarding apply or company-rename flows.
+ *  - Event-driven consumers may pass `{ enabled: false }` to stay network-cold
+ *    until their overlay opens; the module cache is still shared once enabled.
  *  - Companies API returns a HIERARCHICAL tree: roots with embedded
  *    `children` array. Hook flattens for `idToCode` / `codeToId`
  *    convenience but keeps the original tree on `.companies` for
@@ -63,6 +65,11 @@ export interface CompanyTreeNode {
    *  italic placeholder badge in the row so the entity isn't silently
    *  presented as ⚪-unknown across all indicators. */
   dataPendingBanner?: string | null;
+}
+
+export interface UseCompaniesOptions {
+  /** Skip the initial request until this consumer actually needs the data. */
+  enabled?: boolean;
 }
 
 export interface UseCompaniesResult {
@@ -158,7 +165,7 @@ function fetchCompanies(): Promise<readonly CompanyTreeNode[]> {
     });
 }
 
-function ensureCache(): Promise<readonly CompanyTreeNode[]> {
+export function ensureCompanies(): Promise<readonly CompanyTreeNode[]> {
   if (!cache) {
     const promise = fetchCompanies();
     cache = { promise, data: null, error: null };
@@ -233,21 +240,26 @@ export function buildRiskTagsByCompanyId(
 
 const EMPTY_MAP: ReadonlyMap<string, string> = new Map();
 
-export function useCompanies(): UseCompaniesResult {
+export function useCompanies(
+  options: UseCompaniesOptions = {},
+): UseCompaniesResult {
+  const enabled = options.enabled ?? true;
   const [companies, setCompanies] = useState<readonly CompanyTreeNode[] | null>(
     () => cache?.data ?? null,
   );
   const [error, setError] = useState<string | null>(() => cache?.error ?? null);
   const [loading, setLoading] = useState<boolean>(
-    () => !(cache?.data || cache?.error),
+    () => enabled && !(cache?.data || cache?.error),
   );
 
   useEffect(() => {
+    if (!enabled) return;
+
     let cancelled = false;
     // Subscribe to the cached promise — if cache is already resolved,
     // this returns immediately. If a concurrent caller is mid-fetch,
     // we share their result.
-    ensureCache()
+    ensureCompanies()
       .then((data) => {
         if (cancelled) return;
         setCompanies(data);
@@ -261,7 +273,7 @@ export function useCompanies(): UseCompaniesResult {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled]);
 
   // Architect Round-1 sub-19 closure: memoize per `companies` change.
   // Without this, every render rebuilds the full id↔code maps via tree
@@ -288,7 +300,7 @@ export function useCompanies(): UseCompaniesResult {
     setError(null);
     setCompanies(null);
     try {
-      const data = await ensureCache();
+      const data = await ensureCompanies();
       setCompanies(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -297,7 +309,15 @@ export function useCompanies(): UseCompaniesResult {
     }
   }, []);
 
-  return { companies, idToCode, codeToId, loading, error, refresh };
+  const visibleLoading = enabled && (loading || (!companies && !error));
+  return {
+    companies,
+    idToCode,
+    codeToId,
+    loading: visibleLoading,
+    error,
+    refresh,
+  };
 }
 
 /**

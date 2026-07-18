@@ -58,6 +58,27 @@ const SAMPLE_TREE = [
 ];
 
 describe("useCompanies (sub-19)", () => {
+  it("does not fetch while disabled and loads after being enabled", async () => {
+    const fetchSpy = vi.fn(async () =>
+      new Response(JSON.stringify(SAMPLE_TREE), { status: 200 }),
+    );
+    global.fetch = fetchSpy as never;
+
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useCompanies({ enabled }),
+      { initialProps: { enabled: false } },
+    );
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.companies).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.companies).toHaveLength(2);
+  });
+
   it("loads tree + builds idToCode + codeToId from hierarchical response", async () => {
     global.fetch = vi.fn(async () =>
       new Response(JSON.stringify(SAMPLE_TREE), {

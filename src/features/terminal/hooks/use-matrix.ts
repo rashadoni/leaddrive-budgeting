@@ -17,6 +17,8 @@
  *    switching periods doesn't blow away the active panel's cache).
  *  - `useMatrix(period?)` — reactive hook for components that subscribe
  *    to the data.
+ *  - Event-driven consumers can use the third-argument `enabled` option to
+ *    defer their first subscription until the overlay opens.
  *  - `ensureMatrix(period)` — async accessor for one-shot reads (e.g.
  *    `CommandBar.IND` resolving an indicator code).
  *  - `getMatrixSync(period)` — sync accessor returning cached data or
@@ -135,6 +137,11 @@ export interface MatrixResponse {
    *  no recompute fired). HeatMap header turns this into «Updated 2h ago»
    *  via a relative-time formatter, refreshed every 30s without re-fetch. */
   lastComputedAt?: string | null;
+}
+
+export interface UseMatrixOptions {
+  /** Skip the request until an event-driven consumer becomes active. */
+  enabled?: boolean;
 }
 
 export interface UseMatrixResult {
@@ -257,7 +264,9 @@ export function getMatrixSync(
 export function useMatrix(
   period?: string,
   includePending: boolean = false,
+  options: UseMatrixOptions = {},
 ): UseMatrixResult {
+  const enabled = options.enabled ?? true;
   // When no explicit period is passed, follow the terminal-wide selected period
   // (2026-06-03 terminal-audit P2) so every panel re-scopes together when the
   // user picks a quarter/month from the HeatMap chips. HeatMap passes its period
@@ -273,10 +282,12 @@ export function useMatrix(
   );
   const [loading, setLoading] = useState<boolean>(() => {
     const entry = cacheByPeriod.get(key);
-    return !(entry?.data || entry?.error);
+    return enabled && !(entry?.data || entry?.error);
   });
 
   useEffect(() => {
+    if (!enabled) return;
+
     let cancelled = false;
     ensureMatrix(effectivePeriod, includePending)
       .then((data) => {
@@ -295,7 +306,7 @@ export function useMatrix(
     // `effectivePeriod` + `includePending` together form the cache key —
     // toggling includePending triggers a separate fetch (admin "Show pending"
     // view); changing the store-selected period re-scopes every panel.
-  }, [effectivePeriod, includePending]);
+  }, [effectivePeriod, includePending, key, enabled]);
 
   const refresh = useMemo(
     () => async (): Promise<void> => {
@@ -314,7 +325,8 @@ export function useMatrix(
     [effectivePeriod, includePending],
   );
 
-  return { matrix, loading, error, refresh };
+  const visibleLoading = enabled && (loading || (!matrix && !error));
+  return { matrix, loading: visibleLoading, error, refresh };
 }
 
 /**

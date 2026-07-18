@@ -121,10 +121,12 @@ export function ActionCenterPanel() {
   // section. Same store slice AlertsPanel reads from; published by
   // HeatMap after each matrix fetch via `evaluateAlertRules(...)`.
   const alertMatches = useTerminalStore((s) => s.alertMatches);
-  const { matrix } = useMatrix();
+  const { matrix } = useMatrix(undefined, false, { enabled: open });
   // Resolve company codes for alert-chip rendering (id → code lookup);
   // shared with AlertsPanel via the useCompanies module-cache hook.
-  const { idToCode, loading: companiesLoading } = useCompanies();
+  const { idToCode, loading: companiesLoading } = useCompanies({
+    enabled: open,
+  });
 
   useEffect(() => {
     const onOpen = () => setOpen(true);

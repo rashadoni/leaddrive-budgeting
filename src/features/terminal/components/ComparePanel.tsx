@@ -72,10 +72,13 @@ export function ComparePanel() {
   // ComparePanel reuses HeatMap's already-fetched matrix instead of
   // a 2nd round-trip. Lazy-fetch is preserved via `enabled` gate
   // below (matches prior `if (!open || data) return` semantics).
-  const { matrix: data, loading: hookLoading, error: hookError } = useMatrix();
-  // Local "enabled" view: until modal opens, treat matrix as unloaded
-  // so the closed-modal render path doesn't see stale subscription
-  // state. Once open, reflect the hook's actual loading/error.
+  const { matrix: data, loading: hookLoading, error: hookError } = useMatrix(
+    undefined,
+    false,
+    { enabled: open },
+  );
+  // Until the modal opens, the hook stays cold. On desktop the shared cache is
+  // already primed by Expert; on mobile the opening event starts the request.
   const loading = open && hookLoading;
   const error = open ? hookError : null;
 
@@ -102,13 +105,8 @@ export function ComparePanel() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // Sub-20: matrix-fetch effect removed — `useMatrix()` hook handles
-  // the shared cache + lifecycle. The original effect was lazy
-  // (`if (!open || data) return`); the hook fetches eagerly on
-  // component mount, but the module cache means there's at most one
-  // network call across all consumers, so the eager-fetch overhead
-  // is paid by HeatMap (always mounted) and ComparePanel just reads
-  // the cached result on open.
+  // Sub-20: matrix-fetch effect removed — `useMatrix()` owns the shared cache
+  // and the `enabled` option preserves the original lazy-open lifecycle.
 
   if (!open || !pair) return null;
 

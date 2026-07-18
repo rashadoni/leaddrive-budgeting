@@ -114,7 +114,8 @@ C3 `ExpertWorkspace` isolation ✅ production-verified · C4 event/shortcut/layo
 compatibility 🟡 partial · C5 overview façade/provider ⬜ blocked. The legacy Expert
 mobile P1 guard is ✅ production-verified: below 768 px the four-panel route tree
 is not mounted and an EN/RU/AZ desktop recommendation is shown; the independent
-overlay host remains available with its existing shared subscriptions. On
+overlay host remains available, while its company/matrix data stays cold until
+an overlay opens. On
 supported widths Expert remains mounted because alerts still originate in HeatMap.
 No Decision shell or V2 view is enabled.
 
@@ -2140,8 +2141,8 @@ the four Expert panels into the remaining phone width. The dismissible
   keyboard/touch-accessible 44 px `Back to Budgeting` action;
 - the terminal sidebar is hidden only on that mobile route;
 - Expert panels, deep-link handling and terminal toolbars are not mounted on
-  mobile; the route-owned overlay host remains mounted independently and keeps
-  its existing shared company/matrix subscriptions;
+  mobile; the route-owned overlay host remains mounted independently, but its
+  company/matrix data is now loaded only when an overlay event needs it;
 - at 768 px and above, the same route children and `ExpertWorkspace` are
   mounted, with the existing splitter keys, shortcuts and four panels intact.
 
@@ -2172,9 +2173,9 @@ authenticated terminal, companies, matrix and audit checks returned 200.
 The production browser gate verified both target contexts with zero console,
 page or 5xx errors. At 390×844 the fallback occupies x0–390/y40–844, the title
 is fully visible at x24–366/y318–382, the sidebar is hidden and no F1–F4 panel
-exists. The independent overlay host intentionally keeps its pre-existing
-shared company/matrix subscriptions, so endpoint traffic is not claimed to be
-zero; the verified contract is that the four-panel UI tree is not mounted. At
+exists. At that release the independent overlay host still kept its pre-existing
+shared company/matrix subscriptions; the follow-up slice below removes that
+mobile startup cost without unmounting the event listeners. At
 1280×720 all four panels render in the preserved 2×2 geometry: F1
 x256–612/y169–440, F2 x618–1280/y169–440, F3 x256–765/y446–668 and F4
 x771–1280/y446–668. The mobile fallback is hidden on desktop. Because Git has no
@@ -2185,3 +2186,31 @@ No financial logic, formula, KPI, threshold, value, database row, migration,
 paid provider, Anthropic/Google call, Decision UI or V2 feature flag changed.
 C1/C5 and the modern responsive Decision shell remain blocked on their certified
 provider/trust contracts.
+
+
+---
+
+## 35. Risk Terminal mobile overlay data deferral (2026-07-18)
+
+**Status: implemented and code-tested; production network verification pending.**
+
+The route-owned overlay host remains continuously mounted, so all existing
+`terminal:*` CustomEvents stay registered. Closed event-driven panels now pass
+an `enabled` gate to the shared company/matrix hooks. PDF and XLSX listeners
+load the selected-period matrix and company snapshot only after the export
+event. Desktop AI subscriptions retain their session-wide background matcher;
+on the mobile Expert fallback they stay cold until their manager is opened.
+
+Measured production baseline before the change at 390×844: the route rendered
+zero Expert panels but still downloaded `/api/indicators/matrix` (86,185 body
+bytes, 267 ms) and `/api/companies` (36,486 body bytes, 126 ms), about 122.7 KB
+combined. The new runtime contract test proves neither endpoint is called when
+the mobile overlay host mounts, then proves the existing compare and alerts
+events activate the required matrix/company request.
+
+Evidence before release: targeted overlay/export/hooks suites 12 files / 114
+tests passed; new disabled-to-enabled hook tests passed; full Vitest 532 files
+passed + 13 skipped / 6,842 tests passed + 121 skipped; TypeScript is clean;
+the Next.js production build generated 158 routes. No visual/CSS geometry,
+financial logic, formula, KPI, threshold, value, database, migration,
+password/passwordHash, authentication setting, paid provider or V2 flag changed.

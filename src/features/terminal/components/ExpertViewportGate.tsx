@@ -3,25 +3,8 @@
 import Link from "next/link";
 import { ArrowLeft, MonitorUp } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useSyncExternalStore } from "react";
-
-const EXPERT_VIEWPORT_QUERY = "(min-width: 768px)";
-
-function subscribeToViewport(onStoreChange: () => void) {
-  if (typeof window === "undefined" || !window.matchMedia) return () => {};
-
-  const mediaQuery = window.matchMedia(EXPERT_VIEWPORT_QUERY);
-  mediaQuery.addEventListener("change", onStoreChange);
-  return () => mediaQuery.removeEventListener("change", onStoreChange);
-}
-
-function getViewportSnapshot() {
-  return typeof window !== "undefined" && Boolean(window.matchMedia?.(EXPERT_VIEWPORT_QUERY).matches);
-}
-
-function getServerViewportSnapshot() {
-  return false;
-}
+import { type ReactNode } from "react";
+import { useExpertViewport } from "../hooks/use-expert-viewport";
 
 /**
  * Keeps the desktop-only Expert surface out of the mobile render tree.
@@ -33,11 +16,7 @@ function getServerViewportSnapshot() {
  */
 export function ExpertViewportGate({ children }: { children: ReactNode }) {
   const t = useTranslations("terminal.v2.mobileExpert");
-  const supportsExpert = useSyncExternalStore(
-    subscribeToViewport,
-    getViewportSnapshot,
-    getServerViewportSnapshot,
-  );
+  const supportsExpert = useExpertViewport();
 
   return (
     <>

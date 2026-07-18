@@ -72,6 +72,27 @@ const SAMPLE_2025 = {
 };
 
 describe("useMatrix (sub-20)", () => {
+  it("does not fetch while disabled and loads after being enabled", async () => {
+    const fetchSpy = vi.fn(async () =>
+      new Response(JSON.stringify(SAMPLE_2026), { status: 200 }),
+    );
+    global.fetch = fetchSpy as never;
+
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useMatrix(undefined, false, { enabled }),
+      { initialProps: { enabled: false } },
+    );
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.matrix).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.matrix?.period).toBe("2026");
+  });
+
   it("loads matrix for default period", async () => {
     global.fetch = vi.fn(async () =>
       new Response(JSON.stringify(SAMPLE_2026), {

@@ -3,8 +3,8 @@
 /**
  * Tier 3 closer — Excel export companion to PDF.
  *
- * Listens for `terminal:export-xlsx`, builds a 3-sheet workbook
- * (Summary / Matrix / Today's Brief) from the same matrix snapshot
+ * Listens for `terminal:export-xlsx`, loads the shared snapshot on demand,
+ * then builds a 3-sheet workbook (Summary / Matrix / Today's Brief)
  * the PDF uses, and triggers a download.
  *
  * Lazy-imports the `xlsx` package so the ~600KB writer doesn't ship
@@ -13,8 +13,11 @@
 
 import { useEffect } from "react";
 import { useLocale } from "next-intl";
-import { useMatrix } from "../hooks/use-matrix";
-import { useCompanies, buildRiskTagsByCompanyId } from "../hooks/use-companies";
+import { ensureMatrix } from "../hooks/use-matrix";
+import {
+  ensureCompanies,
+  buildRiskTagsByCompanyId,
+} from "../hooks/use-companies";
 import { useTerminalStore } from "../store/terminalStore";
 import { getLogger } from "@/lib/log";
 
@@ -23,20 +26,17 @@ const log = getLogger("terminal:export-xlsx");
 import { computeCompositeByCompany } from "@/lib/risk/composite-score";
 
 export function ExportXlsxTrigger() {
-  const { matrix } = useMatrix();
-  // Phase 7.N — shared `/api/companies` riskTags so the exported workbook's
-  // composites match the on-screen terminal (CompanyTree / HeatMap).
-  const { companies: companyTree } = useCompanies();
   const locale = useLocale() as "en" | "ru" | "az";
   const alertMatches = useTerminalStore((s) => s.alertMatches);
+  const selectedPeriod = useTerminalStore((s) => s.selectedPeriod);
 
   useEffect(() => {
     const handler = async () => {
-      if (!matrix) {
-        alert("Matrix not loaded yet");
-        return;
-      }
       try {
+        const [matrix, companyTree] = await Promise.all([
+          ensureMatrix(selectedPeriod),
+          ensureCompanies().catch(() => null),
+        ]);
         const XLSX = await import("xlsx");
 
         // Composites for the summary sheet (same calc as PDF). Phase 7.N —
@@ -216,7 +216,7 @@ export function ExportXlsxTrigger() {
         URL.revokeObjectURL(url);
       } catch (err) {
         log.error("XLSX export failed", {
-          period: matrix?.period,
+          period: selectedPeriod,
           err: err instanceof Error ? err.message : String(err),
         });
         alert(
@@ -227,7 +227,7 @@ export function ExportXlsxTrigger() {
     };
     window.addEventListener("terminal:export-xlsx", handler);
     return () => window.removeEventListener("terminal:export-xlsx", handler);
-  }, [matrix, locale, alertMatches, companyTree]);
+  }, [selectedPeriod, locale, alertMatches]);
 
   return null;
 }

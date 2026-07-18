@@ -4,7 +4,7 @@
  * Phase 7.G CLI Tier 3 — Risk Matrix PDF export trigger.
  *
  * Listens for `terminal:export-pdf` event (fired by the Export hotkey
- * button), builds the PDF document from the current matrix snapshot,
+ * button), loads the current shared snapshot on demand, builds the PDF,
  * and triggers a download via @react-pdf/renderer's `pdf().toBlob()`.
  *
  * Per-request lazy import — keeps the @react-pdf bundle out of initial
@@ -13,8 +13,11 @@
 
 import { useEffect } from "react";
 import { useLocale } from "next-intl";
-import { useMatrix } from "../hooks/use-matrix";
-import { useCompanies, buildRiskTagsByCompanyId } from "../hooks/use-companies";
+import { ensureMatrix } from "../hooks/use-matrix";
+import {
+  ensureCompanies,
+  buildRiskTagsByCompanyId,
+} from "../hooks/use-companies";
 import { useTerminalStore } from "../store/terminalStore";
 import { getLogger } from "@/lib/log";
 
@@ -23,20 +26,17 @@ const log = getLogger("terminal:export-pdf");
 import { computeCompositeByCompany } from "@/lib/risk/composite-score";
 
 export function ExportPdfTrigger() {
-  const { matrix } = useMatrix();
-  // Phase 7.N — shared `/api/companies` riskTags so the exported PDF's
-  // composites match the on-screen terminal (CompanyTree / HeatMap).
-  const { companies: companyTree } = useCompanies();
   const locale = useLocale() as "en" | "ru" | "az";
   const alertMatches = useTerminalStore((s) => s.alertMatches);
+  const selectedPeriod = useTerminalStore((s) => s.selectedPeriod);
 
   useEffect(() => {
     const handler = async () => {
-      if (!matrix) {
-        alert("Matrix not loaded yet");
-        return;
-      }
       try {
+        const [matrix, companyTree] = await Promise.all([
+          ensureMatrix(selectedPeriod),
+          ensureCompanies().catch(() => null),
+        ]);
         // Lazy-load to keep export deps out of the initial bundle.
         const [{ pdf }, { RiskMatrixPdfDoc }] = await Promise.all([
           import("@react-pdf/renderer"),
@@ -133,7 +133,7 @@ export function ExportPdfTrigger() {
         URL.revokeObjectURL(url);
       } catch (err) {
         log.error("PDF export failed", {
-          period: matrix?.period,
+          period: selectedPeriod,
           err: err instanceof Error ? err.message : String(err),
         });
         alert("PDF export failed: " + (err instanceof Error ? err.message : String(err)));
@@ -141,7 +141,7 @@ export function ExportPdfTrigger() {
     };
     window.addEventListener("terminal:export-pdf", handler);
     return () => window.removeEventListener("terminal:export-pdf", handler);
-  }, [matrix, locale, alertMatches, companyTree]);
+  }, [selectedPeriod, locale, alertMatches]);
 
   return null;
 }
