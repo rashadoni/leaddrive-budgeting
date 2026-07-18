@@ -406,3 +406,48 @@ gate without a manager-role requirement; that authorization review is recorded
 as a separate auth-sensitive decision, not silently changed in this RLS slice.
 budget_sections is the next auth-neutral candidate after a plan-reference and
 race audit; users and budget_department_owners remain auth-sensitive.
+
+## 15. Budget section stacked candidate
+
+20260718210000_budget_section_guards follows the eight unapplied candidates and
+is also candidate-only.
+
+- Runtime GET is available to authenticated viewers. POST, PUT and physical
+  DELETE require manager+ and keep the existing in-transaction period-lock
+  checks. The request role therefore retains exact tenant CRUD while the four
+  policies stop trusting app.bypass_rls.
+- The Prisma model and database add the missing direct
+  budget_sections.organizationId -> Organization FK with CASCADE update/delete.
+  The existing planId -> budget_plans relation remains CASCADE/CASCADE.
+- A fixed-search-path SECURITY DEFINER write guard rejects a missing plan or a
+  plan owned by another organization. A paired BudgetPlan reassignment guard
+  rejects moving a referenced plan across organizations.
+- Both guards use the same namespaced transaction advisory lock, closing both
+  section-insert/plan-move race orderings. Plan and Organization DELETE
+  cascades remain intact because the guards run only on INSERT/UPDATE.
+- Organization primary-key rename with existing sections is deliberately
+  blocked by the plan reassignment guard. Organization IDs are runtime
+  immutable; fail-closed behavior is safer than special-case cascade ordering.
+- Fresh replay: all 27 migrations. Valid 26->27 upgrade preserved the existing
+  plan and section. Intentional cross-org/orphan data and policy-catalog drift
+  failed atomically with predecessor rows/policy intact and no candidate FK,
+  policies or guards left behind.
+- Hermetic migration contract: 6/6. Focused handler/migration default gate:
+  3 files passed + 1 skipped / 21 passed + 7 skipped. Full live RLS:
+  10 files / 69 passed. Post-stack catalog: 92 policies, 58 remaining GUC
+  policies, four section policies and two fixed-path guards.
+- The parallel live stack exposed an old test-harness timing window in the
+  department and cost-type concurrency tests: an expected rejection could be
+  reported before its assertion attached. Immediate noop rejection observers
+  now prevent false unhandled errors without changing promise outcomes.
+- Full default: 530 files passed + 13 skipped / 6,840 tests passed + 121
+  skipped; Prisma validate/generate, TypeScript, 179-route scanner and the
+  158-page production build are clean.
+- Disposable PostgreSQL/tmpfs and temporary migration copy were removed.
+
+All nine candidates remain unapplied. Production was not migrated or deployed
+and remains on the last verified ded040c2, migration 18 and 68 GUC policies;
+direct SSH verification remains unavailable from remote-dev. No password,
+passwordHash, login/JWT behavior, financial row or paid provider changed.
+The next auth-neutral target requires a fresh operation/FK audit; users and
+budget_department_owners remain auth-sensitive.

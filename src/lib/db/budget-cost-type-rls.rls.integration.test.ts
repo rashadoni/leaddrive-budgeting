@@ -335,6 +335,7 @@ d('budget cost type RLS guards (live DB)', () => {
           costTypeId: COST_A2,
         },
       }))();
+    void insertAfterMove.catch(() => undefined);
     await new Promise((resolve) => setTimeout(resolve, 100));
     releaseMove();
     await expect(moveFirst).resolves.toMatchObject({ organizationId: ORG_B });
@@ -375,6 +376,7 @@ d('budget cost type RLS guards (live DB)', () => {
         where: { id: COST_A2 },
         data: { organizationId: ORG_B },
       }))();
+    void moveAfterInsert.catch(() => undefined);
     await new Promise((resolve) => setTimeout(resolve, 100));
     releaseInsert();
     await expect(insertFirst).resolves.toMatchObject({ costTypeId: COST_A2 });

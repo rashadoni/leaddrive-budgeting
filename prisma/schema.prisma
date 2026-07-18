@@ -37,6 +37,7 @@ model Organization {
   budgetCostTypes        BudgetCostType[]
   budgetDepartments      BudgetDepartment[]
   budgetDirectionTemplates BudgetDirectionTemplate[]
+  budgetSections         BudgetSection[]
   salesForecasts         SalesForecast[]
   expenseForecasts       ExpenseForecast[]
   budgetDeptOwners       BudgetDepartmentOwner[]
@@ -588,6 +589,7 @@ model BudgetActual {
 model BudgetSection {
   id             String     @id @default(cuid())
   organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   planId         String
   plan           BudgetPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   name           String

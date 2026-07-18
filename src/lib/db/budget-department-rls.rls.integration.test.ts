@@ -374,6 +374,7 @@ d('budget department RLS guards (live DB)', () => {
           departmentId: DEPT_A2,
         },
       }))();
+    void insertAfterMove.catch(() => undefined);
     await new Promise((resolve) => setTimeout(resolve, 100));
     releaseMove();
     await expect(moveFirst).resolves.toMatchObject({ organizationId: ORG_B });
@@ -414,6 +415,7 @@ d('budget department RLS guards (live DB)', () => {
         where: { id: DEPT_A2 },
         data: { organizationId: ORG_B },
       }))();
+    void moveAfterInsert.catch(() => undefined);
     await new Promise((resolve) => setTimeout(resolve, 100));
     releaseInsert();
     await expect(insertFirst).resolves.toMatchObject({ departmentId: DEPT_A2 });

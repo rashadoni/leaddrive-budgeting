@@ -1999,3 +1999,53 @@ mutations are authenticated but have no manager-role gate; reviewing that
 authorization is a separate auth-sensitive decision. budget_sections is the
 next auth-neutral candidate after a plan-reference/race audit; users and
 budget_department_owners remain auth-sensitive.
+
+---
+
+## 32. Budget section RLS candidate (2026-07-18)
+
+**Status: auth-neutral configuration slice implemented, hermetic-tested and
+isolated-live-tested; not applied to production and not owner-reviewed.**
+
+Budget-section reads remain available to authenticated viewers; physical
+create/update/delete remains manager+ and period-lock protected in the existing
+API transactions. The candidate replaces the legacy FOR ALL/custom-GUC policy
+with exact tenant CRUD, adds the missing Organization relation/FK, and keeps the
+existing plan CASCADE semantics.
+
+Paired fixed-search-path guards now enforce that every section and plan belong
+to the same organization and reject moving a referenced plan. Matching advisory
+locks close both section-write/plan-move race orderings. Organization and plan
+DELETE cascades remain valid. Organization primary-key rename is intentionally
+blocked while sections exist; IDs are runtime immutable and this is the
+fail-closed boundary.
+
+Evidence:
+
+- hermetic migration contract: 6/6;
+- existing RBAC/period-lock handlers plus migration: 3 passed files + 1 skipped,
+  21 passed tests + 7 skipped;
+- disposable PostgreSQL 16: all 27 migrations fresh;
+- valid 26->27 upgrade preserved the predecessor plan/section;
+- cross-org/orphan predecessor data and unexpected-policy drift failed
+  atomically with no candidate FK/policies/guards left behind;
+- both concurrency directions, direct CRUD, plan cascade and Organization
+  cascade passed under real-shaped admin/app roles;
+- full live RLS: 10 files / 69 passed;
+- catalog: 92 policies, 58 remaining GUC policies, four section policies, one
+  validated Organization FK and two enabled fixed-path guards;
+- the full parallel live gate also hardened expected-rejection observation in
+  the older department/cost-type race tests, eliminating a false unhandled
+  Promise window without changing their outcomes;
+- full default: 530 files passed + 13 skipped / 6,840 tests passed + 121
+  skipped;
+- Prisma validate/generate, TypeScript, 179-route RLS scanner and 158-page
+  production build clean;
+- disposable container/tmpfs and temporary migration copy removed.
+
+All nine stacked candidates remain unapplied. Production remains on the last
+verified ded040c2, migration 18 and 68 GUC policies; direct SSH verification
+from remote-dev is unavailable. No production data, auth setting, password,
+paid provider, migration or deploy changed. The next auth-neutral target needs
+a fresh operation/FK audit; users and budget_department_owners remain
+auth-sensitive.
