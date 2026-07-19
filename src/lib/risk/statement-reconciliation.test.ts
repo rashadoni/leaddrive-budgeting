@@ -42,13 +42,14 @@ function control(over: Partial<StatementControlInput> = {}): StatementControlInp
 }
 
 describe("evaluateStatementControl — golden reconciliation evidence", () => {
-  it("covers the five required statement controls", () => {
+  it("covers the six required statement controls", () => {
     expect(STATEMENT_CONTROL_CODES).toEqual([
       "balance_sheet",
       "cash_flow_sum",
       "cash_to_balance_sheet",
       "retained_earnings",
       "net_income_link",
+      "fx_translation",
     ])
   })
 

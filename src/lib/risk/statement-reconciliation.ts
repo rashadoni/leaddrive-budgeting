@@ -13,6 +13,12 @@ export const STATEMENT_CONTROL_CODES = [
   "cash_to_balance_sheet",
   "retained_earnings",
   "net_income_link",
+  // Trust spec §3.5 "base/original currency controls reconcile": a base-currency
+  // figure reconciled against an INDEPENDENT recompute from source-currency rows,
+  // per source currency. Catches a uniform wrong translation rate that the five
+  // AZN-vs-AZN controls above cannot see (both their sides carry the same rate,
+  // so a wholesale-wrong rate cancels and the identity still balances).
+  "fx_translation",
 ] as const
 
 export type StatementControlCode = (typeof STATEMENT_CONTROL_CODES)[number]

@@ -8,8 +8,10 @@ import {
   buildBalanceSheetControl,
   buildCashFlowSumControl,
   buildCashToBalanceSheetControl,
+  buildFxTranslationControl,
   buildNetIncomeLinkControl,
   buildRetainedEarningsControl,
+  type FxRecomputedTerm,
   type StatementComponent,
   type StatementComponentEvidence,
   type StatementComponentRole,
@@ -385,6 +387,168 @@ describe("statement-control-builders — sign inversion flows through to a fail"
     expect(result.numericStatus).toBe("outside_tolerance")
     expect(result.decisionStatus).toBe("fail")
     expect(result.reasons).toContain("sign_inversion")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 6c. fx_translation — independent-rate recompute per source currency
+// ---------------------------------------------------------------------------
+
+function fxTerm(over: Partial<FxRecomputedTerm> = {}): FxRecomputedTerm {
+  return { localAmount: 1_000, rate: 1.7, sourceRowCount: 1, revisionId: "rev-fx", ...over }
+}
+
+describe("statement-control-builders — fx_translation", () => {
+  it("passes when the reported base equals the independent recompute", () => {
+    const input = buildFxTranslationControl(SCOPE, "USD", "closing", {
+      reportedBase: component("reported_base_USD", 1_700, "closing"),
+      recomputed: [fxTerm({ localAmount: 1_000, rate: 1.7 })],
+    })
+    expect(input.code).toBe("fx_translation")
+    expect(input.right.value).toBeCloseTo(1_700) // 1000 * 1.7
+    const result = evaluateStatementControl(input, APPROVED_POLICY)
+    expect(result.numericStatus).toBe("within_tolerance")
+    expect(result.decisionStatus).toBe("pass")
+    expect(result.decisionEligible).toBe(true)
+  })
+
+  it("catches a uniform wrong rate the AZN-vs-AZN controls cannot see", () => {
+    // Ledger translated 1,000,000 USD at a wrong 1.9; independent rate is 1.7.
+    const input = buildFxTranslationControl(SCOPE, "USD", "closing", {
+      reportedBase: component("reported_base_USD", 1_900_000, "closing"),
+      recomputed: [fxTerm({ localAmount: 1_000_000, rate: 1.7 })],
+    })
+    expect(input.right.value).toBeCloseTo(1_700_000)
+    const result = evaluateStatementControl(input, APPROVED_POLICY)
+    expect(result.signedDelta).toBeCloseTo(200_000)
+    expect(result.numericStatus).toBe("outside_tolerance")
+    expect(result.decisionStatus).toBe("fail")
+    expect(result.material).toBe(true)
+  })
+
+  it("sums multiple same-currency rows and propagates unanimous revision lineage", () => {
+    const input = buildFxTranslationControl(SCOPE, "USD", "closing", {
+      reportedBase: component("reported_base_USD", 1_700, "closing", {}, { revisionId: "rev-A" }),
+      recomputed: [
+        fxTerm({ localAmount: 600, rate: 1.7, sourceRowCount: 2, revisionId: "rev-A" }),
+        fxTerm({ localAmount: 400, rate: 1.7, sourceRowCount: 3, revisionId: "rev-A" }),
+      ],
+    })
+    expect(input.right.value).toBeCloseTo(1_700) // (600 + 400) * 1.7
+    expect(input.right.sourceRowCount).toBe(5)
+    expect(input.right.revisionId).toBe("rev-A")
+    expect(evaluateStatementControl(input, APPROVED_POLICY).decisionStatus).toBe("pass")
+  })
+
+  it("nulls the recompute revision when rows disagree, staying provisional", () => {
+    const input = buildFxTranslationControl(SCOPE, "USD", "closing", {
+      reportedBase: component("reported_base_USD", 1_700, "closing"),
+      recomputed: [
+        fxTerm({ localAmount: 600, rate: 1.7, revisionId: "rev-A" }),
+        fxTerm({ localAmount: 400, rate: 1.7, revisionId: "rev-B" }),
+      ],
+    })
+    expect(input.right.revisionId).toBeNull()
+    const result = evaluateStatementControl(input, APPROVED_POLICY)
+    expect(result.numericStatus).toBe("within_tolerance")
+    expect(result.decisionStatus).toBe("provisional")
+    expect(result.reasons).toContain("lineage_missing")
+  })
+
+  it("blocks an absent local amount or rate instead of treating it as zero", () => {
+    const missingLocal = buildFxTranslationControl(SCOPE, "USD", "closing", {
+      reportedBase: component("reported_base_USD", 1_700, "closing"),
+      recomputed: [fxTerm({ localAmount: null })],
+    })
+    expect(Number.isNaN(missingLocal.right.value)).toBe(true)
+    expect(missingLocal.right.sourceRowCount).toBe(0)
+    const r1 = evaluateStatementControl(missingLocal, APPROVED_POLICY)
+    expect(r1.decisionStatus).toBe("blocked")
+    expect(r1.reasons).toContain("source_rows_missing")
+
+    const missingRate = buildFxTranslationControl(SCOPE, "USD", "closing", {
+      reportedBase: component("reported_base_USD", 1_700, "closing"),
+      recomputed: [fxTerm({ rate: null })],
+    })
+    expect(evaluateStatementControl(missingRate, APPROVED_POLICY).decisionStatus).toBe("blocked")
+  })
+
+  it("treats an evidenced-zero position as a real, traced zero that does not block", () => {
+    const input = buildFxTranslationControl(SCOPE, "USD", "closing", {
+      reportedBase: component("reported_base_USD", 1_700, "closing"),
+      recomputed: [
+        fxTerm({ localAmount: 1_000, rate: 1.7 }),
+        { localAmount: null, rate: null, sourceRowCount: 0, revisionId: "rev-fx", evidencedZero: true },
+      ],
+    })
+    expect(Number.isFinite(input.right.value)).toBe(true)
+    expect(input.right.value).toBeCloseTo(1_700)
+    expect(evaluateStatementControl(input, APPROVED_POLICY).decisionStatus).toBe("pass")
+  })
+
+  it("keeps the natural sign — a negative liability recomputes to a negative base", () => {
+    const input = buildFxTranslationControl(SCOPE, "USD", "closing", {
+      reportedBase: component("reported_base_USD", -1_700, "closing"),
+      recomputed: [fxTerm({ localAmount: -1_000, rate: 1.7 })],
+    })
+    expect(input.right.value).toBeCloseTo(-1_700)
+    const result = evaluateStatementControl(input, APPROVED_POLICY)
+    expect(result.reasons).not.toContain("sign_inversion")
+    expect(result.decisionStatus).toBe("pass")
+  })
+
+  it("surfaces a sign inversion when a positive local faces a negative reported figure", () => {
+    const input = buildFxTranslationControl(SCOPE, "USD", "closing", {
+      reportedBase: component("reported_base_USD", -1_700, "closing"),
+      recomputed: [fxTerm({ localAmount: 1_000, rate: 1.7 })],
+    })
+    const result = evaluateStatementControl(input, APPROVED_POLICY)
+    expect(result.reasons).toContain("sign_inversion")
+    expect(result.decisionStatus).toBe("fail")
+  })
+
+  it("rejects a non-positive or non-finite rate deterministically", () => {
+    for (const bad of [0, -1.7, Number.POSITIVE_INFINITY, Number.NaN]) {
+      let caught: unknown
+      try {
+        buildFxTranslationControl(SCOPE, "USD", "closing", {
+          reportedBase: component("reported_base_USD", 1_700, "closing"),
+          recomputed: [fxTerm({ rate: bad })],
+        })
+      } catch (error) {
+        caught = error
+      }
+      expect(caught).toBeInstanceOf(StatementControlBuilderError)
+      expect((caught as StatementControlBuilderError).code).toBe("fx_rate_invalid")
+    }
+  })
+
+  it("rejects a source currency equal to the base currency", () => {
+    let caught: unknown
+    try {
+      buildFxTranslationControl(SCOPE, "AZN", "closing", {
+        reportedBase: component("reported_base_AZN", 1_700, "closing"),
+        recomputed: [fxTerm()],
+      })
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(StatementControlBuilderError)
+    expect((caught as StatementControlBuilderError).code).toBe("source_currency_not_distinct")
+  })
+
+  it("rejects a reported figure that is not in the base currency", () => {
+    let caught: unknown
+    try {
+      buildFxTranslationControl(SCOPE, "USD", "closing", {
+        reportedBase: component("reported_base_USD", 1_700, "closing", { currency: "USD" }),
+        recomputed: [fxTerm()],
+      })
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(StatementControlBuilderError)
+    expect((caught as StatementControlBuilderError).code).toBe("scope_component_mismatch")
   })
 })
 

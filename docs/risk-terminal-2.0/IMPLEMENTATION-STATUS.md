@@ -2689,3 +2689,107 @@ No E2E/visual gate: no runtime surface, no layout file touched.
 components in the builders. This is the larger slice and closes assurance gap #1
 (uniform-wrong-FX-rate blindness), which the sign gate does not touch. Still no
 persistence, no runtime caller, provisional until the shadow close cycle.
+
+---
+
+## 42. B1.4 — `fx_translation` control (shadow-gate condition #2, pure part) (2026-07-19)
+
+**Status: `implemented` + `tested`. Pure, no runtime caller. Implements the
+pure part of T-1 shadow-gate condition #2 (the sixth control + builder). NOT
+decision-grade; the dual-currency runs, FX-review queue and the CTA /
+`fx_effect_on_cash` plug terms (condition #3) are NOT in this slice.**
+
+### Outcome
+
+- **Behavior changed for users: none.** New pure control code + builder, no
+  runtime caller. No financial value, formula, threshold, score, row, schema,
+  provider call, feature flag or production state changed.
+- **What was added:** a sixth reconciliation control, `fx_translation`, that
+  closes the trust spec §3.5 "base/original currency controls reconcile"
+  requirement — the one the original five controls skipped — and with it
+  **assurance gap #1** (uniform-wrong-FX-rate blindness): the five AZN-vs-AZN
+  controls carry the same rate on both sides, so a wholesale-wrong rate cancels
+  and the identity still balances (false pass of unbounded size). `fx_translation`
+  compares the reported AZN figure against an **independent** recompute, so a
+  wrong rate shows as `|delta| ≈ |1 − k| × basis`.
+
+### Design (from a design workflow: IAS-21 + codebase lenses + adversarial synthesis)
+
+- **One control instance per source currency.** Both sides in the base currency
+  (AZN). Aggregating currencies is unsound — a USD overstatement could net
+  against an EUR understatement, reopening the same blind spot — so one instance
+  speaks for exactly one source currency.
+- **left = reported base figure** (an ordinary `StatementComponent`, currency =
+  base). **right = Σ(localAmount × rate)**, rate = AZN-per-1-unit-of-source
+  (multiply; convention confirmed in `currency.ts`, `pnl-aggregation.ts`,
+  `cbar-fx.ts`). The builder multiplies each `(localAmount, rate)` into a
+  synthetic base-currency component and delegates the sum, source-row totals and
+  revision-unanimity to the existing private `combineSide`.
+- **The discriminating power is entirely rate-source independence**, not an
+  accounting identity. This rests on a caller precondition the pure builder
+  cannot verify (recorded as the control's precondition and in pack §7.1
+  condition #2): the recompute rate must be independent of the ledger's own rate.
+- **Reuses the existing safety rails:** absent `localAmount`/`rate` → missing
+  evidence that BLOCKS (never a silent zero); `evidencedZero` → a real traced 0;
+  a non-positive/non-finite rate throws `fx_rate_invalid`; a source currency
+  equal to the base throws `source_currency_not_distinct`; signs are never
+  normalized, so the sign gate (§41) still fires on a genuine polarity flip.
+- **Role restricted to `closing` | `flow`** this slice (`opening` deferred). The
+  builder owns no tolerance/materiality/decision/reason logic and no T-1 policy.
+
+### Deferred (owner pack §7.1 condition #3 — NON-additive, own slice)
+
+`fx_effect_on_cash` (a new FX line inside the cash-flow-sum / cash-tie-out
+equations) and the CTA/OCI `translation_adjustment` term (an equity/OCI
+roll-forward term on balance-sheet and retained-earnings) both MODIFY shipped
+builders and their green fixtures, so they are a separate slice. Consequence
+recorded honestly: until those plug terms exist, a *correctly* translated foreign
+operation will still make the existing balance_sheet/cash controls fail by
+exactly the CTA and the FX effect on cash — a pre-existing gap, not introduced
+by `fx_translation`.
+
+### Files
+
+- `src/lib/risk/statement-reconciliation.ts` (append `fx_translation` to
+  `STATEMENT_CONTROL_CODES`; the evaluator is code-agnostic — no logic change)
+- `src/lib/risk/statement-control-builders.ts` (`FxRecomputedTerm`,
+  `FxTranslationControlComponents`, `buildFxTranslationControl`; two new error
+  codes `source_currency_not_distinct`, `fx_rate_invalid`)
+- `src/lib/risk/statement-reconciliation.test.ts` (six-code assertion)
+- `src/lib/risk/statement-control-builders.test.ts` (11 new fx_translation tests)
+- `docs/risk-terminal-2.0/06-OWNER-DECISION-PACK-T1-T5.md` (§7.1 condition #2
+  annotated), `docs/ROADMAP.md` (changelog), this file
+- **No schema, migration, translation, snapshot, runtime caller or production action.**
+
+### Evidence — commands actually run this turn
+
+| Command | Result |
+|---|---|
+| `vitest run statement-control-builders.test.ts statement-reconciliation.test.ts` | 62/62 passed |
+| `npx tsc --noEmit` | exit 0 |
+| `npx vitest run --reporter=dot` | 535 files / 6,911 passed / 121 skipped / **0 failed** |
+| `npm run build` | exit 0 |
+| `git diff --check` | clean |
+
+An adversarial review workflow (correctness + finance-soundness lenses → verify)
+was run over the new surface before commit.
+
+### Limits — what is NOT done
+
+- **Not decision-grade.** Condition #2's pure control only; the runtime dual-currency
+  runs, the FX-review queue, and condition #3's plug terms are not built. The
+  evaluator remains uncalled and every pilot control stays `provisional`.
+- **Independence is a caller precondition, not enforced.** If the recompute rate
+  is not independent of the ledger's rate, the control is blind — documented, not
+  codeable in a pure builder.
+- **Rate lineage:** the codebase's rate rows carry no `revisionId`; a caller must
+  synthesize a rate-version id into each term's `revisionId` (e.g.
+  `CBAR:2026-06-30:close`) or the recompute side stays `provisional` — the safe
+  degradation, never a false decision-grade pass.
+
+### Next task
+
+**Condition #3 — `fx_effect_on_cash` + CTA/OCI plug terms** on the existing cash
+and equity controls (NON-additive: modifies shipped builders + fixtures), then the
+remaining conditions and one shadow close cycle before any flip to
+`policy.approval = "approved"`.

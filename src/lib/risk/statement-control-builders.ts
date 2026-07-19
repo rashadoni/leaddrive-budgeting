@@ -105,6 +105,8 @@ export type StatementControlBuilderErrorCode =
   | "period_role_mismatch"
   | "opening_period_not_distinct"
   | "source_rows_invalid"
+  | "source_currency_not_distinct"
+  | "fx_rate_invalid"
 
 /**
  * Deterministic rejection for inputs that cannot be represented as a single
@@ -405,4 +407,119 @@ export function buildNetIncomeLinkControl(
     null,
   )
   return { code: "net_income_link", left, right }
+}
+
+/**
+ * One recomputed line of a single source currency's INDEPENDENT base recompute.
+ * The (localAmount, rate) pair is preserved so the independent rate is auditable;
+ * the builder multiplies them into a synthetic AZN component for `combineSide`.
+ * Rate provenance rides on `revisionId` — there is deliberately no separate rate
+ * field: a recompute whose rate is untraced yields a null side revision →
+ * lineage_missing → provisional, never a fabricated decision-grade pass.
+ */
+export interface FxRecomputedTerm {
+  /** Source-currency figure, natural sign. null = absent → blocks (never a silent zero). */
+  localAmount: number | null
+  /** INDEPENDENT AZN-per-1-unit-of-source rate (multiply). null = absent → blocks; a present rate must be finite and > 0. */
+  rate: number | null
+  sourceRowCount: number
+  /** Lineage of the ledger row and the independent rate, composed by the caller; null → lineage_missing. */
+  revisionId: string | null
+  /** A genuine zero position: contributes a real 0 regardless of rate/local; may carry `sourceRowCount: 0`. */
+  evidencedZero?: boolean
+}
+
+export interface FxTranslationControlComponents {
+  /** left: the ledger's reported AZN figure for this source currency's positions (currency = scope.currency). */
+  reportedBase: StatementComponent
+  /** right: rows of the SAME source currency; right.value = Σ(localAmount × rate). */
+  recomputed: ReadonlyArray<FxRecomputedTerm>
+}
+
+/**
+ * fx_translation (trust spec §3.5 "base/original currency controls reconcile"),
+ * one control PER SOURCE CURRENCY. Both sides are in the base currency; the
+ * discriminating power is entirely the INDEPENDENCE of the recompute's rate from
+ * the rate the ledger used — a uniform wrong rate cancels inside the five
+ * AZN-vs-AZN controls but shows here as `|delta| ≈ |1 − k| × basis`.
+ *
+ * Precondition the pure builder cannot verify (owner pack §7.1 condition #2): the
+ * recompute's `rate` must come from a source INDEPENDENT of the ledger's own
+ * translation, or a wholesale-wrong rate cancels on both sides and the control is
+ * blind again. It is auditable via each term's `revisionId`.
+ */
+export function buildFxTranslationControl(
+  scope: StatementControlScope,
+  sourceCurrency: string,
+  role: Exclude<StatementComponentRole, "opening">,
+  components: FxTranslationControlComponents,
+): StatementControlInput {
+  // Translating the base currency to itself is a no-op control, not a check.
+  if (normalizedCurrency(sourceCurrency) === normalizedCurrency(scope.currency)) {
+    throw new StatementControlBuilderError(
+      "source_currency_not_distinct",
+      `recomputed_base_${sourceCurrency}`,
+      "fx_translation source currency must differ from the base currency",
+    )
+  }
+
+  // left: the reported base-currency figure — an ordinary component whose
+  // scope/role/currency are checked by combineSide (a non-base reportedBase
+  // throws scope_component_mismatch).
+  const left = combineSide(
+    `reported_base_${sourceCurrency}`,
+    scope,
+    [{ component: components.reportedBase, sign: 1, expectedRole: role }],
+    null,
+  )
+
+  // right: each (localAmount, rate) becomes a synthetic base-currency component
+  // whose value is the product. Absent local/rate → missing evidence (blocks,
+  // never a silent zero); a present rate must be finite and > 0. A non-finite
+  // localAmount flows through as a non-finite product and the evaluator blocks it.
+  const terms: SignedTerm[] = components.recomputed.map((t, i) => {
+    const name = `recomputed_base_${sourceCurrency}_${i}`
+    let evidence: StatementComponentEvidence | null
+    if (t.evidencedZero === true) {
+      evidence = {
+        value: 0,
+        sourceRowCount: t.sourceRowCount,
+        revisionId: t.revisionId,
+        evidencedZero: true,
+      }
+    } else if (t.localAmount == null || t.rate == null) {
+      evidence = null
+    } else {
+      if (!Number.isFinite(t.rate) || t.rate <= 0) {
+        throw new StatementControlBuilderError(
+          "fx_rate_invalid",
+          name,
+          `recomputed term "${name}" has a non-positive or non-finite rate`,
+        )
+      }
+      evidence = {
+        value: t.localAmount * t.rate,
+        sourceRowCount: t.sourceRowCount,
+        revisionId: t.revisionId,
+      }
+    }
+    const component: StatementComponent = {
+      component: name,
+      organizationId: scope.organizationId,
+      companyId: scope.companyId,
+      periodKey: scope.periodKey,
+      basis: scope.basis,
+      // The product is in the base currency, NOT the source currency.
+      currency: scope.currency,
+      unit: scope.unit,
+      role,
+      evidence,
+    }
+    return { component, sign: 1, expectedRole: role }
+  })
+
+  // An empty `recomputed` array yields a zero-row right side → the evaluator
+  // blocks with source_rows_missing (a safe outcome, never a fabricated pass).
+  const right = combineSide(`recomputed_base_${sourceCurrency}`, scope, terms, null)
+  return { code: "fx_translation", left, right }
 }

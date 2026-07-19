@@ -270,7 +270,7 @@ T-1 is recorded as of 2026-07-19: the owner selected **Option A's tolerance shap
 **Nine shadow-gate conditions before A may gate confirmed colour/alerts/board:**
 
 1. add a structural sign gate for `net_income_link`, `retained_earnings` and `cash_to_balance_sheet` — **implemented 2026-07-19 (evaluator-level, applies to all five controls; IMPLEMENTATION-STATUS §41), shadow-only**;
-2. implement the sixth `fx_translation` control and run each identity in both local and AZN base currency (route "local agrees, base differs" to an FX-review queue);
+2. implement the sixth `fx_translation` control and run each identity in both local and AZN base currency (route "local agrees, base differs" to an FX-review queue) — **the pure `fx_translation` control + builder are implemented 2026-07-19 (per source currency; IMPLEMENTATION-STATUS §42), shadow-only. Its soundness rests on an owner precondition the pure builder cannot verify: the recompute rate must be INDEPENDENT of the ledger's own rate, or a wholesale-wrong rate cancels on both sides. The dual-currency runs of the other five identities and the FX-review queue are a runtime/caller concern, not yet built.**;
 3. carry evidenced `fx_effect_on_cash` and CTA/OCI `translation_adjustment` components in the builders;
 4. validate the 1.00 AZN floor and qəpik precision against the smallest real pilot (EDEN) — a whole-AZN-rounded four-component roll-forward can accumulate ~2–2.5 AZN and false-break a clean close;
 5. make the materiality floor scope-aware (10,000 AZN consolidation; `max(1,000 AZN, basis × 0.001)` for single small entities) and render every `outside_tolerance` result regardless of the material flag;
