@@ -372,6 +372,23 @@ describe("statement-control-builders — absent ≠ zero", () => {
 })
 
 // ---------------------------------------------------------------------------
+// 6b. A built control still surfaces a sign inversion through the evaluator
+// ---------------------------------------------------------------------------
+
+describe("statement-control-builders — sign inversion flows through to a fail", () => {
+  it("net_income_link with opposite-sign sides fails as a sign inversion", () => {
+    const input = buildNetIncomeLinkControl(SCOPE, {
+      pnlNetIncome: component("pnl_net_income", 0.4, "flow"),
+      linkedStatementNetIncome: component("equity_statement_net_income", -0.4, "flow"),
+    })
+    const result = evaluateStatementControl(input, APPROVED_POLICY)
+    expect(result.numericStatus).toBe("outside_tolerance")
+    expect(result.decisionStatus).toBe("fail")
+    expect(result.reasons).toContain("sign_inversion")
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 7. Determinism / no I/O
 // ---------------------------------------------------------------------------
 

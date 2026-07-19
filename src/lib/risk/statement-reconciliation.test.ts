@@ -187,3 +187,56 @@ describe("evaluateStatementControl — golden reconciliation evidence", () => {
     ).toThrow("relativeTolerance must be a finite non-negative number")
   })
 })
+
+describe("evaluateStatementControl — sign gate", () => {
+  it("fails a sub-floor sign inversion instead of passing it", () => {
+    const result = evaluateStatementControl(
+      control({ left: side({ value: 0.4 }), right: side({ label: "right", value: -0.4 }) }),
+      APPROVED_POLICY,
+    )
+    // |0.4 - (-0.4)| = 0.8 <= 1.0 floor: without the sign gate this would pass.
+    expect(result.signedDelta).toBeCloseTo(0.8)
+    expect(result.numericStatus).toBe("outside_tolerance")
+    expect(result.decisionStatus).toBe("fail")
+    expect(result.decisionEligible).toBe(true)
+    expect(result.reasons).toContain("sign_inversion")
+  })
+
+  it("keeps a sign inversion out of a pass even when the policy is unapproved", () => {
+    const result = evaluateStatementControl(
+      control({ left: side({ value: 0.4 }), right: side({ label: "right", value: -0.4 }) }),
+      { ...APPROVED_POLICY, approval: "provisional" },
+    )
+    expect(result.numericStatus).toBe("outside_tolerance")
+    expect(result.decisionStatus).toBe("provisional")
+    expect(result.reasons).toContain("sign_inversion")
+    expect(result.reasons).toContain("policy_not_approved")
+  })
+
+  it("flags a large-magnitude sign inversion as a diagnostic reason and fails", () => {
+    const result = evaluateStatementControl(
+      control({ left: side({ value: 5_000 }), right: side({ label: "right", value: -5_000 }) }),
+      APPROVED_POLICY,
+    )
+    expect(result.reasons).toContain("sign_inversion")
+    expect(result.decisionStatus).toBe("fail")
+  })
+
+  it("does not treat a zero side as a sign inversion", () => {
+    const result = evaluateStatementControl(
+      control({ left: side({ value: 0.5 }), right: side({ label: "right", value: 0 }) }),
+      APPROVED_POLICY,
+    )
+    expect(result.reasons).not.toContain("sign_inversion")
+    expect(result.decisionStatus).toBe("pass")
+  })
+
+  it("does not flag two same-sign negative values", () => {
+    const result = evaluateStatementControl(
+      control({ left: side({ value: -1_000 }), right: side({ label: "right", value: -1_000 }) }),
+      APPROVED_POLICY,
+    )
+    expect(result.reasons).not.toContain("sign_inversion")
+    expect(result.decisionStatus).toBe("pass")
+  })
+})

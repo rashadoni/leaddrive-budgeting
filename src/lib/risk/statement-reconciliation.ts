@@ -25,6 +25,7 @@ export type StatementDecisionStatus = "pass" | "fail" | "provisional" | "blocked
 
 export type StatementReconciliationReason =
   | "non_finite_value"
+  | "sign_inversion"
   | "scope_organization_mismatch"
   | "scope_company_mismatch"
   | "scope_period_mismatch"
@@ -212,15 +213,37 @@ export function evaluateStatementControl(
     materialityFloor as number,
     basisAmount * policy.materialityRate,
   )
-  const numericStatus =
+  let numericStatus: StatementNumericStatus =
     absoluteDelta <= tolerance ? "within_tolerance" : "outside_tolerance"
+
+  // Sign is an exact structural gate (trust spec 3.5, owner pack 3.1): the two
+  // sides of an equality control cannot legitimately carry opposite non-zero
+  // signs. Being independent of magnitude, a tolerance can never turn it into a
+  // pass - a near-breakeven +0.40 vs -0.40 (abs delta 0.80, under a 1.00 floor)
+  // is a break, not a reconciliation. It is a decided FAIL, not blocked/unknown:
+  // the arithmetic is evaluable and definitively wrong, unlike a scope mismatch
+  // where the two sides describe different things.
+  const signInversion =
+    input.left.value !== 0 &&
+    input.right.value !== 0 &&
+    Math.sign(input.left.value) !== Math.sign(input.right.value)
+  if (signInversion) {
+    numericStatus = "outside_tolerance"
+    reasons.push("sign_inversion")
+  }
 
   if (policy.approval !== "approved") reasons.push("policy_not_approved")
   if (input.left.revisionId == null || input.right.revisionId == null) {
     reasons.push("lineage_missing")
   }
 
-  const decisionEligible = reasons.length === 0
+  // Eligibility turns only on approval + lineage. A sign inversion is a decided
+  // FAIL when eligible, never a "cannot decide" provisional, so it is excluded
+  // from this gate even though it is reported in `reasons`.
+  const decisionEligible =
+    policy.approval === "approved" &&
+    input.left.revisionId != null &&
+    input.right.revisionId != null
   return {
     code: input.code,
     policyId: policy.id,

@@ -2598,3 +2598,94 @@ adapter for shadow evaluation**, keeping every result provisional. The recorded
 conditions (sign gate, `fx_translation` control) are the higher-value B1 items
 but each is its own reviewed slice; none may flip `policy.approval` to
 `approved` before the shadow close cycle and golden evidence land.
+
+---
+
+## 41. B1.3 — structural sign gate (shadow-gate condition #1) (2026-07-19)
+
+**Status: `implemented` + `tested`. Pure, no runtime caller. Closes T-1
+shadow-gate condition #1 at the evaluator level. NOT decision-grade — every
+control still resolves `provisional` under the unapproved shadow policy.**
+
+### Outcome
+
+- **Behavior changed for users: none.** The evaluator has no runtime caller; the
+  five controls still return `provisional` for every pilot pair (0 lineage). No
+  financial value, formula, threshold, score, row, schema, provider call, feature
+  flag or production state changed.
+- **What changed:** `evaluateStatementControl` now treats **opposite non-zero
+  signs on the two sides of a control as a decided break**, independent of
+  magnitude — closing the assurance gap the finance panel raised (a near-breakeven
+  `+0.40` vs `-0.40`, absolute delta `0.80` under the `1.00` AZN floor, previously
+  certified clean). A new `sign_inversion` reason is reported.
+- **Who benefits:** the future canonical mart. This is the first of the nine
+  §7.1 conditions recorded when T-1's Option A shape was chosen.
+
+### Design decisions worth review
+
+1. **FAIL, not blocked.** The trust spec and owner pack list sign among the
+   "exact structural gates", but sign differs from the scope gates
+   (currency/unit/period/company/org): those describe *different things* so the
+   comparison is meaningless → `blocked`/`not_evaluated`. A sign inversion is a
+   *definitively wrong but evaluable* comparison, so it forces
+   `numericStatus = "outside_tolerance"` (a decided FAIL when eligible) and keeps
+   the signed delta visible, rather than blocking.
+2. **Independent of the eligibility gate.** `sign_inversion` is reported in
+   `reasons` but excluded from `decisionEligible`, which now turns only on
+   approval + lineage. So a sign inversion is a clean `fail` when eligible, never
+   a `provisional` "cannot decide". Existing behaviour is preserved because, past
+   the structural early-return, the eligibility reasons were only
+   `policy_not_approved` / `lineage_missing` anyway.
+3. **Applied to all five controls, not just the panel's three.** Two sides of any
+   equality control cannot legitimately carry opposite non-zero signs, so the
+   gate is a general evaluator property. The analysis shows no false positives:
+   opposite signs only change the outcome when both sides are within tolerance of
+   zero (otherwise the magnitude test already fails), and even then it is the
+   correct, fail-closed call for two representations of the same quantity.
+4. **Zero is not an inversion.** The gate requires both sides strictly non-zero
+   (`Math.sign(a) !== Math.sign(b)` with `a !== 0 && b !== 0`), so a legitimate
+   zero side is handled by the magnitude test, not flagged as a sign anomaly.
+
+### Files
+
+- `src/lib/risk/statement-reconciliation.ts` (`sign_inversion` reason + sign gate
+  + eligibility computed from approval/lineage, not `reasons.length`)
+- `src/lib/risk/statement-reconciliation.test.ts` (new "sign gate" block, 5 tests)
+- `src/lib/risk/statement-control-builders.test.ts` (1 end-to-end test: a built
+  `net_income_link` with opposite-sign sides fails as a sign inversion)
+- `docs/risk-terminal-2.0/06-OWNER-DECISION-PACK-T1-T5.md` (§7.1 condition #1
+  marked implemented)
+- `docs/ROADMAP.md` (dated changelog entry)
+- this file
+- **No schema, migration, translation, snapshot or production action.**
+
+### Evidence — commands actually run this turn
+
+| Command | Result |
+|---|---|
+| `vitest run statement-reconciliation.test.ts statement-control-builders.test.ts` | 51/51 passed |
+| `npx tsc --noEmit` | exit 0 |
+| `npx vitest run --reporter=dot` | 535 files / 6,900 passed / 121 skipped / **0 failed** |
+| `npm run build` | exit 0 |
+| `git diff --check` | clean |
+
+No E2E/visual gate: no runtime surface, no layout file touched.
+
+### Limits — what is NOT done
+
+- **Not decision-grade.** Condition #1 of nine; the shadow gate as a whole
+  (FX `fx_translation` control, CTA components, floor validation, one shadow
+  close cycle, etc.) is not met. The evaluator remains uncalled.
+- **The near-zero-noise trade-off is accepted.** Two genuinely ~0 sides that
+  straddle zero with opposite signs are flagged. This is fail-closed and, for a
+  shadow contract, the intended conservative behaviour; if a later close shows it
+  is noisy on a specific control, the fix is a documented per-control exception,
+  never a blanket loosen.
+
+### Next task
+
+**Condition #2 — the sixth `fx_translation` control** (per source currency,
+`base = Σ local × rate` vs the AZN figure) plus `fx_effect_on_cash` and CTA/OCI
+components in the builders. This is the larger slice and closes assurance gap #1
+(uniform-wrong-FX-rate blindness), which the sign gate does not touch. Still no
+persistence, no runtime caller, provisional until the shadow close cycle.

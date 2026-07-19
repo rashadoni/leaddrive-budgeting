@@ -269,7 +269,7 @@ T-1 is recorded as of 2026-07-19: the owner selected **Option A's tolerance shap
 
 **Nine shadow-gate conditions before A may gate confirmed colour/alerts/board:**
 
-1. add a structural sign gate for `net_income_link`, `retained_earnings` and `cash_to_balance_sheet`;
+1. add a structural sign gate for `net_income_link`, `retained_earnings` and `cash_to_balance_sheet` — **implemented 2026-07-19 (evaluator-level, applies to all five controls; IMPLEMENTATION-STATUS §41), shadow-only**;
 2. implement the sixth `fx_translation` control and run each identity in both local and AZN base currency (route "local agrees, base differs" to an FX-review queue);
 3. carry evidenced `fx_effect_on_cash` and CTA/OCI `translation_adjustment` components in the builders;
 4. validate the 1.00 AZN floor and qəpik precision against the smallest real pilot (EDEN) — a whole-AZN-rounded four-component roll-forward can accumulate ~2–2.5 AZN and false-break a clean close;
