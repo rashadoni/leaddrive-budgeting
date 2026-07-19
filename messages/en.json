@@ -2289,7 +2289,8 @@
       "compare": "Compare",
       "variance": "Variance",
       "forecast": "Forecast",
-      "audit": "Audit"
+      "audit": "Audit",
+      "whatif": "What-if"
     },
     "compare": {
       "subtitle": "Side-by-side indicators · Δ = RHS − LHS · Esc to close",

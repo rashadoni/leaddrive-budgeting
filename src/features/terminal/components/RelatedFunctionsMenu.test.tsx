@@ -98,6 +98,22 @@ describe("RelatedFunctionsMenu (Phase A4)", () => {
     expect(varianceLink?.getAttribute("href")).toBe("/budgeting?tab=variance");
   });
 
+  it("What-if entry fires terminal:open-whatif and closes the menu", () => {
+    render(<RelatedFunctionsMenu />);
+    fireEvent.click(screen.getByRole("button", { name: /Related functions/i }));
+    expect(screen.queryByRole("menu")).toBeTruthy();
+    let fired = 0;
+    const handler = () => {
+      fired += 1;
+    };
+    window.addEventListener("terminal:open-whatif", handler);
+    fireEvent.click(screen.getByText("What-if"));
+    window.removeEventListener("terminal:open-whatif", handler);
+    expect(fired).toBe(1);
+    // Firing the overlay event also dismisses the breadcrumb menu.
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
   it("without active company: 'Org-wide' header + links omit ?company= param", async () => {
     setActiveCompany(null);
     render(<RelatedFunctionsMenu />);

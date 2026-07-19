@@ -2289,7 +2289,8 @@
       "compare": "Müqayisə",
       "variance": "Sapma",
       "forecast": "Proqnoz",
-      "audit": "Audit"
+      "audit": "Audit",
+      "whatif": "Nə-əgər"
     },
     "compare": {
       "subtitle": "Yan-yana göstəricilər · Δ = sağ − sol · Esc bağlamaq",

@@ -157,6 +157,22 @@ export function RelatedFunctionsMenu() {
               {t(`relatedFunctions.${fn.labelKey}` as never)}
             </a>
           ))}
+          {/* What-if preview — an in-terminal overlay, not a page route, so it
+              dispatches the same `terminal:open-whatif` window event the
+              WhatIfPreviewPanel listens for (mirrors the HotkeyToolbar
+              hotkey). Rendered as a button because it fires an event rather
+              than navigating. */}
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full text-left px-3 py-1 text-xs text-gray-300 hover:bg-gray-800 hover:text-[#FFB800] transition-colors"
+            onClick={() => {
+              setOpen(false);
+              window.dispatchEvent(new CustomEvent("terminal:open-whatif"));
+            }}
+          >
+            {t("relatedFunctions.whatif")}
+          </button>
         </div>
       )}
     </div>

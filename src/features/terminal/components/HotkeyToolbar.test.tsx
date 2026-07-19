@@ -71,7 +71,11 @@ describe("HotkeyToolbar (Phase B6)", () => {
     // Visible through "import": triage + analysis + social + new-plan + import.
     expect(screen.queryByText("BREACH")).toBeTruthy();
     expect(screen.queryByText("ACTIONS")).toBeTruthy();
-    expect(screen.queryByText("SCENARIO")).toBeTruthy();
+    // 2026-07-19 — the standalone SCENARIO button was removed; the What-if
+    // (PREVIEW) hotkey remains inline (mock renders its key as "WHATIF").
+    // Scenario is still reachable via the `SCN <code> GO` command-bar verb.
+    expect(screen.queryByText("SCENARIO")).toBeNull();
+    expect(screen.queryByText("WHATIF")).toBeTruthy();
     expect(screen.queryByText("INTEL")).toBeTruthy();
     expect(screen.queryByText("NEW PLAN")).toBeTruthy();
     expect(screen.queryByText("IMPORT")).toBeTruthy();
@@ -95,7 +99,7 @@ describe("HotkeyToolbar (Phase B6)", () => {
 
   it("inline commands are directly clickable — no palette interaction needed", () => {
     render(<HotkeyToolbar />);
-    expect(screen.queryByText("SCENARIO")).toBeTruthy();
+    expect(screen.queryByText("WHATIF")).toBeTruthy();
     expect(screen.queryByText("INTEL")).toBeTruthy();
     expect(screen.queryByText("NEW PLAN")).toBeTruthy();
   });

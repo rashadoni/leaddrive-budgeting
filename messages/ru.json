@@ -2289,7 +2289,8 @@
       "compare": "Сравнение",
       "variance": "Отклонения",
       "forecast": "Прогноз",
-      "audit": "Аудит"
+      "audit": "Аудит",
+      "whatif": "Что-если"
     },
     "compare": {
       "subtitle": "Side-by-side индикаторы · Δ = правая − левая · Esc для закрытия",

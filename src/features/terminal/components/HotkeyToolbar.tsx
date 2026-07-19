@@ -327,15 +327,10 @@ export function HotkeyToolbar() {
       priority: "overflow",
       action: () => prefillCmdBar('CMP '),
     },
-    {
-      key: "scenario",
-      label: t("hotkeys.scenario"),
-      icon: FlaskConical,
-      title: t("hotkeys.scenarioTitle") + " · ⌘K: SCN <code> GO",
-      group: "analysis",
-      priority: "overflow",
-      action: () => prefillCmdBar('SCN '),
-    },
+    // 2026-07-19 — the standalone SCENARIO (SCN) button was removed; the
+    // Scenario panel is still reachable via the `SCN <code> GO` command-bar
+    // verb. What-if now also lives in the CO breadcrumb ⋯ menu
+    // (RelatedFunctionsMenu) in addition to this hotkey.
     {
       key: "whatif",
       label: t("hotkeys.whatif"),

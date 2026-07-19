@@ -79,8 +79,29 @@ function isRollupBearing(indicator: ApplicabilityIndicator): boolean {
 export function createApplicabilityDecisionResolver(args: {
   companies: readonly ApplicabilityCompany[];
   applicabilityOverrides?: readonly ApplicabilityOverride[];
+  /**
+   * Fail-open policy for a leaf whose industry taxonomy is unknown
+   * (`industry == null`, no children to derive from).
+   *
+   * `true` (default) — the historic contract: an unclassified company
+   * cannot be *proved* inapplicable, so every industry-scoped indicator
+   * stays applicable. Correct for CELL rendering (an N/A cell would hide a
+   * real value that an older broad recompute may have produced).
+   *
+   * `false` — strict: an unclassified leaf does not vouch for any
+   * industry-scoped indicator. Used by the HeatMap "hide inapplicable"
+   * COLUMN filter so a single partially-onboarded company (null industry)
+   * can't drag every sector KPI into the "relevant" set and neuter the
+   * toggle. Universal indicators (`industries == []`) stay applicable in
+   * both modes.
+   */
+  treatUnknownIndustryAsApplicable?: boolean;
 }): ApplicabilityDecisionResolver {
-  const { companies, applicabilityOverrides = [] } = args;
+  const {
+    companies,
+    applicabilityOverrides = [],
+    treatUnknownIndustryAsApplicable = true,
+  } = args;
   const companyById = new Map(companies.map((company) => [company.id, company]));
   const childrenByParentId = new Map<string, ApplicabilityCompany[]>();
   for (const company of companies) {
@@ -124,7 +145,14 @@ export function createApplicabilityDecisionResolver(args: {
     const industries = indicator.industries ?? [];
     const children = childrenByParentId.get(companyId) ?? [];
     if (children.length === 0) {
-      if (!company.industry || industries.length === 0) return APPLICABLE;
+      // Universal indicators apply everywhere regardless of taxonomy.
+      if (industries.length === 0) return APPLICABLE;
+      // Unknown taxonomy: fail open (default) or, in strict mode, decline
+      // to keep an industry-scoped indicator on the strength of a company
+      // whose sector was never classified.
+      if (!company.industry) {
+        return treatUnknownIndustryAsApplicable ? APPLICABLE : TAXONOMY_MISMATCH;
+      }
       return industries.includes(company.industry)
         ? APPLICABLE
         : TAXONOMY_MISMATCH;
@@ -154,6 +182,7 @@ export function createApplicabilityDecisionResolver(args: {
 export function createApplicabilityResolver(args: {
   companies: readonly ApplicabilityCompany[];
   applicabilityOverrides?: readonly ApplicabilityOverride[];
+  treatUnknownIndustryAsApplicable?: boolean;
 }): ApplicabilityResolver {
   const decide = createApplicabilityDecisionResolver(args);
   return (companyId, indicator) => decide(companyId, indicator).applicable;
@@ -242,11 +271,20 @@ export function partitionIndicatorsByScope<
   indicators: readonly TIndicator[];
   scopeCompanies: readonly ApplicabilityCompany[];
   applicabilityOverrides?: readonly ApplicabilityOverride[];
+  /**
+   * When `false`, a scope company with an unclassified industry no longer
+   * fails a leaf open onto every sector KPI (see
+   * `createApplicabilityDecisionResolver`). The HeatMap "hide inapplicable"
+   * toggle passes `false` so one null-industry company can't keep every
+   * column visible; the default `true` preserves the fail-open contract.
+   */
+  treatUnknownIndustryAsApplicable?: boolean;
 }): { relevant: TIndicator[]; hidden: TIndicator[] } {
   const {
     indicators,
     scopeCompanies,
     applicabilityOverrides = [],
+    treatUnknownIndustryAsApplicable = true,
   } = args;
   if (scopeCompanies.length === 0) {
     return { relevant: [...indicators], hidden: [] };
@@ -255,6 +293,7 @@ export function partitionIndicatorsByScope<
   const isApplicable = createApplicabilityResolver({
     companies: scopeCompanies,
     applicabilityOverrides,
+    treatUnknownIndustryAsApplicable,
   });
   const relevant: TIndicator[] = [];
   const hidden: TIndicator[] = [];

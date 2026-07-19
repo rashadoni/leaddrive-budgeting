@@ -491,6 +491,13 @@ export function useHeatMapModel(period: string | undefined) {
         indicators: rawIndicators,
         scopeCompanies,
         applicabilityOverrides: data?.applicabilityOverrides,
+        // "Hide inapplicable" must actually hide sector KPIs that no visible
+        // company can use. Without strict mode, a single partially-onboarded
+        // company (industry == null) fails open onto every indicator, so the
+        // toggle reported "· 0" and hid nothing across the full holding view.
+        // Cell rendering keeps the fail-open contract (separate resolver
+        // below), so this only tightens column inclusion.
+        treatUnknownIndustryAsApplicable: false,
       }),
     [rawIndicators, scopeCompanies, data?.applicabilityOverrides],
   );

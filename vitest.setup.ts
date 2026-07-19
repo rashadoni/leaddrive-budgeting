@@ -186,6 +186,7 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'relatedFunctions.variance': 'Variance',
   'relatedFunctions.forecast': 'Forecast',
   'relatedFunctions.audit': 'Audit',
+  'relatedFunctions.whatif': 'What-if',
   'commandBar.placeholder': 'HOLD GO · AAC CO GO · IND_OPEX_RATIO IND GO (Cmd+K)',
   'commandBar.alertsAriaLabel': 'Open alerts panel',
   'commandBar.alertsLoading': 'Alerts: loading…',
