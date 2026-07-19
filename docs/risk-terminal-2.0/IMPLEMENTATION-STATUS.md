@@ -2372,3 +2372,124 @@ module has no database access, persistence, adapter, API/UI caller or runtime
 effect. Focused evidence: 19 tests passed, `npx tsc --noEmit` passed and
 `git diff --check` passed. No existing reconciliation path, financial value,
 formula, threshold, schema/row, password/passwordHash, authentication setting,
+provider call, feature flag, deployment or production state changed. The
+canonical mart, its data adapters and financial cutover remain blocked on
+owner-approved T-1 and golden control evidence.
+
+---
+
+## 39. Risk Terminal B1.2 pure statement-control builders (2026-07-19)
+
+**Status: pure builders `implemented` + `tested`. Not reviewed. Not wired — the
+module has no runtime caller by design, so there is nothing to verify at runtime
+yet. NOT `reconciled` and NOT `methodology-approved`: T-1 is still a proposal.**
+
+### Outcome
+
+- **Behavior changed for users: none.** One new pure module plus its test. No
+  caller, no persistence, no schema, no DB access, no financial value touched.
+- **Who benefits:** the future canonical statement mart. B1's evaluator
+  (`statement-reconciliation.ts`) can already grade a `StatementControlInput`;
+  this slice supplies the missing half — deterministic construction of that
+  input from explicit, individually-scoped statement components, so the mart
+  wires a reviewed contract instead of inventing side-assembly under cutover
+  pressure.
+- **Behind a flag:** not applicable — nothing executes.
+- **Stage:** Stage B trust core; `provisional` in that nothing consumes it.
+
+### Files
+
+- `src/lib/risk/statement-control-builders.ts` (new)
+- `src/lib/risk/statement-control-builders.test.ts` (new — 26 tests)
+- `docs/ROADMAP.md` (B1 status line + dated changelog entry)
+- this file
+- **No migrations. No schema. No translation files. No snapshots. No UI. No
+  change to `statement-reconciliation.ts` or any existing reconciliation path.**
+
+### Design decisions worth review
+
+1. **The control period is the single scope.** Each builder takes an explicit
+   `StatementControlScope` (org, company, periodKey, basis, currency, unit) and
+   stamps both assembled sides with it, so the evaluator sees matching
+   `periodKey` on left and right. A component's `role` (`opening` | `closing` |
+   `flow`) captures its within-statement temporal role **without** changing the
+   stamped `periodKey` — an "opening balance" line is part of the current
+   statement even though it represents a prior instant.
+2. **Opening and closing cannot be mixed — enforced, not hoped.** Opening
+   components carry an explicit, distinct `openingPeriodKey`; the builder rejects
+   an opening period equal to the control period, an opening figure whose period
+   is not the declared opening period, and any component whose declared `role`
+   does not match the slot it was passed to. A closing figure supplied in an
+   opening slot throws deterministically.
+3. **Signs are never silently corrected.** Cash-flow sections and the net change
+   are summed as passed (outflows stay negative); distributions are **subtracted
+   as passed**, so a negative distribution (a contribution) raises retained
+   earnings. No `abs()`, no sign flip. Two dedicated tests would fail if either
+   were introduced.
+4. **Absent ≠ zero.** A component with `evidence: null` is missing evidence: the
+   side is stamped non-finite with zero source rows and the evaluator BLOCKS it;
+   the value is never fabricated as 0. To assert a genuine zero, a caller passes
+   an `evidencedZero` component, which contributes a traced 0. Direct
+   retained-earnings adjustments are a **required** input for exactly this
+   reason — their existence must be explicit (evidenced value, evidenced zero,
+   or absent-and-blocking), never silently omitted.
+5. **Lineage is propagated, never fabricated.** A side's `sourceRowCount` is the
+   sum of its components' counts; its `revisionId` is the components' unanimous
+   non-null revision, or `null` when they disagree or any is untraced. A
+   roll-forward whose components legitimately span two source revisions is
+   therefore nulled → provisional. Under B1 that is moot (no approved policy
+   makes anything decision-grade yet) and it is the conservative outcome, but it
+   is a representation choice a reviewer should see rather than inherit silently.
+6. **No overlap with existing reconcilers.** The `green/yellow/red` map-diff
+   family (`onboarding/reconciliation.ts`, `ai-import/universal-reconciler.ts`)
+   and the P&L/EBITDA/IFRS aggregators were inspected, not consolidated. This
+   module builds only `StatementControlInput`/`StatementControlSide` values for
+   the `pass/fail/provisional/blocked` control family and reuses the evaluator's
+   `basis` type verbatim so the two contracts cannot drift.
+
+### Evidence — commands actually run this turn
+
+| Command | Result |
+|---|---|
+| `vitest run statement-control-builders.test.ts` | 26/26 passed |
+| `vitest run statement-reconciliation.test.ts` (regression) | 19/19 passed |
+| `npx tsc --noEmit` | exit 0 |
+| `npx vitest run --reporter=dot` | 535 files / 6,894 passed / 121 skipped / **0 failed** |
+| `npm run build` | exit 0 (158 routes) |
+| `git diff --check` | clean |
+
+No E2E and no visual gate: no file in this slice has a runtime surface or can
+affect layout (`PanelGrid` / `CompanyTree` / `HeatMap` / terminal CSS /
+`globals.css` / Tailwind all untouched), so neither applies.
+
+### Financial reconciliation
+
+**Not applicable, and deliberately so.** The builders assemble the two sides of
+a control; they do not decide whether it passes — tolerance, materiality and
+decision status stay in the evaluator. No formula, aggregation, threshold,
+weight, KPI or value was touched, and no golden control was approved.
+
+### Limits — what is NOT done
+
+- **Not reviewed**, and Stage A's own review (A4-A6) remains outstanding.
+- **No caller, no persistence, no adapter.** Nothing constructs a
+  `StatementComponent` from a real statement snapshot; that adapter is later B1
+  work and needs the canonical mart.
+- **No default T-1 policy.** The test defines its own approved fixture purely to
+  prove the builders' output plugs into the evaluator; the proposed T-1 numbers
+  are not treated as owner-approved and no policy is exported.
+- **The single-scope / opening-period modeling is my choice.** The trust spec
+  fixes the equations, not the exact side-assembly representation. A reviewer
+  may prefer a different opening-balance encoding; it is a change in one file.
+
+### Rollback
+
+Delete two files and revert two documentation edits. Nothing imports the module.
+
+### Next task
+
+Still blocked on **T-1** for any `reconciled`/mart/runtime step. The next safe,
+additive slice would be a **read-only adapter that maps an existing
+`StatementSnapshot`-shaped input into `StatementComponent`s** for shadow
+evaluation — but it must not persist, must not enable a runtime caller and must
+keep every result provisional until T-1 and golden evidence are owner-approved.
