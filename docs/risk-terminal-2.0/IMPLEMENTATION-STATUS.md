@@ -89,9 +89,12 @@ open gate.*
 
 ### Stage B — trust core (additive slices in progress; financial cutover blocked)
 
-- **B1 canonical statement mart/service:** blocked on owner decision T-1 and
-  golden reconciliation controls. The decision pack contains a concrete
-  recommendation, but no owner approval has been recorded.
+- **B1 canonical statement mart/service:** a pure shadow reconciliation
+  contract now covers the five required golden controls with explicit
+  scope/unit/currency/lineage checks and separate tolerance/materiality. It has
+  no default policy, persistence, adapter or runtime caller. The mart and
+  financial cutover remain blocked on owner decision T-1 and approved golden
+  evidence; the decision-pack recommendation is still not owner-approved.
 - **B2 PeriodContext + DataRevision:** contracts, persistence, tenant-scoped
   canonical writer and UPDATE immutability are implemented and tested. A
   2026-07-18 technical review found DB-level retention/lifecycle/supersession
@@ -135,6 +138,18 @@ D7 Data Health + Scenario Lab · D8 responsive + a11y + EN/RU/AZ.
 E1 old/new on the same revision · E2 classify every material difference ·
 E3 silent V2 alerts · E4 perf/visual/a11y gates · E5 UAT + one real close cycle ·
 E6 rollback rehearsal · E7 Today default for the approved allowlist only.
+
+### Stage F — licensed external decision data (planned; blocked on reconciled internal truth + commercial approval)
+
+The owner selected the future evaluation sequence on 2026-07-19: Moody's first
+for company/supplier/ownership/credit and wider risk enrichment, followed by a
+same-question comparison of S&P Global versus FactSet with exactly one selected.
+This is a roadmap choice, not a vendor purchase or technical activation. Work is
+blocked until B1 is reconciled, T-1 is approved and the internal financial path
+passes a real close cycle. Any pilot must be read-only and source-linked; any
+trial, credential, paid call or subscription requires separate explicit owner
+approval. External observations enter through SourceArtifact/DataRevision and
+remain `shadow-only` until methodology, freshness and eligibility are approved.
 
 ---
 
@@ -2335,3 +2350,25 @@ No formula, threshold, score, row, schema, migration, authentication/password,
 provider call, feature flag or production deployment changed. T-1 through T-5
 remain open and continue to block B1/B4/B6/B7 until the named owner approvals
 are recorded.
+
+---
+
+## 38. Risk Terminal B1 preparatory statement reconciliation contract (2026-07-19)
+
+**Status: pure shadow contract implemented and tested; canonical mart, runtime
+wiring and financial cutover remain blocked on T-1 and golden evidence.**
+
+`src/lib/risk/statement-reconciliation.ts` defines one fail-closed evaluator
+for the five B1 controls: balance-sheet balance, cash-flow sum, cash-to-BS
+tie-out, retained-earnings roll-forward and net-income linkage. Every side
+carries organization, company, period, basis, currency, unit, source-row count
+and revision lineage. Structural mismatches block arithmetic; missing lineage
+or an unapproved policy can produce only provisional evidence. Signed delta,
+numeric tolerance, decision eligibility and materiality are separate outputs.
+
+There is deliberately no exported default policy: the proposed T-1 values
+exist only in the test fixture and are not treated as owner-approved. The new
+module has no database access, persistence, adapter, API/UI caller or runtime
+effect. Focused evidence: 19 tests passed, `npx tsc --noEmit` passed and
+`git diff --check` passed. No existing reconciliation path, financial value,
+formula, threshold, schema/row, password/passwordHash, authentication setting,
