@@ -114,7 +114,7 @@ export interface RawBsLine {
 }
 
 /** Matches the equity "current-year profit/loss" line across EN/RU/AZ. */
-const CURRENT_YEAR_RESULT_RE =
+export const CURRENT_YEAR_RESULT_RE =
   /current year|current period|reporting period|отчётн|текущ\w*\s*год|cari il|hesabat (dövrü|ili)|təsərrüfat ili/i
 
 /** A P&L (budget) line joined to its chart-of-accounts classification. */

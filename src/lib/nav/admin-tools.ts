@@ -26,6 +26,7 @@ import {
   CheckSquare,
   Layers,
   Shield,
+  ShieldCheck,
   Scale,
   BookOpen,
   Building2,
@@ -92,6 +93,7 @@ export const ADMIN_GROUPS: AdminGroup[] = [
     tools: [
       { href: "/budgeting/admin/compliance", key: "complianceHub", icon: Shield },
       { href: "/budgeting/admin/ifrs-conformance", key: "ifrsConformance", icon: Scale, badge: "Phase 7.N" },
+      { href: "/budgeting/admin/statement-controls", key: "statementControls", icon: ShieldCheck, badge: "B1 Shadow", recentlyAdded: true },
     ],
   },
   {

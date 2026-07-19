@@ -3540,6 +3540,10 @@
         "title": "IFRS conformance",
         "desc": "After import: structural IAS 1 check — balance ties, all sections, COGS vs OpEx, depreciation. 0-100 score on real figures."
       },
+      "statementControls": {
+        "title": "Statement Controls",
+        "desc": "Shadow run of the six canonical statement reconciliations — balance identity, cash flow sum, cash tie-out, retained earnings, net-income link, FX recompute. Provisional/blocked only — never pass/fail."
+      },
       "periodLocks": {
         "title": "Period Locks",
         "desc": "CFO close: blocks mutations on closed periods (returns 423)."
@@ -3992,6 +3996,146 @@
       "only_opex": "Only operating expenses are present — cost of sales isn't separated.",
       "no_da_line": "No depreciation / amortisation line identified.",
       "linkage_gap": "P&L net result ({pnlNet}) doesn't match the balance-sheet current-year line ({equityCurrentYear}) — gap {linkageGap}. Often a plan-vs-actual or period-coverage difference; worth a review."
+    }
+  },
+  "adminStatementControls": {
+    "pageTitle": "Statement controls (shadow)",
+    "pageDescription": "Run the six canonical statement-reconciliation controls against a company's imported statements — in shadow mode. The tolerance policy is recorded but not owner-approved and no statement row carries lineage, so every control is provisional (arithmetic evaluated, not certifiable) or blocked (evidence missing) — never pass/fail.",
+    "selectCompany": "Company",
+    "selectPlaceholder": "Select a company…",
+    "periodLabel": "Period",
+    "run": "Run controls",
+    "running": "Running…",
+    "noStatements": "No financial statements imported for this company yet — nothing to reconcile. Import a workbook first.",
+    "errorGeneric": "Could not run the controls. Please try again.",
+    "banner": "SHADOW / PROVISIONAL — NOT DECISION-GRADE",
+    "bannerDetail": "The tolerance policy is the recorded T-1 Option A shape for shadow methodology only (policy not approved), and no statement row carries lineage (lineage missing). Every control is therefore \"provisional\" (arithmetic evaluated, not certifiable) or \"blocked\" (evidence missing) — never pass/fail, by design.",
+    "bannerTooltip": "Shadow surface: results can inform review but must not drive decisions.",
+    "whyTitle": "Why nothing can pass or fail here",
+    "whyBody": "A decision-grade verdict requires an owner-approved policy AND revision lineage on both sides of every control. The policy is pinned at \"provisional\" and no statement row carries a revision id, so decision eligibility is always false: the arithmetic is computed and disclosed, but no verdict is minted.",
+    "status": {
+      "provisional": "Provisional",
+      "blocked": "Blocked"
+    },
+    "numeric": {
+      "within_tolerance": "within tolerance",
+      "outside_tolerance": "outside tolerance",
+      "not_evaluated": "not evaluated"
+    },
+    "reasons": {
+      "non_finite_value": "A side of the equation has no finite value — evidence is missing.",
+      "sign_inversion": "The two sides carry opposite signs — a break, surfaced rather than hidden.",
+      "scope_organization_mismatch": "The two sides describe different organizations.",
+      "scope_company_mismatch": "The two sides describe different companies.",
+      "scope_period_mismatch": "The two sides describe different periods.",
+      "scope_basis_mismatch": "The two sides describe different bases (plan vs actual).",
+      "currency_mismatch": "The two sides are in different currencies.",
+      "unit_mismatch": "The two sides use different units.",
+      "source_rows_missing": "A side has no source rows behind its figure.",
+      "policy_currency_floor_missing": "The policy has no tolerance floor for this currency — the control fails closed.",
+      "policy_not_approved": "The tolerance policy is provisional, not owner-approved.",
+      "lineage_missing": "No revision lineage exists on the statement rows."
+    },
+    "controls": {
+      "balance_sheet": {
+        "label": "Balance sheet identity",
+        "equation": "assets = liabilities + equity",
+        "desc": "Total assets against liabilities plus equity, sign-normalized per the detected storage convention."
+      },
+      "cash_flow_sum": {
+        "label": "Cash flow sum",
+        "equation": "CFO + CFI + CFF = net change in cash",
+        "desc": "The three activity sections against the reported net change in cash."
+      },
+      "cash_to_balance_sheet": {
+        "label": "Cash tie-out",
+        "equation": "opening cash + net change = balance-sheet cash",
+        "desc": "The cash roll-forward against the balance-sheet cash position."
+      },
+      "retained_earnings": {
+        "label": "Retained earnings roll-forward",
+        "equation": "opening RE + net income − distributions + adjustments = closing RE",
+        "desc": "The retained-earnings movement against its closing balance."
+      },
+      "net_income_link": {
+        "label": "Net income link",
+        "equation": "P&L net income = statement net income",
+        "desc": "The YTD P&L net result against the equity current-year result line."
+      },
+      "fx_translation": {
+        "label": "FX translation",
+        "equation": "reported AZN = Σ local × independent rate",
+        "desc": "The ledger's reported base figure against an independent recompute from source-currency amounts, per source currency."
+      }
+    },
+    "components": {
+      "assets": "Assets",
+      "liabilities": "Liabilities",
+      "equity": "Equity",
+      "operating": "Operating cash flow",
+      "investing": "Investing cash flow",
+      "financing": "Financing cash flow",
+      "netChangeInCash": "Net change in cash",
+      "openingCash": "Opening cash",
+      "balanceSheetCash": "Balance-sheet cash",
+      "openingRetainedEarnings": "Opening retained earnings",
+      "netIncome": "Net income",
+      "distributions": "Distributions",
+      "directAdjustments": "Direct adjustments",
+      "closingRetainedEarnings": "Closing retained earnings",
+      "pnlNetIncome": "P&L net income",
+      "linkedStatementNetIncome": "Statement net income",
+      "reportedBase": "Reported base amount",
+      "recomputed": "Independent recompute"
+    },
+    "evidence": {
+      "missing": "missing evidence",
+      "rows": "{n} source rows"
+    },
+    "signConvention": {
+      "trial_balance": "trial balance (liabilities/equity stored negative)",
+      "natural": "natural (all sections positive)"
+    },
+    "blockedDetail": {
+      "netChangeNotStored": "Net change in cash is not stored — the import skips the CF.04–CF.07 bridge rows, and deriving it from the sections would always reconcile by construction.",
+      "cashNotIdentifiable": "Cash cannot be identified among balance-sheet lines — no cash marker exists in the chart of accounts.",
+      "distributionsNotRecorded": "No dividend/distribution record exists in the database — absence of a record is not evidence of zero.",
+      "retainedEarningsNotIdentifiable": "No marker identifies the accumulated retained-earnings line.",
+      "monthIndexMissing": "Some rows lack a month index — the P&L cannot be honestly aligned to the period.",
+      "noCurrentYearResultLine": "No equity line matching the current-year result was found.",
+      "noForeignCurrencyRows": "No foreign-currency rows exist — there is nothing to translate.",
+      "noIndependentRate": "No independent FX rate exists at or before the row's month end — the ledger's own rate cannot audit itself.",
+      "originalAmountMissing": "Some rows lack the original (source-currency) amount."
+    },
+    "notes": {
+      "staleIndependentRate": "The matched independent FX rate was carried forward from an earlier calendar month — see the rate dates on this card. Staleness is disclosed, not blocked: the threshold is an owner methodology decision."
+    },
+    "limitations": {
+      "planYearScope": "P&L figures are scoped to budget plans of the control period's year.",
+      "multiPlan": "Multiple plans covering the same period double-count — the contributing-plan count is disclosed above.",
+      "legacyRows": "Legacy rows without a company assignment are excluded from all sums.",
+      "rateIndependence": "FX rates come from the manually entered rate history; if the ledger's own rate was typed there, the FX control is blind to a wholesale-wrong rate.",
+      "rateStaleness": "Independent FX rates match as the latest rate dated at or before each row's month end and may carry forward from an earlier month; carried-forward matches are flagged per card, and the staleness threshold is an owner methodology decision."
+    },
+    "fxRateDatesLine": "Independent rate dates: {min} – {max} · carried-forward rows: {stale}",
+    "metrics": {
+      "signedDelta": "Signed delta",
+      "tolerance": "Tolerance",
+      "basisAmount": "Basis",
+      "materialityThreshold": "Materiality threshold",
+      "material": "Material",
+      "yes": "yes",
+      "no": "no"
+    },
+    "signConventionLabel": "Detected sign convention",
+    "residualsLine": "signed residual {signed} · natural residual {natural}",
+    "planCountLabel": "Contributing plans",
+    "builderError": "Builder rejected the input: {code} (component {component})",
+    "componentHeader": {
+      "component": "Component",
+      "value": "Value",
+      "rows": "Rows",
+      "note": "Note"
     }
   },
   "recentCrossings": {

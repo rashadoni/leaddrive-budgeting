@@ -2958,3 +2958,39 @@ The remaining pure-ish candidate is **#7 currency floor pre-registration** (a
 documented policy-fixture concern, not code) and **#8 builder-sign unit tests
 against real pilot imports** (needs real data extracts). The rest wait on the
 canonical mart and the shadow close cycle.
+
+---
+
+## 45. B1.7 — read-only shadow statement-controls surface (2026-07-19)
+
+**Status: `implemented` + `tested` + deployed as SHADOW-only. First runtime
+consumer of the B1 contracts. NOT decision-grade — every result is `provisional`
+or `blocked` by construction, pinned by tests.**
+
+Owner-requested visible surface. Files: `src/lib/risk/statement-controls-adapter.ts`
+(+595-line test, 25 tests), `GET /api/companies/[id]/statement-controls` (+11
+route tests; auth/tenant-404/sub-group RBAC copied from ifrs-check; GET-only,
+read-only by construction), admin page `/budgeting/admin/statement-controls`
+(admin gate; permanent amber `SHADOW / PROVISIONAL — NOT DECISION-GRADE` banner;
+no red/green, no pass/fail vocabulary; EN/RU/AZ), nav entry, one-word export of
+`CURRENT_YEAR_RESULT_RE` from `ifrs-checks.ts`.
+
+Honest verdicts: `balance_sheet` evaluable (sign-normalized per the audited
+`balanceResidual`, both residuals disclosed); `net_income_link` and
+`fx_translation` conditionally evaluable (monthIndex alignment + CY-result match;
+per-currency `CurrencyRateHistory` rate — the ledger's own `exchangeRate` is
+never read); `cash_flow_sum`, `cash_to_balance_sheet`, `retained_earnings`
+**blocked by design** — the DB structurally lacks net-change-in-cash (import
+skips CF.04–CF.07), cash/RE markers and any distributions model. `revisionId`
+null everywhere; `evidencedZero` nowhere; `SHADOW_STATEMENT_POLICY` frozen at
+`approval: "provisional"` with the recorded Option A shape (guarded by pin
+tests + a never-pass/fail sweep).
+
+Evidence: full vitest 536 files / 6,959 passed / 0 failed; `tsc --noEmit` 0;
+build 0 (both new routes emitted); `git diff --check` clean; i18n parity 101
+keys × 3 locales; no visual-gate or protected file touched; adversarial review
+(security + honest-evidence lenses) run before commit. Known day-one reality,
+disclosed on the surface itself: 3–4 of 6 controls show `blocked` — that is the
+honest data-health finding, not a defect. Implemented largely by a delegated
+subagent from a workflow-designed spec; two recorded deviations (unreachable
+403 branch tested as 401; extra i18n keys for zero hardcoded strings).

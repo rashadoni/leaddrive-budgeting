@@ -3540,6 +3540,10 @@
         "title": "IFRS yoxlaması",
         "desc": "İdxaldan sonra: IAS 1 struktur yoxlaması — balans, bütün bölmələr, COGS vs OpEx, amortizasiya. Real rəqəmlərlə 0-100 bal."
       },
+      "statementControls": {
+        "title": "Hesabat kontrolları",
+        "desc": "Altı kanonik hesabat üzləşdirməsinin kölgə rejimində icrası — balans eyniliyi, pul axını cəmi, kassa üzləşməsi, bölüşdürülməmiş mənfəət, xalis mənfəət əlaqəsi, valyuta yenidən hesablanması. Yalnız «ilkin»/«bloklanıb» — heç vaxt pass/fail."
+      },
       "periodLocks": {
         "title": "Dövr kilidləri",
         "desc": "CFO bağlanışı: bağlı dövrlərdə dəyişiklikləri bloklayır (423 qaytarır)."
@@ -3992,6 +3996,146 @@
       "only_opex": "Yalnız əməliyyat xərcləri var — maya dəyəri ayrılmayıb.",
       "no_da_line": "Amortizasiya sətri tapılmadı.",
       "linkage_gap": "P&L xalis nəticəsi ({pnlNet}) kapitalın «cari il» sətri ilə ({equityCurrentYear}) uyğun gəlmir — fərq {linkageGap}. Çox vaxt plan/fakt və ya dövr fərqidir; yoxlamaq lazımdır."
+    }
+  },
+  "adminStatementControls": {
+    "pageTitle": "Hesabat kontrolları (kölgə rejimi)",
+    "pageDescription": "Şirkətin idxal edilmiş hesabatları üzərində altı kanonik üzləşdirmə kontrolunun icrası — kölgə rejimində. Tolerans siyasəti qeydə alınıb, lakin sahib tərəfindən təsdiqlənməyib və heç bir hesabat sətri lineage daşımır, buna görə hər kontrol «ilkin»dir (hesab aparılıb, lakin sertifikatlaşdırıla bilməz) və ya «bloklanıb» (sübut yoxdur) — heç vaxt pass/fail.",
+    "selectCompany": "Şirkət",
+    "selectPlaceholder": "Şirkət seçin…",
+    "periodLabel": "Dövr",
+    "run": "Kontrolları işə sal",
+    "running": "İcra olunur…",
+    "noStatements": "Bu şirkət üçün hələ maliyyə hesabatı idxal edilməyib — üzləşdiriləcək bir şey yoxdur. Əvvəlcə fayl idxal edin.",
+    "errorGeneric": "Kontrolları icra etmək mümkün olmadı. Yenidən cəhd edin.",
+    "banner": "KÖLGƏ / İLKİN REJİM — QƏRAR ÜÇÜN DEYİL",
+    "bannerDetail": "Tolerans siyasəti yalnız kölgə metodologiyası üçün qeydə alınmış T-1 Option A formasıdır (siyasət təsdiqlənməyib) və heç bir hesabat sətri lineage daşımır (lineage yoxdur). Buna görə hər kontrol «ilkin»dir (hesab aparılıb, lakin sertifikatlaşdırıla bilməz) və ya «bloklanıb» (sübut yoxdur) — heç vaxt pass/fail, bu, qəsdən belədir.",
+    "bannerTooltip": "Kölgə səthi: nəticələr yoxlamaya kömək edir, lakin qərarları müəyyən etməməlidir.",
+    "whyTitle": "Niyə burada heç nə keçə və ya kəsilə bilməz",
+    "whyBody": "Qərar səviyyəli nəticə sahib tərəfindən təsdiqlənmiş siyasət VƏ hər kontrolun hər iki tərəfində reviziya lineage-i tələb edir. Siyasət «ilkin» kimi bərkidilib və heç bir hesabat sətri reviziya id-si daşımır, buna görə qərar hüququ həmişə yoxdur: hesab aparılır və açıqlanır, lakin hökm çıxarılmır.",
+    "status": {
+      "provisional": "İlkin",
+      "blocked": "Bloklanıb"
+    },
+    "numeric": {
+      "within_tolerance": "tolerans daxilində",
+      "outside_tolerance": "toleransdan kənar",
+      "not_evaluated": "hesablanmayıb"
+    },
+    "reasons": {
+      "non_finite_value": "Tənliyin bir tərəfinin sonlu dəyəri yoxdur — sübut çatışmır.",
+      "sign_inversion": "Tərəflər əks işarələr daşıyır — uyğunsuzluq gizlədilmir, göstərilir.",
+      "scope_organization_mismatch": "Tərəflər fərqli təşkilatları təsvir edir.",
+      "scope_company_mismatch": "Tərəflər fərqli şirkətləri təsvir edir.",
+      "scope_period_mismatch": "Tərəflər fərqli dövrləri təsvir edir.",
+      "scope_basis_mismatch": "Tərəflər fərqli bazisləri təsvir edir (plan vs fakt).",
+      "currency_mismatch": "Tərəflər fərqli valyutalardadır.",
+      "unit_mismatch": "Tərəflər fərqli ölçü vahidlərindədir.",
+      "source_rows_missing": "Tərəfin rəqəminin arxasında mənbə sətirləri yoxdur.",
+      "policy_currency_floor_missing": "Siyasətdə bu valyuta üçün tolerans həddi yoxdur — kontrol imtina ilə bağlanır.",
+      "policy_not_approved": "Tolerans siyasəti ilkindir, sahib tərəfindən təsdiqlənməyib.",
+      "lineage_missing": "Hesabat sətirlərində reviziya lineage-i yoxdur."
+    },
+    "controls": {
+      "balance_sheet": {
+        "label": "Balans eyniliyi",
+        "equation": "aktivlər = öhdəliklər + kapital",
+        "desc": "Cəmi aktivlər öhdəliklər üstəgəl kapitala qarşı, işarələr aşkarlanmış saxlama konvensiyasına görə normallaşdırılıb."
+      },
+      "cash_flow_sum": {
+        "label": "Pul axını cəmi",
+        "equation": "CFO + CFI + CFF = pul vəsaitlərinin xalis dəyişməsi",
+        "desc": "Üç fəaliyyət bölməsi hesabat edilmiş xalis pul dəyişməsinə qarşı."
+      },
+      "cash_to_balance_sheet": {
+        "label": "Kassa-balans üzləşməsi",
+        "equation": "dövrün əvvəlinə kassa + xalis dəyişmə = balansdakı kassa",
+        "desc": "Pul vəsaitlərinin hərəkəti balansdakı kassa mövqeyinə qarşı."
+      },
+      "retained_earnings": {
+        "label": "Bölüşdürülməmiş mənfəətin hərəkəti",
+        "equation": "əvvəlki BM + xalis mənfəət − bölüşdürmələr + düzəlişlər = son BM",
+        "desc": "Bölüşdürülməmiş mənfəətin hərəkəti onun son qalığına qarşı."
+      },
+      "net_income_link": {
+        "label": "Xalis mənfəət əlaqəsi",
+        "equation": "P&L xalis mənfəəti = hesabatın xalis mənfəəti",
+        "desc": "P&L-in YTD xalis nəticəsi kapitalın «cari ilin nəticəsi» sətrinə qarşı."
+      },
+      "fx_translation": {
+        "label": "Valyuta yenidən hesablanması",
+        "equation": "hesabat AZN = Σ yerli məbləğ × müstəqil məzənnə",
+        "desc": "Baza valyutasında hesabat məbləği mənbə valyutasındakı məbləğlərdən müstəqil yenidən hesablamaya qarşı, hər valyuta üzrə."
+      }
+    },
+    "components": {
+      "assets": "Aktivlər",
+      "liabilities": "Öhdəliklər",
+      "equity": "Kapital",
+      "operating": "Əməliyyat pul axını",
+      "investing": "İnvestisiya pul axını",
+      "financing": "Maliyyə pul axını",
+      "netChangeInCash": "Pul vəsaitlərinin xalis dəyişməsi",
+      "openingCash": "Dövrün əvvəlinə kassa",
+      "balanceSheetCash": "Balansdakı kassa",
+      "openingRetainedEarnings": "Əvvəlki bölüşdürülməmiş mənfəət",
+      "netIncome": "Xalis mənfəət",
+      "distributions": "Bölüşdürmələr",
+      "directAdjustments": "Birbaşa düzəlişlər",
+      "closingRetainedEarnings": "Son bölüşdürülməmiş mənfəət",
+      "pnlNetIncome": "P&L xalis mənfəəti",
+      "linkedStatementNetIncome": "Hesabatın xalis mənfəəti",
+      "reportedBase": "Baza valyutasında hesabat məbləği",
+      "recomputed": "Müstəqil yenidən hesablama"
+    },
+    "evidence": {
+      "missing": "sübut yoxdur",
+      "rows": "{n} mənbə sətri"
+    },
+    "signConvention": {
+      "trial_balance": "dövriyyə-qalıq (öhdəliklər/kapital mənfi saxlanılır)",
+      "natural": "təbii (bütün bölmələr müsbət)"
+    },
+    "blockedDetail": {
+      "netChangeNotStored": "Pul vəsaitlərinin xalis dəyişməsi saxlanılmır — idxal CF.04–CF.07 körpü sətirlərini ötürür, bölmələrdən çıxarmaq isə qurulma etibarilə həmişə üzləşərdi.",
+      "cashNotIdentifiable": "Balans sətirləri arasında kassanı müəyyən etmək mümkün deyil — hesablar planında kassa markeri yoxdur.",
+      "distributionsNotRecorded": "Bazada dividend/bölüşdürmə qeydi yoxdur — qeydin olmaması sıfırın sübutu deyil.",
+      "retainedEarningsNotIdentifiable": "Yığılmış bölüşdürülməmiş mənfəət sətrini müəyyən edən marker yoxdur.",
+      "monthIndexMissing": "Bəzi sətirlərdə ay indeksi yoxdur — P&L-i dövrə dürüst bağlamaq mümkün deyil.",
+      "noCurrentYearResultLine": "Cari ilin nəticəsinə uyğun kapital sətri tapılmadı.",
+      "noForeignCurrencyRows": "Xarici valyutada sətir yoxdur — yenidən hesablanacaq bir şey yoxdur.",
+      "noIndependentRate": "Sətrin ayının sonuna qədər tarixli müstəqil valyuta məzənnəsi yoxdur — leceğin öz məzənnəsi özünü yoxlaya bilməz.",
+      "originalAmountMissing": "Bəzi sətirlərdə ilkin (mənbə valyutasında) məbləğ yoxdur."
+    },
+    "notes": {
+      "staleIndependentRate": "Uyğunlaşdırılmış müstəqil valyuta məzənnəsi daha əvvəlki təqvim ayından irəli daşınıb — bu kartdakı məzənnə tarixlərinə baxın. Köhnəlmə açıqlanır, bloklamır: hədd sahibin metodoloji qərarıdır."
+    },
+    "limitations": {
+      "planYearScope": "P&L göstəriciləri kontrol dövrünün ilinə aid büdcə planları ilə məhdudlaşır.",
+      "multiPlan": "Eyni dövrü əhatə edən bir neçə plan məbləğləri ikiqat sayır — iştirak edən planların sayı yuxarıda açıqlanıb.",
+      "legacyRows": "Şirkətə bağlanmamış köhnə sətirlər bütün cəmlərdən çıxarılıb.",
+      "rateIndependence": "Valyuta məzənnələri əl ilə daxil edilmiş məzənnə tarixçəsindən götürülür; ora leceğin öz məzənnəsi yazılıbsa, valyuta kontrolu tam yanlış məzənnəyə qarşı kordur.",
+      "rateStaleness": "Müstəqil məzənnələr hər sətrin ayının sonuna qədər tarixli ən son məzənnə kimi uyğunlaşdırılır və daha əvvəlki aydan irəli daşına bilər; irəli daşınmış uyğunluqlar kartda qeyd olunur, köhnəlmə həddi isə sahibin metodoloji qərarıdır."
+    },
+    "fxRateDatesLine": "Müstəqil məzənnə tarixləri: {min} – {max} · irəli daşınmış sətirlər: {stale}",
+    "metrics": {
+      "signedDelta": "İşarəli fərq",
+      "tolerance": "Tolerans",
+      "basisAmount": "Baza",
+      "materialityThreshold": "Əhəmiyyətlilik həddi",
+      "material": "Əhəmiyyətli",
+      "yes": "bəli",
+      "no": "xeyr"
+    },
+    "signConventionLabel": "Aşkarlanmış işarə konvensiyası",
+    "residualsLine": "işarəli qalıq {signed} · təbii qalıq {natural}",
+    "planCountLabel": "İştirak edən planlar",
+    "builderError": "Builder girişi rədd etdi: {code} (komponent {component})",
+    "componentHeader": {
+      "component": "Komponent",
+      "value": "Dəyər",
+      "rows": "Sətirlər",
+      "note": "Qeyd"
     }
   },
   "recentCrossings": {
