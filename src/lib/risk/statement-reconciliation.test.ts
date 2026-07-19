@@ -241,3 +241,24 @@ describe("evaluateStatementControl — sign gate", () => {
     expect(result.decisionStatus).toBe("pass")
   })
 })
+
+describe("evaluateStatementControl — tolerance basis governance (condition #6)", () => {
+  it("derives the basis from the two sides and cannot be widened by a caller", () => {
+    const inflated: StatementControlInput = {
+      code: "balance_sheet",
+      left: side({ value: 1_500 }),
+      right: side({ label: "right", value: 1_000 }),
+      // @ts-expect-error condition #6 — the tolerance basis is never a call-site parameter
+      basisAmount: 1_000_000_000,
+    }
+    const result = evaluateStatementControl(inflated, APPROVED_POLICY)
+    // Basis comes from the sides (1,500) so the tolerance stays at the 1 AZN
+    // floor. Under an inflatable basis of 1e9 the tolerance would have been
+    // 10,000 and this 500 break would have silently passed — option C under an
+    // "A" label.
+    expect(result.basisAmount).toBe(1_500)
+    expect(result.tolerance).toBe(1)
+    expect(result.numericStatus).toBe("outside_tolerance")
+    expect(result.decisionStatus).toBe("fail")
+  })
+})

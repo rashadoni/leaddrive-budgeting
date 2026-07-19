@@ -62,8 +62,11 @@ export interface StatementControlInput {
   left: StatementControlSide
   /** Expected/control side. */
   right: StatementControlSide
-  /** Optional explicit scale; otherwise max(abs(left), abs(right)). */
-  basisAmount?: number
+  // There is deliberately NO caller-supplied tolerance basis (T-1 shadow-gate
+  // condition #6): the basis is always max(|left|, |right|), derived by the
+  // evaluator. An inflatable basis (e.g. 1e9 on a 100k control) would widen the
+  // relative tolerance to 10,000 — recreating rejected option C under an "A"
+  // label. Scale policy is an owner decision, never a call-site parameter.
 }
 
 export interface StatementReconciliationPolicy {
@@ -190,26 +193,9 @@ export function evaluateStatementControl(
 
   const signedDelta = input.left.value - input.right.value
   const absoluteDelta = Math.abs(signedDelta)
-  const basisAmount = Math.abs(
-    input.basisAmount ?? Math.max(Math.abs(input.left.value), Math.abs(input.right.value)),
-  )
-  if (!Number.isFinite(basisAmount)) {
-    return {
-      code: input.code,
-      policyId: policy.id,
-      policyApproval: policy.approval,
-      numericStatus: "not_evaluated",
-      decisionStatus: "blocked",
-      decisionEligible: false,
-      signedDelta: null,
-      absoluteDelta: null,
-      basisAmount: null,
-      tolerance: null,
-      materialityThreshold: null,
-      material: null,
-      reasons: ["non_finite_value"],
-    }
-  }
+  // Derived from the two sides only (condition #6). Both are finite past the
+  // structural gate above, so the basis always is too.
+  const basisAmount = Math.max(Math.abs(input.left.value), Math.abs(input.right.value))
 
   const tolerance = Math.max(
     absoluteFloor as number,

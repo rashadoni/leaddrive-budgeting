@@ -2888,3 +2888,73 @@ queue need the mart). The next safe pure slice is the **`basisAmount` governance
 guard** (forbid caller-supplied `basisAmount` for these controls, or bound it),
 which is a small evaluator change; the rest wait on the canonical mart and the
 shadow close cycle.
+
+---
+
+## 44. B1.6 — `basisAmount` governance guard (shadow-gate condition #6) (2026-07-19)
+
+**Status: `implemented` + `tested`. Pure, no runtime caller. Closes T-1
+shadow-gate condition #6 in its strongest form.**
+
+### Outcome
+
+- **Behavior changed for users: none.** No caller ever set `basisAmount` (the
+  builders never emit it; grep confirms the field lived only in the evaluator),
+  so no real computation changes. The **attack surface** changes: the tolerance
+  basis is no longer expressible as a call-site parameter at all.
+- **What was closed:** with the old optional `input.basisAmount`, an untyped or
+  careless caller could pass `basisAmount: 1e9` on a 100k control and buy a
+  10,000 AZN relative tolerance — recreating rejected option C under an "A"
+  label. The finance panel flagged this as a condition of decision-grade
+  approval.
+
+### Design
+
+- **Forbid by removal, not by validation.** The §7.1 wording allowed "forbid or
+  bound"; removal is the strongest forbid — the mistake cannot compile, instead
+  of being caught at runtime. The evaluator now always computes
+  `basis = max(|left|, |right|)`, which is exactly the T-1 Option A definition.
+- **A JS caller smuggling the property is silently ignored, which fails closed:**
+  the side-derived basis is never larger than an inflated one, so ignoring can
+  only tighten, never loosen.
+- **Dead code removed with proof:** the post-basis non-finite re-check could no
+  longer fire (both sides are proven finite by the structural gate before
+  arithmetic; `max(|a|,|b|)` of finite values is finite), so the branch is gone.
+- **Type-level regression lock:** the test constructs an input with
+  `basisAmount` under `@ts-expect-error` — if the field ever returns to the
+  contract, `tsc --noEmit` fails on the unused directive.
+
+### Files
+
+- `src/lib/risk/statement-reconciliation.ts` (field removed from
+  `StatementControlInput`; basis derived from sides; dead branch removed)
+- `src/lib/risk/statement-reconciliation.test.ts` (basis-governance test:
+  type-level rejection + runtime proof that a 500 break on a 1,500 basis fails
+  instead of hiding under an inflated tolerance)
+- `docs/risk-terminal-2.0/06-OWNER-DECISION-PACK-T1-T5.md` (§7.1 condition #6
+  annotated), `docs/ROADMAP.md` (changelog), this file
+
+### Evidence — commands actually run this turn
+
+| Command | Result |
+|---|---|
+| `vitest run` targeted (evaluator + builders) | 74/74 passed |
+| `npx tsc --noEmit` (validates the `@ts-expect-error` lock) | exit 0 |
+| `npx vitest run --reporter=dot` | 535 files / 6,923 passed / 121 skipped / **0 failed** |
+| `npm run build` | exit 0 |
+| `git diff --check` | clean |
+
+### Limits
+
+- Conditions #4 (small-entity floor validation on real EDEN data), #5
+  (scope-aware materiality + render-all-failures UI guard), #7 (currency floor
+  pre-registration), #8 (builder-sign tests on real imports), the runtime
+  dual-currency runs and the shadow close cycle remain open; most need the
+  canonical mart or real pilot data.
+
+### Next task
+
+The remaining pure-ish candidate is **#7 currency floor pre-registration** (a
+documented policy-fixture concern, not code) and **#8 builder-sign unit tests
+against real pilot imports** (needs real data extracts). The rest wait on the
+canonical mart and the shadow close cycle.
