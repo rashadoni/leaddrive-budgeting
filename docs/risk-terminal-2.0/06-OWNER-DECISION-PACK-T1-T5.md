@@ -1,7 +1,7 @@
 # Owner Decision Pack — T-1 to T-5
 
 **Prepared:** 2026-07-19
-**Status:** proposed for CFO / Risk Owner decision; **not approved and not enforced**
+**Status:** T-1 recorded 2026-07-19 as Option A's tolerance _shape_ for shadow methodology only (see §7.1); T-2–T-5 remain proposed and **not approved**. Nothing here is enforced, certified or decision-grade.
 **Scope:** FO Holding controlled beta; active operational pilot companies only
 **Runtime effect:** none — this document changes no formula, KPI, threshold, score, database row, provider call or feature flag
 
@@ -248,13 +248,40 @@ The owner may approve the package as a whole or record changes row by row.
 
 | Decision | Proposed choice | CFO | Risk Owner | Finance Controller | Effective date |
 |---|---|---|---|---|---|
-| T-1 | §3 recommended dual tolerance | pending | — | pending | — |
+| T-1 | §3 **Option A** dual tolerance — SHAPE approved for shadow methodology; decision-grade gated on §7.1 conditions + one shadow close cycle | approved — Aziz Azizov (CFO) | — | approved — Suleyman Suleymanov (Finance Controller) | 2026-07-19 (shadow) |
 | T-2 | §4.1 enhanced 80% gate | pending | pending | — | — |
 | T-3 | §4.2 seven-factor Confidence | pending | pending | — | — |
 | T-4 | §5 weights and rollup | pending | pending | — | — |
 | T-5 | §6 30-code pilot envelope | pending | pending | pending | — |
 
-Until the decision is explicitly recorded, T-1 through T-5 remain open. Engineering may prepare non-enforcing registry schemas/tests, but it must not claim `reconciled`, `methodology-approved`, `decision-grade` or enable the V2 score from this proposal alone.
+T-1 is recorded as of 2026-07-19: the owner selected **Option A's tolerance shape for shadow methodology only** (see §7.1). T-2 through T-5 remain open. Even for T-1, engineering may prepare non-enforcing golden fixtures/tests, but it must not claim `reconciled`, `methodology-approved` or `decision-grade`, and must not enable the V2 score, until the §7.1 shadow-gate conditions and approved golden evidence land.
+
+### 7.1 T-1 recorded decision — Option A shape, shadow-only (2026-07-19)
+
+**Selected:** Option A — dual tolerance `max(absoluteFloor, basis × 0.00001)` (0.001% = 0.1 bp), absolute floors 1.00 AZN / 0.01 source-minor-unit / one ISO minor unit otherwise, unit/count controls at exact equality, materiality (`> max(10,000 AZN, basis × 0.001)`) as a separate non-gating triage flag. Recorded by Aziz Azizov (CFO) and Suleyman Suleymanov (Finance Controller); Risk Owner not applicable to T-1.
+
+**This records the tolerance _shape_ for shadow evaluation. It does NOT certify any observation, enable V2 or authorize cutover.** A finance judge-panel (Group Financial Controller, external IFRS auditor and reconciliation-engineering lenses) ranked A first unanimously (B second, C last), but the adversarial review confirmed A as written does not yet deliver the FX/sign assurance it advertises. Two residual gaps and nine conditions gate any move to decision-grade.
+
+**Two assurance gaps A cannot close by tolerance alone:**
+
+1. **Uniform-wrong-FX-rate blindness.** Currency is an exact structural gate, so both sides are already in AZN base; a wholesale-wrong translation rate scales assets, liabilities and equity together, so `A = L + E` and the cash-flow sum still balance exactly (signed delta 0 — a false pass of unbounded size). Invisible to A, B and C alike. Closable only by a sixth `fx_translation` control per source currency (`base = Σ local × rate` vs the AZN figure), plus evidenced `fx_effect_on_cash` and CTA/OCI `translation_adjustment` components.
+2. **No sign gate.** The evaluator implements no sign check although this pack calls sign an exact structural gate. A near-breakeven inversion (e.g. net income +0.40 vs −0.40 → delta 0.80 ≤ the 1.00 AZN floor) certifies clean. Seasonal agro/food entities sit near zero often enough that this is a normal state, not a corner case.
+
+**Nine shadow-gate conditions before A may gate confirmed colour/alerts/board:**
+
+1. add a structural sign gate for `net_income_link`, `retained_earnings` and `cash_to_balance_sheet`;
+2. implement the sixth `fx_translation` control and run each identity in both local and AZN base currency (route "local agrees, base differs" to an FX-review queue);
+3. carry evidenced `fx_effect_on_cash` and CTA/OCI `translation_adjustment` components in the builders;
+4. validate the 1.00 AZN floor and qəpik precision against the smallest real pilot (EDEN) — a whole-AZN-rounded four-component roll-forward can accumulate ~2–2.5 AZN and false-break a clean close;
+5. make the materiality floor scope-aware (10,000 AZN consolidation; `max(1,000 AZN, basis × 0.001)` for single small entities) and render every `outside_tolerance` result regardless of the material flag;
+6. forbid caller-supplied `basisAmount` for the five controls (or bound it to `≤ max(|left|, |right|)`), else the tolerance is caller-loosenable into C under an "A" label;
+7. pre-register absolute floors for every source currency actually present in the pilots (at least AZN, USD, EUR, and likely TRY, RUB) in both floor maps;
+8. unit-test the builder sign convention against real pilot imports (this codebase stores liabilities/equity negative; the evaluator trusts builder polarity entirely);
+9. keep `decisionStatus` provisional across all four pilots for at least one full close after `revisionId` lineage lands, and produce a shadow-run report plus committed determinism test vectors for Controller + Auditor sign-off before flipping `policy.approval` to `approved`.
+
+**Changes no live value today.** All 88 pilot company × KPI pairs carry 0 `revisionId` and 0 `lastReconciledAt`, so every control already resolves `provisional` (lineage_missing + policy_not_approved) regardless of A/B/C; this record changes no colour, formula, threshold, score, row, schema, provider call or feature flag. **Recorded minority position:** Option B's exact equality has the safer failure direction and is mandatory for future count/quantity controls — A's monetary policy must never be reused there.
+
+**Scope defect to resolve before controls gate colour:** AZSEKER-CPC is labelled `food_processing` in §2 but `agro_crops` in the org-context line used elsewhere; scope gates key off company classification, so reconcile the label first.
 
 ## 8. What follows after approval
 

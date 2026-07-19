@@ -91,10 +91,14 @@ open gate.*
 
 - **B1 canonical statement mart/service:** a pure shadow reconciliation
   contract now covers the five required golden controls with explicit
-  scope/unit/currency/lineage checks and separate tolerance/materiality. It has
-  no default policy, persistence, adapter or runtime caller. The mart and
-  financial cutover remain blocked on owner decision T-1 and approved golden
-  evidence; the decision-pack recommendation is still not owner-approved.
+  scope/unit/currency/lineage checks and separate tolerance/materiality, plus
+  pure builders that assemble each control's two sides. It has no default
+  policy, persistence, adapter or runtime caller. **T-1 was recorded 2026-07-19
+  as Option A's tolerance shape for shadow methodology only** (owner pack §7.1;
+  slice §40 below), which unblocks golden-fixture work; the mart, decision-grade
+  status and cutover remain blocked on the recorded shadow-gate conditions (sign
+  gate, FX `fx_translation` control, CTA components, small-entity floor
+  validation, one shadow close cycle) and approved golden evidence.
 - **B2 PeriodContext + DataRevision:** contracts, persistence, tenant-scoped
   canonical writer and UPDATE immutability are implemented and tested. A
   2026-07-18 technical review found DB-level retention/lifecycle/supersession
@@ -2493,3 +2497,104 @@ additive slice would be a **read-only adapter that maps an existing
 `StatementSnapshot`-shaped input into `StatementComponent`s** for shadow
 evaluation — but it must not persist, must not enable a runtime caller and must
 keep every result provisional until T-1 and golden evidence are owner-approved.
+
+---
+
+## 40. T-1 recorded — Option A tolerance shape, shadow-only (2026-07-19)
+
+**Status: owner decision `recorded` (documentation only). NOT `reconciled`,
+NOT `methodology-approved` in the decision-grade sense, NOT enforced. Zero
+runtime change.**
+
+### Outcome
+
+- **Behavior changed for users: none.** This is a governance record, not code.
+  No formula, threshold, policy object, score, row, schema, provider call or
+  feature flag changed. All 88 pilot company × KPI pairs still carry 0
+  `revisionId` / 0 `lastReconciledAt`, so every control resolves `provisional`
+  exactly as before — the tolerance choice changes no colour on any surface.
+- **What was decided.** The owner selected **Option A** (dual absolute/relative
+  tolerance) as the T-1 reconciliation-tolerance **shape, for shadow methodology
+  only**. Recorded in `06-OWNER-DECISION-PACK-T1-T5.md` §7 + new §7.1 by
+  Aziz Azizov (CFO) and Suleyman Suleymanov (Finance Controller), effective
+  2026-07-19 (shadow). Risk Owner is not applicable to T-1.
+- **Who benefits:** B1. With the tolerance shape recorded, engineering may now
+  build the golden statement fixtures and the signed reconciliation-result
+  contract (pack §8 step 1). Nothing becomes decision-grade.
+
+### How the decision was reached
+
+A finance judge-panel was run as advisory input: three independent lenses (Group
+Financial Controller, external IFRS auditor, gl-recon reconciliation engineer)
+plus an adversarial reviewer and a synthesis. **All three lenses ranked A first
+(B second, C last); the adversary confirmed A survives, but only conditionally.**
+The panel is decision support, not authority — the recorded decision is the
+owner's.
+
+### Why A, in one line each
+
+- **C rejected for certification:** 0.01% on a 100M control passes a 10,000 AZN
+  unexplained gap as "reconciled" — the exact error class the controls exist to
+  catch; no absolute floor, so it also false-fails small entities.
+- **B rejected as the primary rule for these five monetary controls:** exact
+  minor-unit equality on FX-converted, aggregated AZN amounts is misplaced
+  precision and trains reviewers to ignore chronic false red. B remains
+  **mandatory** for future count/quantity controls (exact, 0 tolerance).
+- **A chosen:** the only shape that fits the full size range, keeps the numeric
+  test purely arithmetic and materiality purely triage, and is the shape the
+  evaluator already implements (zero code change) — ~500× tighter than the
+  existing IFRS 0.5% check.
+
+### Two assurance gaps recorded (A cannot close these by tolerance)
+
+1. **Uniform-wrong-FX-rate is invisible to A, B and C.** A wholesale-wrong
+   translation rate scales assets, liabilities and equity together, so the
+   identity still balances exactly — a false pass of unbounded size. Closable
+   only by a sixth `fx_translation` control per source currency + CTA/OCI and
+   `fx_effect_on_cash` components.
+2. **No sign gate.** A near-breakeven inversion (net income +0.40 vs −0.40 →
+   delta 0.80 ≤ the 1.00 AZN floor) certifies clean; the evaluator has no sign
+   check despite the pack calling sign an exact structural gate.
+
+### Nine shadow-gate conditions before A may gate confirmed colour/alerts/board
+
+Recorded verbatim in pack §7.1: sign gate · `fx_translation` sixth control +
+dual-currency runs · CTA/`fx_effect_on_cash` components · 1.00 AZN floor +
+qəpik-precision validation on real EDEN data · scope-aware materiality floor +
+render-all-failures guard · forbid caller `basisAmount` · per-currency floor
+pre-registration · builder sign-convention unit tests on real imports · one full
+shadow close cycle across all four pilots with a Controller + Auditor sign-off
+report and committed determinism test vectors.
+
+### Files
+
+- `docs/risk-terminal-2.0/06-OWNER-DECISION-PACK-T1-T5.md` (status line, §7 T-1
+  row, closing note + new §7.1)
+- `docs/ROADMAP.md` (10.B1 line + dated changelog entry)
+- this file (B1 bullet in §3 + this section)
+- **No code, schema, migration, test, translation, snapshot or production action.**
+
+### Limits — what is NOT done
+
+- **Not decision-grade.** The record is the tolerance shape for shadow only. No
+  observation is certified; no policy object with `approval: "approved"` exists
+  in code.
+- **The nine conditions are not built.** Sign gate, `fx_translation` control,
+  CTA components and floor validation are future B1 work, each with real
+  regression risk, and none is started in this slice.
+- **The AZSEKER-CPC classification discrepancy** (`food_processing` in §2 vs
+  `agro_crops` elsewhere) is recorded as a prerequisite to resolve before scope
+  gates key off it; not fixed here.
+
+### Rollback
+
+Revert three documentation edits (pack, ROADMAP, this file). No code or data to
+undo. Re-opening T-1 means restoring the `pending` row and removing §7.1.
+
+### Next task
+
+Unchanged in safety posture: a **read-only `StatementSnapshot → StatementComponent`
+adapter for shadow evaluation**, keeping every result provisional. The recorded
+conditions (sign gate, `fx_translation` control) are the higher-value B1 items
+but each is its own reviewed slice; none may flip `policy.approval` to
+`approved` before the shadow close cycle and golden evidence land.
