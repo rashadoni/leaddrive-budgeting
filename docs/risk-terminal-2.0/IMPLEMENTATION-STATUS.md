@@ -2234,3 +2234,62 @@ At 1280×720 all four F-key panels remain present in their previous geometry:
 F1 x256/y169/w356.30/h270.88, F2 x618.30/y169/w661.70/h270.88, F3
 x256/y445.88/w509/h221.63 and F4 x771/y445.88/w509/h221.63. The desktop
 fallback is hidden; console, page and 5xx error lists were empty.
+
+---
+
+## 36. Risk Terminal Stage C4 compatibility closure (2026-07-19)
+
+**Status: C4 implemented, unit/build-tested and production-verified. C1 and C5
+remain blocked on certified Stage B/provider contracts.**
+
+The complete route-owned compatibility surface was individually exercised:
+
+- 14 overlays opened as exactly one accessible dialog and closed on Escape:
+  audit, help, compare, peer, alerts, scenarios, Action Center, comments,
+  Sub-co chat, subscriptions, intel, breach forecast, What-If and shortcuts;
+- `terminal:export-pdf` and `terminal:export-xlsx` each produced a successful
+  local browser download;
+- F1–F4 each moved the active ring/dot to the requested panel, Ctrl/Cmd+K
+  focused the command bar and Ctrl+/ toggled compact mode;
+- the three stable splitter keys remained
+  `terminal-layout-v1-{outer,top,bottom}` with the expected 55/45, 35/65 and
+  50/50 payloads.
+
+The audit found one real break: `/` dispatched the active panel id, but only F1
+and F2 own local search inputs, so pressing it from F3/F4 focused nothing. The
+new `focusTerminalSearch` helper preserves the F1/F2 local-search event and
+falls back to the global command bar for F3/F4. The paid
+`terminal:run-explainer` contract was covered by the existing mocked unit suite
+and was deliberately not invoked on production. The internal
+`terminal:impact-scan-done` path likewise remained test-only; no production
+write or provider call was needed to prove route-owned C4 compatibility.
+
+Evidence before release:
+
+- focused C4 host/shortcut suite: 4 files / 28 tests passed;
+- full Vitest: 533 files passed + 13 skipped / 6,849 tests passed + 121 skipped;
+- TypeScript clean; targeted ESLint 0 errors with one pre-existing
+  `PanelGrid` hydration-gate warning; production build 158 routes;
+- `git diff --check` clean;
+- the required `npm run test:e2e -- visual-baseline` command was attempted
+  against production, but all three matched specs lack Linux baseline PNGs;
+  Playwright wrote temporary actuals and failed before pixel comparison. The
+  generated untracked PNGs were removed. No baseline was silently accepted.
+
+Exact release `03a6d669e438f9cec5e11e8652340af7741cfb12` passed GitHub Actions
+CI run `29678421440`. A gzip-valid root-only backup was created before code
+delivery at
+`/opt/budgetpro/backups/pre-deploy-2026-07-19T074753Z-03a6d669e438.sql.gz`
+(984,137 bytes, mode 0600). Production HEAD and `.deploy-revision` match; the
+app/db/nginx containers are healthy, all 27 migrations are current,
+`budgetpro_app` is NOBYPASSRLS and external unauthenticated smoke passed 8/8.
+
+The post-deploy authenticated browser pass opened all 14 overlays, generated
+both downloads and verified every shortcut above with zero console, page or
+5xx errors. At 1280×720 the exact panel boxes match the preceding release:
+F1 x256/y169/w356.296875/h270.875, F2
+x618.296875/y169/w661.703125/h270.875, F3
+x256/y445.875/w509/h221.625 and F4 x771/y445.875/w509/h221.625. This closes
+C4 without a layout change. No financial logic/value, formula, KPI, database
+row, migration, password/passwordHash, production auth, paid provider,
+Decision shell or V2 flag changed.
