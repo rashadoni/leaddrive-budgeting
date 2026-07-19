@@ -2793,3 +2793,98 @@ was run over the new surface before commit.
 and equity controls (NON-additive: modifies shipped builders + fixtures), then the
 remaining conditions and one shadow close cycle before any flip to
 `policy.approval = "approved"`.
+
+---
+
+## 43. B1.5 — `fx_effect_on_cash` + CTA plug terms (shadow-gate condition #3) (2026-07-19)
+
+**Status: `implemented` + `tested`. Pure, no runtime caller. Implements T-1
+shadow-gate condition #3. NOT decision-grade; every control still resolves
+`provisional`.**
+
+### Outcome
+
+- **Behavior changed for users: none.** Three shipped builders gained an
+  **optional** FX/CTA plug term; every existing caller/test (which passes none of
+  them) gets the byte-identical equation. No financial value, formula, threshold,
+  score, row, schema, provider call, feature flag or production state changed.
+- **What was added:** the two plug terms that let a *correctly translated*
+  multi-currency entity tie out, so the existing controls stop false-breaking by
+  exactly the CTA and the FX effect on cash. This closes the sequencing gap
+  recorded in §42.
+
+### Design (from a design workflow: IAS-7/IAS-21 lens + backward-compat lens + adversarial synthesis)
+
+- **`balance_sheet`:** optional `translationAdjustment` (IAS 21 CTA/FCTR, an OCI
+  equity reserve) pushed onto the RIGHT side (sign +1, role `closing`):
+  `assets = liabilities + equity + CTA`. **The only control CTA touches.**
+- **`cash_to_balance_sheet`:** optional `fxEffectOnCash` (IAS 7 "effect of FX on
+  cash") on the LEFT side (sign +1, role `flow`) — the **canonical home**:
+  `openingCash + netChange + fxEffect = balanceSheetCash`.
+- **`cash_flow_sum`:** the same optional `fxEffectOnCash` on the LEFT, for a
+  caller whose `netChangeInCash` is the actual balance movement. Must be placed on
+  exactly **one** of the two cash controls.
+- **`retained_earnings`: deliberately UNCHANGED.** The design decisively resolved
+  the open question: under IAS 21.39/41 the CTA accumulates in a separate
+  OCI/FCTR reserve, never through the RE roll-forward; routing it here would both
+  misstate IFRS and double-count against the `balance_sheet` CTA. `net_income_link`
+  and `fx_translation` are untouched too.
+- **Backward compatibility by construction:** each new field is optional and
+  assembled by **conditional push** (`if (field !== undefined) terms.push(...)`),
+  never an `evidence: null` placeholder. When omitted, `combineSide` receives the
+  identical terms array, so the returned `StatementControlInput` is `.toEqual`
+  today's. The forbidden alternative (a null placeholder) would false-BLOCK every
+  single-currency caller — a dedicated omit-⇒-identical test locks the contract.
+
+### Caller preconditions the pure builder cannot verify (documented, not codeable)
+
+- **Double-count:** supply `translationAdjustment` only when `equity` is EX-FCTR;
+  place `fxEffectOnCash` on exactly one cash control. Either mistake false-breaks a
+  correct entity by the plug amount. Tests demonstrate both the correct tie-out
+  and the double-count break.
+- **Sign:** both plug terms carry sign +1 and ride the caller's natural stored
+  sign; a translation loss / debit CTA must be passed negative. The evaluator's
+  sign gate still fires when an oversized CTA flips the side total (a real break).
+
+### Files
+
+- `src/lib/risk/statement-control-builders.ts` (optional `translationAdjustment`
+  on `BalanceSheetControlComponents`; optional `fxEffectOnCash` on
+  `CashFlowSumControlComponents` and `CashTieOutControlComponents`; conditional
+  push in the three builders)
+- `src/lib/risk/statement-control-builders.test.ts` (11 new condition-#3 tests)
+- `docs/risk-terminal-2.0/06-OWNER-DECISION-PACK-T1-T5.md` (§7.1 condition #3
+  annotated), `docs/ROADMAP.md` (changelog), this file
+- **No schema, migration, translation, snapshot, runtime caller or production action.
+  No change to `statement-reconciliation.ts` or the two unchanged builders.**
+
+### Evidence — commands actually run this turn
+
+| Command | Result |
+|---|---|
+| `vitest run statement-control-builders.test.ts` | 49/49 passed |
+| `npx tsc --noEmit` | exit 0 |
+| `npx vitest run --reporter=dot` | 535 files / 6,922 passed / 121 skipped / **0 failed** |
+| `npm run build` | exit 0 |
+| `git diff --check` | clean |
+
+An adversarial review workflow (backward-compat + finance-soundness lenses →
+verify) was run over the change before commit.
+
+### Limits — what is NOT done
+
+- **Not decision-grade.** Conditions #1–#3 of nine are now in code; the remaining
+  conditions (basisAmount governance, currency floor pre-registration, scope-aware
+  materiality, builder-sign unit tests on real imports, dual-currency runs, the
+  FX-review queue) and one shadow close cycle remain. The evaluator is still uncalled.
+- **No runtime caller supplies these components.** The double-count / sign
+  preconditions live with the future caller, not the pure builder.
+
+### Next task
+
+The remaining §7.1 conditions are largely runtime/caller-side (basisAmount guard
+is a small evaluator/policy change; materiality scope-awareness and the FX-review
+queue need the mart). The next safe pure slice is the **`basisAmount` governance
+guard** (forbid caller-supplied `basisAmount` for these controls, or bound it),
+which is a small evaluator change; the rest wait on the canonical mart and the
+shadow close cycle.

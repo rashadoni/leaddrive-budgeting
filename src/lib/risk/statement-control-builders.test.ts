@@ -553,6 +553,144 @@ describe("statement-control-builders — fx_translation", () => {
 })
 
 // ---------------------------------------------------------------------------
+// 6d. condition #3 — optional fx_effect_on_cash + CTA/OCI plug terms
+// ---------------------------------------------------------------------------
+
+describe("statement-control-builders — fx_effect_on_cash + CTA plug terms", () => {
+  it("balance_sheet ties out with a CTA term: assets = liabilities + equity + CTA", () => {
+    const input = buildBalanceSheetControl(SCOPE, {
+      assets: component("assets", 1_000, "closing"),
+      liabilities: component("liabilities", 400, "closing"),
+      equity: component("equity", 580, "closing"),
+      translationAdjustment: component("cta", 20, "closing"),
+    })
+    expect(input.right.value).toBe(1_000) // 400 + 580 + 20
+    expect(evaluateStatementControl(input, APPROVED_POLICY).decisionStatus).toBe("pass")
+  })
+
+  it("cash_to_balance_sheet ties out with the FX effect on the left", () => {
+    const input = buildCashToBalanceSheetControl(SCOPE, OPENING_PERIOD, {
+      openingCash: component("opening_cash", 300, "opening"),
+      netChangeInCash: component("net_change_in_cash", 180, "flow"),
+      balanceSheetCash: component("balance_sheet_cash", 500, "closing"),
+      fxEffectOnCash: component("fx_effect_on_cash", 20, "flow"),
+    })
+    expect(input.left.value).toBe(500) // 300 + 180 + 20
+    expect(evaluateStatementControl(input, APPROVED_POLICY).decisionStatus).toBe("pass")
+  })
+
+  it("cash_flow_sum ties out with the FX effect when net change is the balance movement", () => {
+    const input = buildCashFlowSumControl(SCOPE, {
+      operating: component("operating", 900, "flow"),
+      investing: component("investing", -500, "flow"),
+      financing: component("financing", -220, "flow"),
+      netChangeInCash: component("net_change_in_cash", 200, "flow"),
+      fxEffectOnCash: component("fx_effect_on_cash", 20, "flow"),
+    })
+    expect(input.left.value).toBe(200) // 900 - 500 - 220 + 20
+    expect(evaluateStatementControl(input, APPROVED_POLICY).decisionStatus).toBe("pass")
+  })
+
+  it("omitting the optional plug is identical to not passing it, and still balances", () => {
+    const base = {
+      assets: component("assets", 1_000, "closing"),
+      liabilities: component("liabilities", 400, "closing"),
+      equity: component("equity", 600, "closing"),
+    }
+    expect(buildBalanceSheetControl(SCOPE, base)).toEqual(
+      buildBalanceSheetControl(SCOPE, { ...base, translationAdjustment: undefined }),
+    )
+    expect(buildBalanceSheetControl(SCOPE, base).right.value).toBe(1_000)
+  })
+
+  it("double-counts the CTA when equity already includes it and CTA is also passed", () => {
+    const input = buildBalanceSheetControl(SCOPE, {
+      assets: component("assets", 1_000, "closing"),
+      liabilities: component("liabilities", 400, "closing"),
+      equity: component("equity", 600, "closing"), // already includes the FCTR of 20
+      translationAdjustment: component("cta", 20, "closing"),
+    })
+    expect(input.right.value).toBe(1_020) // overstated by the double-counted CTA
+    expect(evaluateStatementControl(input, APPROVED_POLICY).decisionStatus).toBe("fail")
+  })
+
+  it("blocks when a provided CTA term is missing evidence (never a silent zero)", () => {
+    const input = buildBalanceSheetControl(SCOPE, {
+      assets: component("assets", 1_000, "closing"),
+      liabilities: component("liabilities", 400, "closing"),
+      equity: component("equity", 580, "closing"),
+      translationAdjustment: component("cta", 0, "closing", { evidence: null }),
+    })
+    expect(Number.isNaN(input.right.value)).toBe(true)
+    const result = evaluateStatementControl(input, APPROVED_POLICY)
+    expect(result.decisionStatus).toBe("blocked")
+    expect(result.reasons).toContain("source_rows_missing")
+  })
+
+  it("blocks when a provided FX-effect term is missing evidence", () => {
+    const input = buildCashToBalanceSheetControl(SCOPE, OPENING_PERIOD, {
+      openingCash: component("opening_cash", 300, "opening"),
+      netChangeInCash: component("net_change_in_cash", 180, "flow"),
+      balanceSheetCash: component("balance_sheet_cash", 500, "closing"),
+      fxEffectOnCash: component("fx_effect_on_cash", 0, "flow", { evidence: null }),
+    })
+    expect(evaluateStatementControl(input, APPROVED_POLICY).decisionStatus).toBe("blocked")
+  })
+
+  it("treats an evidenced-zero CTA as a traced 0 that does not block", () => {
+    const input = buildBalanceSheetControl(SCOPE, {
+      assets: component("assets", 1_000, "closing"),
+      liabilities: component("liabilities", 400, "closing"),
+      equity: component("equity", 600, "closing"),
+      translationAdjustment: component("cta", 0, "closing", {}, { evidencedZero: true, sourceRowCount: 0 }),
+    })
+    expect(Number.isFinite(input.right.value)).toBe(true)
+    expect(input.right.value).toBe(1_000)
+    expect(evaluateStatementControl(input, APPROVED_POLICY).decisionStatus).toBe("pass")
+  })
+
+  it("rejects a non-evidenced-zero plug term with no source rows", () => {
+    let caught: unknown
+    try {
+      buildCashToBalanceSheetControl(SCOPE, OPENING_PERIOD, {
+        openingCash: component("opening_cash", 300, "opening"),
+        netChangeInCash: component("net_change_in_cash", 180, "flow"),
+        balanceSheetCash: component("balance_sheet_cash", 500, "closing"),
+        fxEffectOnCash: component("fx_effect_on_cash", 20, "flow", {}, { sourceRowCount: 0 }),
+      })
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(StatementControlBuilderError)
+    expect((caught as StatementControlBuilderError).code).toBe("source_rows_invalid")
+  })
+
+  it("sums a negative FX effect (translation loss) without inverting it", () => {
+    const input = buildCashToBalanceSheetControl(SCOPE, OPENING_PERIOD, {
+      openingCash: component("opening_cash", 300, "opening"),
+      netChangeInCash: component("net_change_in_cash", 220, "flow"),
+      balanceSheetCash: component("balance_sheet_cash", 500, "closing"),
+      fxEffectOnCash: component("fx_effect_on_cash", -20, "flow"),
+    })
+    expect(input.left.value).toBe(500) // 300 + 220 - 20
+    expect(evaluateStatementControl(input, APPROVED_POLICY).decisionStatus).toBe("pass")
+  })
+
+  it("trips a sign inversion when an oversized CTA flips the right total against assets", () => {
+    const input = buildBalanceSheetControl(SCOPE, {
+      assets: component("assets", 1_000, "closing"),
+      liabilities: component("liabilities", 400, "closing"),
+      equity: component("equity", 600, "closing"),
+      translationAdjustment: component("cta", -2_000, "closing"),
+    })
+    expect(input.right.value).toBe(-1_000) // 400 + 600 - 2000
+    const result = evaluateStatementControl(input, APPROVED_POLICY)
+    expect(result.reasons).toContain("sign_inversion")
+    expect(result.decisionStatus).toBe("fail")
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 7. Determinism / no I/O
 // ---------------------------------------------------------------------------
 

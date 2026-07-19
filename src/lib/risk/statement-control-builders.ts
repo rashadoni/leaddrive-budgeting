@@ -257,9 +257,18 @@ export interface BalanceSheetControlComponents {
   assets: StatementComponent
   liabilities: StatementComponent
   equity: StatementComponent
+  /**
+   * Optional IAS 21 cumulative translation adjustment (FCTR/OCI reserve). When
+   * provided it is pushed onto the RIGHT side (sign +1, role "closing"), beside
+   * `equity`: assets = liabilities + equity + CTA. Precondition the pure builder
+   * cannot verify: `equity` must be supplied EX-FCTR — if it already includes the
+   * reserve, omit this or the right side double-counts by exactly the CTA.
+   * Omitting it (undefined) reduces to the base equation byte-identically.
+   */
+  translationAdjustment?: StatementComponent
 }
 
-/** assets = liabilities + equity (all closing-period stock). */
+/** assets = liabilities + equity (+ optional CTA), all closing-period stock. */
 export function buildBalanceSheetControl(
   scope: StatementControlScope,
   components: BalanceSheetControlComponents,
@@ -270,15 +279,18 @@ export function buildBalanceSheetControl(
     [{ component: components.assets, sign: 1, expectedRole: "closing" }],
     null,
   )
-  const right = combineSide(
-    "liabilities+equity",
-    scope,
-    [
-      { component: components.liabilities, sign: 1, expectedRole: "closing" },
-      { component: components.equity, sign: 1, expectedRole: "closing" },
-    ],
-    null,
-  )
+  const rightTerms: SignedTerm[] = [
+    { component: components.liabilities, sign: 1, expectedRole: "closing" },
+    { component: components.equity, sign: 1, expectedRole: "closing" },
+  ]
+  if (components.translationAdjustment !== undefined) {
+    rightTerms.push({
+      component: components.translationAdjustment,
+      sign: 1,
+      expectedRole: "closing",
+    })
+  }
+  const right = combineSide("liabilities+equity", scope, rightTerms, null)
   return { code: "balance_sheet", left, right }
 }
 
@@ -287,23 +299,31 @@ export interface CashFlowSumControlComponents {
   investing: StatementComponent
   financing: StatementComponent
   netChangeInCash: StatementComponent
+  /**
+   * Optional IAS 7 "effect of exchange rate changes on cash", a signed period
+   * flow pushed onto the LEFT side (sign +1, role "flow"): CFO + CFI + CFF +
+   * fxEffect = netChangeInCash. Provide ONLY when `netChangeInCash` is the actual
+   * balance movement (incl. FX). It must be placed on exactly ONE of the two cash
+   * controls (this or `cash_to_balance_sheet`) — supplying it on both, or where
+   * netChange already excludes FX, double-counts. Omit (undefined) → base equation.
+   */
+  fxEffectOnCash?: StatementComponent
 }
 
-/** CFO + CFI + CFF = net change in cash (all period flows, natural sign). */
+/** CFO + CFI + CFF (+ optional FX effect) = net change in cash; natural signs. */
 export function buildCashFlowSumControl(
   scope: StatementControlScope,
   components: CashFlowSumControlComponents,
 ): StatementControlInput {
-  const left = combineSide(
-    "operating+investing+financing",
-    scope,
-    [
-      { component: components.operating, sign: 1, expectedRole: "flow" },
-      { component: components.investing, sign: 1, expectedRole: "flow" },
-      { component: components.financing, sign: 1, expectedRole: "flow" },
-    ],
-    null,
-  )
+  const leftTerms: SignedTerm[] = [
+    { component: components.operating, sign: 1, expectedRole: "flow" },
+    { component: components.investing, sign: 1, expectedRole: "flow" },
+    { component: components.financing, sign: 1, expectedRole: "flow" },
+  ]
+  if (components.fxEffectOnCash !== undefined) {
+    leftTerms.push({ component: components.fxEffectOnCash, sign: 1, expectedRole: "flow" })
+  }
+  const left = combineSide("operating+investing+financing", scope, leftTerms, null)
   const right = combineSide(
     "net_change_in_cash",
     scope,
@@ -317,21 +337,33 @@ export interface CashTieOutControlComponents {
   openingCash: StatementComponent
   netChangeInCash: StatementComponent
   balanceSheetCash: StatementComponent
+  /**
+   * Optional IAS 7 "effect of exchange rate changes on cash", a signed period
+   * flow pushed onto the LEFT side (sign +1, role "flow"): opening cash + net
+   * change + fxEffect = balance-sheet cash. This is the CANONICAL home for the FX
+   * effect (it reconciles opening to closing foreign-currency cash, IAS 7.28).
+   * Place it on exactly one cash control. Omit (undefined) → base equation.
+   */
+  fxEffectOnCash?: StatementComponent
 }
 
-/** opening cash + net change in cash = balance-sheet cash (closing tie-out). */
+/** opening cash + net change (+ optional FX effect) = balance-sheet cash. */
 export function buildCashToBalanceSheetControl(
   scope: StatementControlScope,
   openingPeriodKey: string,
   components: CashTieOutControlComponents,
 ): StatementControlInput {
+  const leftTerms: SignedTerm[] = [
+    { component: components.openingCash, sign: 1, expectedRole: "opening" },
+    { component: components.netChangeInCash, sign: 1, expectedRole: "flow" },
+  ]
+  if (components.fxEffectOnCash !== undefined) {
+    leftTerms.push({ component: components.fxEffectOnCash, sign: 1, expectedRole: "flow" })
+  }
   const left = combineSide(
     "opening_cash+net_change_in_cash",
     scope,
-    [
-      { component: components.openingCash, sign: 1, expectedRole: "opening" },
-      { component: components.netChangeInCash, sign: 1, expectedRole: "flow" },
-    ],
+    leftTerms,
     openingPeriodKey,
   )
   const right = combineSide(
