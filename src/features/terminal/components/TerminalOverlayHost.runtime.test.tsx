@@ -33,6 +33,47 @@ afterEach(() => {
 });
 
 describe("TerminalOverlayHost mobile data lifecycle", () => {
+  it("opens and closes every route-owned overlay event", async () => {
+    global.fetch = vi.fn(async () => new Response("not found", { status: 404 })) as never;
+    render(<TerminalOverlayHost />);
+    await act(async () => Promise.resolve());
+
+    const events: Array<[string, unknown?]> = [
+      ["terminal:open-audit"],
+      ["terminal:open-help"],
+      ["terminal:open-compare", { lhs: "A", rhs: "B" }],
+      ["terminal:open-peer", { codes: ["A", "B"] }],
+      ["terminal:open-alerts"],
+      ["terminal:open-scenario"],
+      ["terminal:open-action-center"],
+      ["terminal:open-comments"],
+      ["terminal:open-subco-chat"],
+      ["terminal:open-subscriptions"],
+      ["terminal:open-intel"],
+      ["terminal:open-breach"],
+      ["terminal:open-whatif"],
+      ["terminal:open-shortcuts"],
+    ];
+
+    for (const [name, detail] of events) {
+      act(() => {
+        window.dispatchEvent(
+          detail === undefined
+            ? new Event(name)
+            : new CustomEvent(name, { detail }),
+        );
+      });
+      await waitFor(() =>
+        expect(document.querySelectorAll("[role=\"dialog\"]")).toHaveLength(1),
+      );
+
+      act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+      await waitFor(() =>
+        expect(document.querySelectorAll("[role=\"dialog\"]")).toHaveLength(0),
+      );
+    }
+  });
+
   it("keeps company/matrix cold until an overlay requests them", async () => {
     const fetchSpy = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

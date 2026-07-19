@@ -95,6 +95,18 @@ describe('CommandBar (Phase 7.D smoke)', () => {
     expect(input.placeholder).toMatch(/HOLD GO/);
   });
 
+  it.each([
+    { ctrlKey: true, metaKey: false },
+    { ctrlKey: false, metaKey: true },
+  ])("Ctrl/Cmd+K focuses the command bar: $ctrlKey/$metaKey", (modifiers) => {
+    render(<CommandBar />);
+    const input = getInput();
+
+    fireEvent.keyDown(window, { key: "k", ...modifiers });
+
+    expect(document.activeElement).toBe(input);
+  });
+
   it('HOLD GO → activates panel 2 (matrix view), no company change', () => {
     render(<CommandBar />);
     submit('HOLD GO');

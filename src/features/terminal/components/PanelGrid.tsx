@@ -34,6 +34,7 @@ import {
   PANEL_IDS,
   type LayoutSizes,
 } from '../lib/layout-sizes';
+import { focusTerminalSearch } from '../lib/focus-terminal-search';
 
 type PanelId = 1 | 2 | 3 | 4;
 // Sub-27 cont'd Round-5 architect closure: prior `PANEL_TITLES` const
@@ -204,11 +205,7 @@ export function ExpertWorkspace() {
       if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (isTypingTarget(e.target)) return;
         e.preventDefault();
-        window.dispatchEvent(
-          new CustomEvent('terminal:focus-search', {
-            detail: { panelId: getTerminalSnapshot().activePanelId },
-          }),
-        );
+        focusTerminalSearch(getTerminalSnapshot().activePanelId);
       }
     };
 
