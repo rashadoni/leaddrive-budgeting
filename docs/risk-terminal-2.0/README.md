@@ -36,7 +36,11 @@ Read the package in this order:
    Strangler migration, current/proposed file map, API contracts, workstreams, PR sequence, performance boundaries and definition of done.
 5. [05-TEST-UAT-ROLLOUT.md](./05-TEST-UAT-ROLLOUT.md)  
    Test pyramid, golden reconciliations, visual gate, UAT scripts, feature flags, shadow rollout, rollback and production go/no-go.
-6. [CLAUDE-CODE-HANDOFF.md](./CLAUDE-CODE-HANDOFF.md)  
+6. [06-OWNER-DECISION-PACK-T1-T5.md](./06-OWNER-DECISION-PACK-T1-T5.md)
+   Decision-ready T-1–T-5 recommendations, current pilot baseline and the proposed 30-KPI envelope. The choices remain unapproved until the named owners sign them.
+7. [IMPLEMENTATION-STATUS.md](./IMPLEMENTATION-STATUS.md)
+   Live execution record with exact evidence, limits and blockers.
+8. [CLAUDE-CODE-HANDOFF.md](./CLAUDE-CODE-HANDOFF.md)
    Operating instructions and copy-ready prompt for Claude Code.
 
 The repository-level planning source remains [../ROADMAP.md](../ROADMAP.md). This package defines **Phase 10: Risk Terminal 2.0, Trust Core & Decision Cockpit**, now in implementation. The roadmap and `IMPLEMENTATION-STATUS.md` must only advance when work actually starts, passes its named checks, or is explicitly blocked.

@@ -57,11 +57,15 @@ tested. This does **not** waive the remaining human gates: A4-A6 are not
 owner-reviewed; B1 still needs T-1; B4 still needs T-5; no V2 view is enabled;
 Stages C-E have not started. The current queue below is authoritative.
 
-### D-2 — KPI methodology (expected, per handoff §9)
+### D-2 — KPI methodology (decision-ready proposal, not approved)
 
-Not yet enumerated; will be filled from `03-DATA-KPI-TRUST-SPEC.md` while
-building the KPI Registry (Stage B). Any KPI without an approved definition ships
-as `provisional` with a recorded question — never with an invented formula.
+T-1–T-5 are now enumerated in
+`06-OWNER-DECISION-PACK-T1-T5.md`: reconciliation tolerance, the enhanced
+80% abstention gate, Confidence coefficients, domain/portfolio weights and an
+exact 30-code envelope for the four active agro/food-processing pilots. The
+pack is evidence-backed but remains a proposal. Any KPI without an effective
+owner-approved definition still ships as `provisional` with a recorded
+question — never with an invented formula.
 
 ---
 
@@ -86,7 +90,8 @@ open gate.*
 ### Stage B — trust core (additive slices in progress; financial cutover blocked)
 
 - **B1 canonical statement mart/service:** blocked on owner decision T-1 and
-  golden reconciliation controls.
+  golden reconciliation controls. The decision pack contains a concrete
+  recommendation, but no owner approval has been recorded.
 - **B2 PeriodContext + DataRevision:** contracts, persistence, tenant-scoped
   canonical writer and UPDATE immutability are implemented and tested. A
   2026-07-18 technical review found DB-level retention/lifecycle/supersession
@@ -96,7 +101,9 @@ open gate.*
 - **B3 exact M/Q/YTD/FY/LTM invalidation:** pure fan-out implemented and tested;
   runtime wiring remains blocked until the canonical mart/period mutation path
   can supply the exact changed month and downstream dependency set.
-- **B4 KPI Registry + first 25-35 approved KPIs:** blocked on owner decision T-5.
+- **B4 KPI Registry + first 25-35 approved KPIs:** blocked on owner decision
+  T-5. The proposed 30-code envelope is documented and measured, but remains
+  provisional.
 - **B5 immutable observation + lineage:** storage, guards and import revision
   writers implemented and tested. Generic recompute must remain untraced until
   it can prove which indicators depend on the applied artifact; one workbook
@@ -111,7 +118,7 @@ decisions before it can be described as decision-grade.*
 ### Stage C — zero-visual-change UI extraction (shell seam partial; certified view models remain blocked on B contracts)
 C1 pure view-model builders ⬜ blocked · C2 `TerminalOverlayHost` ✅ production-verified ·
 C3 `ExpertWorkspace` isolation ✅ production-verified · C4 event/shortcut/layout
-compatibility 🟡 partial · C5 overview façade/provider ⬜ blocked. The legacy Expert
+compatibility ✅ production-verified (§36) · C5 overview façade/provider ⬜ blocked. The legacy Expert
 mobile P1 guard is ✅ production-verified: below 768 px the four-panel route tree
 is not mounted and an EN/RU/AZ desktop recommendation is shown; the independent
 overlay host remains available, while its company/matrix data stays cold until
@@ -2293,3 +2300,38 @@ x256/y445.875/w509/h221.625 and F4 x771/y445.875/w509/h221.625. This closes
 C4 without a layout change. No financial logic/value, formula, KPI, database
 row, migration, password/passwordHash, production auth, paid provider,
 Decision shell or V2 flag changed.
+
+---
+
+## 37. Owner decision pack T-1–T-5 (2026-07-19)
+
+**Status: decision-ready proposal; not methodology-approved and not enforced.**
+
+`06-OWNER-DECISION-PACK-T1-T5.md` converts the five open Trust Core
+questions into explicit owner choices:
+
+- T-1 dual absolute/relative reconciliation tolerance;
+- T-2 enhanced 80% material-Coverage abstention gate;
+- T-3 seven-factor, separately displayed Confidence model;
+- T-4 six-domain V2 Risk weights and portfolio rollup without invisible
+  qualitative penalties;
+- T-5 an exact 30-code envelope for the current controlled pilot.
+
+A read-only production audit identified four active operational pilots:
+AZSEKER-CPC, AZSEKER-EDEN, AZSEKER-PROMALT and AZSEKER-AZSF, covering only
+`food_processing` and `agro_crops`. For period `2026`, the proposed
+list yields **88 applicable company × KPI pairs**: all 88 have an observation
+row, **43 are known/coloured (48.9% unweighted availability)**, **0 have
+`revisionId` and 0 have `lastReconciledAt`**. The proposed abstention
+gate would therefore block decision grade, which is the intended fail-closed
+outcome.
+
+The list explicitly excludes T-6 DSCR, the three T-7 per-ha economic KPIs,
+internal building-block indicators, modeled ESG, unverified news sentiment and
+industry-irrelevant paid Google Trends. Anthropic remains an explicit-action
+narrative provider, not a KPI source.
+
+No formula, threshold, score, row, schema, migration, authentication/password,
+provider call, feature flag or production deployment changed. T-1 through T-5
+remain open and continue to block B1/B4/B6/B7 until the named owner approvals
+are recorded.

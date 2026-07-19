@@ -584,7 +584,7 @@ Trust-first transformation of the Risk Terminal: one canonical financial path, e
 
 ### Stage B — trust core 🟡 (additive slices in progress; financial cutover blocked)
 
-- ⬜ **10.B1 Canonical statement mart/service:** blocked on T-1 and approved golden reconciliation controls.
+- ⬜ **10.B1 Canonical statement mart/service:** blocked on T-1 and approved golden reconciliation controls. A decision-ready T-1 recommendation is drafted in `docs/risk-terminal-2.0/06-OWNER-DECISION-PACK-T1-T5.md`; it is not owner-approved and does not unblock implementation yet.
 - 🟡 **10.B2 PeriodContext + DataRevision:** contracts, additive persistence,
   tenant scope and update-immutability are implemented and tested. The canonical
   writer now validates every company and actor against the organization,
@@ -610,7 +610,7 @@ Trust-first transformation of the Risk Terminal: one canonical financial path, e
   rules and the remaining domain cohorts still need separate owner-reviewed
   work. B2 is not complete.
 - 🟡 **10.B3 Exact M/Q/YTD/FY/LTM invalidation:** pure fan-out implemented and tested; runtime wiring remains blocked until the canonical mutation path can provide the changed month and exact downstream dependency set.
-- ⬜ **10.B4 KPI Registry + first 25-35 approved KPIs:** blocked on T-5.
+- ⬜ **10.B4 KPI Registry + first 25-35 approved KPIs:** blocked on T-5. The decision pack proposes an exact 30-code envelope for the four currently active `agro_crops` / `food_processing` pilots; the list remains provisional until CFO/Risk/Controller approval.
 - 🟡 **10.B5 Immutable observation + lineage infrastructure:** nullable `IndicatorValue.revisionId`, the guarded writer and three import-side `DataRevision` producers are implemented and tested. Import revisions remain atomic with their source writes. **No batch recompute stamps those revisions onto observations:** the same run may recalculate workbook, weather, commodity, booking, manual and mixed-source formulas, so one workbook revision would be false provenance. Observations stay `revisionId=null` and Provisional until a per-indicator complete dependency manifest can construct the revision that actually explains each value. The writer requires a matching organization plus either explicit company membership or the documented org-wide scope, after independently verifying the target company belongs to the organization. Staged apply now accepts only the byte-identical workbook analyzed in preview; changed files must be analyzed again.
 - ⬜ **10.B6 Risk × Confidence + abstention / 10.B7 decision-grade event eligibility:** queued; not implemented.
 
@@ -628,13 +628,15 @@ D1 server-resolved view flags · D2 URL view state · D3 shell/header/nav · D4 
 
 E1 old/new on the same revision · E2 classify every material difference · E3 silent V2 alerts · E4 perf/visual/a11y gates · E5 UAT + one real close cycle · E6 rollback rehearsal · E7 Today default for the approved allowlist only.
 
-### Owner decisions blocking enforcement (not drafting)
+### Owner decisions blocking enforcement (decision pack drafted; approval still open)
 
-T-1 reconciliation tolerance · T-2 the 80% coverage abstention gate · T-3 Confidence coefficients · T-4 domain/portfolio weights · T-5 the 25-35 pilot KPI list · T-6 DSCR numerator + principal source · **T-7 per-hectare methodology — current code uses EDEN's `hectaresPlanted=4,000`; the separate 22,595.7 ha land-registry area is not read by the KPI resolver. Owner approval is still needed on which denominator future certified KPIs should use; no −131.8 ₼/ha observation was found** · E-1 pilot org allowlist · E-2 colour tokens after contrast verification · E-3 `Risk Center` header label. Details in the two ADRs.
+T-1 reconciliation tolerance · T-2 the 80% coverage abstention gate · T-3 Confidence coefficients · T-4 domain/portfolio weights · T-5 the 25-35 pilot KPI list · T-6 DSCR numerator + principal source · **T-7 per-hectare methodology — current code uses EDEN's `hectaresPlanted=4,000`; the separate 22,595.7 ha land-registry area is not read by the KPI resolver. Owner approval is still needed on which denominator future certified KPIs should use; no −131.8 ₼/ha observation was found** · E-1 pilot org allowlist · E-2 colour tokens after contrast verification · E-3 `Risk Center` header label. T-1–T-5 now have an evidence-backed proposal in `docs/risk-terminal-2.0/06-OWNER-DECISION-PACK-T1-T5.md`, but none is approved or enforced. Details remain in the two ADRs.
 
 ---
 
 ## Changelog
+
+- **2026-07-19 (Risk Terminal T-1–T-5 owner decision pack — proposal only, production unchanged)** — Converted the five open Trust Core methodology questions into explicit recommended choices without implementing or approving them: dual reconciliation tolerance, enhanced 80% abstention gate, seven-factor Confidence, six-domain V2 Risk weights/rollup and an exact 30-code pilot envelope. A read-only production audit confirmed the active pilot is CPC/EDEN/PROMALT/AZSF (`agro_crops` + `food_processing`): the proposed list produces 88 applicable 2026 company×KPI pairs, 43 known (48.9% unweighted availability), 0 with lineage and 0 reconciled, so the proposed gate would honestly abstain. The pack explicitly excludes T-6 DSCR, T-7 per-ha economics, modeled ESG, unrelated paid Google Trends and Anthropic-as-KPI. No row, formula, threshold, score, auth/password, provider call, migration, flag or deploy changed; T-1–T-5 remain blocking until owner sign-off.
 
 - **2026-07-19 (Risk Terminal Stage C4 event/shortcut compatibility — production-verified)** — Individually browser-drove all 14 route-owned overlay events plus PDF/XLSX exports on production, verified F1–F4 focus, Ctrl/Cmd+K, Ctrl+/, three persisted `terminal-layout-v1-*` splitter keys and unchanged 1280×720 panel geometry. Found and fixed one real compatibility gap: `/` focused nothing when F3/F4 was active because only panels 1/2 own local search inputs; it now falls back to the global command bar while F1/F2 retain local-search behavior. Added a dedicated focus helper with four regressions, Ctrl/Cmd+K tests, and a host integration loop covering all 14 overlay listeners. Targeted 4 files / 28 tests, TypeScript and build are clean; full Vitest 533 files + 6,849 tests passed (13 files / 121 tests skipped). The required visual command was attempted against production but the repository has no Linux baselines for its three matched specs, so Playwright created temporary actuals and failed before pixel comparison; those files were removed. Exact geometry matched the prior release coordinate-for-coordinate, with zero console/page/5xx errors. Release `03a6d669e438f9cec5e11e8652340af7741cfb12` passed CI `29678421440` and deployed after gzip-valid mode-0600 backup `pre-deploy-2026-07-19T074753Z-03a6d669e438.sql.gz` (984,137 B). Production HEAD/stamp match, app/db/nginx are healthy, all 27 migrations are current, `budgetpro_app` is NOBYPASSRLS and unauthenticated smoke passed 8/8. No financial value, formula, KPI, migration, auth/password, paid AI/provider or V2 flag changed; paid `terminal:run-explainer` remained unit-only.
 
