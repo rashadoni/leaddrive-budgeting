@@ -51,6 +51,17 @@ import {
 const log = getLogger('terminal:heatmap');
 const PANEL_ID = 2;
 
+// A cell only counts as REAL data when it carries a green/amber/red
+// classification. `unknown` cells (Phase A.3: "no data ingested yet" — the
+// grid renders them as "—") and absent cells both read as «нет данных», so
+// neither is data. The "Hide inapplicable" toggle uses this to also collapse
+// columns that are empty across every currently-visible company.
+const DATA_BEARING_STATUSES = new Set<HeatMapCell['status']>([
+  'green',
+  'amber',
+  'red',
+]);
+
 export function useHeatMapModel(period: string | undefined) {
   const t = useTranslations('terminal');
   const locale = useLocale();
@@ -502,6 +513,22 @@ export function useHeatMapModel(period: string | undefined) {
     [rawIndicators, scopeCompanies, data?.applicabilityOverrides],
   );
 
+  // "Hide inapplicable" (ON by default) now also hides EMPTY indicators —
+  // columns that have no real value on ANY currently-visible company. An
+  // indicator that reads «нет данных» ("—") for every filtered company is
+  // noise, so it drops out of the default view and only reappears under
+  // "Show all". Keyed by indicatorId; scoped to `visibleCompanyIds` so the
+  // set re-narrows with the row search / single-company drill-down.
+  const hasDataById = useMemo(() => {
+    const ids = new Set<string>();
+    if (!data) return ids;
+    for (const cell of data.cells) {
+      if (!visibleCompanyIds.has(cell.companyId)) continue;
+      if (DATA_BEARING_STATUSES.has(cell.status)) ids.add(cell.indicatorId);
+    }
+    return ids;
+  }, [data, visibleCompanyIds]);
+
   const indicatorResolution = useMemo(() => {
     const rankMateriality = (rating: 'material' | 'low_materiality' | 'not_material'): number => {
       if (rating === 'material') return 0;
@@ -553,12 +580,21 @@ export function useHeatMapModel(period: string | undefined) {
     // analyst can verify the deliberate de-emphasis. Hiding the whole column
     // here made it indistinguishable from an unrelated KPI and contradicted
     // the materiality contract in `esg-materiality.ts`.
-    const defaultVisible = enriched.filter(({ ind }) => relevantIds.has(ind.id));
+    //
+    // Two gates to survive the default view: the indicator must be applicable
+    // to the current scope AND carry at least one real value among the visible
+    // companies (`hasDataById`). A column that is «нет данных» everywhere adds
+    // no signal, so — like a sector-inapplicable column — it collapses until
+    // the user reveals the full catalogue via "Show all".
+    const defaultVisible = enriched.filter(
+      ({ ind }) => relevantIds.has(ind.id) && hasDataById.has(ind.id),
+    );
     return (showAllIndicators ? enriched : defaultVisible).map(({ ind }) => ind);
   }, [
     activeCompanyIndustries,
     activeCompanyIndustry,
     applicability.relevant,
+    hasDataById,
     rawIndicators,
     showAllIndicators,
   ]);

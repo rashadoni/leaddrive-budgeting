@@ -156,12 +156,15 @@ beforeEach(() => {
               unit: "%",
             },
           ],
-          // Only ind_red has a cell on the op-co — ind_missing has no
-          // entry, so HeatMap renders it as a gray "missing" cell with
-          // no indicatorValueId. The sub-group row (co_aac_sg) gets a
-          // synthetic-rollup cell for ind_red — `kind='synthetic-rollup'`,
-          // `indicatorValueId: null`, value+status set, with the new
-          // `contributingChildCount` field from Turn VI.
+          // ind_red has a real cell on the op-co. ind_missing has NO cell on
+          // the op-co (AAC-MAIN), so that pair renders as a gray "missing"
+          // cell with no indicatorValueId — the case these click tests exercise.
+          // It carries a real rollup value on the sub-group row, though, so the
+          // "hide empty columns" default keeps IND_FX_EXPOSURE visible (an
+          // indicator with a value on ANY visible company is not empty). The
+          // sub-group row (co_aac_sg) also gets a synthetic-rollup cell for
+          // ind_red — `kind='synthetic-rollup'`, `indicatorValueId: null`,
+          // value+status set, with the `contributingChildCount` field.
           cells: [
             {
               indicatorValueId: "iv_red",
@@ -176,6 +179,15 @@ beforeEach(() => {
               indicatorId: "ind_red",
               value: -9.46,
               status: "red" as const,
+              kind: "synthetic-rollup" as const,
+              contributingChildCount: 1,
+            },
+            {
+              indicatorValueId: null,
+              companyId: "co_aac_sg",
+              indicatorId: "ind_missing",
+              value: 3.2,
+              status: "amber" as const,
               kind: "synthetic-rollup" as const,
               contributingChildCount: 1,
             },
