@@ -98,6 +98,9 @@ COPY --from=build --chown=nextjs:nodejs /app/node_modules/@prisma/client   ./nod
 # already copied above. `crypto` is a Node builtin.
 COPY --from=build --chown=nextjs:nodejs /app/scripts                       ./scripts
 COPY --from=build --chown=nextjs:nodejs /app/node_modules/bcryptjs         ./node_modules/bcryptjs
+# Git-tracked help-guide videos, served by /api/help-videos/[file]. The
+# standalone output does not trace plain data files, so copy them explicitly.
+COPY --from=build --chown=nextjs:nodejs /app/video/player                  ./video/player
 
 # Entrypoint: run migrations then exec the server.
 COPY --chown=nextjs:nodejs deploy/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

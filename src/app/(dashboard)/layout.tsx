@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
+import { HelpVideoLauncher } from "@/components/help/help-video-launcher"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +46,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 : "flex-1 overflow-y-auto bg-background p-8 relative"
             }
           >
+            {/* Section help video — an in-flow card at the top of the content
+                (never a floating overlay), so it doesn't cover the work area.
+                Expands into a modal on click. Renders null on routes with no
+                mapped video (e.g. the full-bleed terminal). */}
+            <HelpVideoLauncher />
             {children}
           </main>
         </div>
