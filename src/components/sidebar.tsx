@@ -79,7 +79,10 @@ const navItems: NavItem[] = [
   { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },
   { href: "/budgeting/alerts", icon: Bell, labelKey: "alerts" },
   { href: "/budgeting/audit", icon: ScrollText, labelKey: "auditLog", minRole: "manager" },
-  { href: "/budgeting/admin", icon: Settings, labelKey: "adminTools", minRole: "admin" },
+  // 2026-07-20 reorder: the Admin Tools row is intentionally NOT in this array —
+  // it renders at the very foot of the nav (below Guide + Settings + the two
+  // visible admin groups) so the whole admin block sits at the bottom. See the
+  // `hasRole(userRole, "admin")` block in the JSX below.
   { href: "/guide", icon: BookText, labelKey: "guide" },
   { href: "/settings", icon: Settings, labelKey: "settings" },
 ]
@@ -218,8 +221,6 @@ export function Sidebar() {
           const isActive =
             item.href === "/budgeting"
               ? isBudgetingLegacy
-              : item.href === "/budgeting/admin"
-                ? isAdminSection && !isDirectAdminShortcut
               : pathname === item.href || pathname.startsWith(item.href + "/")
           // Budget row has an inline chevron toggle when we're anywhere
           // in /budgeting/* — clicking it expands/collapses the sub-nav
@@ -252,22 +253,6 @@ export function Sidebar() {
                       className={cn(
                         "h-3.5 w-3.5 transition-transform",
                         budgetExpanded ? "-rotate-90" : "rotate-180"
-                      )}
-                    />
-                  </button>
-                )}
-                {item.href === "/budgeting/admin" && isAdminSection && !collapsed && (
-                  <button
-                    type="button"
-                    onClick={() => setAdminExpanded((v) => !v)}
-                    aria-expanded={adminExpanded}
-                    aria-label="Toggle admin sub-menu"
-                    className="ml-1 mr-1 rounded-md p-1.5 text-white/50 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-                  >
-                    <ChevronDown
-                      className={cn(
-                        "h-3.5 w-3.5 transition-transform",
-                        adminExpanded ? "rotate-180" : ""
                       )}
                     />
                   </button>
@@ -320,12 +305,98 @@ export function Sidebar() {
                     ))}
                 </div>
               )}
+            </div>
+          )
+        })}
 
-              {/* Admin sub-navigation — the settings-only ADMIN_GROUPS (single
-                  source of truth shared with the admin landing hub). Renders
-                  only inside /budgeting/admin/*, togglable, role-gated at the
-                  row level. */}
-              {item.href === "/budgeting/admin" && isAdminSection && adminExpanded && !collapsed && (
+        {/* Admin block — the WHOLE admin section sits at the very foot of the
+            nav (below Guide + Settings). Order within: first the two visible
+            "Data control" + "Data & operations" groups (SIDEBAR_ADMIN_GROUPS),
+            then the collapsible "Admin Tools" row (ADMIN_GROUPS sub-nav).
+            Admin-only: gated once here with the SAME role check the Admin Tools
+            nav row used before (`minRole: "admin"` → `hasRole(userRole,
+            "admin")`), so non-admins never see any of it. Every item keeps its
+            existing /budgeting/admin/* route + admin-only page guard — only nav
+            LOCATION/ORDER changed. `aiImport` stays the top-level shortcut, so
+            it's filtered out here to avoid a duplicate row. */}
+        {hasRole(userRole, "admin") && (
+          <>
+            {SIDEBAR_ADMIN_GROUPS.map((group) => {
+              const items = group.tools.filter(
+                (tool) => !topLevelAdminToolHrefs.has(tool.href),
+              )
+              if (items.length === 0) return null
+              return (
+                <div key={group.key} className="pt-2">
+                  {!collapsed && (
+                    <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+                      {t2(group.key as never)}
+                    </p>
+                  )}
+                  {items.map((tool) => {
+                    const isToolActive =
+                      pathname === tool.href ||
+                      pathname.startsWith(tool.href + "/")
+                    return (
+                      <Link
+                        key={tool.href}
+                        href={tool.href}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
+                          isToolActive
+                            ? "bg-sidebar-active text-white font-medium"
+                            : "text-[hsl(var(--sidebar-text))] hover:bg-sidebar-hover hover:text-white",
+                        )}
+                      >
+                        <tool.icon className="h-5 w-5 shrink-0" />
+                        {!collapsed && (
+                          <span>{t2(`tools.${tool.key}.title` as never)}</span>
+                        )}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )
+            })}
+
+            {/* Admin Tools — the collapsible settings-only ADMIN_GROUPS row.
+                Relocated to the foot of the nav (below Guide + Settings + the
+                two visible groups above). Pulled out of `navItems` so it can
+                render last; behaviour is unchanged (same route, same label,
+                same toggle, same ADMIN_GROUPS sub-nav). */}
+            <div>
+              <div className="flex items-center">
+                <Link
+                  href="/budgeting/admin"
+                  className={cn(
+                    "flex flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
+                    isAdminSection && !isDirectAdminShortcut
+                      ? "bg-sidebar-active text-white font-medium"
+                      : "text-[hsl(var(--sidebar-text))] hover:bg-sidebar-hover hover:text-white",
+                  )}
+                >
+                  <Settings className="h-5 w-5 shrink-0" />
+                  {!collapsed && <span>{t("adminTools")}</span>}
+                </Link>
+                {isAdminSection && !collapsed && (
+                  <button
+                    type="button"
+                    onClick={() => setAdminExpanded((v) => !v)}
+                    aria-expanded={adminExpanded}
+                    aria-label="Toggle admin sub-menu"
+                    className="ml-1 mr-1 rounded-md p-1.5 text-white/50 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <ChevronDown
+                      className={cn(
+                        "h-3.5 w-3.5 transition-transform",
+                        adminExpanded ? "rotate-180" : ""
+                      )}
+                    />
+                  </button>
+                )}
+              </div>
+
+              {isAdminSection && adminExpanded && !collapsed && (
                 <div className="mt-1 ml-2 space-y-3 border-l border-white/10 pl-2">
                   {ADMIN_GROUPS.map((adminGroup) => (
                     <div key={adminGroup.key}>
@@ -358,56 +429,8 @@ export function Sidebar() {
                 </div>
               )}
             </div>
-          )
-        })}
-
-        {/* Data control + Data & operations — the financial / monitoring /
-            operational admin tools, surfaced as always-visible sections in the
-            main sidebar (no longer buried under the collapsible Admin Tools
-            row). Admin-only: gated with the SAME role check the Admin Tools nav
-            row uses (`minRole: "admin"` there → `hasRole(userRole, "admin")`
-            here), so non-admins never see these links. Each item keeps its
-            existing /budgeting/admin/* route + admin-only page guard — only its
-            nav LOCATION changed. `aiImport` stays the top-level shortcut, so
-            it's filtered out here to avoid a duplicate row. */}
-        {hasRole(userRole, "admin") &&
-          SIDEBAR_ADMIN_GROUPS.map((group) => {
-            const items = group.tools.filter(
-              (tool) => !topLevelAdminToolHrefs.has(tool.href),
-            )
-            if (items.length === 0) return null
-            return (
-              <div key={group.key} className="pt-2">
-                {!collapsed && (
-                  <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-white/40 uppercase tracking-wider">
-                    {t2(group.key as never)}
-                  </p>
-                )}
-                {items.map((tool) => {
-                  const isToolActive =
-                    pathname === tool.href ||
-                    pathname.startsWith(tool.href + "/")
-                  return (
-                    <Link
-                      key={tool.href}
-                      href={tool.href}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
-                        isToolActive
-                          ? "bg-sidebar-active text-white font-medium"
-                          : "text-[hsl(var(--sidebar-text))] hover:bg-sidebar-hover hover:text-white",
-                      )}
-                    >
-                      <tool.icon className="h-5 w-5 shrink-0" />
-                      {!collapsed && (
-                        <span>{t2(`tools.${tool.key}.title` as never)}</span>
-                      )}
-                    </Link>
-                  )
-                })}
-              </div>
-            )
-          })}
+          </>
+        )}
       </nav>
 
     </aside>
