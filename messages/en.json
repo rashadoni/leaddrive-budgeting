@@ -1899,7 +1899,7 @@
       "chatTitle": "Open SubCo Finance Chat (CHT GO equivalent)",
       "scenario": "SCENARIO",
       "scenarioTitle": "Open Scenarios — prefills SCN, type code + GO",
-      "whatif": "PREVIEW",
+      "whatif": "What-if",
       "whatifTitle": "Open ad-hoc preview: nudge FX rates and see indicators recompute live",
       "peer": "PEER",
       "peerTitle": "Cross-company benchmarking — prefills PEER, type codes + GO",
