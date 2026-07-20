@@ -638,6 +638,29 @@ T-1 reconciliation tolerance · T-2 the 80% coverage abstention gate · T-3 Conf
 
 ---
 
+## Data completeness backlog (owner-requested audit, 2026-07-20)
+
+Live-prod audit of the terminal's «нет данных» cells (4 pilot companies × 117
+applicable indicator pairs/period; every empty cell carries a machine `error.reason`).
+**2025: 78/117 empty (67%) · 2026: 51/117 (44%). The pipeline is healthy** —
+recompute ran, thresholds/applicability correct; every gap is a missing INPUT.
+Top-3 causes cover 64% of the emptiness. Prioritized tasks (cells cleared, effort):
+
+1. ⬜ **Operational facts not imported** — 36 cells, M. AGRO_YIELD_PER_HA/SUGAR_CONTENT/WATER/FERTILIZER/CUT_TO_MILL/HARVEST/DROUGHT (EDEN) + FP_YIELD_LOSS/EXTRACTION_RATE (CPC/PROMALT/AZSF). Needs `OperationalFact` rows per company/period.
+2. ⬜ **Legal/audit facts not loaded** — 29 cells, S–M. LEGAL_CASES_TOTAL/ACTIVE, AUDIT_CLOSED_PCT/MAJOR_OPEN (all 4 cos) as OperationalFact metrics.
+3. ⬜ **Counterparty registers partial** — 17 cells, M. CUSTOMER/SUPPLIER_HHI, TOP/TOP3 share. PROMALT has none; 2025 has no supplier data anywhere. Backfill 2025 + fill PROMALT.
+4. ⬜ **`Company.settings.fxRevenueAzn` unset** — 8 cells, S. REVENUE_FX_EXPOSURE, all 4 cos. Four settings values.
+5. ⬜ **No foreign-currency tags on budget lines** — 8 cells, M. FX_IMPORTED_INPUT (importer dropped the currency column). Tag imported-input lines or set `fxExposureSource`.
+6. ⬜ **Sugar commodity series missing for 2025** — 8 cells, S. AGRO_SUGAR_PRICE_TREND/COMMODITY_VOL; 2026 already seeded — mirror it.
+7. ⬜ **News-sentiment feed not run** — 8 cells, S. IND_NEWS_SENTIMENT_30D; run the crawler for the 4 pilots.
+8. ⬜ **Balance sheets not imported for CPC/PROMALT/AZSF** — 6 cells, M. FP_INVENTORY_TURNS needs `inventory`.
+9. ⬜ **PROMALT 2025 P&L missing entirely** — 7 cells, S. One workbook; cascades into carbon/ESG via budgetLine revenue.
+10. ⬜ **Weather rainfall 2025 backfill (EDEN)** — 1 cell, S; 2026 already seeded.
+11. ⬜ **EDEN 2026 EBITDA margin `out_of_range`** — 1 cell, S. Data exists but fails the sanity band — verify EDEN 2026 revenue/EBITDA figures (data-quality check, not a gap).
+
+Quick wins: #4, #6, #7, #9, #10 (~25+ cells for small effort). Biggest lever: #1–#3 (82 cells).
+Related, same root family: statement-controls «blocked» causes (net-change-in-cash skipped by importer; no distributions model; currency tags — see item 5).
+
 ## Changelog
 
 - **2026-07-19 (Risk Terminal B1.7 read-only shadow statement-controls surface)** — First runtime consumer of the pure B1 contracts, SHADOW-only: new `src/lib/risk/statement-controls-adapter.ts` (frozen `SHADOW_STATEMENT_POLICY` = recorded T-1 Option A SHAPE pinned at `approval: "provisional"`; `detectBsSignConvention` mirroring the audited `balanceResidual` with both residuals + raw sums disclosed; read-only `fetchStatementEvidence` + pure `assembleShadowStatementControls`), new `GET /api/companies/[id]/statement-controls` (auth/tenant-404/sub-group-RBAC copied from ifrs-check; GET-only; envelope pins `shadow:true`, `decisionGrade:false`, the banner and the provisional policy) and admin page `/budgeting/admin/statement-controls` (per-page admin gate, permanent amber shadow banner, per-control evidence cards — no red/green, no pass/fail vocabulary; EN/RU/AZ namespace `adminStatementControls`, nav entry in `groupCompliance`). Honest verdicts by construction: `revisionId` null everywhere, `evidencedZero` used nowhere, absent components stay `evidence: null` (net change in cash / cash markers / RE markers / distributions → blocked by design), `net_income_link` gates on full `monthIndex` alignment + a `CURRENT_YEAR_RESULT_RE` equity match (regex now exported from `ifrs-checks.ts` — one-word change), `fx_translation` recomputes ONLY from `CurrencyRateHistory` (the ledger's `BudgetLine.exchangeRate` is never read). Under the provisional policy + null lineage `decisionEligible` is always false, so `decisionStatus` is mathematically never pass/fail — pinned by a sweep test. 36 new tests (adapter 25 + route 11); `tsc --noEmit` exit 0; i18n key parity (99 + 2 keys) verified across en/ru/az; no visual-gate file touched, no schema/migration, no writes anywhere in the new surface.
