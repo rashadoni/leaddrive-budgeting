@@ -3488,10 +3488,10 @@
   "adminLanding": {
     "pageTitle": "Admin Tools",
     "statsLine": "{total} tools across {groups} groups · {new} new.",
-    "groupDataIngestion": "Data ingestion",
-    "groupDataQuality": "Data quality",
-    "groupOperations": "🔒 Operations",
     "groupConfiguration": "Configuration",
+    "groupDataSources": "Data sources",
+    "groupDataControl": "Data control",
+    "groupDataOps": "Data & operations",
     "workflowTitle": "Data readiness review",
     "workflow": {
       "s1": "Indicator Health — review which indicators are computed and where data is missing.",
@@ -3590,9 +3590,7 @@
         "title": "Job queue",
         "desc": "Background job queue — recompute, imports, scheduled tasks."
       }
-    },
-    "groupDataLifecycle": "Data lifecycle",
-    "groupCompliance": "Compliance"
+    }
   },
   "adminCompaniesReadiness": {
     "pageTitle": "Company data readiness",

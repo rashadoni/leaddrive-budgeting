@@ -34,7 +34,7 @@ import {
 } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
-import { ADMIN_GROUPS } from "@/lib/nav/admin-tools"
+import { ADMIN_GROUPS, SIDEBAR_ADMIN_GROUPS } from "@/lib/nav/admin-tools"
 
 type NavItem = {
   href: string
@@ -63,8 +63,13 @@ type NavItem = {
 // names, not generic UI labels).
 // 2026-06-21 menu restructure: Risk Terminal first (the holding risk view is the
 // product centrepiece), the legacy Budgeting planner expands to its OWN tabs
-// only (admin links moved OUT — see the Admin row, which expands to the 5
-// ADMIN_GROUPS). `alerts` was an orphaned route (page existed, no nav entry).
+// only (admin links moved OUT — see the Admin row, which expands to the
+// settings-only ADMIN_GROUPS). `alerts` was an orphaned route (page existed, no
+// nav entry).
+// 2026-07-20 "admin = settings only": the Admin Tools row now expands to
+// settings/config ONLY; the operational + monitoring tools moved into two
+// always-visible, admin-gated sections rendered at the foot of the nav
+// (SIDEBAR_ADMIN_GROUPS).
 const navItems: NavItem[] = [
   { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" },
   { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
@@ -316,9 +321,10 @@ export function Sidebar() {
                 </div>
               )}
 
-              {/* Admin sub-navigation — the 5 ADMIN_GROUPS (single source of
-                  truth shared with the admin landing hub). Renders only inside
-                  /budgeting/admin/*, togglable, role-gated at the row level. */}
+              {/* Admin sub-navigation — the settings-only ADMIN_GROUPS (single
+                  source of truth shared with the admin landing hub). Renders
+                  only inside /budgeting/admin/*, togglable, role-gated at the
+                  row level. */}
               {item.href === "/budgeting/admin" && isAdminSection && adminExpanded && !collapsed && (
                 <div className="mt-1 ml-2 space-y-3 border-l border-white/10 pl-2">
                   {ADMIN_GROUPS.map((adminGroup) => (
@@ -354,6 +360,54 @@ export function Sidebar() {
             </div>
           )
         })}
+
+        {/* Data control + Data & operations — the financial / monitoring /
+            operational admin tools, surfaced as always-visible sections in the
+            main sidebar (no longer buried under the collapsible Admin Tools
+            row). Admin-only: gated with the SAME role check the Admin Tools nav
+            row uses (`minRole: "admin"` there → `hasRole(userRole, "admin")`
+            here), so non-admins never see these links. Each item keeps its
+            existing /budgeting/admin/* route + admin-only page guard — only its
+            nav LOCATION changed. `aiImport` stays the top-level shortcut, so
+            it's filtered out here to avoid a duplicate row. */}
+        {hasRole(userRole, "admin") &&
+          SIDEBAR_ADMIN_GROUPS.map((group) => {
+            const items = group.tools.filter(
+              (tool) => !topLevelAdminToolHrefs.has(tool.href),
+            )
+            if (items.length === 0) return null
+            return (
+              <div key={group.key} className="pt-2">
+                {!collapsed && (
+                  <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+                    {t2(group.key as never)}
+                  </p>
+                )}
+                {items.map((tool) => {
+                  const isToolActive =
+                    pathname === tool.href ||
+                    pathname.startsWith(tool.href + "/")
+                  return (
+                    <Link
+                      key={tool.href}
+                      href={tool.href}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
+                        isToolActive
+                          ? "bg-sidebar-active text-white font-medium"
+                          : "text-[hsl(var(--sidebar-text))] hover:bg-sidebar-hover hover:text-white",
+                      )}
+                    >
+                      <tool.icon className="h-5 w-5 shrink-0" />
+                      {!collapsed && (
+                        <span>{t2(`tools.${tool.key}.title` as never)}</span>
+                      )}
+                    </Link>
+                  )
+                })}
+              </div>
+            )
+          })}
       </nav>
 
     </aside>

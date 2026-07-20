@@ -3488,10 +3488,10 @@
   "adminLanding": {
     "pageTitle": "Админ-инструменты",
     "statsLine": "{total} инструментов в {groups} группах · {new} новых.",
-    "groupDataIngestion": "Загрузка данных",
-    "groupDataQuality": "Качество данных",
-    "groupOperations": "🔒 Операции",
     "groupConfiguration": "Конфигурация",
+    "groupDataSources": "Источники данных",
+    "groupDataControl": "Контроль данных",
+    "groupDataOps": "Данные и операции",
     "workflowTitle": "Проверка готовности данных",
     "workflow": {
       "s1": "Здоровье индикаторов — проверьте, какие индикаторы рассчитаны и где не хватает данных.",
@@ -3590,9 +3590,7 @@
         "title": "Очередь задач",
         "desc": "Фоновые задачи — пересчёт, импорты, плановые задания."
       }
-    },
-    "groupDataLifecycle": "Жизненный цикл данных",
-    "groupCompliance": "Комплаенс"
+    }
   },
   "adminCompaniesReadiness": {
     "pageTitle": "Готовность данных по компаниям",

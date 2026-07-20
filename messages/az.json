@@ -3488,10 +3488,10 @@
   "adminLanding": {
     "pageTitle": "Admin Alətləri",
     "statsLine": "{groups} qrupda {total} alət · {new} yeni.",
-    "groupDataIngestion": "Məlumat yükləmə",
-    "groupDataQuality": "Məlumat keyfiyyəti",
-    "groupOperations": "🔒 Əməliyyatlar",
     "groupConfiguration": "Konfiqurasiya",
+    "groupDataSources": "Data mənbələri",
+    "groupDataControl": "Data nəzarəti",
+    "groupDataOps": "Data və əməliyyatlar",
     "workflowTitle": "Məlumat hazırlığının yoxlanışı",
     "workflow": {
       "s1": "İndikatorların sağlamlığı — hansı indikatorların hesablandığını və harada məlumatın çatışmadığını yoxlayın.",
@@ -3590,9 +3590,7 @@
         "title": "Tapşırıq növbəsi",
         "desc": "Arxa fon tapşırıqları — yenidən hesablama, importlar, planlı tapşırıqlar."
       }
-    },
-    "groupDataLifecycle": "Məlumatın həyat dövrü",
-    "groupCompliance": "Uyğunluq"
+    }
   },
   "adminCompaniesReadiness": {
     "pageTitle": "Şirkət məlumatlarının hazırlığı",

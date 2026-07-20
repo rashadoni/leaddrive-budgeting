@@ -1,15 +1,16 @@
 /**
  * Phase 7.M Tier 4 (2026-05-19) — Admin landing page.
  *
- * Central hub showing all admin tools as discoverable cards. Card titles +
- * descriptions are fully localized (EN/RU/AZ) via `adminLanding.tools.*` so
- * the page never mixes languages with the UI chrome.
+ * Central hub for the settings/configuration admin tools as discoverable
+ * cards. Card titles + descriptions are fully localized (EN/RU/AZ) via
+ * `adminLanding.tools.*` so the page never mixes languages with the UI chrome.
  *
- * Cards grouped by workflow:
- *   • Data Ingestion — import / data entry / sources / registry
- *   • Data Quality — health / drift / readiness / archive / compliance / IFRS
- *   • Operations — periods / approvals / api keys / ai usage
- *   • Configuration — chart of accounts / companies / users
+ * 2026-07-20 "admin = settings only": this hub renders ONLY `ADMIN_GROUPS`
+ *   • Configuration — chart of accounts / companies / users / api keys / ai
+ *     usage / period locks
+ *   • Data sources — data-sources catalog / source registry
+ * The financial / monitoring / operational tools moved to the two
+ * always-visible, admin-gated sidebar sections (`SIDEBAR_ADMIN_GROUPS`).
  */
 import { redirect } from "next/navigation"
 import { getTranslations } from "next-intl/server"
