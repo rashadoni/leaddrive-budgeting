@@ -194,7 +194,7 @@ describe('HeatMap activity-aware indicator disclosure', () => {
     // is stable and its state is carried by
     // aria-pressed: pressed = non-applicable/empty columns are being hidden.
     const toggle = screen.getByRole('button', {
-      name: 'Hide non-applicable. 4 indicators hidden',
+      name: 'Show all. 4 indicators hidden',
     });
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
     expect(toggle.getAttribute('aria-controls')).toBe('risk-heatmap-table');
@@ -312,7 +312,7 @@ describe('HeatMap activity-aware indicator disclosure', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Hide non-applicable. 3 indicators hidden',
+        name: 'Show all. 3 indicators hidden',
       }),
     );
     await waitFor(() => expect(headerCodes()).toContain('AGRO_DISABLED'));
@@ -430,7 +430,7 @@ describe('HeatMap activity-aware indicator disclosure', () => {
     expect(headerCodes()).toEqual([]);
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Hide non-applicable. 1 indicators hidden',
+        name: 'Show all. 1 indicators hidden',
       }),
     );
     await waitFor(() =>
@@ -465,7 +465,7 @@ describe('HeatMap activity-aware indicator disclosure', () => {
 
     expect(
       screen.getAllByRole('button', {
-        name: 'Hide non-applicable. 4 indicators hidden',
+        name: 'Show all. 4 indicators hidden',
       }),
     ).toHaveLength(1);
     expect(screen.queryByTestId('hide-unknown-toggle')).toBeNull();
@@ -517,7 +517,7 @@ describe('HeatMap activity-aware indicator disclosure', () => {
     // Nothing is hidden — the universal indicator applies everywhere.
     expect(headerCodes()).toEqual(['IND_UNIVERSAL']);
 
-    const toggle = screen.getByRole('button', { name: 'Hide non-applicable' });
+    const toggle = screen.getByRole('button', { name: 'Show all' });
     expect(toggle).toBeTruthy();
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
     // No count suffix when there is nothing to count.
@@ -637,7 +637,7 @@ describe('HeatMap activity-aware indicator disclosure', () => {
     expect(headerCodes()).toEqual(['IND_REVENUE']);
     expect(headerCodes()).not.toContain('FX_IMPORTED_INPUT');
     const toggle = screen.getByRole('button', {
-      name: 'Hide non-applicable. 1 indicators hidden',
+      name: 'Show all. 1 indicators hidden',
     });
     expect(toggle.textContent).toContain('1');
 

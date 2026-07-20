@@ -1,4 +1,15 @@
 {
+  "helpVideo": {
+    "eyebrow": "Video tutorial",
+    "title": "Quick guide for this section",
+    "subtitle": "Open it when needed — it will not cover your work by default.",
+    "play": "Open video",
+    "minimize": "Minimize",
+    "close": "Close",
+    "unavailableTitle": "Video is not uploaded yet",
+    "unavailableBody": "The written step-by-step guide for this section is already available. When the video file is added, it will play here.",
+    "unavailableHint": "For now, open Help and follow the text tutorial."
+  },
   "industries": {
     "agro_crops": "Agro — Crops",
     "beverage": "Beverage",
@@ -1996,6 +2007,8 @@
       "noIndicatorsMatch": "No indicators match",
       "hideIrrelevantIndicators": "Hide non-applicable",
       "hideIrrelevantIndicatorsAriaCount": "Hide non-applicable. {count} indicators hidden",
+      "showAllIndicators": "Show all",
+      "showAllIndicatorsAriaCount": "Show all. {count} indicators hidden",
       "statusSummaryTitle": "Counts for the current decision surface: active, scoped operating companies and applicable indicators.",
       "showAllIndicatorsCollapsedHint": "Only indicators relevant to the current activity profile are shown. Applicable indicators with missing data remain visible.",
       "showAllIndicatorsExpandedHint": "The full indicator catalogue is shown; an active indicator search still narrows the table.",

@@ -219,17 +219,21 @@ export function HeatMap({ period }: Props) {
               : 'heatMap.showAllIndicatorsCollapsedHint',
           )}
           aria-label={
-            !showAllIndicators && hiddenIndicatorCount > 0
-              ? t('heatMap.hideIrrelevantIndicatorsAriaCount', {
-                  count: hiddenIndicatorCount,
-                })
+            !showAllIndicators
+              ? hiddenIndicatorCount > 0
+                ? t('heatMap.showAllIndicatorsAriaCount', {
+                    count: hiddenIndicatorCount,
+                  })
+                : t('heatMap.showAllIndicators')
               : t('heatMap.hideIrrelevantIndicators')
           }
           aria-pressed={!showAllIndicators}
           aria-controls="risk-heatmap-table"
           data-testid="show-all-indicators-toggle"
         >
-          {t('heatMap.hideIrrelevantIndicators')}
+          {!showAllIndicators
+            ? t('heatMap.showAllIndicators')
+            : t('heatMap.hideIrrelevantIndicators')}
           {!showAllIndicators && hiddenIndicatorCount > 0
             ? ` · ${hiddenIndicatorCount}`
             : ''}

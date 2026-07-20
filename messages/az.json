@@ -1,4 +1,15 @@
 {
+  "helpVideo": {
+    "eyebrow": "Video dərslik",
+    "title": "Bu bölməyə qısa baxış",
+    "subtitle": "Lazım olanda açın — iş ekranını örtməyəcək.",
+    "play": "Videonu aç",
+    "minimize": "Kiçilt",
+    "close": "Bağla",
+    "unavailableTitle": "Video hələ yüklənməyib",
+    "unavailableBody": "Bu bölmə üçün mətn təlimatı artıq mövcuddur. Video faylı əlavə ediləndə burada oynadılacaq.",
+    "unavailableHint": "Hələlik yardım bölməsindəki addım-addım təlimatdan istifadə edin."
+  },
   "industries": {
     "agro_crops": "Bitkiçilik",
     "beverage": "İçki istehsalı",
@@ -1996,6 +2007,8 @@
       "noIndicatorsMatch": "Sorğuya uyğun indikator yoxdur",
       "hideIrrelevantIndicators": "Uyğun olmayanları gizlət",
       "hideIrrelevantIndicatorsAriaCount": "Uyğun olmayanları gizlət. {count} indikator gizlədilib",
+      "showAllIndicators": "Hamısını göstər",
+      "showAllIndicatorsAriaCount": "Hamısını göstər. {count} indikator gizlədilib",
       "statusSummaryTitle": "Cari qərar səthi üzrə saylar: aktiv, əlçatan əməliyyat şirkətləri və uyğun indikatorlar.",
       "showAllIndicatorsCollapsedHint": "Yalnız cari fəaliyyət profilinə uyğun indikatorlar göstərilir. Uyğun, lakin məlumatı olmayan indikatorlar görünən qalır.",
       "showAllIndicatorsExpandedHint": "Tam indikator kataloqu göstərilir; aktiv indikator axtarışı cədvəli daraltmağa davam edir.",

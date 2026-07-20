@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { usePathname } from "next/navigation"
 import { Minimize2, Play, Video, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -30,45 +30,6 @@ interface StoredVideoState {
 
 const STATE_EVENT = "budgetpro:help-video-state"
 const OPEN_EVENT = "budgetpro:open-help-video"
-
-const LABELS = {
-  az: {
-    eyebrow: "Video dərslik",
-    title: "Bu bölməyə qısa baxış",
-    subtitle: "Lazım olanda açın — iş ekranını örtməyəcək.",
-    play: "Videonu aç",
-    minimize: "Kiçilt",
-    close: "Bağla",
-    unavailableTitle: "Video hələ yüklənməyib",
-    unavailableBody:
-      "Bu bölmə üçün mətn təlimatı artıq mövcuddur. Video faylı əlavə ediləndə burada oynadılacaq.",
-    unavailableHint: "Hələlik yardım bölməsindəki addım-addım təlimatdan istifadə edin.",
-  },
-  en: {
-    eyebrow: "Video tutorial",
-    title: "Quick guide for this section",
-    subtitle: "Open it when needed — it will not cover your work by default.",
-    play: "Open video",
-    minimize: "Minimize",
-    close: "Close",
-    unavailableTitle: "Video is not uploaded yet",
-    unavailableBody:
-      "The written step-by-step guide for this section is already available. When the video file is added, it will play here.",
-    unavailableHint: "For now, open Help and follow the text tutorial.",
-  },
-  ru: {
-    eyebrow: "Видео-инструкция",
-    title: "Короткий обзор раздела",
-    subtitle: "Откройте при необходимости — по умолчанию не закрывает рабочий экран.",
-    play: "Открыть видео",
-    minimize: "Свернуть",
-    close: "Закрыть",
-    unavailableTitle: "Видео ещё не загружено",
-    unavailableBody:
-      "Текстовая пошаговая инструкция для этого раздела уже доступна. Когда видео-файл будет добавлен, он откроется здесь.",
-    unavailableHint: "Пока откройте «Справка» и следуйте текстовому туториалу.",
-  },
-} as const
 
 function readStoredState(key: string): StoredVideoState {
   try {
@@ -121,9 +82,9 @@ export function HelpVideoLauncher() {
   const [posterFailedKey, setPosterFailedKey] = useState<string | null>(null)
   const [videoFailedKey, setVideoFailedKey] = useState<string | null>(null)
 
-  const labels = LABELS[locale]
+  const t = useTranslations("helpVideo")
   const assets = entry ? getHelpVideoAsset(entry, locale) : null
-  const title = entry ? formatHelpVideoTitle(entry.slug) : labels.title
+  const title = entry ? formatHelpVideoTitle(entry.slug) : t("title")
   const currentStorageKey = entry ? storageKey(entry, locale) : null
   const storedMode = useSyncExternalStore(
     subscribeToStoredState,
@@ -202,7 +163,7 @@ export function HelpVideoLauncher() {
                 type="button"
                 onClick={expand}
                 className="group relative aspect-video w-[112px] shrink-0 overflow-hidden rounded-lg text-left sm:w-[160px]"
-                aria-label={labels.play}
+                aria-label={t("play")}
               >
                 {posterFailed ? (
                   <span className="flex h-full w-full items-center justify-center bg-muted text-primary">
@@ -229,10 +190,10 @@ export function HelpVideoLauncher() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
                   <Video className="h-3.5 w-3.5" />
-                  <span>{labels.eyebrow}</span>
+                  <span>{t("eyebrow")}</span>
                 </div>
-                <p className="mt-0.5 line-clamp-1 break-words text-sm font-semibold leading-5">{title || labels.title}</p>
-                <p className="mt-0.5 line-clamp-1 hidden text-xs text-muted-foreground sm:block">{labels.subtitle}</p>
+                <p className="mt-0.5 line-clamp-1 break-words text-sm font-semibold leading-5">{title || t("title")}</p>
+                <p className="mt-0.5 line-clamp-1 hidden text-xs text-muted-foreground sm:block">{t("subtitle")}</p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <Button
@@ -243,7 +204,7 @@ export function HelpVideoLauncher() {
                   onClick={expand}
                 >
                   <Play className="h-3.5 w-3.5 fill-current" />
-                  {labels.play}
+                  {t("play")}
                 </Button>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -253,12 +214,12 @@ export function HelpVideoLauncher() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={close}
-                      aria-label={labels.close}
+                      aria-label={t("close")}
                     >
                       <X className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>{labels.close}</TooltipContent>
+                  <TooltipContent>{t("close")}</TooltipContent>
                 </Tooltip>
               </div>
             </div>
@@ -287,10 +248,10 @@ export function HelpVideoLauncher() {
             <div className="min-w-0">
               <div className="mb-1 flex items-center gap-2 text-xs font-medium text-primary">
                 <Video className="h-3.5 w-3.5" />
-                <span>{labels.eyebrow}</span>
+                <span>{t("eyebrow")}</span>
               </div>
               <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5">
-                {title || labels.title}
+                {title || t("title")}
               </h2>
             </div>
             <div className="flex shrink-0 items-center gap-1">
@@ -302,12 +263,12 @@ export function HelpVideoLauncher() {
                     size="icon"
                     className="h-8 w-8"
                     onClick={minimize}
-                    aria-label={labels.minimize}
+                    aria-label={t("minimize")}
                   >
                     <Minimize2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{labels.minimize}</TooltipContent>
+                <TooltipContent>{t("minimize")}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -317,12 +278,12 @@ export function HelpVideoLauncher() {
                     size="icon"
                     className="h-8 w-8"
                     onClick={close}
-                    aria-label={labels.close}
+                    aria-label={t("close")}
                   >
                     <X className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{labels.close}</TooltipContent>
+                <TooltipContent>{t("close")}</TooltipContent>
               </Tooltip>
             </div>
           </div>
@@ -332,9 +293,9 @@ export function HelpVideoLauncher() {
                 <Video className="h-6 w-6" />
               </span>
               <div className="max-w-md">
-                <p className="text-sm font-semibold text-foreground">{labels.unavailableTitle}</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">{labels.unavailableBody}</p>
-                <p className="mt-3 text-xs font-medium text-primary">{labels.unavailableHint}</p>
+                <p className="text-sm font-semibold text-foreground">{t("unavailableTitle")}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("unavailableBody")}</p>
+                <p className="mt-3 text-xs font-medium text-primary">{t("unavailableHint")}</p>
               </div>
             </div>
           ) : (
