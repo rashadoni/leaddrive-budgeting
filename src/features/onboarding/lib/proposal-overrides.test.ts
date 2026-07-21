@@ -4,17 +4,20 @@ import {
   diffColumnOverrides,
   buildUserOverrides,
   confidenceBand,
+  ROLE_OPTIONS,
 } from "./proposal-overrides"
 
 const col = (
   i: number,
   role: ColumnMappingProposal["role"],
   conf = 0.9,
+  currencyCode?: string,
 ): ColumnMappingProposal => ({
   sourceIndex: i,
   role,
   confidence: conf,
   reasoning: "AI",
+  currencyCode,
 })
 
 describe("diffColumnOverrides", () => {
@@ -57,6 +60,25 @@ describe("diffColumnOverrides", () => {
     expect(diff).toHaveLength(1)
     expect(diff[0].sourceIndex).toBe(5)
     expect(diff[0].reasoning).toBe("Manual override")
+  })
+
+  it("preserves a manual currencyCode change even when the role stays the same", () => {
+    const orig = [col(0, "amount:Jan", 0.9, "AZN")]
+    const edited = [col(0, "amount:Jan", 0.9, "USD")]
+
+    expect(diffColumnOverrides(orig, edited)).toMatchObject([
+      { sourceIndex: 0, role: "amount:Jan", currencyCode: "USD" },
+    ])
+  })
+})
+
+describe("ROLE_OPTIONS", () => {
+  it("offers per-row currency evidence and every source amount month", () => {
+    const values = ROLE_OPTIONS.map((option) => option.value)
+    expect(values).toContain("currency")
+    expect(values).toContain("exchangeRate")
+    expect(values).toContain("sourceAmount:Jan")
+    expect(values).toContain("sourceAmount:Dec")
   })
 })
 

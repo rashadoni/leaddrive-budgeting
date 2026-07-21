@@ -832,6 +832,64 @@ describe('resolveColumns — currency selection (Phase C C3.2)', () => {
   })
 })
 
+describe('applyProposal — per-row currency evidence', () => {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+  it('carries mixed row currency, source amounts and historical rate to the generic writer', () => {
+    const wb = makeWorkbook([
+      ['Code', 'Label', 'Currency', 'Rate', ...months.map((m) => `Base ${m}`), ...months.map((m) => `Source ${m}`)],
+      ['601', 'Export', 'USD', 1.7, ...Array(12).fill(170), ...Array(12).fill(100)],
+      ['602', 'Domestic', null, null, ...Array(12).fill(50), ...Array(12).fill(null)],
+    ])
+    const proposal = buildProposal([
+      { sourceIndex: 0, role: 'code', confidence: 1, reasoning: '' },
+      { sourceIndex: 1, role: 'label', confidence: 1, reasoning: '' },
+      { sourceIndex: 2, role: 'currency', confidence: 1, reasoning: '' },
+      { sourceIndex: 3, role: 'exchangeRate', confidence: 1, reasoning: '' },
+      ...months.map((m, i) => ({ sourceIndex: 4 + i, role: `amount:${m}` as const, confidence: 1, reasoning: '' })),
+      ...months.map((m, i) => ({ sourceIndex: 16 + i, role: `sourceAmount:${m}` as const, confidence: 1, reasoning: '', currencyCode: 'USD' })),
+    ])
+    const result = applyProposal(wb, 'Sheet1', proposal, XLSX)
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.lines[0]?.currencyEvidence).toEqual({
+      currencyCode: 'USD', exchangeRate: 1.7, originalPerMonth: Array(12).fill(100),
+    })
+    expect(result.lines[1]?.currencyEvidence).toMatchObject({ currencyCode: null, exchangeRate: null })
+  })
+
+  it('rejects ambiguous sourceAmount currencies unless a row currency column disambiguates them', () => {
+    const columns: ColumnMappingProposal[] = [
+      { sourceIndex: 0, role: 'code', confidence: 1, reasoning: '' },
+      { sourceIndex: 1, role: 'label', confidence: 1, reasoning: '' },
+      ...months.map((m, i) => ({ sourceIndex: 2 + i, role: `amount:${m}` as const, confidence: 1, reasoning: '' })),
+      ...months.map((m, i) => ({ sourceIndex: 14 + i, role: `sourceAmount:${m}` as const, confidence: 1, reasoning: '', currencyCode: i === 0 ? 'USD' : 'EUR' })),
+    ]
+    const result = resolveColumns(columns)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toMatch(/multiple currencies/i)
+  })
+
+  it('rejects source amounts and rate when no row/header ISO currency is mapped', () => {
+    const wb = makeWorkbook([
+      ['Code', 'Label', 'Rate', ...months.map((m) => `Base ${m}`), ...months.map((m) => `Source ${m}`)],
+      ['601', 'Export', 1.7, ...Array(12).fill(170), ...Array(12).fill(100)],
+    ])
+    const proposal = buildProposal([
+      { sourceIndex: 0, role: 'code', confidence: 1, reasoning: '' },
+      { sourceIndex: 1, role: 'label', confidence: 1, reasoning: '' },
+      { sourceIndex: 2, role: 'exchangeRate', confidence: 1, reasoning: '' },
+      ...months.map((m, i) => ({ sourceIndex: 3 + i, role: `amount:${m}` as const, confidence: 1, reasoning: '' })),
+      ...months.map((m, i) => ({ sourceIndex: 15 + i, role: `sourceAmount:${m}` as const, confidence: 1, reasoning: '' })),
+    ])
+
+    const result = applyProposal(wb, 'Sheet1', proposal, XLSX)
+    expect(result).toEqual({
+      error: expect.stringMatching(/source amount\/rate evidence but no explicit source currency/i),
+    })
+  })
+})
+
 describe('applyProposal — numeric/date-serial header (C2.5)', () => {
   const serials = [45658, 45689, 45717, 45748, 45778, 45809, 45839, 45870, 45901, 45931, 45962, 45992]
   const mcols = (): ColumnMappingProposal[] => [

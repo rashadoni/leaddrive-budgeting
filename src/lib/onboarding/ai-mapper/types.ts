@@ -50,26 +50,52 @@ export interface ColumnMappingProposal {
    *     routes each row to a company (Phase C multi-company-in-one-sheet).
    *     `resolveColumns` ignores it for code/label/month resolution; the
    *     per-entity split parser (`entity-split.ts`) groups rows by it.
+   *   - `'currency'` / `'exchangeRate'` — row-level source ISO currency and
+   *     historical rate evidence for a foreign amount.
+   *   - `'sourceAmount:<period>'` — row-level source-currency counterpart of
+   *     the reported/base `amount:<period>` column. Foreign rows need all
+   *     three evidence classes; the generic apply path rejects otherwise.
    *   - `'skip'` — column should be ignored (notes, dates, formulas, etc.)
    */
   role:
     | 'code'
     | 'label'
     | `amount:${string}`
+    | `sourceAmount:${string}`
     | 'entity'
+    | 'currency'
+    | 'exchangeRate'
     | 'skip';
   /** 0..1 confidence score from the LLM. Below 0.6 → ask user to confirm. */
   confidence: number;
   /** One-line LLM-generated reasoning (short, for UI tooltip). */
   reasoning: string;
   /**
-   * Phase C C3.2 — optional ISO currency of an `amount:*` column (e.g. "USD",
-   * "AZN"). Set when the sheet carries the SAME period in MORE than one
-   * currency (reporting + local). `resolveColumns` selects one currency
-   * (`preferCurrency`) instead of colliding on "two Jans"; the chosen currency
-   * tags `BudgetLine.currencyCode`. Absent for single-currency sheets.
+   * Optional explicit ISO currency from an `amount:*` or `sourceAmount:*`
+   * header. Reporting amounts use it to disambiguate parallel columns;
+   * source amounts use it when there is no row-level `currency` column.
+   * Never infer it when the source header does not identify a currency.
    */
   currencyCode?: string;
+}
+
+/** Runtime boundary check for provider JSON before it becomes a proposal. */
+export function isMapperColumnRole(value: unknown): value is ColumnMappingProposal["role"] {
+  return (
+    value === "code" ||
+    value === "label" ||
+    value === "entity" ||
+    value === "currency" ||
+    value === "exchangeRate" ||
+    value === "skip" ||
+    (typeof value === "string" &&
+      ((value.startsWith("amount:") && value.length > "amount:".length) ||
+        (value.startsWith("sourceAmount:") && value.length > "sourceAmount:".length)))
+  )
+}
+
+export function isIsoCurrencyCode(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Z]{3}$/i.test(value.trim())
 }
 
 /** A single anomaly found by the LLM during analysis. */

@@ -621,6 +621,82 @@ describe('dedupeParentRollups', () => {
     expect(synthetic.map((s) => s.code)).toEqual([synCode]);
   });
 
+  it('preserves reconcilable foreign evidence on a synthetic __UNALLOCATED__ row', () => {
+    const withUsd = (code: string, baseAmount: number, sourceAmount: number) => ({
+      ...line(code, 'expense', baseAmount),
+      currencyEvidence: {
+        currencyCode: 'USD',
+        exchangeRate: 2,
+        originalPerMonth: Array.from({ length: 12 }, () => sourceAmount / 12),
+      },
+    });
+    const input = [
+      withUsd('721-02', 1000, 500),
+      withUsd('721-02-01', 600, 300),
+      withUsd('721-02-02', 200, 100),
+    ];
+
+    const result = dedupeParentRollups(input);
+    const synthetic = result.kept.find((item) => item.code.endsWith('__UNALLOCATED__'));
+    expect(synthetic?.plannedAnnual).toBe(200);
+    expect(synthetic?.currencyEvidence).toMatchObject({
+      currencyCode: 'USD',
+      exchangeRate: 2,
+    });
+    expect(
+      synthetic?.currencyEvidence?.originalPerMonth?.reduce<number>(
+        (sum, value) => sum + (value ?? 0),
+        0,
+      ),
+    ).toBeCloseTo(100, 8);
+  });
+
+  it('keeps a domestic synthetic row valid when mixed-sheet source cells are blank', () => {
+    const domestic = (code: string, amount: number) => ({
+      ...line(code, 'expense', amount),
+      currencyEvidence: {
+        currencyCode: 'AZN',
+        exchangeRate: null,
+        originalPerMonth: Array<number | null>(12).fill(null),
+      },
+    });
+
+    const result = dedupeParentRollups([
+      domestic('721-02', 1000),
+      domestic('721-02-01', 600),
+      domestic('721-02-02', 200),
+    ]);
+    const synthetic = result.kept.find((item) => item.code.endsWith('__UNALLOCATED__'));
+    expect(synthetic?.currencyEvidence).toEqual({ currencyCode: 'AZN' });
+  });
+
+  it('fails closed when synthetic remainder FX evidence is mixed or incomplete', () => {
+    const parent = {
+      ...line('721-02', 'expense', 1000),
+      currencyEvidence: {
+        currencyCode: 'USD',
+        exchangeRate: 2,
+        originalPerMonth: Array.from({ length: 12 }, () => 500 / 12),
+      },
+    };
+    const childWithDifferentRate = {
+      ...line('721-02-01', 'expense', 600),
+      currencyEvidence: {
+        currencyCode: 'USD',
+        exchangeRate: 1.9,
+        originalPerMonth: Array.from({ length: 12 }, () => 300 / 12),
+      },
+    };
+    const childWithoutEvidence = line('721-02-02', 'expense', 200);
+
+    expect(() => dedupeParentRollups([parent, childWithDifferentRate])).toThrow(
+      /inconsistent historical rates/i,
+    );
+    expect(() => dedupeParentRollups([parent, childWithoutEvidence])).toThrow(
+      /cannot be reconciled/i,
+    );
+  });
+
   it('reconciliation — children OVER parent → partial subtotal: trust children, no synthetic, warn (2026-06-25)', () => {
     // Parent 800, children sum 1000 → children OVERSHOOT by 200. The parent is a
     // PARTIAL subtotal that excludes some of its own coded children (verified on

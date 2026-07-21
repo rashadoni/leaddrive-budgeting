@@ -79,7 +79,7 @@ describe('applyParsedLinesToCompany', () => {
   });
 
   it('caches CoA lookups — one findUnique per distinct code, not per row', async () => {
-    const { tx } = txSpy();
+    const { tx, deleteWheres } = txSpy();
     await applyParsedLinesToCompany(tx as never, {
       organizationId: 'org1',
       planId: 'plan1',
@@ -88,5 +88,31 @@ describe('applyParsedLinesToCompany', () => {
       baseCurrencyCode: 'AZN',
     });
     expect(tx.chartOfAccount.findUnique).toHaveBeenCalledTimes(2); // 2 distinct codes
+  });
+
+  it('persists proven foreign source amounts separately from base amounts', async () => {
+    const { tx, budgetLineCreates } = txSpy();
+    const foreign: ParsedBudgetLine[] = [{
+      code: '601-01', label: 'Export', accountType: 'revenue', plannedAnnual: 2040,
+      perMonth: Array(12).fill(170),
+      currencyEvidence: {
+        currencyCode: 'USD', exchangeRate: 1.7, originalPerMonth: Array(12).fill(100),
+      },
+    }];
+    await applyParsedLinesToCompany(tx as never, {
+      organizationId: 'org1', planId: 'plan1', companyId: 'coA', lines: foreign, baseCurrencyCode: 'AZN',
+    });
+    expect(budgetLineCreates[0]).toMatchObject({
+      plannedAmount: 170, originalAmount: 100, currencyCode: 'USD', exchangeRate: 1.7,
+    });
+  });
+
+  it('fails closed for a foreign sheet tag without source/rate evidence', async () => {
+    const { tx, deleteWheres } = txSpy();
+    await expect(applyParsedLinesToCompany(tx as never, {
+      organizationId: 'org1', planId: 'plan1', companyId: 'coA', lines,
+      baseCurrencyCode: 'AZN', defaultCurrencyCode: 'USD',
+    })).rejects.toThrow(/source amount/i);
+    expect(deleteWheres).toHaveLength(0);
   });
 });

@@ -66,6 +66,11 @@ import {
 import type { ParseResult, ParsedBudgetLine } from "@/lib/onboarding/adapters/azmade-sopl"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
+import {
+  assertParsedLinesCurrencyEvidence,
+  assertReportingCurrencyMatchesBase,
+  normalizeParsedLineCurrencyEvidence,
+} from "@/lib/onboarding/ai-mapper/currency-evidence"
 import { extractMapperInput } from "@/lib/onboarding/ai-mapper/extract"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
 import { verifyStagedWorkbookContent } from "@/lib/onboarding/ai-mapper/workbook-content-hash"
@@ -485,6 +490,28 @@ export async function POST(
     }
   }
 
+  try {
+    for (const sheetResult of multiResult.perSheet) {
+      if ("error" in sheetResult) continue
+      assertReportingCurrencyMatchesBase(
+        sheetResult.result.resolvedCurrency,
+        baseCurrencyCode,
+      )
+      assertParsedLinesCurrencyEvidence(
+        sheetResult.result.lines,
+        baseCurrencyCode,
+      )
+    }
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: "Импорт заблокирован: недостаточно доказательств валюты для foreign-строк.",
+        reason: error instanceof Error ? error.message : "invalid_currency_evidence",
+      },
+      { status: 422 },
+    )
+  }
+
   // Worst verdict across sheets + mismatching rows tagged by sheet name.
   const aggVerdict: "green" | "yellow" | "red" = sheetControls.some(
     (s) => s.report.verdict === "red",
@@ -756,6 +783,12 @@ export async function POST(
 
           for (let monthIdx = 0; monthIdx < 12; monthIdx += 1) {
             const monthlyAmount = line.perMonth[monthIdx] ?? 0
+            const currency = normalizeParsedLineCurrencyEvidence({
+              plannedAmount: monthlyAmount,
+              monthIndex: monthIdx,
+              baseCurrencyCode,
+              evidence: line.currencyEvidence,
+            })
             const data: Prisma.BudgetLineUncheckedCreateInput = {
               organizationId: orgIdLocal,
               planId: plan.id,
@@ -763,12 +796,14 @@ export async function POST(
               accountId: coaId,
               department: null,
               lineType,
-              plannedAmount: monthlyAmount,
+              plannedAmount: currency.plannedAmount,
+              originalAmount: currency.originalAmount,
+              exchangeRate: currency.exchangeRate,
               sortOrder: monthIdx,
               monthIndex: monthIdx,
               isAutoPlanned: false,
               isAutoActual: false,
-              currencyCode: baseCurrencyCode,
+              currencyCode: currency.currencyCode,
             }
             await tx.budgetLine.create({ data })
           }

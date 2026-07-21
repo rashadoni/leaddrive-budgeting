@@ -55,6 +55,11 @@ import { currentBakuYearNumber } from '@/lib/risk/periods';
 import { ensureDataRevision } from '@/lib/risk/data-revision-writer';
 import { buildImportRevisionScope } from '@/lib/risk/import-lineage';
 import type { MappingProposal } from '@/lib/onboarding/ai-mapper/types';
+import {
+  assertParsedLinesCurrencyEvidence,
+  assertReportingCurrencyMatchesBase,
+  normalizeParsedLineCurrencyEvidence,
+} from '@/lib/onboarding/ai-mapper/currency-evidence';
 import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 export const maxDuration = 60;
@@ -377,6 +382,31 @@ export async function POST(
     return NextResponse.json({ error: applyResult.error }, { status: 400 });
   }
 
+  const companyId = staging.companyId;
+  const companyForCurrency = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { baseCurrencyCode: true },
+  });
+  const companyBaseCurrencyCode = companyForCurrency?.baseCurrencyCode ?? 'AZN';
+  try {
+    assertReportingCurrencyMatchesBase(
+      applyResult.resolvedCurrency,
+      companyBaseCurrencyCode,
+    );
+    assertParsedLinesCurrencyEvidence(
+      applyResult.lines,
+      companyBaseCurrencyCode,
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: 'Импорт заблокирован: недостаточно доказательств валюты для foreign-строк.',
+        reason: error instanceof Error ? error.message : 'invalid_currency_evidence',
+      },
+      { status: 422 },
+    );
+  }
+
   // Dry-run early-return — before opening the prisma transaction.
   // Computes the same diagnostics shape the real apply would emit, plus
   // a `wouldBeDeleted` count derived from the existing plan (if any),
@@ -516,22 +546,6 @@ export async function POST(
   // delete + ChartOfAccount upsert + line insert + staging.status='applied'
   // all atomic — if any insert fails, ALL changes roll back.
   const orgIdLocal = orgId;
-  const companyId = staging.companyId;
-
-  // Phase 7.G Turn XXXIX (L1 closure): tag every inserted BudgetLine with
-  // the company's baseCurrencyCode so FX_IMPORTED_INPUT can detect
-  // imported (non-base-currency) lines correctly. Pre-Turn-XXXIX behavior
-  // landed BudgetLine.currencyCode as NULL, making the indicator
-  // structurally return 0% for any company onboarded via this path.
-  const companyForCurrency = await prisma.company.findUnique({
-    where: { id: companyId },
-    select: { baseCurrencyCode: true },
-  });
-  // Phase C C3.2 — tag with the sheet's resolved currency when it specified
-  // one (e.g. an imported USD sheet → currencyCode "USD", which lets
-  // FX_IMPORTED_INPUT flag it as non-base); else the company base currency.
-  const baseCurrencyCode =
-    applyResult.resolvedCurrency ?? companyForCurrency?.baseCurrencyCode ?? 'AZN';
   // The mapping actually applied: the staged proposal merged with whatever the
   // reviewer overrode. Computed once and used twice — to fingerprint this
   // import's lineage below, and to save the approved template after commit —
@@ -635,6 +649,12 @@ export async function POST(
           // plannedAmount values; they are NOT auto-planned.
           for (let monthIdx = 0; monthIdx < 12; monthIdx += 1) {
             const monthlyAmount = line.perMonth[monthIdx] ?? 0;
+            const currency = normalizeParsedLineCurrencyEvidence({
+              plannedAmount: monthlyAmount,
+              monthIndex: monthIdx,
+              baseCurrencyCode: companyBaseCurrencyCode,
+              evidence: line.currencyEvidence,
+            });
             const data: Prisma.BudgetLineUncheckedCreateInput = {
               organizationId: orgIdLocal,
               planId: plan.id,
@@ -642,19 +662,16 @@ export async function POST(
               accountId: coaId,
               department: null,
               lineType,
-              plannedAmount: monthlyAmount,
+              plannedAmount: currency.plannedAmount,
+              originalAmount: currency.originalAmount,
+              exchangeRate: currency.exchangeRate,
               sortOrder: monthIdx,
               // Phase 7.G Turn XL (A.1): explicit 0-indexed month (Jan=0..Dec=11).
               // Resolvers prefer this over `sortOrder % 100` when present.
               monthIndex: monthIdx,
               isAutoPlanned: false,
               isAutoActual: false,
-              // Phase 7.G Turn XXXIX (L1 closure): tag with the company's
-              // base currency. FX-imported lines (different currency than
-              // base) are not yet auto-detected by the AI mapper —
-              // future-work to extract `amount:<currency-suffix>` semantics
-              // from the proposal columns.
-              currencyCode: baseCurrencyCode,
+              currencyCode: currency.currencyCode,
             };
             await tx.budgetLine.create({ data });
           }

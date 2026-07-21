@@ -41,6 +41,10 @@ import {
   findEntityColumn,
 } from '@/lib/onboarding/ai-mapper/entity-split';
 import { applyParsedLinesToCompany } from '@/lib/onboarding/ai-mapper/apply-lines';
+import {
+  assertParsedLinesCurrencyEvidence,
+  assertReportingCurrencyMatchesBase,
+} from '@/lib/onboarding/ai-mapper/currency-evidence';
 import { SKIP_ENTITY } from '@/lib/onboarding/ai-mapper/entity-resolve';
 import { computeControlTotals } from '@/lib/onboarding/ai-mapper/control-totals';
 import { validateImport } from '@/lib/onboarding/ai-mapper/validate-import';
@@ -422,6 +426,30 @@ export async function POST(
   const assigned = toWrite.map((p) => entityMap[p.entityValue]).filter((v): v is string => !!v);
   const dupCompanyIds = assigned.filter((id, i) => assigned.indexOf(id) !== i);
 
+  try {
+    for (const p of toWrite) {
+      const companyId = entityMap[p.entityValue];
+      if (!companyId || !inOrgIds.has(companyId)) continue;
+      const baseCurrencyCode = baseCurrencyByCompany.get(companyId) ?? 'AZN';
+      assertReportingCurrencyMatchesBase(
+        p.result.resolvedCurrency,
+        baseCurrencyCode,
+      );
+      assertParsedLinesCurrencyEvidence(
+        p.result.lines,
+        baseCurrencyCode,
+      );
+    }
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: 'Импорт заблокирован: недостаточно доказательств валюты для foreign-строк.',
+        reason: error instanceof Error ? error.message : 'invalid_currency_evidence',
+      },
+      { status: 422 },
+    );
+  }
+
   // ── Dry-run preview — advisory, never blocks ────────────────────────────
   if (dryRun) {
     // wouldDelete is counted ONLY when updating an existing plan; a fresh plan
@@ -625,7 +653,7 @@ export async function POST(
             // Phase C C3.2 — tag the sheet's resolved currency when present,
             // else the company base.
             baseCurrencyCode:
-              p.result.resolvedCurrency ?? baseCurrencyByCompany.get(companyId) ?? 'AZN',
+              baseCurrencyByCompany.get(companyId) ?? 'AZN',
           });
           reports.push({ entityValue: p.entityValue, companyId, inserted, deleted });
         }

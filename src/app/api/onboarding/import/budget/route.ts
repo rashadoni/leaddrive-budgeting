@@ -47,6 +47,10 @@ import {
   parseSummaryRollupSheet,
   type ParsedBudgetLine,
 } from "@/lib/onboarding/adapters/azmade-sopl"
+import {
+  assertParsedLinesCurrencyEvidence,
+  normalizeParsedLineCurrencyEvidence,
+} from "@/lib/onboarding/ai-mapper/currency-evidence"
 import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 export const maxDuration = 60
@@ -178,7 +182,14 @@ export async function POST(request: NextRequest) {
   // on cross-tenant attempts before touching xlsx).
   const company = await prisma.company.findFirst({
     where: { id: companyIdRaw.trim(), organizationId: orgId },
-    select: { id: true, code: true, name: true, industry: true, level: true },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      industry: true,
+      level: true,
+      baseCurrencyCode: true,
+    },
   })
   if (!company) {
     return NextResponse.json(
@@ -253,6 +264,24 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // Validate all optional source/base/rate evidence before the replacement
+  // transaction starts. A bad foreign row must never reach deleteMany.
+  const companyBaseCurrencyCode = company.baseCurrencyCode ?? "AZN"
+  try {
+    assertParsedLinesCurrencyEvidence(
+      parseResult.lines,
+      companyBaseCurrencyCode,
+    )
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error: "Import blocked: invalid currency evidence",
+        reason: err instanceof Error ? err.message : String(err),
+      },
+      { status: 422 },
+    )
+  }
+
   // Transactional replace + auto-recompute. See jsdoc above for the
   // safety contract (delete-then-insert + atomic rollback).
   let result: ApplyResult
@@ -296,7 +325,15 @@ export async function POST(request: NextRequest) {
             line,
             coaCache,
           )
-          await insertBudgetLineTx(tx, orgId, plan.id, company.id, accountId, line)
+          await insertBudgetLineTx(
+            tx,
+            orgId,
+            plan.id,
+            company.id,
+            accountId,
+            line,
+            companyBaseCurrencyCode,
+          )
           inserted += 1
         }
 
@@ -462,6 +499,7 @@ async function insertBudgetLineTx(
   companyId: string,
   accountId: string,
   parsed: ParsedBudgetLine,
+  baseCurrencyCode: string,
 ): Promise<void> {
   const lineType: "revenue" | "cogs" | "expense" =
     parsed.accountType === "revenue" || parsed.accountType === "cogs"
@@ -475,6 +513,12 @@ async function insertBudgetLineTx(
   // NOT auto-planned.
   for (let monthIdx = 0; monthIdx < 12; monthIdx += 1) {
     const monthlyAmount = parsed.perMonth[monthIdx] ?? 0
+    const currency = normalizeParsedLineCurrencyEvidence({
+      plannedAmount: monthlyAmount,
+      monthIndex: monthIdx,
+      baseCurrencyCode,
+      evidence: parsed.currencyEvidence,
+    })
     await tx.budgetLine.create({
       data: {
         organizationId,
@@ -484,7 +528,10 @@ async function insertBudgetLineTx(
         category: parsed.code,
         department: null,
         lineType,
-        plannedAmount: monthlyAmount,
+        plannedAmount: currency.plannedAmount,
+        originalAmount: currency.originalAmount,
+        exchangeRate: currency.exchangeRate,
+        currencyCode: currency.currencyCode,
         sortOrder: monthIdx,
         // Phase 7.G Turn XL (A.1): explicit 0-indexed month for sparkline
         // + per-month aggregation (replaces sortOrder % 100 heuristic).

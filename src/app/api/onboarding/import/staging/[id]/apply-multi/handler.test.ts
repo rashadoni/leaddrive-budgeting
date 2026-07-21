@@ -725,6 +725,37 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — ?dryRun=true"
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
 
+  it("dryRun rejects incomplete foreign evidence before any replacement transaction", async () => {
+    applierMocks.applyMultiSheetProposal.mockReturnValue({
+      perSheet: [{
+        sheetName: "P&L",
+        result: {
+          sheetName: "P&L",
+          resolvedCurrency: "AZN",
+          lines: [{
+            code: "601-01",
+            label: "Export",
+            accountType: "revenue",
+            plannedAnnual: 2040,
+            perMonth: Array(12).fill(170),
+            currencyEvidence: {
+              currencyCode: "USD",
+              originalPerMonth: Array(12).fill(100),
+            },
+          }],
+          warnings: [],
+          skippedRowCount: 0,
+          parentRollupsDropped: [],
+          parentRollupsUnallocated: [],
+        },
+      }],
+    })
+
+    const res = await POST(await makeRequest({ dryRun: true }), paramsFor(STAGING_ID))
+    expect(res.status).toBe(422)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+
   it("L7 — emits EBITDA with D&A add-back from 703-11 / 721-11 codes", async () => {
     // Re-stub applier to include a D&A line so we exercise the add-back.
     applierMocks.applyMultiSheetProposal.mockReturnValue({

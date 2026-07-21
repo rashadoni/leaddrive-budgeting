@@ -111,6 +111,12 @@ export interface ParsedBudgetLine {
   accountType: AccountType;
   plannedAnnual: number;
   perMonth: number[]; // length 12, index 0=Jan ... 11=Dec
+  /** Optional generic-mapper source-currency provenance. Absent means base. */
+  currencyEvidence?: {
+    currencyCode?: string | null;
+    exchangeRate?: number | null;
+    originalPerMonth?: Array<number | null>;
+  };
 }
 
 export interface ParseWarning {
@@ -785,6 +791,84 @@ export function dedupeParentRollups(
       (l) => isChildOf(l.code, parent) && isTopmostDescendantOf(l.code, parent),
     );
   };
+
+  /**
+   * A synthetic remainder is still source data, not a new base-currency fact.
+   * Preserve its FX evidence only when parent and every contributing child use
+   * one reconcilable source currency/rate. Any mixed or incomplete evidence is
+   * ambiguous, so fail closed instead of silently relabelling the remainder.
+   */
+  const deriveUnallocatedCurrencyEvidence = (
+    parent: ParsedBudgetLine,
+    children: ParsedBudgetLine[],
+  ): ParsedBudgetLine['currencyEvidence'] => {
+    const participants = [parent, ...children];
+    const evidence = participants.map((line) => line.currencyEvidence);
+    if (evidence.every((item) => item === undefined)) return undefined;
+    if (evidence.some((item) => item === undefined)) {
+      throw new Error(
+        `Currency evidence for ${parent.code} cannot be reconciled across parent and children`,
+      );
+    }
+
+    const complete = evidence as NonNullable<ParsedBudgetLine['currencyEvidence']>[];
+    const currencies = new Set(
+      complete.map((item) => item.currencyCode?.trim().toUpperCase() ?? ''),
+    );
+    if (currencies.size !== 1 || currencies.has('')) {
+      throw new Error(
+        `Currency evidence for ${parent.code} mixes or omits source currencies`,
+      );
+    }
+
+    const rates = complete.map((item) => item.exchangeRate ?? null);
+    const allWithoutSourceAmounts = complete.every(
+      (item) =>
+        item.exchangeRate == null &&
+        (item.originalPerMonth === undefined ||
+          item.originalPerMonth.every((value) => value == null)),
+    );
+    if (allWithoutSourceAmounts) {
+      return { currencyCode: complete[0].currencyCode };
+    }
+
+    if (
+      rates.some((rate) => rate == null || !Number.isFinite(rate) || rate <= 0) ||
+      rates.some((rate) => Math.abs((rate as number) - (rates[0] as number)) > 1e-12)
+    ) {
+      throw new Error(
+        `Currency evidence for ${parent.code} has missing or inconsistent historical rates`,
+      );
+    }
+    if (
+      complete.some(
+        (item) =>
+          item.originalPerMonth?.length !== 12 ||
+          item.originalPerMonth.some((value) => value == null || !Number.isFinite(value)),
+      )
+    ) {
+      throw new Error(
+        `Currency evidence for ${parent.code} has incomplete source amounts`,
+      );
+    }
+
+    const originalPerMonth = new Array<number>(12).fill(0).map((_, monthIndex) => {
+      const parentAmount = complete[0].originalPerMonth?.[monthIndex] as number;
+      const childAmount = complete
+        .slice(1)
+        .reduce(
+          (sum, item) => sum + (item.originalPerMonth?.[monthIndex] as number),
+          0,
+        );
+      return parentAmount - childAmount;
+    });
+
+    return {
+      currencyCode: complete[0].currencyCode,
+      exchangeRate: rates[0],
+      originalPerMonth,
+    };
+  };
   const kept: ParsedBudgetLine[] = [];
   const dropped: Array<{ code: string; label: string; plannedAnnual: number }> = [];
   const synthetic: Array<{ code: string; parentCode: string; plannedAnnual: number }> = [];
@@ -866,12 +950,14 @@ export function dedupeParentRollups(
     const unallocatedPerMonth = l.perMonth.map((v, i) => v - childMonthly[i]);
 
     const syntheticCode = `${l.code}-__UNALLOCATED__`;
+    const currencyEvidence = deriveUnallocatedCurrencyEvidence(l, children);
     kept.push({
       code: syntheticCode,
       label: `${l.label} (unallocated)`,
       accountType: l.accountType,
       plannedAnnual: delta,
       perMonth: unallocatedPerMonth,
+      ...(currencyEvidence ? { currencyEvidence } : {}),
     });
     synthetic.push({
       code: syntheticCode,

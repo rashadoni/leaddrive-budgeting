@@ -66,6 +66,12 @@ interface ResolvedColumns {
    *  in, when the sheet tagged currencies (e.g. "USD"). null when the sheet
    *  is single/untagged-currency (caller falls back to the company base). */
   currency: string | null;
+  /** Row-level source evidence for foreign amounts; -1 / null = absent. */
+  sourceMonthCols: number[];
+  /** ISO source currency declared on sourceAmount columns, if unambiguous. */
+  sourceCurrency: string | null;
+  currencyCol: number;
+  exchangeRateCol: number;
 }
 
 /**
@@ -117,6 +123,8 @@ export function resolveColumns(
   let codeCol = -1;
   let labelCol = -1;
   let totalCol = -1;
+  let currencyCol = -1;
+  let exchangeRateCol = -1;
   // Month candidates carry their (monthIdx, year, currency) so a MULTI-YEAR
   // sheet (Jan-Dec × N years) can select a single target year, and a
   // MULTI-CURRENCY sheet (same period in reporting + local currency) can
@@ -136,6 +144,12 @@ export function resolveColumns(
         return { ok: false, reason: `Multiple "label" columns proposed (cols ${labelCol} and ${c.sourceIndex})` };
       }
       labelCol = c.sourceIndex;
+    } else if (c.role === 'currency') {
+      if (currencyCol !== -1) return { ok: false, reason: `Multiple "currency" columns proposed (cols ${currencyCol} and ${c.sourceIndex})` };
+      currencyCol = c.sourceIndex;
+    } else if (c.role === 'exchangeRate') {
+      if (exchangeRateCol !== -1) return { ok: false, reason: `Multiple "exchangeRate" columns proposed (cols ${exchangeRateCol} and ${c.sourceIndex})` };
+      exchangeRateCol = c.sourceIndex;
     } else if (c.role.startsWith(MONTH_ROLE_PREFIX)) {
       const period = c.role.slice(MONTH_ROLE_PREFIX.length).toLowerCase();
       // Split an optional 4-digit year off the month token: "jan2026" →
@@ -241,7 +255,43 @@ export function resolveColumns(
     };
   }
 
-  return { ok: true, columns: { codeCol, labelCol, monthCols, totalCol, currency: chosenCurrency } };
+  const sourceMonthCols = new Array<number>(12).fill(-1);
+  const sourceCurrencies = new Set<string>();
+  for (const c of columns) {
+    if (!c.role.startsWith('sourceAmount:')) continue;
+    const period = c.role.slice('sourceAmount:'.length).toLowerCase();
+    const ym = period.match(/(20\d{2})/);
+    const year = ym ? Number(ym[1]) : null;
+    if (chosenYear !== null && year !== null && year !== chosenYear) continue;
+    const monthIdx = MONTH_INDEX[period.replace(/20\d{2}/g, '').trim()];
+    if (monthIdx === undefined) continue;
+    if (sourceMonthCols[monthIdx] !== -1) {
+      return { ok: false, reason: `Multiple sourceAmount columns mapped to month ${period}` };
+    }
+    sourceMonthCols[monthIdx] = c.sourceIndex;
+    if (c.currencyCode?.trim()) sourceCurrencies.add(c.currencyCode.trim().toUpperCase());
+  }
+  if (sourceCurrencies.size > 1) {
+    return {
+      ok: false,
+      reason: `sourceAmount columns declare multiple currencies (${[...sourceCurrencies].sort().join(', ')}) — use a row currency column`,
+    };
+  }
+
+  return {
+    ok: true,
+    columns: {
+      codeCol,
+      labelCol,
+      monthCols,
+      totalCol,
+      currency: chosenCurrency,
+      sourceMonthCols,
+      sourceCurrency: sourceCurrencies.values().next().value ?? null,
+      currencyCol,
+      exchangeRateCol,
+    },
+  };
 }
 
 /**
@@ -427,7 +477,17 @@ export function applyProposal(
   const merged = mergeProposal(proposal, userOverrides);
   const colsResult = resolveColumns(merged.columns, opts);
   if (!colsResult.ok) return { error: colsResult.reason };
-  const { codeCol, labelCol, monthCols, totalCol, currency: resolvedCurrency } = colsResult.columns;
+  const {
+    codeCol,
+    labelCol,
+    monthCols,
+    totalCol,
+    currency: resolvedCurrency,
+    sourceMonthCols,
+    sourceCurrency,
+    currencyCol,
+    exchangeRateCol,
+  } = colsResult.columns;
 
   // Index account-type overrides by code for O(1) lookup.
   const acctByCode = new Map<string, AccountType>();
@@ -679,6 +739,46 @@ export function applyProposal(
     if (accountType === 'cogs') cogsRaw.push(rawAnnual);
     else if (accountType === 'expense') expenseRaw.push(rawAnnual);
 
+    const hasCurrencyEvidenceColumns =
+      currencyCol >= 0 ||
+      exchangeRateCol >= 0 ||
+      sourceMonthCols.some((col) => col >= 0);
+    const rowCurrency = currencyCol >= 0
+      ? toTrimmedString(row[currencyCol])?.toUpperCase() || null
+      : null;
+    const sourceExchangeRate = exchangeRateCol >= 0
+      ? toNumberOrNull(row[exchangeRateCol])
+      : null;
+    const originalPerMonth = sourceMonthCols.some((col) => col >= 0)
+      ? sourceMonthCols.map((col) => (col >= 0 ? toNumberOrNull(row[col]) : null))
+      : undefined;
+    const hasSourceAmounts = originalPerMonth?.some((amount) => amount !== null) ?? false;
+    if (
+      hasSourceAmounts &&
+      rowCurrency &&
+      sourceCurrency &&
+      rowCurrency !== sourceCurrency
+    ) {
+      return {
+        error:
+          `Row ${r + 1} source currency ${rowCurrency} conflicts with ` +
+          `sourceAmount column currency ${sourceCurrency}`,
+      };
+    }
+    const hasSourceEvidence = hasSourceAmounts || sourceExchangeRate !== null;
+    if (hasSourceEvidence && !rowCurrency && !sourceCurrency) {
+      return {
+        error: `Row ${r + 1} has source amount/rate evidence but no explicit source currency`,
+      };
+    }
+    // A header-level source currency describes the sourceAmount columns, not
+    // every row in the sheet. Domestic/untagged rows with blank source cells
+    // must remain base-currency rows. An explicit rate without a source amount
+    // is still foreign evidence and must fail closed during prevalidation.
+    const sourceCurrencyCode =
+      rowCurrency ??
+      (hasSourceEvidence ? sourceCurrency : null);
+
     // Stored RAW for now; pass 2 applies the convention-based flip.
     lines.push({
       code,
@@ -686,6 +786,15 @@ export function applyProposal(
       accountType,
       plannedAnnual: rawAnnual,
       perMonth: perMonthRaw,
+      ...(hasCurrencyEvidenceColumns
+        ? {
+            currencyEvidence: {
+              currencyCode: sourceCurrencyCode,
+              exchangeRate: sourceExchangeRate,
+              originalPerMonth,
+            },
+          }
+        : {}),
     });
   }
 
@@ -717,6 +826,11 @@ export function applyProposal(
     const f = costFlip(line.accountType);
     if (f === 1) continue; // revenue/balances + positive-cost files: raw is correct
     line.perMonth = line.perMonth.map((v) => v * f);
+    if (line.currencyEvidence?.originalPerMonth) {
+      line.currencyEvidence.originalPerMonth = line.currencyEvidence.originalPerMonth.map(
+        (value) => (value == null ? null : value * f),
+      );
+    }
     line.plannedAnnual = line.perMonth.reduce((a, v) => a + v, 0);
   }
 
@@ -741,10 +855,21 @@ export function applyProposal(
   ).length;
   const hasRegionCostCenter =
     mirrorPairs >= 3 && !lines.some((l) => l.code.includes('.R.'));
-  const { kept, dropped, synthetic, partialSubtotals } = dedupeParentRollups(
-    lines,
-    hasRegionCostCenter ? { costCenterSuffixes: ['.R'] } : {},
-  );
+  let deduped: ReturnType<typeof dedupeParentRollups>;
+  try {
+    deduped = dedupeParentRollups(
+      lines,
+      hasRegionCostCenter ? { costCenterSuffixes: ['.R'] } : {},
+    );
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Currency evidence cannot be reconciled for synthetic rollups',
+    };
+  }
+  const { kept, dropped, synthetic, partialSubtotals } = deduped;
   // Partial-subtotal parents (children overshoot the parent → the parent
   // excludes some of its own coded children, e.g. a D&A line). The dedup step
   // trusts the detailed leaves; surface each as a non-blocking WARNING so the

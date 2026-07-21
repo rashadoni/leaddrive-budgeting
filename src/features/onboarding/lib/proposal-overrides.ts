@@ -29,6 +29,8 @@ export const ROLE_OPTIONS: Array<{
   { value: "code", label: "Account code" },
   { value: "label", label: "Label / description" },
   { value: "entity", label: "Entity / company (BU split)" },
+  { value: "currency", label: "Source currency (ISO, per row)" },
+  { value: "exchangeRate", label: "Historical FX rate (per row)" },
   { value: "amount:Total", label: "Amount — Total (annual)" },
   { value: "amount:Plan", label: "Amount — Plan" },
   { value: "amount:Actual", label: "Amount — Actual" },
@@ -44,6 +46,18 @@ export const ROLE_OPTIONS: Array<{
   { value: "amount:Oct", label: "Amount — Oct" },
   { value: "amount:Nov", label: "Amount — Nov" },
   { value: "amount:Dec", label: "Amount — Dec" },
+  { value: "sourceAmount:Jan", label: "Source amount — Jan" },
+  { value: "sourceAmount:Feb", label: "Source amount — Feb" },
+  { value: "sourceAmount:Mar", label: "Source amount — Mar" },
+  { value: "sourceAmount:Apr", label: "Source amount — Apr" },
+  { value: "sourceAmount:May", label: "Source amount — May" },
+  { value: "sourceAmount:Jun", label: "Source amount — Jun" },
+  { value: "sourceAmount:Jul", label: "Source amount — Jul" },
+  { value: "sourceAmount:Aug", label: "Source amount — Aug" },
+  { value: "sourceAmount:Sep", label: "Source amount — Sep" },
+  { value: "sourceAmount:Oct", label: "Source amount — Oct" },
+  { value: "sourceAmount:Nov", label: "Source amount — Nov" },
+  { value: "sourceAmount:Dec", label: "Source amount — Dec" },
   { value: "skip", label: "Skip (ignore)" },
 ]
 
@@ -61,10 +75,13 @@ export function diffColumnOverrides(
   const changed: ColumnMappingProposal[] = []
   for (const e of edited) {
     const orig = byIdx.get(e.sourceIndex)
-    if (!orig || orig.role !== e.role) {
+    if (!orig || orig.role !== e.role || orig.currencyCode !== e.currencyCode) {
       changed.push({
         sourceIndex: e.sourceIndex,
         role: e.role,
+        // Currency is part of a mapping decision: dropping it would turn a
+        // human-confirmed foreign/base pairing into untagged input at apply.
+        currencyCode: e.currencyCode,
         // Manual override sets confidence to 1.0 — the human is the source.
         confidence: 1,
         reasoning: orig

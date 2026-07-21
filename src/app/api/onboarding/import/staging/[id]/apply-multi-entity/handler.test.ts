@@ -475,6 +475,40 @@ describe('POST .../apply-multi-entity', () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
+  it('dryRun rejects incomplete foreign evidence for a valid mapped entity', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stage({ entityValues: ['AZSF'] });
+    const baseResult = greenResult('X', 2040);
+    const result = {
+      ...baseResult,
+      resolvedCurrency: 'AZN',
+      lines: [{
+        ...baseResult.lines[0],
+        perMonth: Array(12).fill(170),
+        currencyEvidence: {
+          currencyCode: 'USD',
+          originalPerMonth: Array(12).fill(100),
+        },
+      }],
+    };
+    entityMocks.applyProposalByEntity.mockReturnValue({
+      entityColumn: 14,
+      entityValues: ['AZSF'],
+      perEntity: [{ entityValue: 'AZSF', result }],
+    });
+    prismaMock.company.findMany.mockResolvedValue([
+      { id: 'coA', baseCurrencyCode: 'AZN' },
+    ]);
+
+    const res = await POST(
+      await reqWith({ dryRun: 'true', entityMap: JSON.stringify({ AZSF: 'coA' }) }),
+      paramsFor(STAGING_ID),
+    );
+    expect(res.status).toBe(422);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.budgetLine.count).not.toHaveBeenCalled();
+  });
+
   it('409 when the entity column index differs from the reviewed one (Codex P1 #6)', async () => {
     await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
     stage({ entityValues: ['AZSF', 'EDEN'] }); // __multiEntity.entityColumnIndex defaults to 14

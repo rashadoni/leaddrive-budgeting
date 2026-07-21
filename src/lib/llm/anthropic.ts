@@ -14,6 +14,7 @@ import type {
   MapperInput,
   MappingProposal,
 } from "@/lib/onboarding/ai-mapper/types"
+import { isIsoCurrencyCode, isMapperColumnRole } from "@/lib/onboarding/ai-mapper/types"
 import { detectHeuristicAnomalies, mergeAnomalies } from "@/lib/onboarding/ai-mapper/anomaly-rules"
 import { MAPPER_SYSTEM_PROMPT, MAPPER_PROMPT_VERSION, buildMapperUserMessage } from "./prompts/mapper-system"
 import type { LLMService, LLMGenerateMappingResult, GenerateMappingOptions } from "./types"
@@ -89,6 +90,12 @@ export class AnthropicLLMService implements LLMService {
       }
       if (typeof c.role !== "string") {
         throw new Error(`AI Mapper columns[${i}].role must be string (got ${typeof c.role})`)
+      }
+      if (!isMapperColumnRole(c.role)) {
+        throw new Error(`AI Mapper columns[${i}].role is not an allowed mapper role (got ${c.role})`)
+      }
+      if (c.currencyCode !== undefined && !isIsoCurrencyCode(c.currencyCode)) {
+        throw new Error(`AI Mapper columns[${i}].currencyCode must be a three-letter ISO code`)
       }
       if (
         typeof c.confidence !== "number" ||

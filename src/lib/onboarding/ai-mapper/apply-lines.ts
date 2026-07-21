@@ -17,6 +17,10 @@
  */
 import type { Prisma } from '@prisma/client';
 import type { ParsedBudgetLine } from '../adapters/azmade-sopl';
+import {
+  assertParsedLinesCurrencyEvidence,
+  normalizeParsedLineCurrencyEvidence,
+} from './currency-evidence';
 
 export interface ApplyLinesInput {
   organizationId: string;
@@ -25,6 +29,8 @@ export interface ApplyLinesInput {
   lines: ParsedBudgetLine[];
   /** Tag every inserted line so FX_IMPORTED_INPUT can detect imported lines. */
   baseCurrencyCode: string;
+  /** Sheet-level currency tag; a foreign tag still needs row-level evidence. */
+  defaultCurrencyCode?: string | null;
 }
 
 export interface ApplyLinesResult {
@@ -38,7 +44,19 @@ export async function applyParsedLinesToCompany(
   tx: Prisma.TransactionClient,
   input: ApplyLinesInput,
 ): Promise<ApplyLinesResult> {
-  const { organizationId, planId, companyId, lines, baseCurrencyCode } = input;
+  const {
+    organizationId,
+    planId,
+    companyId,
+    lines,
+    baseCurrencyCode,
+    defaultCurrencyCode,
+  } = input;
+
+  // Evidence must be complete before the clean-slate delete. The caller's
+  // transaction remains a second line of defence, but this keeps the primitive
+  // safe when used directly as well.
+  assertParsedLinesCurrencyEvidence(lines, baseCurrencyCode, defaultCurrencyCode);
 
   // Clean-slate scoped to this (org, plan, company) triple — never broader.
   const del = await tx.budgetLine.deleteMany({
@@ -84,6 +102,13 @@ export async function applyParsedLinesToCompany(
 
     for (let monthIdx = 0; monthIdx < 12; monthIdx += 1) {
       const monthlyAmount = line.perMonth[monthIdx] ?? 0;
+      const currency = normalizeParsedLineCurrencyEvidence({
+        plannedAmount: monthlyAmount,
+        monthIndex: monthIdx,
+        baseCurrencyCode,
+        evidence: line.currencyEvidence,
+        defaultCurrencyCode,
+      });
       const data: Prisma.BudgetLineUncheckedCreateInput = {
         organizationId,
         planId,
@@ -91,12 +116,14 @@ export async function applyParsedLinesToCompany(
         accountId: coaId,
         department: null,
         lineType,
-        plannedAmount: monthlyAmount,
+        plannedAmount: currency.plannedAmount,
+        originalAmount: currency.originalAmount,
+        exchangeRate: currency.exchangeRate,
         sortOrder: monthIdx,
         monthIndex: monthIdx,
         isAutoPlanned: false,
         isAutoActual: false,
-        currencyCode: baseCurrencyCode,
+        currencyCode: currency.currencyCode,
       };
       await tx.budgetLine.create({ data });
     }

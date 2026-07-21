@@ -677,6 +677,60 @@ describe('POST .../apply — server-side review gates', () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
+  it('dryRun rejects incomplete foreign evidence before any replacement transaction', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      id: STAGING_ID,
+      companyId: COMPANY_ID,
+      status: 'pending',
+      sourceSheet: 'SOPL',
+      proposal: {
+        __workbookContentSha256: FAKE_WORKBOOK_HASH,
+        columns: [{ sourceIndex: 2, role: 'amount:Plan2026' }],
+        mappings: [],
+      },
+      userOverrides: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      appliedAt: null,
+    });
+    applierMocks.applyProposal.mockReturnValue({
+      sheetName: 'SOPL',
+      resolvedCurrency: 'AZN',
+      lines: [{
+        code: '601-01',
+        label: 'Foreign revenue',
+        plannedAnnual: 2040,
+        accountType: 'revenue',
+        perMonth: Array(12).fill(170),
+        currencyEvidence: {
+          currencyCode: 'USD',
+          originalPerMonth: Array(12).fill(100),
+        },
+      }],
+      warnings: [],
+      skippedRowCount: 0,
+      parentRollupsDropped: [],
+      parentRollupsUnallocated: [],
+    });
+    applierMocks.detectProposalYear.mockReturnValue(2026);
+
+    const fd = new FormData();
+    fd.set('file', new File(['fake'], 'aac.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }));
+    fd.set('dryRun', 'true');
+    const { NextRequest } = await import('next/server');
+    const req = new NextRequest(new Request(
+      `http://localhost/api/onboarding/import/staging/${STAGING_ID}/apply`,
+      { method: 'POST', body: fd },
+    ));
+
+    const res = await POST(req, paramsFor(STAGING_ID));
+    expect(res.status).toBe(422);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.budgetPlan.findFirst).not.toHaveBeenCalled();
+  });
+
   it('critical anomaly without acknowledgeAnomalies → 409', async () => {
     await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
     stage({ columns: [{ sourceIndex: 0, role: 'code', confidence: 1 }], anomalies: [{ row: 5, severity: 'critical', category: 'sign_inversion', description: 'x' }], overallConfidence: 0.95, mappings: [] });

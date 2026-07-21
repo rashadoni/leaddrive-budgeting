@@ -58,6 +58,53 @@ describe("MappingReviewTable", () => {
     expect(next.find((c) => c.sourceIndex === 1)?.role).toBe("skip")
   })
 
+  it("preserves existing currency metadata when the reviewer changes a role", () => {
+    const onChange = vi.fn()
+    const edited: ColumnMappingProposal[] = [
+      { ...proposal.columns[0], currencyCode: "USD" },
+      { ...proposal.columns[1] },
+    ]
+    render(
+      <MappingReviewTable
+        proposal={proposal}
+        sourceColumns={sourceColumns}
+        edited={edited}
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText("Роль колонки 0"), { target: { value: "sourceAmount:Jan" } })
+    const next = onChange.mock.calls[0][0] as ColumnMappingProposal[]
+    expect(next.find((c) => c.sourceIndex === 0)).toMatchObject({
+      role: "sourceAmount:Jan",
+      currencyCode: "USD",
+    })
+  })
+
+  it("lets the reviewer enter header-level source currency metadata", () => {
+    const onChange = vi.fn()
+    const edited: ColumnMappingProposal[] = [
+      { ...proposal.columns[0], role: "sourceAmount:Jan" },
+      { ...proposal.columns[1] },
+    ]
+    render(
+      <MappingReviewTable
+        proposal={proposal}
+        sourceColumns={sourceColumns}
+        edited={edited}
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText("ISO currency 0"), { target: { value: "usd" } })
+    const next = onChange.mock.calls[0][0] as ColumnMappingProposal[]
+    expect(next.find((c) => c.sourceIndex === 0)).toMatchObject({
+      role: "sourceAmount:Jan",
+      currencyCode: "USD",
+      confidence: 1,
+    })
+  })
+
   it("appends an override when the AI proposal omitted a source column", () => {
     // edited only covers column 0 — column 1 has no entry (AI dropped it).
     const onChange = vi.fn()

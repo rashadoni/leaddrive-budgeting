@@ -46,9 +46,39 @@ export function MappingReviewTable({ proposal, sourceColumns, edited, onChange, 
     // Append when the AI proposal omitted this source column (LLM dropped it):
     // otherwise the reviewer's override would silently vanish (no entry to map).
     const exists = edited.some((c) => c.sourceIndex === sourceIndex)
+    const original = origByIdx.get(sourceIndex)
     const next = exists
       ? edited.map((c) => (c.sourceIndex === sourceIndex ? { ...c, role } : c))
-      : [...edited, { sourceIndex, role, confidence: 1, reasoning: "Manual override" }]
+      : [
+          ...edited,
+          {
+            ...original,
+            sourceIndex,
+            role,
+            confidence: 1,
+            reasoning: "Manual override",
+          },
+        ]
+    onChange(next)
+  }
+
+  const setCurrencyCode = (sourceIndex: number, rawValue: string) => {
+    const currencyCode = rawValue.trim().toUpperCase().slice(0, 3) || undefined
+    const original = origByIdx.get(sourceIndex)
+    const current = editedByIdx.get(sourceIndex)
+    const replacement: ColumnMappingProposal = {
+      ...original,
+      ...current,
+      sourceIndex,
+      role: current?.role ?? original?.role ?? "skip",
+      confidence: 1,
+      reasoning: "Manual override",
+      currencyCode,
+    }
+    const exists = edited.some((c) => c.sourceIndex === sourceIndex)
+    const next = exists
+      ? edited.map((c) => (c.sourceIndex === sourceIndex ? replacement : c))
+      : [...edited, replacement]
     onChange(next)
   }
 
@@ -105,9 +135,14 @@ export function MappingReviewTable({ proposal, sourceColumns, edited, onChange, 
               const orig = origByIdx.get(col.index)
               const cur = editedByIdx.get(col.index)
               const role = cur?.role ?? orig?.role ?? "skip"
+              const currencyCode = cur?.currencyCode ?? orig?.currencyCode ?? ""
               const conf = orig?.confidence ?? 0
               const band = confidenceBand(conf)
-              const changed = orig && role !== orig.role
+              const changed = orig && (
+                role !== orig.role || currencyCode !== (orig.currencyCode ?? "")
+              )
+              const supportsHeaderCurrency =
+                role.startsWith("amount:") || role.startsWith("sourceAmount:")
               return (
                 <tr
                   key={col.index}
@@ -136,6 +171,18 @@ export function MappingReviewTable({ proposal, sourceColumns, edited, onChange, 
                         </option>
                       ))}
                     </select>
+                    {supportsHeaderCurrency && (
+                      <input
+                        value={currencyCode}
+                        disabled={disabled}
+                        maxLength={3}
+                        pattern="[A-Za-z]{3}"
+                        placeholder="ISO"
+                        onChange={(e) => setCurrencyCode(col.index, e.target.value)}
+                        className="mt-1 w-16 px-1.5 py-1 rounded border border-border bg-background text-xs font-mono uppercase disabled:opacity-50"
+                        aria-label={`ISO currency ${col.index}`}
+                      />
+                    )}
                   </td>
                   <td className={`p-2 text-right font-mono text-xs ${BAND_STYLE[band]}`}>
                     {(conf * 100).toFixed(0)}%

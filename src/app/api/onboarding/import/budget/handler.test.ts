@@ -56,6 +56,7 @@ vi.mock('xlsx', () => ({
 }));
 
 import type { NextRequest } from 'next/server';
+import type { ParsedBudgetLine } from '@/lib/onboarding/adapters/azmade-sopl';
 import { mockSession } from '@/test/api-harness';
 import { POST } from './route';
 
@@ -111,7 +112,12 @@ describe('POST /api/onboarding/import/budget — handler', () => {
       level: 2,
     });
     parserMock.parseSoplSheet.mockReturnValue({
-      lines: [{ code: '5000', label: 'Revenue', accountType: 'revenue' }],
+      lines: [{
+        code: '5000',
+        label: 'Revenue',
+        accountType: 'revenue',
+        perMonth: Array.from({ length: 12 }, () => 0),
+      }],
       warnings: [{ row: 3, reason: 'unknown col' }],
       parentRollupsDropped: [{ code: 'PARENT', plannedAnnual: 100 }],
       parentRollupsUnallocated: [],
@@ -233,7 +239,13 @@ describe('POST /api/onboarding/import/budget — B5 import revision writer', () 
     return { dataRevisionCreate, budgetLineCreate };
   }
 
-  function stageParse() {
+  function stageParse(line: ParsedBudgetLine = {
+    code: '601-01',
+    label: 'Revenue',
+    plannedAnnual: 1200,
+    accountType: 'revenue' as const,
+    perMonth: Array.from({ length: 12 }, () => 100),
+  }) {
     prismaMock.company.findFirst.mockResolvedValue({
       id: COMPANY_ID,
       organizationId: ORG_ID,
@@ -242,7 +254,7 @@ describe('POST /api/onboarding/import/budget — B5 import revision writer', () 
     });
     parserMock.parseSoplSheet.mockReturnValue({
       lines: [
-        { code: '601-01', label: 'Revenue', plannedAnnual: 1200, accountType: 'revenue', perMonth: Array.from({ length: 12 }, () => 100) },
+        line,
       ],
       warnings: [],
       parentRollupsDropped: [],
@@ -290,6 +302,59 @@ describe('POST /api/onboarding/import/budget — B5 import revision writer', () 
     const call = recomputeMock.runRecomputeForCompanies.mock.calls[0];
     expect(call[4]).toBeUndefined();
     expect(call[2]).toEqual([{ companyId: COMPANY_ID, year: 2026 }]);
+  });
+
+  it('persists per-month foreign source/base/rate evidence using the company base currency', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageParse({
+      code: '601-01',
+      label: 'Foreign revenue',
+      plannedAnnual: 2040,
+      accountType: 'revenue',
+      perMonth: Array.from({ length: 12 }, () => 170),
+      currencyEvidence: {
+        currencyCode: 'USD',
+        exchangeRate: 1.7,
+        originalPerMonth: Array.from({ length: 12 }, () => 100),
+      },
+    });
+    const spy = wireTx();
+
+    const res = await POST(await makeMultipartRequest());
+    expect(res.status).toBe(200);
+    expect(spy.budgetLineCreate).toHaveBeenCalledTimes(12);
+    const firstCreate = (
+      spy.budgetLineCreate.mock.calls as unknown as Array<
+        [{ data: Record<string, unknown> }]
+      >
+    )[0]?.[0];
+    expect(firstCreate).toMatchObject({
+      data: {
+        plannedAmount: 170,
+        originalAmount: 100,
+        exchangeRate: 1.7,
+        currencyCode: 'USD',
+      },
+    });
+  });
+
+  it('rejects incomplete foreign evidence before the replacement transaction', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stageParse({
+      code: '601-01',
+      label: 'Invalid foreign revenue',
+      plannedAnnual: 2040,
+      accountType: 'revenue',
+      perMonth: Array.from({ length: 12 }, () => 170),
+      currencyEvidence: {
+        currencyCode: 'USD',
+        originalPerMonth: Array.from({ length: 12 }, () => 100),
+      },
+    });
+
+    const res = await POST(await makeMultipartRequest());
+    expect(res.status).toBe(422);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it('a failed revision write rolls back the import — no untraceable data lands', async () => {
