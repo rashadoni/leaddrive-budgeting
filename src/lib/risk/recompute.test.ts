@@ -3807,10 +3807,10 @@ describe('recomputeIndicator — ebitda D&A add-back via budgetLineResolver (Pha
       budgetLines: [
         { plannedAmount: 1_000_000, currencyCode: null, exchangeRate: null,
           accountType: 'revenue', accountCode: '611', accountCategory: null,
-          accountName: 'Revenue', monthIndex: null },
+          accountName: 'Revenue', monthIndex: 5 },
         { plannedAmount: 200_000, currencyCode: null, exchangeRate: null,
           accountType: 'cogs', accountCode: '703-11', accountCategory: null,
-          accountName: 'Depreciation in COGS', monthIndex: null },
+          accountName: 'Depreciation in COGS', monthIndex: 5 },
       ],
       facts: { pl_ebitda: [{ value: 100_000, date: new Date('2025-06-01'), unit: 'AZN' }] },
     });
@@ -3820,6 +3820,157 @@ describe('recomputeIndicator — ebitda D&A add-back via budgetLineResolver (Pha
     expect(result.ok).toBe(true);
     expect(result.value).toBeCloseTo(10, 2); // captured 100K / revenue 1M
     expect(result.status).toBe('amber');
+  });
+
+  it('fails closed when full-year captured EBITDA is paired with YTD P&L months', async () => {
+    const ytdLines: BudgetLineRow[] = Array.from({ length: 5 }, (_, monthIndex) => ({
+      plannedAmount: 100_000,
+      currencyCode: null,
+      exchangeRate: null,
+      accountType: 'revenue',
+      lineType: 'revenue',
+      accountCode: 'PLF.01.02.01',
+      accountCategory: null,
+      accountName: 'Revenue',
+      monthIndex,
+    }));
+    const fullYearEbitda = Array.from({ length: 12 }, (_, monthIndex) => ({
+      value: 20_000,
+      date: new Date(Date.UTC(2025, monthIndex, 1)),
+      unit: 'AZN',
+    }));
+    const ds = mockDs({
+      budgetLines: ytdLines,
+      facts: { pl_ebitda: fullYearEbitda },
+    });
+
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1', companyId: 'eden_1',
+      definition: EBITDA_MARGIN_DEF, period: '2025', withSparkline: true,
+    });
+
+    // The raw same-basis fallback remains auditable: 500K operating revenue,
+    // no costs => 500K EBITDA => 100%. The unaligned 240K captured subtotal is
+    // NOT divided by YTD revenue. Classification fails closed and no trend is
+    // persisted because the annual mismatch has no slot-level lineage.
+    expect(result.value).toBeCloseTo(100, 8);
+    expect(result.status).toBe('unknown');
+    expect(ds.state.upserts[0].inputs.error).toMatchObject({
+      code: 'ebitda_basis_mismatch',
+    });
+    expect(ds.state.upserts[0].inputs.error?.reason).toContain(
+      'P&L months [1,2,3,4,5] do not match EBITDA months [1,2,3,4,5,6,7,8,9,10,11,12]',
+    );
+    expect(ds.state.upserts[0].sparkline).toBeUndefined();
+  });
+
+  it('keeps finance/tax below EBITDA: net income includes them, fallback EBITDA excludes them', async () => {
+    const ds = mockDs({
+      budgetLines: [
+        bl({ plannedAmount: 1_000, accountType: 'revenue', lineType: 'revenue', accountCode: '611' }),
+        bl({ plannedAmount: 200, accountType: 'cogs', lineType: 'cogs', accountCode: '701' }),
+        bl({ plannedAmount: 100, accountType: 'expense', lineType: 'expense', accountCode: '721-01' }),
+        bl({ plannedAmount: 50, accountType: 'expense', lineType: 'expense', accountCode: '721-11' }),
+        bl({ plannedAmount: 300, accountType: 'expense', lineType: 'expense', accountCode: '731-01' }),
+        bl({ plannedAmount: 100, accountType: 'expense', lineType: 'expense', accountCode: '801-01' }),
+      ],
+    });
+
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1', companyId: 'eden_1',
+      definition: EBITDA_MARGIN_DEF, period: '2025',
+    });
+
+    // operating result = 1000 - 200 - 150 = 650; D&A add-back 50 => EBITDA 700.
+    // net income additionally includes 400 finance/tax => 250.
+    expect(result.value).toBeCloseTo(70, 8);
+    expect(ds.state.upserts[0].inputs.resolved).toMatchObject({
+      opex: 150,
+      below_ebitda: 400,
+      net_income: 250,
+      ebitda: 700,
+    });
+  });
+
+  it('keeps aligned 12/12 EDEN-shaped source data auditable as out_of_range, not basis mismatch', async () => {
+    const budgetLines: BudgetLineRow[] = Array.from({ length: 12 }, (_, monthIndex) => [
+      bl({
+        plannedAmount: 22_000,
+        accountType: 'revenue', lineType: 'revenue',
+        accountCode: 'PLF.01.02.01', monthIndex,
+      }),
+      bl({
+        plannedAmount: -270_000,
+        accountType: 'revenue', lineType: 'expense',
+        accountCode: 'PLF.07.02.02', monthIndex,
+      }),
+    ]).flat();
+    const ds = mockDs({
+      budgetLines,
+      facts: {
+        pl_ebitda: Array.from({ length: 12 }, (_, monthIndex) => ({
+          value: 996_000,
+          date: new Date(Date.UTC(2025, monthIndex, 1)),
+          unit: 'AZN',
+        })),
+      },
+    });
+
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1', companyId: 'eden_1', period: '2025',
+      definition: {
+        ...EBITDA_MARGIN_DEF,
+        code: 'IND_EBITDA_MARGIN',
+        unit: '%',
+      },
+    });
+
+    expect(result.value).toBeGreaterThan(300);
+    expect(result.status).toBe('unknown');
+    expect(ds.state.upserts[0].inputs.error?.code).toBe('out_of_range');
+    expect(ds.state.upserts[0].inputs.aggregates.budget_line?.ebitda_basis_mismatch)
+      .toBeUndefined();
+  });
+
+  it('does not pollute a non-EBITDA budgetLine formula when EBITDA basis mismatches', async () => {
+    const ds = mockDs({
+      budgetLines: [{
+        plannedAmount: 1_000,
+        currencyCode: null,
+        exchangeRate: null,
+        accountType: 'revenue',
+        lineType: 'revenue',
+        accountCode: '611',
+        accountCategory: null,
+        accountName: 'Revenue',
+        monthIndex: 0,
+      }],
+      facts: {
+        pl_ebitda: [
+          { value: 100, date: new Date('2025-01-01'), unit: 'AZN' },
+          { value: 100, date: new Date('2025-02-01'), unit: 'AZN' },
+        ],
+      },
+    });
+
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1', companyId: 'eden_1', period: '2025',
+      withSparkline: true,
+      definition: {
+        id: 'ind_revenue_passthrough',
+        formula: 'revenue',
+        thresholds: { green: { op: '>=', value: 1 } },
+        requiredInputs: ['budgetLine'],
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe(1_000);
+    expect(result.status).toBe('green');
+    expect(ds.state.upserts[0].inputs.error).toBeUndefined();
+    expect(ds.state.upserts[0].sparkline).toHaveLength(12);
+    expect(ds.state.upserts[0].inputs.aggregates.budget_line?.ebitda_basis_mismatch)
+      .toBeDefined();
   });
 
   it('adds back D&A from OpEx (721-11) → ebitda > net_income', async () => {

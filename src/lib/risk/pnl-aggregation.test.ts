@@ -25,6 +25,7 @@ describe("aggregatePnlLines", () => {
     expect(a.revenue).toBe(1000)
     expect(a.cogs).toBe(400)
     expect(a.opex).toBe(250)
+    expect(a.below_ebitda).toBe(0)
     expect(a.gross_profit).toBe(600)
     expect(a.net_income).toBe(350)
     expect(a.total_cost).toBe(650)
@@ -75,7 +76,7 @@ describe("aggregatePnlLines", () => {
       [
         line({ accountType: "cogs", plannedAmount: 300, accountCode: "703-11" }),
         line({ accountType: "expense", plannedAmount: 200, accountCode: "721-11" }),
-        line({ accountType: "expense", plannedAmount: 100, accountCode: "601-01" }),
+        line({ accountType: "expense", plannedAmount: 100, accountCode: "720-01" }),
       ],
       "AZN",
     )
@@ -95,5 +96,73 @@ describe("aggregatePnlLines", () => {
     expect(a.revenue).toBe(100)
     expect(a.cogs).toBe(0)
     expect(a.opex).toBe(0)
+  })
+
+  it("normalizes EDEN-shaped negative-stored PLF.07 operating income", () => {
+    const a = aggregatePnlLines(
+      [
+        line({
+          accountType: "revenue", lineType: "revenue",
+          accountCode: "PLF.01.02.01", plannedAmount: 266_000,
+        }),
+        line({
+          accountType: "revenue", lineType: "expense",
+          accountCode: "PLF.07.02.02", plannedAmount: -3_011_000,
+        }),
+        line({
+          accountType: "revenue", lineType: "expense",
+          accountCode: "PLF.07.01", plannedAmount: -108_000,
+        }),
+        // Below-EBITDA finance/tax costs must not leak into operating OpEx.
+        line({
+          accountType: "expense", lineType: "expense",
+          accountCode: "PLF.07.03.01", plannedAmount: 75_000,
+        }),
+        line({
+          accountType: "expense", lineType: "expense",
+          accountCode: "731-01", plannedAmount: 40_000,
+        }),
+        line({
+          accountType: "expense", lineType: "expense",
+          accountCode: "801-01", plannedAmount: 10_000,
+        }),
+      ],
+      "AZN",
+    )
+    expect(a.revenue).toBe(3_385_000)
+    expect(a.opex).toBe(0)
+    expect(a.below_ebitda).toBe(125_000)
+    expect(a.net_income).toBe(3_260_000)
+  })
+
+  it("preserves ordinary revenue sign when legacy rows have no lineType", () => {
+    const a = aggregatePnlLines(
+      [line({ accountType: "revenue", accountCode: "611", plannedAmount: 500 })],
+      "AZN",
+    )
+    expect(a.revenue).toBe(500)
+  })
+
+  it("applies the canonical contra-revenue storage convention", () => {
+    const a = aggregatePnlLines(
+      [line({
+        accountType: "revenue", lineType: "revenue",
+        accountCode: "602-01", plannedAmount: 5_000,
+      })],
+      "AZN",
+    )
+    expect(a.revenue).toBe(-5_000)
+  })
+
+  it("FX-converts negative-stored foreign PLF.07 income before normalizing its sign", () => {
+    const a = aggregatePnlLines(
+      [line({
+        accountType: "revenue", lineType: "expense",
+        accountCode: "PLF.07.02.02", plannedAmount: -100,
+        currencyCode: "USD", exchangeRate: 1.7,
+      })],
+      "AZN",
+    )
+    expect(a.revenue).toBeCloseTo(170, 8)
   })
 })

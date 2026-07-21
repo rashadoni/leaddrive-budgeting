@@ -428,6 +428,7 @@ export function createPrismaDataSource(
           currencyCode: r.currencyCode,
           exchangeRate: r.exchangeRate,
           accountType: r.account?.accountType ?? r.lineType ?? null,
+          lineType: r.lineType ?? null,
           accountCode: r.account?.code ?? null,
           accountCategory: r.account?.category ?? null,
           // Prefer English name for downstream lowercase-name heuristics

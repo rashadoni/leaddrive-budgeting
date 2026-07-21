@@ -7,7 +7,7 @@
  */
 import { tryEvaluateFormula, type FormulaFunction } from './formula-engine';
 import type { Period } from './periods';
-import { aggregatePnlLines } from './pnl-aggregation';
+import { activePnlMonths, aggregatePnlLines } from './pnl-aggregation';
 import {
   getIndustryEmissionFactor,
   type EmissionScope,
@@ -41,6 +41,7 @@ export const budgetLineResolver: NamespaceResolver = {
       revenue,
       cogs,
       opex,
+      below_ebitda,
       imported_cogs,
       domestic_cogs,
       imported_opex,
@@ -58,10 +59,11 @@ export const budgetLineResolver: NamespaceResolver = {
     // operational_facts (SUMMED over the period = flow semantics, like the P&L
     // leaves). 2026-05-31 audit: PLF-format AzerSheker has no SAP D&A codes
     // (da_total=0) AND its `expense` lineType lumps D&A + interest + tax, so
-    // `net_income + da_total` collapses to NET — IND_EBITDA_MARGIN was showing
+    // a naive net-income-based fallback collapses to NET — IND_EBITDA_MARGIN was showing
     // net margin (CPC 4.55% vs the source's 9.29%). When no captured pl_ebitda
     // exists, fall back to the EBIT + D&A-add-back derivation.
     let capturedEbitda: number | null = null;
+    let ebitdaBasisMismatchReason: string | null = null;
     if (ctx.ds.listOperationalFacts) {
       const ebRows = await ctx.ds.listOperationalFacts({
         organizationId: ctx.organizationId,
@@ -77,18 +79,56 @@ export const budgetLineResolver: NamespaceResolver = {
       // aggregatePnlLines. For a non-base-currency entity, dividing a raw-source-
       // currency EBITDA by FX-converted revenue yields a wrong margin. On a
       // currency mismatch, ignore the captured value and fall back to the
-      // FX-normalized `net_income + da_total` derivation (already in base ccy).
+      // FX-normalized operating-result + D&A derivation (already in base ccy).
       // `unit` absent (legacy facts) → trust, preserving prior all-AZN behaviour.
       const allBaseCcy = ebRows.every((r) => (r.unit ?? baseCcy) === baseCcy);
       if (ebRows.length > 0 && allBaseCcy) {
-        capturedEbitda = ebRows.reduce((s, r) => s + r.value, 0);
+        const pnlCoverage = activePnlMonths(lines, baseCcy);
+        const factMonths = ebRows.map((r) => r.date.getUTCMonth());
+        const uniqueFactMonths = [...new Set(factMonths)].sort((a, b) => a - b);
+        const duplicateFactMonthCount = factMonths.length - uniqueFactMonths.length;
+        const sameMonths =
+          pnlCoverage.months.length === uniqueFactMonths.length &&
+          pnlCoverage.months.every((month, i) => month === uniqueFactMonths[i]);
+        const basisAligned =
+          pnlCoverage.unattributedLineCount === 0 &&
+          pnlCoverage.months.length > 0 &&
+          duplicateFactMonthCount === 0 &&
+          sameMonths;
+
+        if (basisAligned) {
+          capturedEbitda = ebRows.reduce((s, r) => s + r.value, 0);
+        } else {
+          // Fail closed: never divide a full-year/source subtotal by a partial
+          // actual/YTD denominator. Keep the derived same-row EBITDA in context
+          // for drill-down, while recomputeIndicator demotes formulas that use
+          // it to unknown with this explicit reason.
+          const reasonParts: string[] = [];
+          if (pnlCoverage.unattributedLineCount > 0) {
+            reasonParts.push(`${pnlCoverage.unattributedLineCount} P&L rows lack a month index`);
+          }
+          if (duplicateFactMonthCount > 0) {
+            reasonParts.push(`${duplicateFactMonthCount} duplicate EBITDA month rows`);
+          }
+          if (!sameMonths) {
+            reasonParts.push(
+              `P&L months [${pnlCoverage.months.map((m) => m + 1).join(',')}] do not match EBITDA months [${uniqueFactMonths.map((m) => m + 1).join(',')}]`,
+            );
+          }
+          ebitdaBasisMismatchReason =
+            `Captured EBITDA was not used because its period basis is not demonstrably aligned with the P&L denominator: ${reasonParts.join('; ')}`;
+        }
       }
     }
-    const ebitda = capturedEbitda ?? net_income + da_total;
+    // Derived EBITDA is an operating result. Below-EBITDA finance/tax rows
+    // belong in net_income but must never reduce this fallback numerator.
+    const derivedEbitda = revenue - cogs - opex + da_total;
+    const ebitda = capturedEbitda ?? derivedEbitda;
 
     state.context.revenue = revenue;
     state.context.cogs = cogs;
     state.context.opex = opex;
+    state.context.below_ebitda = below_ebitda;
     state.context.total_cost = total_cost;
     state.context.total_input_cost = total_input_cost;
     state.context.imported_input_cost = imported_input_cost;
@@ -101,6 +141,7 @@ export const budgetLineResolver: NamespaceResolver = {
     state.inputs.resolved.revenue = revenue;
     state.inputs.resolved.cogs = cogs;
     state.inputs.resolved.opex = opex;
+    state.inputs.resolved.below_ebitda = below_ebitda;
     state.inputs.resolved.total_cost = total_cost;
     state.inputs.resolved.total_input_cost = total_input_cost;
     state.inputs.resolved.imported_input_cost = imported_input_cost;
@@ -130,9 +171,13 @@ export const budgetLineResolver: NamespaceResolver = {
       revenue,
       cogs,
       opex,
+      below_ebitda,
       imported_total_cost: imported_cogs + imported_opex,
       domestic_total_cost: domestic_cogs + domestic_opex,
       missing_rate_count,
+      ...(ebitdaBasisMismatchReason
+        ? { ebitda_basis_mismatch: { reason: ebitdaBasisMismatchReason } }
+        : {}),
     };
 
     // --- Sub-aggregations (`budgetLine.<sub>`) ----------------------------
@@ -662,4 +707,3 @@ export const balanceSheetLineResolver: NamespaceResolver = {
     }
   },
 };
-

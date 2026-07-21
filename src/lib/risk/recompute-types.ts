@@ -63,6 +63,10 @@ export interface BudgetLineRow {
   currencyCode: string | null;
   exchangeRate: number | null;
   accountType: string | null;
+  /** BudgetLine.lineType — the importer's storage-sign convention. This can
+   *  intentionally differ from ChartOfAccount.accountType for PLF.07 income
+   *  rows, which are semantically revenue but stored as negative expense. */
+  lineType?: string | null;
   /** Account code from ChartOfAccount (e.g. "601-04", "711", "103-02").
    *  Nullable for legacy rows that pre-date the Phase 2.1 FK backfill — the
    *  sub-aggregations below treat null code as "no match" rather than
@@ -417,6 +421,7 @@ export interface BudgetLineAggregate {
   revenue: number;
   cogs: number;
   opex: number;
+  below_ebitda: number;
   /** cogs+opex in foreign currency — NOT the AGRO_FX_RISK numerator. Use
    *  `resolved.imported_input_cost` (cogs-only) for ratio math. This field
    *  is drill-down only. */
@@ -424,6 +429,11 @@ export interface BudgetLineAggregate {
   /** cogs+opex in base currency — drill-down complement to above. */
   domestic_total_cost: number;
   missing_rate_count: number;
+  /** Present when a captured source EBITDA subtotal exists but its monthly
+   *  coverage cannot be reconciled to the operating P&L rows. Metadata only:
+   *  recomputeIndicator promotes it to an error exclusively for formulas that
+   *  reference `ebitda`, leaving unrelated budget-line indicators untouched. */
+  ebitda_basis_mismatch?: { reason: string };
   /** Sub-aggregation breakdowns — populated only when the corresponding
    *  `budgetLine.<sub>` requiredInput was requested. Each carries the
    *  matched line count + a tiny preview list (top 3 by amount) so the

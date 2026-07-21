@@ -808,6 +808,23 @@ export async function recomputeIndicator(
     }
   }
 
+  // The budgetLine resolver may detect that a captured source EBITDA subtotal
+  // and the P&L denominator do not cover the same months (notably full-year
+  // source EBITDA against current-year YTD actuals). Only EBITDA formulas are
+  // demoted; unrelated budget-line indicators continue normally. Preserve the
+  // resolver's explicit audit reason over generic formula/clamp errors.
+  const ebitdaBasisMismatch = finalInputs.aggregates?.budget_line
+    ?.ebitda_basis_mismatch;
+  const ebitdaBasisMismatchApplies = Boolean(ebitdaBasisMismatch) &&
+    /\bebitda\b/.test(String(args.definition.formula ?? ''));
+  if (ebitdaBasisMismatchApplies && ebitdaBasisMismatch) {
+    status = 'unknown';
+    finalInputs.error = {
+      code: 'ebitda_basis_mismatch',
+      reason: ebitdaBasisMismatch.reason,
+    };
+  }
+
   // Phase 7.E phase 2 — opt-in sparkline. Computed BEFORE upsert so a
   // sparkline failure (resolver-level throw) abandons the whole recompute
   // (caller's per-pair try/catch surfaces it). `null` slots inside the
@@ -815,7 +832,10 @@ export async function recomputeIndicator(
   // that failed (missing data / formula error) and must be preserved as
   // gaps in the rendered chart, NOT collapsed to zero.
   let sparkline: (number | null)[] | undefined;
-  if (args.withSparkline) {
+  // A single annual basis mismatch has no trustworthy slot-level lineage.
+  // Preserve the raw fallback value for audit, but suppress a trend that could
+  // otherwise look decision-grade while the headline cell is explicitly unknown.
+  if (args.withSparkline && !ebitdaBasisMismatchApplies) {
     sparkline = await computeSparkline(ds, {
       organizationId: args.organizationId,
       companyId: args.companyId,
