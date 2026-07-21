@@ -21,7 +21,6 @@
  * is a pure orchestrator that fires one crawl when invoked.
  */
 
-import { createHash } from 'node:crypto';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { PrismaClient } from '@prisma/client';
 import { getAnthropicClient, AI_MODEL } from '@/lib/ai/client';
@@ -29,6 +28,8 @@ import { extractJsonFromText } from '@/lib/onboarding/ai-mapper/json-extract';
 import { prisma as defaultPrisma } from '@/lib/prisma';
 import { prismaAdmin } from "@/lib/db/prisma-admin"
 import { runSentimentBatch } from './sentiment';
+import { urlHash } from './url-hash';
+export { urlHash } from './url-hash';
 import type { IntelCrawlInput, IntelCrawlResult, IntelOutputLanguage } from './types';
 import {
   buildEntityPatternsFromCompanies,
@@ -141,34 +142,6 @@ If the searches return no relevant news, return \`{"items": []}\` — never fabr
  * query-string sorted). Used as the dedup key on `IntelItem.urlHash`
  * so the same article from two different referrers de-dupes correctly.
  */
-export function urlHash(rawUrl: string): string {
-  let normalised: string;
-  try {
-    const u = new URL(rawUrl);
-    u.hash = '';
-    // Sort query params for stable hashing.
-    // Architect Turn-XLII Round-1 Проблема fix: `URL.search` setter
-    // accepts both `?foo=bar` and `foo=bar` forms but normalises
-    // inconsistently across Node versions; assigning the bare value
-    // (no leading `?`) mirrors what `URLSearchParams.toString()`
-    // produces and avoids a brittle double-`?` shape on some runtimes.
-    const sortedSearch = Array.from(u.searchParams.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}=${v}`)
-      .join('&');
-    u.search = sortedSearch;
-    normalised = u
-      .toString()
-      .toLowerCase()
-      .replace(/\/$/, '');
-  } catch {
-    // Malformed URL — hash the raw string. Caller probably has a bug;
-    // fail-soft so a single bad URL doesn't blow up the whole crawl.
-    normalised = rawUrl.toLowerCase().trim();
-  }
-  return createHash('sha256').update(normalised).digest('hex');
-}
-
 /** Pure helper — formats the user-message body. Testable without the
  *  Anthropic SDK. */
 export function buildIntelPrompt(input: IntelCrawlInput): string {
