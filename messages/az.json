@@ -4056,8 +4056,8 @@
       },
       "cash_flow_sum": {
         "label": "Pul axını cəmi",
-        "equation": "CFO + CFI + CFF = pul vəsaitlərinin xalis dəyişməsi",
-        "desc": "Üç fəaliyyət bölməsi hesabat edilmiş xalis pul dəyişməsinə qarşı."
+        "equation": "CFO + CFI + CFF + məzənnə təsiri (göstərilibsə) = pul vəsaitlərinin xalis dəyişməsi",
+        "desc": "Üç fəaliyyət bölməsi və mövcud olduqda idxal edilmiş CF.04, ayrıca idxal edilmiş CF.05 xalis dəyişməsi ilə müqayisə olunur."
       },
       "cash_to_balance_sheet": {
         "label": "Kassa-balans üzləşməsi",
@@ -4087,6 +4087,7 @@
       "operating": "Əməliyyat pul axını",
       "investing": "İnvestisiya pul axını",
       "financing": "Maliyyə pul axını",
+      "fxEffectOnCash": "Valyuta məzənnələrinin pul vəsaitlərinə təsiri",
       "netChangeInCash": "Pul vəsaitlərinin xalis dəyişməsi",
       "openingCash": "Dövrün əvvəlinə kassa",
       "balanceSheetCash": "Balansdakı kassa",
@@ -4109,7 +4110,7 @@
       "natural": "təbii (bütün bölmələr müsbət)"
     },
     "blockedDetail": {
-      "netChangeNotStored": "Pul vəsaitlərinin xalis dəyişməsi saxlanılmır — idxal CF.04–CF.07 körpü sətirlərini ötürür, bölmələrdən çıxarmaq isə qurulma etibarilə həmişə üzləşərdi.",
+      "netChangeNotStored": "Seçilmiş dövr üçün idxal edilmiş CF.05 xalis dəyişmə sübutu yoxdur. Fəaliyyət bölmələrindən hesablanmır, çünki belə yoxlama quruluş etibarilə həmişə uyğun gələrdi.",
       "cashNotIdentifiable": "Balans sətirləri arasında kassanı müəyyən etmək mümkün deyil — hesablar planında kassa markeri yoxdur.",
       "distributionsNotRecorded": "Bazada dividend/bölüşdürmə qeydi yoxdur — qeydin olmaması sıfırın sübutu deyil.",
       "retainedEarningsNotIdentifiable": "Yığılmış bölüşdürülməmiş mənfəət sətrini müəyyən edən marker yoxdur.",

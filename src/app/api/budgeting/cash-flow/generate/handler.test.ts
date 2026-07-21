@@ -171,6 +171,39 @@ describe("POST /api/budgeting/cash-flow/generate — happy path", () => {
       (prismaMock.cashFlowEntry.create.mock.calls[0][0] as { data: { companyId: string } }).data.companyId,
     ).toBe("co1")
   })
+
+  it("does not treat bridge-only evidence as an actual movement cell or alert movement", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetPlan.findMany.mockResolvedValue([
+      { id: "p1", organizationId: ORG_ID, year: 2025, periodType: "monthly", month: 1, quarter: null, isRolling: false },
+    ])
+    prismaMock.budgetLine.findMany.mockResolvedValue([
+      { id: "bl1", plannedAmount: 100, lineType: "revenue", accountId: "acc1", companyId: "co1", account: { code: "X", name: "X" } },
+    ])
+    prismaMock.cashFlowEntry.findMany
+      // The actual-cell query filters bridge rows in SQL, before DISTINCT.
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { companyId: "co1", month: 1, activityType: "bridge", entryType: "outflow", amount: 999 },
+      ])
+
+    const res = await POST(
+      makeRequest("/api/budgeting/cash-flow/generate", { method: "POST", json: { year: 2025 } }),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.entriesCreated).toBe(1)
+    expect(body.skippedActualCells).toBe(0)
+    expect(prismaMock.cashFlowAlert.create).not.toHaveBeenCalled()
+    expect(prismaMock.cashFlowEntry.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          activityType: { not: "bridge" },
+        }),
+      }),
+    )
+  })
 })
 
 describe("POST /api/budgeting/cash-flow/generate — Phase 4.2 period lock (Turn LXVIII)", () => {

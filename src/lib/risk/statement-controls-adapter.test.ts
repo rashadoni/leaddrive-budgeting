@@ -10,6 +10,9 @@
 
 import { describe, it, expect } from "vitest"
 import type { Prisma } from "@prisma/client"
+import azMessages from "../../../messages/az.json"
+import enMessages from "../../../messages/en.json"
+import ruMessages from "../../../messages/ru.json"
 import {
   SHADOW_STATEMENT_POLICY,
   assembleShadowStatementControls,
@@ -50,6 +53,10 @@ function makeEvidence(over: Partial<ShadowStatementEvidence> = {}): ShadowStatem
       operating: bucket(900, 5),
       investing: bucket(-500, 2),
       financing: bucket(-200, 1),
+      fxEffectOnCash: EMPTY,
+      netChangeInCash: EMPTY,
+      openingCash: EMPTY,
+      closingCash: EMPTY,
       ...(over.cf ?? {}),
     },
     pl: {
@@ -201,7 +208,15 @@ describe("assembleShadowStatementControls — balance_sheet", () => {
 
 // ───────────────────────── blocked-by-design controls ─────────────────────────
 
-describe("assembleShadowStatementControls — blocked by design", () => {
+describe("assembleShadowStatementControls — cash bridge evidence", () => {
+  it("keeps the new bridge component and explanation in az/en/ru parity", () => {
+    for (const messages of [azMessages, enMessages, ruMessages]) {
+      expect(messages.adminStatementControls.components.fxEffectOnCash).toBeTruthy()
+      expect(messages.adminStatementControls.controls.cash_flow_sum.equation).toBeTruthy()
+      expect(messages.adminStatementControls.blockedDetail.netChangeNotStored).toBeTruthy()
+    }
+  })
+
   it("cash_flow_sum blocks even with rich CF rows: net change is never derived", () => {
     const entries = assembleShadowStatementControls(makeEvidence())
     const e = entry(entries, "cash_flow_sum")
@@ -216,6 +231,28 @@ describe("assembleShadowStatementControls — blocked by design", () => {
     expect(net?.present).toBe(false)
     expect(net?.noteKey).toBe("netChangeNotStored")
     expect(e.notes).toContain("netChangeNotStored")
+  })
+
+  it("cash_flow_sum evaluates imported CF.05 independently and includes CF.04 once", () => {
+    const entries = assembleShadowStatementControls(makeEvidence({
+      cf: {
+        operating: bucket(900, 5),
+        investing: bucket(-500, 2),
+        financing: bucket(-200, 1),
+        fxEffectOnCash: bucket(25, 1),
+        netChangeInCash: bucket(225, 1),
+        openingCash: bucket(1_000, 1),
+        closingCash: bucket(1_225, 1),
+      },
+    }))
+    const e = entry(entries, "cash_flow_sum")
+    if (e.kind !== "evaluated") throw new Error("expected evaluated")
+    expect(e.result.decisionStatus).toBe("provisional")
+    expect(e.left.value).toBe(225)
+    expect(e.right.value).toBe(225)
+    expect(e.result.signedDelta).toBe(0)
+    expect(e.components.filter((c) => c.component === "fxEffectOnCash")).toHaveLength(1)
+    expect(e.notes).not.toContain("netChangeNotStored")
   })
 
   it("cash_to_balance_sheet blocks with both cash markers absent", () => {
@@ -274,6 +311,26 @@ describe("fetchStatementEvidence — CF sign convention", () => {
     })
     const evidence = await fetchStatementEvidence(tx, ORG_ID, COMPANY_ID)
     expect(evidence?.cf.operating).toEqual({ sum: 60, rowCount: 2 })
+  })
+
+  it("classifies CF.04–CF.07 as separate bridge evidence by canonical account code", async () => {
+    const tx = mockTx({
+      balanceSheetLine: [bsRow("asset", 100, "Cash account")],
+      cashFlowEntry: [
+        { activityType: "bridge", entryType: "inflow", amount: 5, account: { code: "CF.04" } },
+        { activityType: "bridge", entryType: "inflow", amount: 105, account: { code: "CF.05.01" } },
+        { activityType: "bridge", entryType: "inflow", amount: 1_000, account: { code: "CF.06" } },
+        { activityType: "bridge", entryType: "inflow", amount: 1_105, account: { code: "CF.07" } },
+      ],
+      budgetLine: [],
+      currencyRateHistory: [],
+    })
+
+    const evidence = await fetchStatementEvidence(tx, ORG_ID, COMPANY_ID)
+    expect(evidence?.cf.fxEffectOnCash).toEqual({ sum: 5, rowCount: 1 })
+    expect(evidence?.cf.netChangeInCash).toEqual({ sum: 105, rowCount: 1 })
+    expect(evidence?.cf.openingCash).toEqual({ sum: 1_000, rowCount: 1 })
+    expect(evidence?.cf.closingCash).toEqual({ sum: 1_105, rowCount: 1 })
   })
 })
 
@@ -531,7 +588,15 @@ describe("assembleShadowStatementControls — provisional-only sweep", () => {
           rawSums: { assets: 0, liabilities: 0, equity: 0 },
           signConvention: detectBsSignConvention(0, 0, 0),
         },
-        cf: { operating: EMPTY, investing: EMPTY, financing: EMPTY },
+        cf: {
+          operating: EMPTY,
+          investing: EMPTY,
+          financing: EMPTY,
+          fxEffectOnCash: EMPTY,
+          netChangeInCash: EMPTY,
+          openingCash: EMPTY,
+          closingCash: EMPTY,
+        },
         pl: {
           revenue: EMPTY,
           cogs: EMPTY,

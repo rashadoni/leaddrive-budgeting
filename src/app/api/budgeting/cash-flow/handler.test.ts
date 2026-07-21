@@ -136,4 +136,25 @@ describe("GET /api/budgeting/cash-flow — soft-delete exclusion (2026-05-31)", 
       }),
     )
   })
+
+  it("keeps CF bridge evidence out of movement totals and editable entries", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.cashFlowEntry.findMany
+      .mockResolvedValueOnce([
+        { id: "move", activityType: "operating", entryType: "inflow", amount: 100, month: 1 },
+        { id: "net", activityType: "bridge", entryType: "inflow", amount: 100, month: 1 },
+        { id: "close", activityType: "bridge", entryType: "inflow", amount: 500, month: 1 },
+      ])
+      .mockResolvedValueOnce([
+        { id: "prior-move", activityType: "operating", entryType: "inflow", amount: 40, month: 12 },
+        { id: "prior-close", activityType: "bridge", entryType: "inflow", amount: 400, month: 12 },
+      ])
+
+    const res = await GET(makeRequest("/api/budgeting/cash-flow?year=2026"))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.totalInflows).toBe(100)
+    expect(body.months[0]).toMatchObject({ opening: 40, inflows: 100, net: 100, closing: 140 })
+    expect(body.entries.map((e: { id: string }) => e.id)).toEqual(["move"])
+  })
 })

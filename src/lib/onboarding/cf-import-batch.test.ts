@@ -32,17 +32,47 @@ interface FakeCfRow {
   deletedBy: string | null
 }
 
-// 2026-05-31 entity-scope: the reset now passes
-// `OR: [{ sourceId: { startsWith: "<entity>::" } }]` to isolate one entity's
-// CF on a shared sourceTag. The fake honours it so the regression test bites.
-function matchesEntityScope(
-  r: { sourceId: string | null },
-  w: { OR?: Array<{ sourceId?: { startsWith?: string } }> },
+// The real reset now nests exact entity/year pairs and, inside each pair,
+// companyId OR legacy sourceId-prefix identity. This recursive matcher keeps
+// the in-memory fake faithful enough for collateral-scope regressions.
+function matchesScopedWhere(
+  row: FakeCfRow,
+  where: Record<string, unknown>,
 ): boolean {
-  if (!w.OR) return true
-  return w.OR.some(
-    (c) => c.sourceId?.startsWith != null && (r.sourceId ?? "").startsWith(c.sourceId.startsWith),
-  )
+  const year = where.year as number | { in?: number[] } | undefined
+  if (typeof year === "number" && row.year !== year) return false
+  if (typeof year === "object" && year.in && !year.in.includes(row.year)) {
+    return false
+  }
+  const month = where.month as number | { in?: number[] } | undefined
+  if (typeof month === "number" && row.month !== month) return false
+  if (typeof month === "object" && month.in && !month.in.includes(row.month)) {
+    return false
+  }
+  const companyId = where.companyId as string | { in?: string[] } | undefined
+  if (typeof companyId === "string" && row.companyId !== companyId) return false
+  if (
+    typeof companyId === "object" &&
+    companyId.in &&
+    !companyId.in.includes(row.companyId ?? "")
+  ) {
+    return false
+  }
+  const sourceId = where.sourceId as { startsWith?: string } | undefined
+  if (
+    sourceId?.startsWith !== undefined &&
+    !(row.sourceId ?? "").startsWith(sourceId.startsWith)
+  ) {
+    return false
+  }
+  if (
+    typeof where.isProjected === "boolean" &&
+    row.isProjected !== where.isProjected
+  ) {
+    return false
+  }
+  const branches = where.OR as Array<Record<string, unknown>> | undefined
+  return !branches || branches.some((branch) => matchesScopedWhere(row, branch))
 }
 
 function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient & {
@@ -64,9 +94,8 @@ function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient 
         for (const r of cf) {
           if (w.organizationId && r.organizationId !== w.organizationId) continue
           if (w.source && r.source !== w.source) continue
-          if (!matchesEntityScope(r, w)) continue
+          if (!matchesScopedWhere(r, w as unknown as Record<string, unknown>)) continue
           if (w.deletedAt === null && r.deletedAt !== null) continue
-          if (w.year && !w.year.in.includes(r.year)) continue
           Object.assign(r, args.data)
           count += 1
         }
@@ -84,9 +113,8 @@ function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient 
         for (const r of cf) {
           if (w.organizationId && r.organizationId !== w.organizationId) continue
           if (w.source && r.source !== w.source) continue
-          if (!matchesEntityScope(r, w)) continue
+          if (!matchesScopedWhere(r, w as unknown as Record<string, unknown>)) continue
           if (w.deletedAt === null && r.deletedAt !== null) continue
-          if (w.year && !w.year.in.includes(r.year)) continue
           n += 1
         }
         return n
@@ -104,9 +132,8 @@ function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient 
           const r = cf[i]
           if (w.organizationId && r.organizationId !== w.organizationId) continue
           if (w.source && r.source !== w.source) continue
-          if (!matchesEntityScope(r, w)) continue
+          if (!matchesScopedWhere(r, w as unknown as Record<string, unknown>)) continue
           if (w.deletedAt?.not === null && r.deletedAt === null) continue
-          if (w.year && !w.year.in.includes(r.year)) continue
           cf.splice(i, 1)
           count += 1
         }
@@ -146,9 +173,8 @@ function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient 
           .filter((r) => {
             if (w.organizationId && r.organizationId !== w.organizationId) return false
             if (w.source && r.source !== w.source) return false
-            if (!matchesEntityScope(r, w)) return false
+            if (!matchesScopedWhere(r, w as unknown as Record<string, unknown>)) return false
             if (w.deletedAt === null && r.deletedAt !== null) return false
-            if (w.year && !w.year.in.includes(r.year)) return false
             return true
           })
           .map((r) => ({
@@ -194,6 +220,29 @@ const E = (
   sourceId: `${entity}::${cfCode}`,
 })
 
+const existing = (
+  entity: string,
+  year: number,
+  amount: number,
+  source: string = "historical-source",
+): FakeCfRow => ({
+  organizationId: "org_1",
+  year,
+  month: 4,
+  entryType: "inflow",
+  source,
+  sourceId: `${entity}::CF.01.01.01`,
+  amount,
+  currencyCode: "AZN",
+  description: `${entity}/${year}`,
+  isProjected: false,
+  activityType: "operating",
+  category: null,
+  companyId: `co_${entity}`,
+  deletedAt: null,
+  deletedBy: null,
+})
+
 function planFor(
   rows: ReadonlyArray<CfImportRow>,
   overrides: Partial<CfImportPlan> = {},
@@ -226,6 +275,244 @@ describe("runCashFlowBatch — round-trip", () => {
     )
     expect(r.metrics.rowsInserted).toBe(2)
     expect(r.reconciliation.verdict).toBe("green")
+  })
+
+  it("accepts movement + bridge evidence in one complete batch", async () => {
+    const prisma = makeFakePrisma()
+    const movement = E("AZSF", "CF.01.01.01", 100)
+    const bridge: CfImportRow = {
+      ...E("AZSF", "CF.05", 0),
+      activityType: "bridge",
+      entryType: "inflow",
+      amount: 0,
+    }
+    const plan = planFor([movement, bridge])
+
+    const first = await runCashFlowBatch(prisma, plan)
+    expect(first.metrics.rowsInserted).toBe(2)
+    expect(first.reconciliation.verdict).toBe("green")
+
+    const second = await runCashFlowBatch(prisma, plan)
+    expect(second.metrics.resetArchived).toBe(2)
+    expect(second.metrics.rowsInserted).toBe(2)
+    expect(prisma.__cf.filter((row) => row.deletedAt === null)).toHaveLength(2)
+  })
+
+  it("rejects bridge-only input before transaction or destructive reset", async () => {
+    const prisma = makeFakePrisma()
+    const bridge: CfImportRow = {
+      ...E("AZSF", "CF.05", 0),
+      activityType: "bridge",
+      entryType: "inflow",
+      amount: 0,
+    }
+
+    await expect(runCashFlowBatch(prisma, planFor([bridge]))).rejects.toThrow(
+      /bridge-only batch refused/,
+    )
+
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.count).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.updateMany).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.deleteMany).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.createMany).not.toHaveBeenCalled()
+    expect(prisma.__cf).toEqual([])
+  })
+
+  it("does not let entity A movement authorize entity B bridge-only reset", async () => {
+    const prisma = makeFakePrisma()
+    const movementA = E("AZSF", "CF.01.01.01", 100)
+    const bridgeB: CfImportRow = {
+      ...E("CPC", "CF.05", 0),
+      activityType: "bridge",
+      entryType: "inflow",
+      amount: 0,
+    }
+
+    await expect(
+      runCashFlowBatch(prisma, planFor([movementA, bridgeB])),
+    ).rejects.toThrow(/CPC\/2026/)
+
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.count).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.updateMany).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.deleteMany).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.createMany).not.toHaveBeenCalled()
+  })
+
+  it("resets exact entity/year pairs without Cartesian collateral", async () => {
+    const prisma = makeFakePrisma({
+      initialRows: [
+        existing("A", 2025, 10),
+        existing("A", 2026, 20),
+        existing("B", 2025, 30),
+        existing("B", 2026, 40),
+      ],
+    })
+    const rowA2025 = { ...E("A", "CF.01.01.01", 11), year: 2025 }
+    const rowB2026 = { ...E("B", "CF.01.01.01", 41), year: 2026 }
+
+    const result = await runCashFlowBatch(
+      prisma,
+      planFor([rowA2025, rowB2026], {
+        periodScope: ["2025-04", "2026-04"],
+      }),
+    )
+
+    expect(result.metrics.resetArchived).toBe(2)
+    const historical = prisma.__cf.filter(
+      (row) => row.source === "historical-source",
+    )
+    expect(
+      historical
+        .filter((row) => row.deletedAt !== null)
+        .map((row) => `${row.sourceId}/${row.year}`)
+        .sort(),
+    ).toEqual(["A::CF.01.01.01/2025", "B::CF.01.01.01/2026"])
+    expect(
+      historical
+        .filter((row) => row.deletedAt === null)
+        .map((row) => `${row.sourceId}/${row.year}`)
+        .sort(),
+    ).toEqual(["A::CF.01.01.01/2026", "B::CF.01.01.01/2025"])
+    expect(result.reconciliation.verdict).toBe("green")
+  })
+
+  it("replaces actuals but only clears forecast months backed by movements", async () => {
+    const oldActual = {
+      ...existing("A", 2026, 50, "historical-source"),
+      month: 1,
+      isProjected: false,
+      sourceId: "A::old-actual",
+    }
+    const forecastJan = {
+      ...existing("A", 2026, 60, "budget_line"),
+      month: 1,
+      isProjected: true,
+      sourceId: "forecast-jan",
+    }
+    const forecastFeb = {
+      ...existing("A", 2026, 70, "budget_line"),
+      month: 2,
+      isProjected: true,
+      sourceId: "forecast-feb",
+    }
+    const prisma = makeFakePrisma({
+      initialRows: [oldActual, forecastJan, forecastFeb],
+    })
+    const movementJan = E("A", "CF.01.01.01", 55, 1)
+    const bridgeFeb: CfImportRow = {
+      ...E("A", "CF.05", 5, 2),
+      activityType: "bridge",
+      entryType: "inflow",
+    }
+
+    const result = await runCashFlowBatch(
+      prisma,
+      planFor([movementJan, bridgeFeb], {
+        periodScope: ["2026-01", "2026-02"],
+      }),
+    )
+
+    expect(result.metrics.resetArchived).toBe(1)
+    expect(
+      prisma.__cf.find((row) => row.sourceId === "A::old-actual")?.deletedAt,
+    ).not.toBeNull()
+    expect(prisma.__cf.some((row) => row.sourceId === "forecast-jan")).toBe(false)
+    expect(
+      prisma.__cf.find((row) => row.sourceId === "forecast-feb")?.deletedAt,
+    ).toBeNull()
+  })
+
+  it("rejects periodScope/row-year mismatch before any transaction", async () => {
+    const prisma = makeFakePrisma()
+    await expect(
+      runCashFlowBatch(
+        prisma,
+        planFor([E("A", "CF.01.01.01", 10)], {
+          periodScope: ["2025-04"],
+        }),
+      ),
+    ).rejects.toThrow(/do not exactly match row years/)
+
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.count).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.updateMany).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.createMany).not.toHaveBeenCalled()
+  })
+
+  it("treats empty rows + empty periodScope as a DB-free no-op", async () => {
+    const prisma = makeFakePrisma()
+    const result = await runCashFlowBatch(
+      prisma,
+      planFor([], { periodScope: [] }),
+    )
+
+    expect(result.metrics).toEqual({
+      resetArchived: 0,
+      resetPurged: 0,
+      rowsInserted: 0,
+    })
+    expect(result.reconciliation.verdict).toBe("green")
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.updateMany).not.toHaveBeenCalled()
+  })
+
+  it("rejects mixed legacy-empty and named entity scopes before transaction", async () => {
+    const prisma = makeFakePrisma()
+    const legacy = {
+      ...E("", "CF.01.01.01", 10),
+      sourceId: "legacy-row",
+    }
+    await expect(
+      runCashFlowBatch(prisma, planFor([legacy, E("A", "CF.01.01.01", 20)])),
+    ).rejects.toThrow(/mixed empty and named entityCode/)
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+  })
+
+  it.each([" A ", "   "])(
+    "rejects non-canonical whitespace entityCode %j before transaction",
+    async (entityCode) => {
+      const prisma = makeFakePrisma()
+      await expect(
+        runCashFlowBatch(
+          prisma,
+          planFor([E(entityCode, "CF.01.01.01", 10)]),
+        ),
+      ).rejects.toThrow(/entityCode must be canonical/)
+      expect(prisma.$transaction).not.toHaveBeenCalled()
+      expect(prisma.company.findMany).not.toHaveBeenCalled()
+      expect(prisma.cashFlowEntry.updateMany).not.toHaveBeenCalled()
+    },
+  )
+
+  it("preserves the all-empty entityCode source-tag fallback", async () => {
+    const legacyCurrent = {
+      ...existing("LEGACY", 2026, 10, "test-source"),
+      companyId: null,
+      sourceId: "legacy-old",
+    }
+    const otherSource = {
+      ...existing("LEGACY", 2026, 20, "other-source"),
+      companyId: null,
+      sourceId: "other-kept",
+    }
+    const prisma = makeFakePrisma({ initialRows: [legacyCurrent, otherSource] })
+    const incoming = {
+      ...E("", "CF.01.01.01", 11),
+      sourceId: "legacy-new",
+    }
+
+    const result = await runCashFlowBatch(prisma, planFor([incoming]))
+
+    expect(result.metrics.resetArchived).toBe(1)
+    expect(
+      prisma.__cf.find((row) => row.sourceId === "legacy-old")?.deletedAt,
+    ).not.toBeNull()
+    expect(
+      prisma.__cf.find((row) => row.sourceId === "other-kept")?.deletedAt,
+    ).toBeNull()
+    expect(result.reconciliation.verdict).toBe("green")
   })
 
   it("recon read does NOT select the dropped `category` column", async () => {

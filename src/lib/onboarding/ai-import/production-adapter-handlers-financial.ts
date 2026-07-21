@@ -17,6 +17,10 @@ import { runDynamicPlfAdapter } from "./dynamic-plf-adapter"
 import { runDynamicBsAdapter } from "./dynamic-bs-adapter"
 import { runDynamicCfAdapter } from "./dynamic-cf-adapter"
 import { parsePlfPlSheet, parsePlfCfSheet, parsePlfEbitdaSubtotalAllYears } from "../adapters/azseker-plf"
+import {
+  isCashFlowBridgeActivity,
+  isCashFlowMovementActivity,
+} from "../cf-bridge"
 import { parseWorkbookBsSheet } from "../adapters/azseker-workbook-bs"
 import {
   parseWorkbookFarmingKpiSheet,
@@ -502,7 +506,12 @@ export function makeCfHandler(
         // and vice-versa. amount stays a positive magnitude (the cash-flow
         // page nets inflows − outflows on magnitudes).
         const signed = entry.perMonth[m]
-        if (signed === 0) continue
+        if (signed === null) continue
+        // Preserve explicit zero bridge evidence (absent !== zero), while
+        // retaining the established sparse behavior for ordinary movements.
+        if (signed === 0 && !isCashFlowBridgeActivity(entry.activityType)) {
+          continue
+        }
         const entryType: typeof entry.entryType = signed >= 0 ? "inflow" : "outflow"
         const amount = Math.abs(signed)
         const period = `${input.year}-${String(m + 1).padStart(2, "0")}`
@@ -530,6 +539,23 @@ export function makeCfHandler(
         // value in an outflow line — as a 2× drift → RED. There is exactly one
         // CF row per (entity, cfCode, month), so no netting is lost.)
         expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
+      }
+    }
+    const hasBridgeRows = rows.some((row) =>
+      isCashFlowBridgeActivity(row.activityType),
+    )
+    const hasMovementRows = rows.some((row) =>
+      isCashFlowMovementActivity(row.activityType),
+    )
+    if (hasBridgeRows && !hasMovementRows) {
+      return {
+        summary: `CF sheet "${input.sheetName}" contains bridge evidence without cash movements — blocked`,
+        itemCount: 0,
+        warnings: [
+          ...parsed.warnings.map((w) => `row ${w.row}: ${w.reason}`),
+          `CF.04–CF.07 cannot be applied as a bridge-only batch because the entity/year reset would archive the complete cash flow. Upload one complete CF sheet containing CF.01–CF.03 and bridge rows together.`,
+        ],
+        applyToDb: async () => ({ rowsInserted: 0 }),
       }
     }
     // ── Dynamic fallback: AZSEKER CF parser returned 0 entries on non-empty sheet ──
@@ -852,4 +878,3 @@ export function makeKpiHandler(
 // ──────────────────────────────────────────────────────────────────────
 // LAND_REGISTRY handler — writes Company.settings via tx
 // ──────────────────────────────────────────────────────────────────────
-

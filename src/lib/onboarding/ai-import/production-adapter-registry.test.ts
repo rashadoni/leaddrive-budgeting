@@ -287,7 +287,7 @@ describe("buildProductionAdapterRegistry", () => {
     expect(txArg).toBe(fakeTx)
   })
 
-  it("CF handler routes through runCashFlowBatch with tx", async () => {
+  it("CF handler sends movement + bridge evidence through one runCashFlowBatch call", async () => {
     ;(parsePlfCfSheet as ReturnType<typeof vi.fn>).mockReturnValue({
       entries: [
         {
@@ -297,11 +297,18 @@ describe("buildProductionAdapterRegistry", () => {
           entryType: "inflow",
           perMonth: [100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         },
+        {
+          code: "CF.05",
+          label: "Net change in cash",
+          activityType: "bridge",
+          entryType: "inflow",
+          perMonth: [0, null, null, null, null, null, null, null, null, null, null, null],
+        },
       ],
       warnings: [],
     })
     ;(runCashFlowBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      metrics: { rowsInserted: 1 },
+      metrics: { rowsInserted: 2 },
     })
     const prisma = buildPrismaStub({
       companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
@@ -327,6 +334,48 @@ describe("buildProductionAdapterRegistry", () => {
     } as never
     await result.applyToDb(fakeTx)
     expect(runCashFlowBatch).toHaveBeenCalledOnce()
+    const plan = (runCashFlowBatch as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(plan.rows).toMatchObject([
+      { cfCode: "CF.01.01", activityType: "operating", amount: 100 },
+      { cfCode: "CF.05", activityType: "bridge", amount: 0 },
+    ])
+  })
+
+  it("CF handler makes a bridge-only parse a no-op before CoA or batch writes", async () => {
+    ;(parsePlfCfSheet as ReturnType<typeof vi.fn>).mockReturnValue({
+      entries: [
+        {
+          code: "CF.05",
+          label: "Net change in cash",
+          activityType: "bridge",
+          entryType: "inflow",
+          perMonth: [0, null, null, null, null, null, null, null, null, null, null, null],
+        },
+      ],
+      warnings: [],
+    })
+    const prisma = buildPrismaStub({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+      plan: { id: "plan_2026" },
+    })
+    const registry = buildProductionAdapterRegistry(prisma)
+    const result = await registry.get("CF")!({
+      workbook: fakeWorkbook,
+      sheetName: "CF CPC",
+      entityCode: "AZSEKER-CPC",
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    const fakeTx = {
+      chartOfAccount: { upsert: vi.fn() },
+    } as never
+
+    expect(result.itemCount).toBe(0)
+    expect(result.warnings.some((warning) => warning.includes("bridge-only"))).toBe(true)
+    expect(await result.applyToDb(fakeTx)).toEqual({ rowsInserted: 0 })
+    expect(runCashFlowBatch).not.toHaveBeenCalled()
+    expect((fakeTx as { chartOfAccount: { upsert: ReturnType<typeof vi.fn> } }).chartOfAccount.upsert).not.toHaveBeenCalled()
   })
 
   it("CF handler: refund month (positive in an outflow line) → inflow + abs amount + abs expectedSums (recon-safe)", async () => {

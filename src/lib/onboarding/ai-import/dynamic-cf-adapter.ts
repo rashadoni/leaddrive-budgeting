@@ -10,8 +10,8 @@
  *   • CF amounts are stored as Math.abs — direction is encoded in `entryType`
  *     ("inflow" | "outflow"), matching `parsePlfCfSheet` convention.
  *   • Activity type (operating / investing / financing) comes from the CF.XX
- *     top-level family (CF.01 / CF.02 / CF.03). CF.04-07 are bridge rows
- *     (totals, FX changes, opening/closing balances) — skipped.
+ *     top-level family (CF.01 / CF.02 / CF.03). CF.04-07 are preserved as
+ *     non-movement `bridge` evidence in the same complete batch.
  *   • Entry type (inflow / outflow) from the CF.XX.01 / CF.XX.02 sub-segment;
  *     falls back to sign-of-sum when sub-segment is absent.
  *   • Month coverage is partial (same as BS — accepts whatever months mapped).
@@ -37,6 +37,12 @@ import {
   resolveOrCreateAccountId,
 } from "../upsert-chart-of-account"
 import {
+  classifyCashFlowCode,
+  isCashFlowBridgeActivity,
+  isCashFlowMovementActivity,
+  selectLeafMostCashFlowBridgeCodes,
+} from "../cf-bridge"
+import {
   findApprovedSemanticCoaDecision,
   isDerivedFinancialLabel,
   loadSemanticCoaAccounts,
@@ -48,7 +54,6 @@ import {
 // CF code classification helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-type CfActivityType = "operating" | "investing" | "financing"
 type CfEntryType = "inflow" | "outflow"
 
 function toSemanticCoaCandidates(
@@ -62,22 +67,6 @@ function toSemanticCoaCandidates(
     matchedLabel: match.matchedLabel,
     reasoning: match.reasoning,
   }))
-}
-
-/**
- * Maps CF.XX top-level family to activity type.
- * Returns null for bridge rows (CF.04 net-FX / CF.05 net / CF.06 opening /
- * CF.07 closing) — callers skip those rows.
- */
-function cfActivityTypeLocal(code: string): CfActivityType | null {
-  const m = code.match(/^CF\.(\d{2})/)
-  if (!m) return null
-  const top = m[1]
-  if (top === "01") return "operating"
-  if (top === "02") return "investing"
-  if (top === "03") return "financing"
-  // CF.04-07: FX change, net change, opening balance, closing balance — skip
-  return null
 }
 
 /**
@@ -132,6 +121,14 @@ function detectHeaderEndRow(aoa: Array<Array<string | number | null>>): number {
  * Sub-segment codes like CF.01.01 (no leaf) are parent/total rows — skipped.
  */
 const CF_LEAF_RE = /^CF\.\d{2}\.\d{2}\.\d{1,2}$/
+
+function isImportableCfCode(code: string): boolean {
+  const classification = classifyCashFlowCode(code)
+  return (
+    classification !== null &&
+    (classification.activityType === "bridge" || CF_LEAF_RE.test(code))
+  )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Partial column resolver (same as dynamic-bs-adapter.ts — not shared to
@@ -387,7 +384,7 @@ export async function runDynamicCfAdapter(
     const label = typeof labelRaw === "string" ? labelRaw.trim() : code
     if (!code && label) code = label
     if (!code) continue
-    if (!CF_LEAF_RE.test(code)) {
+    if (!isImportableCfCode(code)) {
       if (!semanticLabelFallback && /^CF\./i.test(code)) continue
       const approved = findApprovedSemanticCoaDecision(
         label,
@@ -408,7 +405,7 @@ export async function runDynamicCfAdapter(
           }
           continue
         }
-        if (CF_LEAF_RE.test(approved.targetCode)) {
+        if (isImportableCfCode(approved.targetCode)) {
           code = approved.targetCode
           if (!semanticMappedLabels.has(label)) {
             semanticMappedLabels.add(label)
@@ -499,8 +496,10 @@ export async function runDynamicCfAdapter(
       }
     }
 
-    const activityType = cfActivityTypeLocal(code)
-    if (!activityType) continue // bridge rows (CF.04-07) → skip
+    const classification = classifyCashFlowCode(code)
+    if (!classification) continue
+    const activityType = classification.activityType
+    const isBridge = isCashFlowBridgeActivity(activityType)
     if (label) lineLabelByCode.set(code, label)
 
     // Pre-scan sum to determine inflow/outflow when sub-segment is absent
@@ -509,7 +508,7 @@ export async function runDynamicCfAdapter(
       const v = row[colIdx]
       if (typeof v === "number" && Number.isFinite(v)) signHintSum += v
     }
-    const entryType = cfEntryTypeLocal(code, signHintSum)
+    const lineEntryType = cfEntryTypeLocal(code, signHintSum)
 
     const cfCode = code
     const category = `${input.entityCode}-${cfCode}`
@@ -524,10 +523,17 @@ export async function runDynamicCfAdapter(
             ? Number(cellVal.replace(",", "."))
             : null
 
-      if (raw === null || !Number.isFinite(raw) || raw === 0) continue
+      if (raw === null || !Number.isFinite(raw)) continue
+      // Explicit bridge zero is evidence. Ordinary movements remain sparse.
+      if (raw === 0 && !isBridge) continue
 
       // CF convention: store absolute value; direction encoded in entryType
       const amount = Math.abs(raw)
+      const entryType: CfEntryType = isBridge
+        ? raw >= 0
+          ? "inflow"
+          : "outflow"
+        : lineEntryType
       const month = monthIdx + 1
       const period = `${effectiveYear}-${String(month).padStart(2, "0")}`
 
@@ -553,6 +559,42 @@ export async function runDynamicCfAdapter(
     }
   }
 
+  const bridgeCodesByPeriod = new Map<string, string[]>()
+  for (const row of rows) {
+    if (!isCashFlowBridgeActivity(row.activityType)) continue
+    const periodKey = `${row.entityCode}\u0000${row.year}\u0000${row.month}`
+    const codes = bridgeCodesByPeriod.get(periodKey)
+    if (codes) codes.push(row.cfCode)
+    else bridgeCodesByPeriod.set(periodKey, [row.cfCode])
+  }
+  const selectedBridgeCodesByPeriod = new Map<string, ReadonlySet<string>>()
+  for (const [periodKey, codes] of bridgeCodesByPeriod) {
+    selectedBridgeCodesByPeriod.set(
+      periodKey,
+      selectLeafMostCashFlowBridgeCodes(codes),
+    )
+  }
+  const skippedBridgeCodes = new Set<string>()
+  for (let index = rows.length - 1; index >= 0; index--) {
+    const row = rows[index]
+    const periodKey = `${row.entityCode}\u0000${row.year}\u0000${row.month}`
+    if (
+      isCashFlowBridgeActivity(row.activityType) &&
+      !selectedBridgeCodesByPeriod.get(periodKey)?.has(row.cfCode)
+    ) {
+      skippedBridgeCodes.add(row.cfCode)
+      rows.splice(index, 1)
+    }
+  }
+  // Rebuild after leaf-most filtering so reconciliation cannot expect a
+  // skipped ancestor subtotal that was deliberately not written.
+  expectedSums.clear()
+  for (const row of rows) {
+    const period = `${row.year}-${String(row.month).padStart(2, "0")}`
+    const key = buildReconKey(DYNAMIC_CF_SOURCE_TAG, row.sourceId, period)
+    expectedSums.set(key, (expectedSums.get(key) ?? 0) + row.amount)
+  }
+
   // ── 8. Assemble result ────────────────────────────────────────────────────
   const baseWarnings = [
     `Dynamic detection used, cache key hint: ${cacheKeyHint}`,
@@ -562,11 +604,37 @@ export async function runDynamicCfAdapter(
       : []),
     ...semanticMatches,
     ...semanticReview,
+    ...[...skippedBridgeCodes].map(
+      (code) =>
+        `Bridge subtotal ${code} skipped because a more specific descendant row is present`,
+    ),
     ...(proposal.overallConfidence < 0.7
       ? [`Confidence ${proposal.overallConfidence.toFixed(2)} < 0.70 — review imported rows`]
       : []),
     ...yearWarnings,
   ]
+
+  const hasBridgeRows = rows.some((row) =>
+    isCashFlowBridgeActivity(row.activityType),
+  )
+  const hasMovementRows = rows.some((row) =>
+    isCashFlowMovementActivity(row.activityType),
+  )
+  if (hasBridgeRows && !hasMovementRows) {
+    return {
+      summary: `Dynamic CF sheet "${input.sheetName}" contains bridge evidence without cash movements — blocked`,
+      itemCount: 0,
+      warnings: [
+        ...baseWarnings,
+        `CF.04–CF.07 cannot be applied as a bridge-only batch because the entity/year reset would archive the complete cash flow. Upload one complete CF sheet containing CF.01–CF.03 and bridge rows together.`,
+      ],
+      semanticCoa: {
+        mappings: semanticCoaMappings,
+        reviewItems: semanticCoaReviewItems,
+      },
+      applyToDb: async () => ({ rowsInserted: 0 }),
+    }
+  }
 
   const periodScope = [...monthCols.keys()]
     .sort((a, b) => a - b)

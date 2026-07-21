@@ -9,7 +9,7 @@
  *   - Valid proposal, cache hit → warnings include "(cache hit)"
  *   - No "code" column → 0 rows, reason in warnings
  *   - Activity classification: CF.01.* → operating, CF.02.* → investing,
- *     CF.03.* → financing; CF.04.* bridge rows → skipped
+ *     CF.03.* → financing; CF.04–07 bridge rows → preserved
  *   - Entry type: CF.XX.01.* → inflow, CF.XX.02.* → outflow; fallback from sign
  *   - CF amounts stored as Math.abs (direction encoded in entryType)
  *   - Partial month coverage accepted
@@ -75,7 +75,7 @@ const SAMPLE_AOA = [
   ["CF.02.01.01", "Asset sale proceeds", ...Array(12).fill(0).map((_, i) => i === 1 ? 150000 : 0)],
   // financing outflow
   ["CF.03.02.01", "Loan repayment", ...Array(12).fill(0).map((_, i) => i === 2 ? -80000 : 0)],
-  // bridge row — CF.04.* → must be skipped
+  // bridge row — preserved in the same complete batch
   ["CF.04.01.01", "FX change", ...Array(12).fill(5000)],
   // parent row (no 4th segment) → must be skipped
   ["CF.01", "Total operating", ...Array(12).fill(300000)],
@@ -195,8 +195,8 @@ describe("runDynamicCfAdapter", () => {
 
     const result = await runDynamicCfAdapter(makeFakeInput(), FAKE_PRISMA)
 
-    // 4 CF leaf rows (bridge CF.04 and parent CF.01 skipped), each 1 non-zero month
-    expect(result.itemCount).toBe(4)
+    // 4 movement rows + 12 months of evidenced CF.04 bridge values.
+    expect(result.itemCount).toBe(16)
     expect(result.warnings.some((w) => w.includes("Dynamic detection used"))).toBe(true)
     expect(result.warnings.some((w) => w.includes("cache miss"))).toBe(true)
 
@@ -304,7 +304,7 @@ describe("runDynamicCfAdapter", () => {
 
   // ── 6. Activity type classification ──────────────────────────────────────
 
-  it("CF.01→operating, CF.02→investing, CF.03→financing; CF.04 skipped", async () => {
+  it("CF.01→operating, CF.02→investing, CF.03→financing; CF.04→bridge", async () => {
     vi.mocked(extractMapperInput).mockReturnValue(MOCK_MAPPER_INPUT)
     vi.mocked(getOrCreateProposal).mockResolvedValue({
       proposal: buildProposal(0.9),
@@ -318,7 +318,7 @@ describe("runDynamicCfAdapter", () => {
       ["CF.01.01.01", "Op inflow",   ...Array(12).fill(100)],
       ["CF.02.01.01", "Inv inflow",  ...Array(12).fill(50)],
       ["CF.03.02.01", "Fin outflow", ...Array(12).fill(-80)],
-      ["CF.04.01.01", "FX change",   ...Array(12).fill(5)], // bridge → skip
+      ["CF.04.01.01", "FX change",   ...Array(12).fill(5)],
     ]
     const input = makeFakeInput({
       workbook: makeFakeWorkbook(classAoa),
@@ -332,8 +332,9 @@ describe("runDynamicCfAdapter", () => {
     expect(actTypes.has("operating")).toBe(true)
     expect(actTypes.has("investing")).toBe(true)
     expect(actTypes.has("financing")).toBe(true)
-    // CF.04 should be absent
-    expect(rows.some((r) => r.cfCode === "CF.04.01.01")).toBe(false)
+    const bridge = rows.filter((r) => r.cfCode === "CF.04.01.01")
+    expect(bridge).toHaveLength(12)
+    expect(bridge.every((r) => r.activityType === "bridge")).toBe(true)
   })
 
   // ── 7. Entry type from sub-segment ───────────────────────────────────────
@@ -391,6 +392,128 @@ describe("runDynamicCfAdapter", () => {
     const rows = vi.mocked(runCashFlowBatch).mock.calls[0][1].rows as any[]
     expect(rows[0].amount).toBe(300000) // Math.abs(-300000)
     expect(rows[0].entryType).toBe("outflow")
+  })
+
+  it("bridge rows preserve explicit zero, omit blank, and preserve a negative sign", async () => {
+    vi.mocked(extractMapperInput).mockReturnValue(MOCK_MAPPER_INPUT)
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: buildProposal(0.9),
+      cacheHit: true,
+      usage: { inputTokens: 0, outputTokens: 0, modelName: "m", promptVersion: "v" },
+    })
+    mockBatchOk()
+
+    const bridgeAoa = [
+      ["Code", "Label", ...MONTH_NAMES],
+      ["CF.01.01.01", "Movement", 10, ...Array(11).fill(null)],
+      ["CF.05", "Net change", 0, null, -5, ...Array(9).fill(null)],
+    ]
+    const input = makeFakeInput({
+      workbook: makeFakeWorkbook(bridgeAoa),
+      XLSX: makeFakeXLSX(bridgeAoa),
+    })
+
+    const result = await runDynamicCfAdapter(input, FAKE_PRISMA)
+    expect(result.itemCount).toBe(3)
+    await result.applyToDb(FAKE_TX)
+
+    const rows = vi.mocked(runCashFlowBatch).mock.calls[0][1].rows as any[]
+    const bridge = rows.filter((row) => row.cfCode === "CF.05")
+    expect(bridge).toMatchObject([
+      { month: 1, amount: 0, entryType: "inflow", activityType: "bridge" },
+      { month: 3, amount: 5, entryType: "outflow", activityType: "bridge" },
+    ])
+    expect(bridge.some((row) => row.month === 2)).toBe(false)
+  })
+
+  it("uses leaf-most bridge rows when a subtotal ancestor is also present", async () => {
+    vi.mocked(extractMapperInput).mockReturnValue(MOCK_MAPPER_INPUT)
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: buildProposal(0.9),
+      cacheHit: true,
+      usage: { inputTokens: 0, outputTokens: 0, modelName: "m", promptVersion: "v" },
+    })
+    mockBatchOk()
+
+    const bridgeAoa = [
+      ["Code", "Label", ...MONTH_NAMES],
+      ["CF.01.01.01", "Movement", 10, ...Array(11).fill(null)],
+      ["CF.04", "FX subtotal", 7, ...Array(11).fill(null)],
+      ["CF.04.01.01", "FX evidenced leaf", 7, ...Array(11).fill(null)],
+    ]
+    const input = makeFakeInput({
+      workbook: makeFakeWorkbook(bridgeAoa),
+      XLSX: makeFakeXLSX(bridgeAoa),
+    })
+
+    const result = await runDynamicCfAdapter(input, FAKE_PRISMA)
+    expect(result.itemCount).toBe(2)
+    expect(result.warnings.some((warning) => warning.includes("CF.04 skipped"))).toBe(true)
+    await result.applyToDb(FAKE_TX)
+
+    const rows = vi.mocked(runCashFlowBatch).mock.calls[0][1].rows as any[]
+    expect(rows.map((row) => row.cfCode)).toEqual([
+      "CF.01.01.01",
+      "CF.04.01.01",
+    ])
+  })
+
+  it("suppresses a bridge ancestor per period, preserving sparse parent evidence", async () => {
+    vi.mocked(extractMapperInput).mockReturnValue(MOCK_MAPPER_INPUT)
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: buildProposal(0.9),
+      cacheHit: true,
+      usage: { inputTokens: 0, outputTokens: 0, modelName: "m", promptVersion: "v" },
+    })
+    mockBatchOk()
+
+    const bridgeAoa = [
+      ["Code", "Label", ...MONTH_NAMES],
+      ["CF.01.01.01", "Movement", 10, ...Array(11).fill(null)],
+      ["CF.04", "FX subtotal", 7, 8, ...Array(10).fill(null)],
+      ["CF.04.01.01", "FX evidenced leaf", 7, null, ...Array(10).fill(null)],
+    ]
+    const input = makeFakeInput({
+      workbook: makeFakeWorkbook(bridgeAoa),
+      XLSX: makeFakeXLSX(bridgeAoa),
+    })
+
+    const result = await runDynamicCfAdapter(input, FAKE_PRISMA)
+    expect(result.itemCount).toBe(3)
+    await result.applyToDb(FAKE_TX)
+
+    const rows = vi.mocked(runCashFlowBatch).mock.calls[0][1].rows as any[]
+    expect(
+      rows.map((row) => ({ code: row.cfCode, month: row.month, amount: row.amount })),
+    ).toEqual([
+      { code: "CF.01.01.01", month: 1, amount: 10 },
+      { code: "CF.04", month: 2, amount: 8 },
+      { code: "CF.04.01.01", month: 1, amount: 7 },
+    ])
+  })
+
+  it("blocks bridge-only sheets before CoA or batch writes", async () => {
+    vi.mocked(extractMapperInput).mockReturnValue(MOCK_MAPPER_INPUT)
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: buildProposal(0.9),
+      cacheHit: true,
+      usage: { inputTokens: 0, outputTokens: 0, modelName: "m", promptVersion: "v" },
+    })
+    const bridgeOnlyAoa = [
+      ["Code", "Label", ...MONTH_NAMES],
+      ["CF.05", "Net change", 0, ...Array(11).fill(null)],
+    ]
+    const input = makeFakeInput({
+      workbook: makeFakeWorkbook(bridgeOnlyAoa),
+      XLSX: makeFakeXLSX(bridgeOnlyAoa),
+    })
+
+    const result = await runDynamicCfAdapter(input, FAKE_PRISMA)
+    expect(result.itemCount).toBe(0)
+    expect(result.warnings.some((warning) => warning.includes("bridge-only"))).toBe(true)
+    expect(await result.applyToDb(FAKE_TX)).toEqual({ rowsInserted: 0 })
+    expect(runCashFlowBatch).not.toHaveBeenCalled()
+    expect((FAKE_TX as any).chartOfAccount.upsert).not.toHaveBeenCalled()
   })
 
   // ── 9. Partial month coverage accepted ───────────────────────────────────

@@ -20,6 +20,10 @@
 import type { PrismaClient, Prisma } from "@prisma/client"
 import { archiveStamp } from "@/lib/server/soft-delete"
 import { assertNoCollateralDeletion } from "./collateral-guard"
+import {
+  isCashFlowBridgeActivity,
+  isCashFlowMovementActivity,
+} from "./cf-bridge"
 import { getLogger } from "@/lib/log"
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger for the
@@ -50,7 +54,7 @@ export interface CfImportRow {
    * applyToDb before passing rows in.
    */
   accountId: string
-  /** operating | investing | financing */
+  /** operating | investing | financing | bridge (CF.04–CF.07 evidence) */
   activityType: string
   /** inflow | outflow */
   entryType: string
@@ -121,21 +125,135 @@ export async function runCashFlowBatch(
     batchIdFactory?: () => string
   } = {},
 ): Promise<CfImportResult> {
-  const isOuterTx =
-    typeof (prismaOrTx as PrismaClient).$transaction !== "function"
-  const dbHandle = prismaOrTx as PrismaClient & Prisma.TransactionClient
+  const nonCanonicalEntity = plan.rows.find(
+    (row) => row.entityCode !== row.entityCode.trim(),
+  )
+  if (nonCanonicalEntity) {
+    throw new Error(
+      `[cf-import] entityCode must be canonical (no surrounding whitespace): "${nonCanonicalEntity.entityCode}"`,
+    )
+  }
+
+  const periodYears = new Set<number>()
+  for (const period of plan.periodScope) {
+    const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(period)
+    if (!match) {
+      throw new Error(
+        `[cf-import] invalid periodScope value "${period}"; expected YYYY-MM`,
+      )
+    }
+    periodYears.add(Number(match[1]))
+  }
+  const rowYears = new Set(plan.rows.map((row) => row.year))
+  const sortedPeriodYears = [...periodYears].sort((a, b) => a - b)
+  const sortedRowYears = [...rowYears].sort((a, b) => a - b)
+  if (
+    sortedPeriodYears.length !== sortedRowYears.length ||
+    sortedPeriodYears.some((year, index) => year !== sortedRowYears[index])
+  ) {
+    throw new Error(
+      `[cf-import] periodScope years [${sortedPeriodYears.join(",")}] do not exactly match row years [${sortedRowYears.join(",")}]`,
+    )
+  }
+  const hasEmptyEntityCode = plan.rows.some(
+    (row) => row.entityCode.trim().length === 0,
+  )
+  const hasNamedEntityCode = plan.rows.some(
+    (row) => row.entityCode.trim().length > 0,
+  )
+  if (hasEmptyEntityCode && hasNamedEntityCode) {
+    throw new Error(
+      "[cf-import] mixed empty and named entityCode rows are unsafe: split legacy source-scoped rows into a separate batch",
+    )
+  }
+
+  const bridgeResetScopes = new Set<string>()
+  const movementResetScopes = new Set<string>()
+  for (const row of plan.rows) {
+    // Reset is entity + year (all months, any source tag). Keep the guard on
+    // that exact footprint so movement for entity A cannot authorize a
+    // destructive bridge-only replacement for entity B.
+    const resetScope = `${row.entityCode}\u0000${row.year}`
+    if (isCashFlowBridgeActivity(row.activityType)) {
+      bridgeResetScopes.add(resetScope)
+    }
+    if (isCashFlowMovementActivity(row.activityType)) {
+      movementResetScopes.add(resetScope)
+    }
+  }
+  const bridgeOnlyResetScopes = [...bridgeResetScopes].filter(
+    (scope) => !movementResetScopes.has(scope),
+  )
+  // An entity-scoped CF reset archives every live source for that entity/year.
+  // A later bridge-only batch would therefore erase CF.01–CF.03 before writing
+  // CF.04–CF.07. Reject before opening a transaction or touching any table.
+  if (bridgeOnlyResetScopes.length > 0) {
+    const readableScopes = bridgeOnlyResetScopes.map((scope) =>
+      scope.replace("\u0000", "/"),
+    )
+    throw new Error(
+      `[cf-import] bridge-only batch refused for ${readableScopes.join(", ")}: CF.04–CF.07 must be applied in the same complete entity/year batch as CF.01–CF.03`,
+    )
+  }
+
   const startedAt = new Date()
   const batchId =
     opts.batchIdFactory?.() ??
     `cf_batch_${startedAt.toISOString().replace(/[:.]/g, "-")}_${Math.random().toString(36).slice(2, 10)}`
 
-  const yearScope = Array.from(
-    new Set(
-      plan.periodScope
-        .map((p) => Number(p.slice(0, 4)))
-        .filter((n) => Number.isFinite(n)),
-    ),
-  )
+  // Empty input never means "clear everything". The historical fallback reset
+  // is source-scoped but, without rows, has no entity footprint and could
+  // archive an entire source. Return an explicit no-op before any DB access.
+  if (plan.rows.length === 0) {
+    if (plan.expectedSums.size > 0) {
+      throw new Error(
+        "[cf-import] empty row batch cannot carry expected reconciliation sums",
+      )
+    }
+    const finishedAt = new Date()
+    return {
+      batchId,
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: finishedAt.getTime() - startedAt.getTime(),
+      plan: {
+        label: plan.label,
+        sourceDocument: plan.sourceDocument,
+        sourceTag: plan.sourceTag,
+        periodScope: plan.periodScope,
+      },
+      metrics: { resetArchived: 0, resetPurged: 0, rowsInserted: 0 },
+      reconciliation: reconcile(new Map(), new Map(), plan.reconciliationOptions),
+    }
+  }
+
+  const isOuterTx =
+    typeof (prismaOrTx as PrismaClient).$transaction !== "function"
+  const dbHandle = prismaOrTx as PrismaClient & Prisma.TransactionClient
+
+  const yearScope = sortedPeriodYears
+  const incomingScopeMap = new Map<
+    string,
+    { entityCode: string; year: number; movementMonths: Set<number> }
+  >()
+  for (const row of plan.rows) {
+    const key = `${row.entityCode}\u0000${row.year}`
+    const existing = incomingScopeMap.get(key)
+    if (existing) {
+      if (isCashFlowMovementActivity(row.activityType)) {
+        existing.movementMonths.add(row.month)
+      }
+    } else {
+      incomingScopeMap.set(key, {
+        entityCode: row.entityCode,
+        year: row.year,
+        movementMonths: new Set(
+          isCashFlowMovementActivity(row.activityType) ? [row.month] : [],
+        ),
+      })
+    }
+  }
+  const incomingScopes = [...incomingScopeMap.values()]
 
   const writePhase = async (tx: Prisma.TransactionClient) => {
       const yearFilter =
@@ -167,7 +285,9 @@ export async function runCashFlowBatch(
       // column — prefer it, with the sourceId `<entityCode>::` prefix as the
       // fallback for legacy un-backfilled rows. Fall back to sourceTag-only when
       // no incoming row carries an entityCode (legacy / single-entity batches).
-      const entityPrefixes = [...new Set(plan.rows.map((r) => r.entityCode).filter(Boolean))]
+      const entityPrefixes = [
+        ...new Set(incomingScopes.map((scope) => scope.entityCode).filter(Boolean)),
+      ]
       const hasEntityScope = entityPrefixes.length > 0
       const companyByCode = new Map<string, string>()
       if (entityPrefixes.length > 0) {
@@ -177,14 +297,18 @@ export async function runCashFlowBatch(
         })
         for (const c of cos) companyByCode.set(c.code, c.id)
       }
-      const companyIds = [...companyByCode.values()]
-      const entityScope =
+      const exactEntityYearScope =
         hasEntityScope
           ? {
-              OR: [
-                ...(companyIds.length > 0 ? [{ companyId: { in: companyIds } }] : []),
-                ...entityPrefixes.map((e) => ({ sourceId: { startsWith: `${e}::` } })),
-              ],
+              OR: incomingScopes.map((scope) => ({
+                year: scope.year,
+                OR: [
+                  ...(companyByCode.has(scope.entityCode)
+                    ? [{ companyId: companyByCode.get(scope.entityCode) }]
+                    : []),
+                  { sourceId: { startsWith: `${scope.entityCode}::` } },
+                ],
+              })),
             }
           : {}
       // BUGFIX 2026-06-21: when we CAN scope by entity (sourceId prefix), the
@@ -197,6 +321,9 @@ export async function runCashFlowBatch(
       // source constraint when entity-scoped; keep it ONLY for the legacy
       // single-entity fallback (no entityCode), where it is the only safe scope.
       const resetSourceScope = hasEntityScope ? {} : { source: plan.sourceTag }
+      const resetFootprintScope = hasEntityScope
+        ? exactEntityYearScope
+        : yearFilter
       // Collateral-deletion guard: count live rows within THIS import's own
       // footprint (the source + entity prefixes the INSERTED rows carry)
       // before archiving. The footprint IS source + entityScope (companyId OR
@@ -208,9 +335,9 @@ export async function runCashFlowBatch(
         where: {
           organizationId: plan.organizationId,
           ...resetSourceScope,
-          ...entityScope,
+          ...resetFootprintScope,
+          isProjected: false,
           deletedAt: null,
-          ...yearFilter,
         },
       })
       if (plan.purgeArchivedFirst) {
@@ -218,9 +345,9 @@ export async function runCashFlowBatch(
           where: {
             organizationId: plan.organizationId,
             ...resetSourceScope,
-            ...entityScope,
+            ...resetFootprintScope,
+            isProjected: false,
             deletedAt: { not: null },
-            ...yearFilter,
           },
         })
         purged = purgeResult.count
@@ -230,9 +357,9 @@ export async function runCashFlowBatch(
         where: {
           organizationId: plan.organizationId,
           ...resetSourceScope,
-          ...entityScope,
+          ...resetFootprintScope,
+          isProjected: false,
           deletedAt: null,
-          ...yearFilter,
         },
         data: stamp as unknown as Prisma.CashFlowEntryUpdateManyMutationInput,
       })
@@ -242,7 +369,9 @@ export async function runCashFlowBatch(
         archivedCount: archived,
         footprintLiveCount,
         footprint: hasEntityScope
-          ? `entities=[${entityPrefixes.join(",")}] (any source)`
+          ? `entityYears=[${incomingScopes
+              .map((scope) => `${scope.entityCode}/${scope.year}`)
+              .join(",")}] (any source)`
           : `source=${plan.sourceTag}`,
       })
       log.info("archive phase", { archived, purged })
@@ -286,22 +415,29 @@ export async function runCashFlowBatch(
       // just wrote, so a generate-then-import order can't leave a double-counting
       // overlap (the generate route also skips actual cells the other direction).
       // No-op when no projections exist (the common case).
-      if (companyIds.length > 0) {
-        const importedMonths = [...new Set(plan.rows.map((r) => r.month))]
-        if (importedMonths.length > 0) {
-          const dropped = await tx.cashFlowEntry.deleteMany({
-            where: {
-              organizationId: plan.organizationId,
-              source: "budget_line",
-              isProjected: true,
-              companyId: { in: companyIds },
-              month: { in: importedMonths },
-              ...yearFilter,
-            },
-          })
-          if (dropped.count > 0) {
-            log.info("dropped overlapping budget_line projections", { count: dropped.count })
-          }
+      const projectionScopes = incomingScopes.flatMap((scope) => {
+        const companyId = companyByCode.get(scope.entityCode)
+        return companyId && scope.movementMonths.size > 0
+          ? [
+              {
+                companyId,
+                year: scope.year,
+                month: { in: [...scope.movementMonths] },
+              },
+            ]
+          : []
+      })
+      if (projectionScopes.length > 0) {
+        const dropped = await tx.cashFlowEntry.deleteMany({
+          where: {
+            organizationId: plan.organizationId,
+            source: "budget_line",
+            isProjected: true,
+            OR: projectionScopes,
+          },
+        })
+        if (dropped.count > 0) {
+          log.info("dropped overlapping budget_line projections", { count: dropped.count })
         }
       }
       return { resetArchived: archived, resetPurged: purged, rowsInserted: inserted }
@@ -349,30 +485,34 @@ async function defaultReadActualCfSums(
   prisma: PrismaClient | Prisma.TransactionClient,
   plan: CfImportPlan,
 ): Promise<Map<ReconciliationKey, number>> {
-  const yearScope = Array.from(
-    new Set(
-      plan.periodScope
-        .map((p) => Number(p.slice(0, 4)))
-        .filter((n) => Number.isFinite(n)),
-    ),
-  )
   // Match the reset scope (entity-aware, 2026-05-31 bugfix): read only THIS
-  // batch's entities, else siblings on the same shared sourceTag inflate the
-  // actual sums with extra recon keys once the reset no longer cross-deletes.
-  const entityPrefixes = [
-    ...new Set(plan.rows.map((r) => r.entityCode).filter(Boolean)),
-  ]
-  const entityScope =
-    entityPrefixes.length > 0
-      ? { OR: entityPrefixes.map((e) => ({ sourceId: { startsWith: `${e}::` } })) }
-      : {}
+  // batch's exact entity/year pairs. Entity×year Cartesian reads would surface
+  // unrelated current-source rows as reconciliation extras.
+  const pairKeys = new Set<string>()
+  const entityYearPairs: Array<{ entityCode: string; year: number }> = []
+  for (const row of plan.rows) {
+    if (!row.entityCode) continue
+    const key = `${row.entityCode}\u0000${row.year}`
+    if (pairKeys.has(key)) continue
+    pairKeys.add(key)
+    entityYearPairs.push({ entityCode: row.entityCode, year: row.year })
+  }
+  const rowYears = [...new Set(plan.rows.map((row) => row.year))]
+  const readScope =
+    entityYearPairs.length > 0
+      ? {
+          OR: entityYearPairs.map((pair) => ({
+            year: pair.year,
+            sourceId: { startsWith: `${pair.entityCode}::` },
+          })),
+        }
+      : { year: { in: rowYears } }
   const rows = await prisma.cashFlowEntry.findMany({
     where: {
       organizationId: plan.organizationId,
       source: plan.sourceTag,
-      ...entityScope,
+      ...readScope,
       deletedAt: null,
-      ...(yearScope.length > 0 ? { year: { in: yearScope } } : {}),
     },
     select: {
       // Phase 2.1 session 3 dropped `CashFlowEntry.category`; this recon

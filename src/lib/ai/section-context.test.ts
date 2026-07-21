@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const budgetLineFindMany = vi.fn();
 const balanceSheetLineFindMany = vi.fn();
 const budgetPlanFindFirst = vi.fn();
+const cashFlowEntryFindMany = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -30,7 +31,7 @@ vi.mock("@/lib/prisma", () => ({
     budgetPlan: {
       findFirst: (...a: unknown[]) => budgetPlanFindFirst(...a),
     },
-    cashFlowEntry: { findMany: vi.fn().mockResolvedValue([]) },
+    cashFlowEntry: { findMany: (...a: unknown[]) => cashFlowEntryFindMany(...a) },
     cOGSBudgetLine: { findMany: vi.fn().mockResolvedValue([]) },
     cOGSCostDetail: { findMany: vi.fn().mockResolvedValue([]) },
     budgetAssumption: { findMany: vi.fn().mockResolvedValue([]) },
@@ -50,6 +51,7 @@ beforeEach(() => {
   budgetLineFindMany.mockReset();
   balanceSheetLineFindMany.mockReset();
   budgetPlanFindFirst.mockReset();
+  cashFlowEntryFindMany.mockReset();
 
   budgetLineFindMany.mockResolvedValue([]);
   balanceSheetLineFindMany.mockResolvedValue([]);
@@ -60,6 +62,7 @@ beforeEach(() => {
     periodType: "annual",
     status: "active",
   });
+  cashFlowEntryFindMany.mockResolvedValue([]);
 });
 
 describe("collectSectionContext — companyId propagation (Phase 7.G)", () => {
@@ -165,5 +168,29 @@ describe("collectSectionContext — companyId propagation (Phase 7.G)", () => {
       null,
     )) as { scope: string | null };
     expect(data.scope).toBeNull();
+  });
+
+  it("cash-flow narration excludes CF.04–CF.07 bridge evidence from movement totals", async () => {
+    cashFlowEntryFindMany.mockResolvedValue([
+      { activityType: "operating", entryType: "inflow", amount: 100, month: 1 },
+      { activityType: "bridge", entryType: "inflow", amount: 100, month: 1 },
+      { activityType: "bridge", entryType: "inflow", amount: 1_000, month: 1 },
+    ]);
+    const { collectSectionContext } = await import("./section-context");
+    const data = (await collectSectionContext(
+      "cash-flow",
+      "org_1",
+      "plan_1",
+      null,
+      null,
+    )) as {
+      byActivity: Record<string, number>;
+      monthly: Record<string, number>;
+      netCashFlow: number;
+    };
+
+    expect(data.byActivity).toEqual({ operating: 100, investing: 0, financing: 0 });
+    expect(data.monthly).toEqual({ "1": 100 });
+    expect(data.netCashFlow).toBe(100);
   });
 });

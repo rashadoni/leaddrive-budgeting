@@ -9,6 +9,10 @@ import type { CashFlowEntry } from "@prisma/client"
 // Phase 5.2 Stage 2 Tier 3 (2026-05-21) — RLS wrap for cash_flow_entries reads/writes.
 import { withOrgScope } from "@/lib/db/with-org-scope"
 
+function isMovementEntry(entry: Pick<CashFlowEntry, "activityType">): boolean {
+  return entry.activityType !== "bridge"
+}
+
 const createCashFlowSchema = z.object({
   year: z.number().int().min(2020).max(2050),
   month: z.number().int().min(1).max(12),
@@ -51,15 +55,21 @@ export async function GET(req: NextRequest) {
     return { entries, prevYearEntries }
   })
 
+  // CF.04–CF.07 are statement bridge evidence (FX effect, net change,
+  // opening and closing cash), not cash movements. Keep them in storage for
+  // reconciliation, but never add them to the movement UI a second time.
+  const movementEntries = entries.filter(isMovementEntry)
+  const prevYearMovementEntries = prevYearEntries.filter(isMovementEntry)
+
   // Build monthly summary
   const monthlyData = []
   let runningBalance = 0
-  const prevInflows = prevYearEntries.filter((e: CashFlowEntry) => e.entryType === "inflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0)
-  const prevOutflows = prevYearEntries.filter((e: CashFlowEntry) => e.entryType === "outflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0)
+  const prevInflows = prevYearMovementEntries.filter((e: CashFlowEntry) => e.entryType === "inflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0)
+  const prevOutflows = prevYearMovementEntries.filter((e: CashFlowEntry) => e.entryType === "outflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0)
   runningBalance = prevInflows - prevOutflows
 
   for (let m = 1; m <= 12; m++) {
-    const monthEntries = entries.filter((e: CashFlowEntry) => e.month === m)
+    const monthEntries = movementEntries.filter((e: CashFlowEntry) => e.month === m)
     const inflows = monthEntries.filter((e: CashFlowEntry) => e.entryType === "inflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0)
     const outflows = monthEntries.filter((e: CashFlowEntry) => e.entryType === "outflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0)
     const opening = runningBalance
@@ -81,10 +91,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     year,
     months: monthlyData,
-    totalInflows: entries.filter((e: CashFlowEntry) => e.entryType === "inflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0),
-    totalOutflows: entries.filter((e: CashFlowEntry) => e.entryType === "outflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0),
+    totalInflows: movementEntries.filter((e: CashFlowEntry) => e.entryType === "inflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0),
+    totalOutflows: movementEntries.filter((e: CashFlowEntry) => e.entryType === "outflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0),
     // Phase 3 — flat per-entry list (with ids) for the inline-edit view.
-    entries: entries.map((e: CashFlowEntry) => ({
+    entries: movementEntries.map((e: CashFlowEntry) => ({
       id: e.id,
       month: e.month,
       entryType: e.entryType,

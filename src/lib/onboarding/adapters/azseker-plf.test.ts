@@ -135,7 +135,10 @@ describe("parsePlfCfSheet — activity + inflow/outflow inference", () => {
     expect(r.entries[0].perMonth[0]).toBe(102239) // refund kept POSITIVE (was -102239 pre-fix)
     expect(r.entries[0].perMonth[1]).toBe(-122597)
     // Net = refund - outflows = signed sum (was -225053 pre-fix; now -20575)
-    const net = r.entries[0].perMonth.reduce((a, b) => a + b, 0)
+    const net = r.entries[0].perMonth.reduce<number>(
+      (sum, value) => sum + (value ?? 0),
+      0,
+    )
     expect(net).toBe(-20575)
   })
 
@@ -150,6 +153,62 @@ describe("parsePlfCfSheet — activity + inflow/outflow inference", () => {
     const r = parsePlfCfSheet(wb, "CF_X", XLSX)
     expect(r.entries).toHaveLength(1)
     expect(r.entries[0].code).toBe("CF.01.01.01")
+  })
+
+  it("preserves CF.04–CF.07 bridge evidence and distinguishes absent from zero", () => {
+    const wb = makeWorkbook("CF_X", [
+      [null, "Cash Flow", null, ...MONTH_DATES],
+      ["CF.01.01.01", "Operating inflow", null, 100, ...Array(11).fill(null)],
+      ["CF.04", "FX effect", null, 0, null, -5, ...Array(9).fill(null)],
+      ["CF.05", "Net change", null, 95, ...Array(11).fill(null)],
+      ["CF.06", "Opening cash", null, 1_000, ...Array(11).fill(null)],
+      ["CF.07", "Closing cash", null, 1_095, ...Array(11).fill(null)],
+    ])
+
+    const r = parsePlfCfSheet(wb, "CF_X", XLSX)
+    const byCode = new Map(r.entries.map((entry) => [entry.code, entry]))
+
+    expect(r.entries).toHaveLength(5)
+    for (const code of ["CF.04", "CF.05", "CF.06", "CF.07"]) {
+      expect(byCode.get(code)?.activityType).toBe("bridge")
+    }
+    expect(byCode.get("CF.04")?.perMonth[0]).toBe(0)
+    expect(byCode.get("CF.04")?.perMonth[1]).toBeNull()
+    expect(byCode.get("CF.04")?.perMonth[2]).toBe(-5)
+  })
+
+  it("uses leaf-most bridge rows when a subtotal ancestor is also present", () => {
+    const wb = makeWorkbook("CF_X", [
+      [null, "Cash Flow", null, ...MONTH_DATES],
+      ["CF.01.01.01", "Movement", null, 10, ...Array(11).fill(null)],
+      ["CF.04", "FX subtotal", null, 7, ...Array(11).fill(null)],
+      ["CF.04.01.01", "FX evidenced leaf", null, 7, ...Array(11).fill(null)],
+    ])
+
+    const r = parsePlfCfSheet(wb, "CF_X", XLSX)
+    expect(r.entries.map((entry) => entry.code)).toEqual([
+      "CF.01.01.01",
+      "CF.04.01.01",
+    ])
+    expect(r.warnings.some((warning) => warning.reason.includes("CF.04 skipped"))).toBe(true)
+  })
+
+  it("suppresses a bridge ancestor per month, preserving sparse parent evidence", () => {
+    const wb = makeWorkbook("CF_X", [
+      [null, "Cash Flow", null, ...MONTH_DATES],
+      ["CF.01.01.01", "Movement", null, 10, ...Array(11).fill(null)],
+      ["CF.04", "FX subtotal", null, 7, 8, ...Array(10).fill(null)],
+      ["CF.04.01.01", "FX evidenced leaf", null, 7, null, ...Array(10).fill(null)],
+    ])
+
+    const r = parsePlfCfSheet(wb, "CF_X", XLSX)
+    const parent = r.entries.find((entry) => entry.code === "CF.04")
+    const child = r.entries.find((entry) => entry.code === "CF.04.01.01")
+
+    expect(parent?.perMonth[0]).toBeNull()
+    expect(parent?.perMonth[1]).toBe(8)
+    expect(child?.perMonth[0]).toBe(7)
+    expect(child?.perMonth[1]).toBeNull()
   })
 })
 

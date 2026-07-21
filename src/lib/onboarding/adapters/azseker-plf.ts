@@ -51,9 +51,14 @@
 
 import type * as XLSX from "xlsx"
 import { toNumberOrNull } from "./azmade-sopl"
+import {
+  classifyCashFlowCode,
+  selectLeafMostCashFlowBridgeCodes,
+  type CashFlowStoredActivity,
+} from "../cf-bridge"
 
 export type PlfAccountType = "revenue" | "cogs" | "expense"
-export type CfActivityType = "operating" | "investing" | "financing"
+export type CfActivityType = CashFlowStoredActivity
 export type CfEntryType = "inflow" | "outflow"
 
 export interface ParsedPlfLine {
@@ -69,7 +74,8 @@ export interface ParsedCfLine {
   label: string
   activityType: CfActivityType
   entryType: CfEntryType
-  perMonth: number[]
+  /** null means absent source evidence; numeric zero is explicit evidence. */
+  perMonth: Array<number | null>
 }
 
 export interface PlfParseWarning {
@@ -99,17 +105,6 @@ function plfAccountType(code: string): PlfAccountType | null {
   if (section === "10") return null // computed Net Profit — skip
   if (/^0[3-9]$/.test(section)) return "expense"
   if (section === "12") return "expense" // PROVISIONS (Unused Vacations, Impairment, etc.)
-  return null
-}
-
-// CF prefix → activityType
-function cfActivityType(code: string): CfActivityType | null {
-  const m = code.trim().match(/^CF\.(\d{2})/)
-  if (!m) return null
-  const section = m[1]
-  if (section === "01") return "operating"
-  if (section === "02") return "investing"
-  if (section === "03") return "financing"
   return null
 }
 
@@ -289,9 +284,14 @@ export function parsePlfCfSheet(
     const codeRaw = row[0]
     const code = typeof codeRaw === "string" ? codeRaw.trim() : ""
     if (!code) continue
-    if (!LEAF_CODE_RE.test(code)) continue
-    const activityType = cfActivityType(code)
-    if (!activityType) continue
+    const classification = classifyCashFlowCode(code)
+    if (!classification) continue
+    const isBridge = classification.activityType === "bridge"
+    // Movement rows remain leaf-only to avoid importing computed subtotals.
+    // Bridge rows are canonical statement evidence and can be top-level
+    // (CF.04) or source-specific descendants (CF.04.01.01).
+    if (!isBridge && !LEAF_CODE_RE.test(code)) continue
+    const activityType = classification.activityType
 
     const labelRaw = row[1]
     const label = typeof labelRaw === "string" ? labelRaw.trim() : code
@@ -321,20 +321,65 @@ export function parsePlfCfSheet(
     // overstating MALT operating CF by 2× the refund (204K) and AZSF by 40K.
     // The handler derives the per-MONTH inflow/outflow direction from this
     // sign (see makeCfHandler).
-    const perMonth: number[] = []
-    let allZero = true
+    const perMonth: Array<number | null> = []
+    let hasSourceEvidence = false
+    let hasNonZeroMovement = false
     for (let m = 0; m < 12; m++) {
       const v = toNumberOrNull(row[monthCols[m]])
-      const num = v ?? 0
-      perMonth.push(num)
-      if (num !== 0) allZero = false
+      perMonth.push(v)
+      if (v !== null) hasSourceEvidence = true
+      if (v !== null && v !== 0) hasNonZeroMovement = true
     }
-    if (allZero) continue
+    // For ordinary movements retain the established sparse behavior: a line
+    // with no non-zero movement creates no rows. For bridge evidence, an
+    // explicit numeric zero is meaningful and must not collapse into absence.
+    if (isBridge ? !hasSourceEvidence : !hasNonZeroMovement) continue
 
     entries.push({ code, label, activityType, entryType, perMonth })
   }
 
-  return { sheetName, entries, warnings }
+  // Leaf-most selection is MONTH-SCOPED. A child evidenced in January must
+  // suppress its ancestor only in January; a sparse parent value in February
+  // remains valid evidence when the child is blank there.
+  const selectedBridgeCodesByMonth = Array.from({ length: 12 }, (_, month) =>
+    selectLeafMostCashFlowBridgeCodes(
+      entries
+        .filter(
+          (entry) =>
+            entry.activityType === "bridge" && entry.perMonth[month] !== null,
+        )
+        .map((entry) => entry.code),
+    ),
+  )
+  const partiallySuppressedBridgeCodes = new Set<string>()
+  const filteredEntries = entries
+    .map((entry): ParsedCfLine => {
+      if (entry.activityType !== "bridge") return entry
+      const perMonth = entry.perMonth.map((value, month) => {
+        if (
+          value !== null &&
+          !selectedBridgeCodesByMonth[month].has(entry.code)
+        ) {
+          partiallySuppressedBridgeCodes.add(entry.code)
+          return null
+        }
+        return value
+      })
+      return { ...entry, perMonth }
+    })
+    .filter(
+      (entry) =>
+        entry.activityType !== "bridge" ||
+        entry.perMonth.some((value) => value !== null),
+    )
+  for (const code of partiallySuppressedBridgeCodes) {
+    warnings.push({
+      row: 0,
+      reason: `Bridge subtotal ${code} skipped only for periods with more specific descendant evidence`,
+    })
+  }
+
+  return { sheetName, entries: filteredEntries, warnings }
 }
 
 /**

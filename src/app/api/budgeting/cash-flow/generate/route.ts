@@ -73,11 +73,21 @@ export async function POST(req: NextRequest) {
   const actualKeys = new Set(
     (
       await tx.cashFlowEntry.findMany({
-        where: { organizationId: orgId, year, isProjected: false, deletedAt: null },
+        where: {
+          organizationId: orgId,
+          year,
+          isProjected: false,
+          deletedAt: null,
+          // Filter before DISTINCT. If a cell carries both a movement and a
+          // bridge row, post-filtering an arbitrary distinct representative
+          // could incorrectly hide the real actual movement.
+          activityType: { not: "bridge" },
+        },
         select: { companyId: true, month: true },
         distinct: ["companyId", "month"],
       })
-    ).map((r: { companyId: string | null; month: number }) => `${r.companyId ?? ""}|${r.month}`),
+    )
+      .map((r: { companyId: string | null; month: number }) => `${r.companyId ?? ""}|${r.month}`),
   )
 
   let created = 0
@@ -157,7 +167,10 @@ export async function POST(req: NextRequest) {
 
   let balance = 0
   for (let m = 1; m <= 12; m++) {
-    const monthEntries = entries.filter((e: CashFlowEntry) => e.month === m)
+    // Imported CF.04–CF.07 rows are reconciliation evidence, not movements.
+    // Including them here would double-count net change/opening/closing and
+    // could create false negative-balance alerts.
+    const monthEntries = entries.filter((e: CashFlowEntry) => e.month === m && e.activityType !== "bridge")
     const inflows = monthEntries.filter((e: CashFlowEntry) => e.entryType === "inflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0)
     const outflows = monthEntries.filter((e: CashFlowEntry) => e.entryType === "outflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0)
     balance = balance + inflows - outflows

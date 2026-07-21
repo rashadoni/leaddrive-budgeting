@@ -4056,8 +4056,8 @@
       },
       "cash_flow_sum": {
         "label": "Cash flow sum",
-        "equation": "CFO + CFI + CFF = net change in cash",
-        "desc": "The three activity sections against the reported net change in cash."
+        "equation": "CFO + CFI + CFF + FX effect (when reported) = net change in cash",
+        "desc": "The three activity sections, plus imported CF.04 when present, against the independently imported CF.05 net change."
       },
       "cash_to_balance_sheet": {
         "label": "Cash tie-out",
@@ -4087,6 +4087,7 @@
       "operating": "Operating cash flow",
       "investing": "Investing cash flow",
       "financing": "Financing cash flow",
+      "fxEffectOnCash": "Effect of exchange rates on cash",
       "netChangeInCash": "Net change in cash",
       "openingCash": "Opening cash",
       "balanceSheetCash": "Balance-sheet cash",
@@ -4109,7 +4110,7 @@
       "natural": "natural (all sections positive)"
     },
     "blockedDetail": {
-      "netChangeNotStored": "Net change in cash is not stored — the import skips the CF.04–CF.07 bridge rows, and deriving it from the sections would always reconcile by construction.",
+      "netChangeNotStored": "No imported CF.05 net-change evidence exists for the selected period. It is not derived from the activity sections because that would always reconcile by construction.",
       "cashNotIdentifiable": "Cash cannot be identified among balance-sheet lines — no cash marker exists in the chart of accounts.",
       "distributionsNotRecorded": "No dividend/distribution record exists in the database — absence of a record is not evidence of zero.",
       "retainedEarningsNotIdentifiable": "No marker identifies the accumulated retained-earnings line.",

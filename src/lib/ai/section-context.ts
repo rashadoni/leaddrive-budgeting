@@ -251,6 +251,9 @@ async function computeCashFlow(
   const byActivity: Record<string, number> = { operating: 0, investing: 0, financing: 0 }
   const byMonth: Record<number, number> = {}
   for (const e of entries) {
+    // CF.04–CF.07 are reconciliation bridge evidence. Feeding them into the
+    // movement narrative would count net/opening/closing cash twice.
+    if (e.activityType === "bridge") continue
     const act = e.activityType || "operating"
     byActivity[act] = (byActivity[act] ?? 0) + (e.entryType === "outflow" ? -e.amount : e.amount)
     byMonth[e.month] = (byMonth[e.month] ?? 0) + (e.entryType === "outflow" ? -e.amount : e.amount)

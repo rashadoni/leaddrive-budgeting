@@ -13,7 +13,7 @@
  *     `evidence: null` (absent ≠ zero), `revisionId` is null everywhere
  *     (no statement row carries lineage), and `evidencedZero` is used nowhere
  *     (no zero is genuinely evidenced by this schema).
- *   - Structurally absent components (net change in cash, opening/BS cash,
+ *   - Structurally absent components (opening/independent BS cash,
  *     retained-earnings markers, distributions) yield honest BLOCKED verdicts.
  *
  * Layering: `fetchStatementEvidence` does the (read-only) Prisma I/O against a
@@ -23,6 +23,7 @@
 
 import type { Prisma } from "@prisma/client"
 import { CURRENT_YEAR_RESULT_RE } from "@/lib/audit/ifrs-checks"
+import { classifyCashFlowCode } from "@/lib/onboarding/cf-bridge"
 import {
   evaluateStatementControl,
   type StatementControlCode,
@@ -114,6 +115,10 @@ export interface ShadowStatementEvidence {
     operating: Bucket
     investing: Bucket
     financing: Bucket
+    fxEffectOnCash: Bucket
+    netChangeInCash: Bucket
+    openingCash: Bucket
+    closingCash: Bucket
   }
   pl: {
     /**
@@ -273,14 +278,27 @@ export async function fetchStatementEvidence(
   // deterministic convention mapping, never a sign correction.
   const cfEntries = await tx.cashFlowEntry.findMany({
     where: { organizationId, companyId, deletedAt: null, year: periodYear, month: periodMonth },
-    select: { activityType: true, entryType: true, amount: true },
+    select: {
+      activityType: true,
+      entryType: true,
+      amount: true,
+      account: { select: { code: true } },
+    },
   })
   const cf: ShadowStatementEvidence["cf"] = {
     operating: { sum: 0, rowCount: 0 },
     investing: { sum: 0, rowCount: 0 },
     financing: { sum: 0, rowCount: 0 },
+    fxEffectOnCash: { sum: 0, rowCount: 0 },
+    netChangeInCash: { sum: 0, rowCount: 0 },
+    openingCash: { sum: 0, rowCount: 0 },
+    closingCash: { sum: 0, rowCount: 0 },
   }
   for (const e of cfEntries) {
+    const code = e.account?.code?.trim().toUpperCase() ?? ""
+    const bridgeKind = e.activityType === "bridge"
+      ? classifyCashFlowCode(code)?.bridgeKind
+      : null
     const bucket =
       e.activityType === "operating"
         ? cf.operating
@@ -288,6 +306,14 @@ export async function fetchStatementEvidence(
           ? cf.investing
           : e.activityType === "financing"
             ? cf.financing
+            : bridgeKind === "fx_effect_on_cash"
+              ? cf.fxEffectOnCash
+              : bridgeKind === "net_change_in_cash"
+                ? cf.netChangeInCash
+                : bridgeKind === "opening_cash"
+                  ? cf.openingCash
+                  : bridgeKind === "closing_cash"
+                    ? cf.closingCash
             : null
     if (!bucket) continue
     bucket.sum += e.entryType === "inflow" ? e.amount : -e.amount
@@ -550,32 +576,40 @@ export function assembleShadowStatementControls(evidence: ShadowStatementEvidenc
     )
   }
 
-  // ── 2. cash_flow_sum — BLOCKED by design: net change in cash is not stored
-  // (import skips the CF.04–CF.07 bridge rows) and deriving it from the left
-  // side would be a fabricated tautology that always reconciles. ──
+  // ── 2. cash_flow_sum — evaluates only against independently imported CF.05.
+  // CF.04 is optional IAS-7 FX-effect evidence on the left. We never derive
+  // the right side from the movements, because that would be a tautology. ──
   {
     const operating = makeComponent("operating", "flow", evidence.cf.operating)
     const investing = makeComponent("investing", "flow", evidence.cf.investing)
     const financing = makeComponent("financing", "flow", evidence.cf.financing)
-    const netChangeInCash = makeComponent("netChangeInCash", "flow", null)
+    const netChangeInCash = makeComponent("netChangeInCash", "flow", evidence.cf.netChangeInCash)
+    const fxEffectOnCash = makeComponent("fxEffectOnCash", "flow", evidence.cf.fxEffectOnCash)
+    const netChangeMissing = evidence.cf.netChangeInCash.rowCount === 0
+    const fxPresent = evidence.cf.fxEffectOnCash.rowCount > 0
     push(
       "cash_flow_sum",
       [
         summarize(operating),
         summarize(investing),
         summarize(financing),
-        summarize(netChangeInCash, "netChangeNotStored"),
+        ...(fxPresent ? [summarize(fxEffectOnCash)] : []),
+        summarize(netChangeInCash, netChangeMissing ? "netChangeNotStored" : undefined),
       ],
-      ["netChangeNotStored"],
-      () => buildCashFlowSumControl(scope, { operating, investing, financing, netChangeInCash }),
+      netChangeMissing ? ["netChangeNotStored"] : [],
+      () => buildCashFlowSumControl(scope, {
+        operating,
+        investing,
+        financing,
+        netChangeInCash,
+        ...(fxPresent ? { fxEffectOnCash } : {}),
+      }),
     )
   }
 
-  // ── 3. cash_to_balance_sheet — BLOCKED by design: net change absent as
-  // above, and no cash flag/subType identifies cash among BS lines (a name
-  // heuristic would add fabrication risk for zero evaluability gain). The CF
-  // sections are surfaced as partial-evidence context only — never summed
-  // into a derived net change. ──
+  // ── 3. cash_to_balance_sheet — remains BLOCKED by design. Imported CF.06/
+  // CF.07 are same-statement bridge figures, not an independent balance-sheet
+  // cash marker. Using CF.07 on the right would manufacture a self tie-out. ──
   {
     const openingCash = makeComponent("openingCash", "opening", null, evidence.openingPeriodKey)
     const netChangeInCash = makeComponent("netChangeInCash", "flow", null)
