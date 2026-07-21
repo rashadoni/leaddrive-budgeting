@@ -186,10 +186,17 @@ function mockDs(initial: Partial<MockState> = {}): RecomputeDataSource & {
     // Phase 7.I — IntelDataPoint read mock. Records the lookup key + returns
     // the pre-canned rows. Tests populate `state.intelDataPoints[<source>:<metric>]`
     // to exercise weatherResolver / commodityPriceResolver paths.
-    listIntelDataPoints: async ({ organizationId, sourceCode, metric }) => {
+    listIntelDataPoints: async ({ organizationId, sourceCode, metric, start, end, limit = 50, order = 'asc' }) => {
       const key = metric ? `${sourceCode}:${metric}` : sourceCode;
       state.orgReads.push(`intel:${organizationId}:${key}`);
-      return state.intelDataPoints[key] ?? [];
+      return (state.intelDataPoints[key] ?? [])
+        .filter((row) => (!start || row.datetime >= start) && (!end || row.datetime < end))
+        .sort((a, b) =>
+          order === 'asc'
+            ? a.datetime.getTime() - b.datetime.getTime()
+            : b.datetime.getTime() - a.datetime.getTime(),
+        )
+        .slice(0, limit);
     },
   };
 }
@@ -3059,6 +3066,48 @@ const AGRO_SUGAR_PRICE_TREND_TEST: IndicatorDefinitionLike = {
   defaultValueSource: 'macro',
 };
 
+const COMMODITY_DAILY_LATEST_TEST: IndicatorDefinitionLike = {
+  id: 'ind_daily_latest',
+  code: 'DAILY_LATEST',
+  formula: 'azn_usd_latest',
+  thresholds: {
+    green: { op: '>=', value: 0 },
+    amber: { op: '>=', value: -1 },
+    red: { op: '<', value: -1 },
+  },
+  requiredInputs: ['commodityPrice:azn_usd_latest'],
+  unit: 'AZN/USD',
+  defaultValueSource: 'macro',
+};
+
+const COMMODITY_WB_LATEST_TEST: IndicatorDefinitionLike = {
+  id: 'ind_wb_latest',
+  code: 'WB_LATEST',
+  formula: 'az_tourism_arrivals_latest',
+  thresholds: {
+    green: { op: '>=', value: 0 },
+    amber: { op: '>=', value: -1 },
+    red: { op: '<', value: -1 },
+  },
+  requiredInputs: ['commodityPrice:az_tourism_arrivals_latest'],
+  unit: 'arrivals',
+  defaultValueSource: 'macro',
+};
+
+const COMMODITY_CORN_MEAN_TEST: IndicatorDefinitionLike = {
+  id: 'ind_corn_mean',
+  code: 'CORN_MEAN',
+  formula: 'corn_price_mean_12m',
+  thresholds: {
+    green: { op: '>=', value: 0 },
+    amber: { op: '>=', value: -1 },
+    red: { op: '<', value: -1 },
+  },
+  requiredInputs: ['commodityPrice:corn_price_mean_12m'],
+  unit: 'USD/tonne',
+  defaultValueSource: 'macro',
+};
+
 describe('recomputeIndicator — weatherResolver (Phase 7.I)', () => {
   it('resolves rainfall_mm_90d for the active company region from IntelDataPoint', async () => {
     const ds = mockDs({
@@ -3083,6 +3132,31 @@ describe('recomputeIndicator — weatherResolver (Phase 7.I)', () => {
     const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
     expect(agg.weather).toMatchObject({
       rainfall_mm_90d: { value: 95, region: 'salyan' },
+    });
+  });
+
+  it('keeps a 2025 recompute inside 2025 when a newer 2026 weather row exists', async () => {
+    const ds = mockDs({
+      settings: { region: 'salyan', cropType: 'sugarcane' },
+      intelDataPoints: {
+        'weather-openmeteo:SALYAN_RAINFALL_MM_90D': [
+          { metric: 'SALYAN_RAINFALL_MM_90D', datetime: new Date('2025-12-26T00:00:00Z'), value: 72, unit: 'mm' },
+          { metric: 'SALYAN_RAINFALL_MM_90D', datetime: new Date('2025-04-01T00:00:00Z'), value: 95, unit: 'mm' },
+          { metric: 'SALYAN_RAINFALL_MM_90D', datetime: new Date('2026-07-16T00:00:00Z'), value: 5, unit: 'mm' },
+        ],
+      },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_eden',
+      definition: AGRO_WEATHER_RAINFALL_TEST,
+      period: '2025',
+    });
+    expect(ds.state.upserts[0].value).toBe(72);
+    expect(ds.state.upserts[0].inputs.resolved.rainfall_mm_90d).toBe(72);
+    const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
+    expect(agg.weather).toMatchObject({
+      rainfall_mm_90d: { observedAt: '2025-12-26T00:00:00.000Z' },
     });
   });
 
@@ -3149,18 +3223,18 @@ describe('recomputeIndicator — weatherResolver (Phase 7.I)', () => {
 
 describe('recomputeIndicator — commodityPriceResolver (Phase 7.I)', () => {
   it('resolves sugar_price_latest + mean_12m and computes variance %', async () => {
-    // 12 months at $400, then current month at $440 → mean=400, latest=440,
-    // variance = (440-400)/400 * 100 = +10% → green (≥0)
+    // Jan-Nov at $400, then December at $440 → mean≈403.33, latest=440,
+    // variance≈+9.1% → green (≥0). The annual 2026 period only sees 2026.
     const series = Array.from({ length: 12 }, (_, i) => ({
       metric: 'SUGAR_RAW_USD_TONNE',
-      datetime: new Date(2025, i, 1),
-      value: 400,
+      datetime: new Date(Date.UTC(2026, i, 1)),
+      value: i === 11 ? 440 : 400,
       unit: 'USD/tonne',
     }));
     series.push({
       metric: 'SUGAR_RAW_USD_TONNE',
-      datetime: new Date(2026, 0, 1),
-      value: 440,
+      datetime: new Date('2027-01-01T00:00:00Z'),
+      value: 999,
       unit: 'USD/tonne',
     });
     const ds = mockDs({
@@ -3175,7 +3249,7 @@ describe('recomputeIndicator — commodityPriceResolver (Phase 7.I)', () => {
       period: '2026',
     });
     expect(ds.state.upserts).toHaveLength(1);
-    // mean of last 12 = (11×400 + 440) / 12 ≈ 403.33; variance ≈ +9.1%
+    // 2027 is outside the period and cannot affect latest or mean.
     expect(ds.state.upserts[0].value).toBeGreaterThan(0);
     expect(ds.state.upserts[0].value).toBeLessThan(15);
     expect(ds.state.upserts[0].status).toBe('green'); // ≥0 → green
@@ -3198,8 +3272,8 @@ describe('recomputeIndicator — commodityPriceResolver (Phase 7.I)', () => {
     expect(ds.state.upserts[0].status).toBe('unknown');
   });
 
-  it('mean_12m falls back to mean over whatever samples exist (graceful degradation)', async () => {
-    // Only 3 months of data — still computes mean over those 3, not NaN.
+  it('fails closed when a 12M statistic has insufficient calendar-month coverage', async () => {
+    // Three real months are not a substitute for a 12-month statistic.
     const series = [
       { metric: 'SUGAR_RAW_USD_TONNE', datetime: new Date(2026, 0, 1), value: 400, unit: 'USD/tonne' },
       { metric: 'SUGAR_RAW_USD_TONNE', datetime: new Date(2026, 1, 1), value: 420, unit: 'USD/tonne' },
@@ -3214,9 +3288,211 @@ describe('recomputeIndicator — commodityPriceResolver (Phase 7.I)', () => {
       definition: AGRO_SUGAR_PRICE_TREND_TEST,
       period: '2026',
     });
-    // mean = (400+420+440)/3 = 420; latest = 440; variance = (440-420)/420 ≈ +4.76%
+    expect(ds.state.upserts[0].status).toBe('unknown');
+    const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
+    expect(agg.commodity_price).toMatchObject({
+      sugar_price_mean_12m: {
+        value: null,
+        coverage: {
+          complete: false,
+          observedMonths: ['2026-01', '2026-02', '2026-03'],
+        },
+      },
+    });
+  });
+
+  it('uses exact annual, quarterly, and monthly windows without future leakage', async () => {
+    const series = Array.from({ length: 18 }, (_, i) => ({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date(Date.UTC(2024, 6 + i, 1)), // Jul-2024 .. Dec-2025
+      value: 100 + i,
+      unit: 'USD/tonne',
+    }));
+    series.push({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date('2026-01-01T00:00:00Z'),
+      value: 999,
+      unit: 'USD/tonne',
+    });
+    const cases = [
+      { period: '2025', latest: 117, windowStart: '2025-01-01', expectedValue: 4.93 },
+      { period: '2025-Q2', latest: 111, windowStart: '2024-07-01', expectedValue: 5.21 },
+      { period: '2025-06', latest: 111, windowStart: '2024-07-01', expectedValue: 5.21 },
+    ];
+
+    for (const testCase of cases) {
+      const ds = mockDs({
+        intelDataPoints: { 'sugar-yahoo-sb-f:SUGAR_RAW_USD_TONNE': series },
+      });
+      await recomputeIndicator(ds, {
+        organizationId: 'org_1',
+        companyId: 'co_azsf',
+        definition: AGRO_SUGAR_PRICE_TREND_TEST,
+        period: testCase.period,
+      });
+      expect(ds.state.upserts[0].inputs.resolved.sugar_price_latest).toBe(testCase.latest);
+      expect(ds.state.upserts[0].value).toBeCloseTo(testCase.expectedValue, 2);
+      const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
+      expect(agg.commodity_price).toMatchObject({
+        sugar_price_mean_12m: {
+          coverage: {
+            complete: true,
+            windowStart: testCase.windowStart,
+            expectedMonths: expect.arrayContaining([testCase.windowStart.slice(0, 7)]),
+          },
+        },
+      });
+    }
+  });
+
+  it('keeps paired sugar latest canonical when a newer mid-month spike is corrupt', async () => {
+    const series = Array.from({ length: 12 }, (_, i) => ({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date(Date.UTC(2025, i, 1)),
+      value: 400 + i,
+      unit: 'USD/tonne',
+    }));
+    series.push({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date('2025-12-15T12:00:00Z'),
+      value: 9_999,
+      unit: 'USD/tonne',
+    });
+    const ds = mockDs({
+      intelDataPoints: { 'sugar-yahoo-sb-f:SUGAR_RAW_USD_TONNE': series },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: AGRO_SUGAR_PRICE_TREND_TEST,
+      period: '2025',
+    });
+    expect(ds.state.upserts[0].inputs.resolved.sugar_price_latest).toBe(411);
+    const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
+    expect(agg.commodity_price).toMatchObject({
+      sugar_price_latest: {
+        value: 411,
+        cadence: 'canonical_monthly',
+        observedAt: '2025-12-01T00:00:00.000Z',
+        invalidTimestamps: ['2025-12-15T12:00:00.000Z'],
+      },
+      sugar_price_mean_12m: {
+        coverage: {
+          complete: true,
+          invalidAnchorTimestamps: ['2025-12-15T12:00:00.000Z'],
+        },
+      },
+    });
+  });
+
+  it('does not truncate a >100-row daily latest series before year-end', async () => {
+    const daily = Array.from({ length: 150 }, (_, i) => ({
+      metric: 'AZN_USD',
+      datetime: new Date(Date.UTC(2025, 0, 1 + i)),
+      value: i + 1,
+      unit: 'AZN/USD',
+    }));
+    daily.push({
+      metric: 'AZN_USD',
+      datetime: new Date('2026-01-01T00:00:00Z'),
+      value: 999,
+      unit: 'AZN/USD',
+    });
+    const ds = mockDs({
+      intelDataPoints: { 'cbar-official-fx:AZN_USD': daily },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: COMMODITY_DAILY_LATEST_TEST,
+      period: '2025',
+    });
+    expect(ds.state.upserts[0].value).toBe(150);
+    expect(ds.state.upserts[0].inputs.resolved.azn_usd_latest).toBe(150);
+  });
+
+  it('uses a valid low-frequency World Bank observation as-of 2025-Q2, never its 2026 successor', async () => {
+    const ds = mockDs({
+      intelDataPoints: {
+        'wb-indicators:AZ_TOURISM_ARRIVALS': [
+          { metric: 'AZ_TOURISM_ARRIVALS', datetime: new Date('2024-01-01T00:00:00Z'), value: 1_000, unit: 'arrivals' },
+          { metric: 'AZ_TOURISM_ARRIVALS', datetime: new Date('2026-01-01T00:00:00Z'), value: 9_999, unit: 'arrivals' },
+        ],
+      },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: COMMODITY_WB_LATEST_TEST,
+      period: '2025-Q2',
+    });
+    expect(ds.state.upserts[0].value).toBe(1_000);
+    const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
+    expect(agg.commodity_price).toMatchObject({
+      az_tourism_arrivals_latest: {
+        value: 1_000,
+        sourceCode: 'wb-indicators',
+        metric: 'AZ_TOURISM_ARRIVALS',
+        observedAt: '2024-01-01T00:00:00.000Z',
+      },
+    });
+  });
+
+  it('anchors a 2026 12M statistic to the latest July-2026 monthly observation', async () => {
+    const series = Array.from({ length: 12 }, (_, i) => ({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date(Date.UTC(2025, 7 + i, 1)), // Aug-2025 .. Jul-2026
+      value: 300 + i,
+      unit: 'USD/tonne',
+    }));
+    const ds = mockDs({
+      intelDataPoints: { 'sugar-yahoo-sb-f:SUGAR_RAW_USD_TONNE': series },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: AGRO_COMMODITY_VOL_TEST,
+      period: '2026',
+    });
     expect(ds.state.upserts[0].status).toBe('green');
-    expect(ds.state.upserts[0].value).toBeCloseTo(4.76, 1);
+    const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
+    expect(agg.commodity_price).toMatchObject({
+      sugar_price_mean_12m: {
+        observedAt: '2026-07-01T00:00:00.000Z',
+        coverage: {
+          complete: true,
+          windowStart: '2025-08-01',
+          windowEnd: '2026-08-01',
+        },
+      },
+    });
+  });
+
+  it('applies the same anchored 12M contract to a non-sugar commodity alias', async () => {
+    const series = Array.from({ length: 12 }, (_, i) => ({
+      metric: 'CORN_USD_TONNE',
+      datetime: new Date(Date.UTC(2025, 7 + i, 1)),
+      value: 100 + i,
+      unit: 'USD/tonne',
+    }));
+    const ds = mockDs({
+      intelDataPoints: { 'yahoo-grains:CORN_USD_TONNE': series },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: COMMODITY_CORN_MEAN_TEST,
+      period: '2026',
+    });
+    expect(ds.state.upserts[0].value).toBeCloseTo(105.5, 5);
+    const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
+    expect(agg.commodity_price).toMatchObject({
+      corn_price_mean_12m: {
+        sourceCode: 'yahoo-grains',
+        metric: 'CORN_USD_TONNE',
+        coverage: { complete: true, windowStart: '2025-08-01', windowEnd: '2026-08-01' },
+      },
+    });
   });
 });
 
@@ -3242,7 +3518,7 @@ describe('recomputeIndicator — AGRO_COMMODITY_VOL stdev/mean (Phase 7.O fix)',
     // 12 monthly values trending from 300→410 USD/tonne → CV ≈ 9.7% (green ≤10%)
     const series = Array.from({ length: 12 }, (_, i) => ({
       metric: 'SUGAR_RAW_USD_TONNE',
-      datetime: new Date(2025, i, 1),
+      datetime: new Date(Date.UTC(2026, i, 1)),
       value: 300 + i * 10, // 300..410
       unit: 'USD/tonne',
     }));
@@ -3277,7 +3553,7 @@ describe('recomputeIndicator — AGRO_COMMODITY_VOL stdev/mean (Phase 7.O fix)',
     // 6×250 + 6×350 = mean=300, stdev=50, CV=50/300*100=16.7% → amber
     const series = Array.from({ length: 12 }, (_, i) => ({
       metric: 'SUGAR_RAW_USD_TONNE',
-      datetime: new Date(2025, i, 1),
+      datetime: new Date(Date.UTC(2026, i, 1)),
       value: i % 2 === 0 ? 250 : 350,
       unit: 'USD/tonne',
     }));
@@ -3290,6 +3566,86 @@ describe('recomputeIndicator — AGRO_COMMODITY_VOL stdev/mean (Phase 7.O fix)',
     });
     expect(ds.state.upserts[0].value).toBeCloseTo(16.67, 0);
     expect(ds.state.upserts[0].status).toBe('amber');
+  });
+
+  it('does not let a duplicate month satisfy missing 12M coverage', async () => {
+    const series = Array.from({ length: 12 }, (_, i) => ({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date(Date.UTC(2025, i < 5 ? i : i + 1, 1)), // omit June
+      value: 300 + i,
+      unit: 'USD/tonne',
+    }));
+    // A second January row makes 12 raw rows, but still only 11 distinct months.
+    series.push({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date('2025-01-01T00:00:00Z'),
+      value: 999,
+      unit: 'USD/tonne',
+    });
+    series.push({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date('2026-01-01T00:00:00Z'),
+      value: 999,
+      unit: 'USD/tonne',
+    });
+    const ds = mockDs({
+      intelDataPoints: { 'sugar-yahoo-sb-f:SUGAR_RAW_USD_TONNE': series },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: AGRO_COMMODITY_VOL_TEST,
+      period: '2025',
+    });
+    expect(ds.state.upserts[0].status).toBe('unknown');
+    const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
+    expect(agg.commodity_price).toMatchObject({
+      sugar_price_mean_12m: {
+        value: null,
+        samples: 11,
+        coverage: {
+          complete: false,
+          missingMonths: ['2025-06'],
+          duplicateMonths: ['2025-01'],
+        },
+      },
+    });
+  });
+
+  it('does not let twelve mid-month timestamps satisfy monthly coverage', async () => {
+    const series = Array.from({ length: 12 }, (_, i) => ({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date(Date.UTC(2025, i, 15, 12)),
+      value: 300 + i,
+      unit: 'USD/tonne',
+    }));
+    const ds = mockDs({
+      intelDataPoints: { 'sugar-yahoo-sb-f:SUGAR_RAW_USD_TONNE': series },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: AGRO_COMMODITY_VOL_TEST,
+      period: '2025',
+    });
+    expect(ds.state.upserts[0].status).toBe('unknown');
+    const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
+    expect(agg.commodity_price).toMatchObject({
+      sugar_price_mean_12m: {
+        value: null,
+        samples: 0,
+        coverage: {
+          complete: false,
+          observedMonths: [],
+          windowStart: null,
+          windowEnd: null,
+        },
+      },
+    });
+    const commodity = (agg.commodity_price as Record<string, {
+      coverage?: { invalidAnchorTimestamps: string[] }
+    }>);
+    expect(commodity.sugar_price_mean_12m.coverage?.invalidAnchorTimestamps).toHaveLength(12);
   });
 });
 

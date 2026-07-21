@@ -246,7 +246,16 @@ export const weatherResolver: NamespaceResolver = {
       settings && typeof settings.region === 'string'
         ? resolveWeatherRegionCode(settings.region)
         : null;
-    const perMetric: Record<string, { value: number | null; region: string | null }> = {};
+    const perMetric: Record<
+      string,
+      {
+        value: number | null;
+        region: string | null;
+        sourceCode?: string;
+        metric?: string;
+        observedAt?: string;
+      }
+    > = {};
     if (!ctx.ds.listIntelDataPoints || !region) {
       // No DataSource impl or no region — emit per-metric nulls for snapshot.
       for (const raw of matched) {
@@ -263,17 +272,39 @@ export const weatherResolver: NamespaceResolver = {
         organizationId: ctx.organizationId,
         sourceCode: WEATHER_SOURCE_CODE,
         metric: dbMetric,
-        limit: 1,
+        // A weather observation applies to its observation date, not to the
+        // date it was fetched. Keep historical recomputes inside their own
+        // period so a fresh 2026 snapshot cannot resolve a 2025 cell. The
+        // datasource is ascending; 500 covers a full daily calendar year
+        // while leaving the final selection deterministic below.
+        start: ctx.period.start,
+        end: ctx.period.end,
+        limit: 500,
       });
       if (rows.length === 0) {
         perMetric[varName] = { value: null, region };
         continue;
       }
-      // Adapter orders ASC; the most recent is the last row.
-      const value = rows[rows.length - 1].value;
+      // Do not rely on datasource ordering: custom/read-through sources may
+      // return an out-of-order list. The period boundary is checked again so
+      // an implementation that ignores filters cannot leak 2026 into 2025.
+      const observed = [...rows]
+        .filter((row) => row.datetime >= ctx.period.start && row.datetime < ctx.period.end)
+        .sort((a, b) => b.datetime.getTime() - a.datetime.getTime())[0];
+      if (!observed) {
+        perMetric[varName] = { value: null, region };
+        continue;
+      }
+      const value = observed.value;
       state.context[varName] = value;
       state.inputs.resolved[varName] = value;
-      perMetric[varName] = { value, region };
+      perMetric[varName] = {
+        value,
+        region,
+        sourceCode: WEATHER_SOURCE_CODE,
+        metric: dbMetric,
+        observedAt: observed.datetime.toISOString(),
+      };
     }
     state.inputs.aggregates.weather = perMetric;
   },
@@ -394,6 +425,16 @@ const COMMODITY_PRICE_ALIASES: readonly CommodityAlias[] = [
   { varName: 'salyan_rainfall_forecast_14d', sourceCode: 'openmeteo-forecast', metric: 'SALYAN_RAINFALL_MM_14D_FCST', aggregator: 'latest' },
 ];
 
+const MONTHLY_STAT_SERIES = new Set(
+  COMMODITY_PRICE_ALIASES
+    .filter((alias) => alias.aggregator === 'mean_12m' || alias.aggregator === 'stdev_12m')
+    .map((alias) => `${alias.sourceCode}::${alias.metric}`),
+);
+
+function hasMonthlyStatisticAlias(alias: CommodityAlias): boolean {
+  return MONTHLY_STAT_SERIES.has(`${alias.sourceCode}::${alias.metric}`);
+}
+
 function aggregateCommodity(
   values: number[],
   agg: CommodityAlias['aggregator'],
@@ -410,13 +451,154 @@ function aggregateCommodity(
   return Math.sqrt(variance);
 }
 
+type CommodityCoverage = {
+  windowStart: string | null;
+  windowEnd: string | null;
+  expectedMonths: string[];
+  observedMonths: string[];
+  missingMonths: string[];
+  duplicateMonths: string[];
+  invalidMonthTimestamps: string[];
+  invalidAnchorTimestamps: string[];
+  complete: boolean;
+};
+
+function utcMonthStart(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+function utcMonthKey(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+function isoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function isCanonicalUtcMonthStart(date: Date): boolean {
+  return (
+    date.getUTCDate() === 1 &&
+    date.getUTCHours() === 0 &&
+    date.getUTCMinutes() === 0 &&
+    date.getUTCSeconds() === 0 &&
+    date.getUTCMilliseconds() === 0
+  );
+}
+
+function trailingTwelveMonthWindow(anchor: Date): { start: Date; end: Date } {
+  // Anchor to the latest actual canonical monthly observation, rather than
+  // the calendar end of the requested period. This makes an Aug-2025..
+  // Jul-2026 series a complete 12M series for the in-progress 2026 period
+  // without borrowing a future observation.
+  const end = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 1));
+  return {
+    start: new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 12, 1)),
+    end,
+  };
+}
+
+function expectedMonthKeys(start: Date, end: Date): string[] {
+  const keys: string[] = [];
+  for (
+    let cursor = utcMonthStart(start);
+    cursor.getTime() < end.getTime();
+    cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1))
+  ) {
+    keys.push(utcMonthKey(cursor));
+  }
+  return keys;
+}
+
+function assessMonthlyCoverage(
+  rows: Array<{ datetime: Date; value: number }>,
+  start: Date,
+  end: Date,
+  invalidAnchorTimestamps: string[] = [],
+): { values: number[]; coverage: CommodityCoverage } {
+  const expectedMonths = expectedMonthKeys(start, end);
+  const expected = new Set(expectedMonths);
+  const valuesByMonth = new Map<string, number>();
+  const duplicate = new Set<string>();
+  const invalidMonthTimestamps = new Set<string>();
+
+  for (const row of rows) {
+    // The datasource filters this range, but retain the boundary at the
+    // resolver: custom datasource implementations must not be able to leak a
+    // future price into a historical formula.
+    if (row.datetime < start || row.datetime >= end || !Number.isFinite(row.value)) continue;
+    // Monthly Yahoo-style observations are persisted at an exact UTC month
+    // boundary. A random mid-month timestamp must not manufacture coverage
+    // for a missing monthly bar.
+    if (!isCanonicalUtcMonthStart(row.datetime)) {
+      invalidMonthTimestamps.add(row.datetime.toISOString());
+      continue;
+    }
+    const month = utcMonthKey(row.datetime);
+    if (!expected.has(month)) continue;
+    if (valuesByMonth.has(month)) {
+      duplicate.add(month);
+      continue;
+    }
+    valuesByMonth.set(month, row.value);
+  }
+
+  const observedMonths = expectedMonths.filter((month) => valuesByMonth.has(month));
+  const missingMonths = expectedMonths.filter((month) => !valuesByMonth.has(month));
+  const duplicateMonths = [...duplicate].sort();
+  const coverage: CommodityCoverage = {
+    windowStart: isoDate(start),
+    windowEnd: isoDate(end),
+    expectedMonths,
+    observedMonths,
+    missingMonths,
+    duplicateMonths,
+    invalidMonthTimestamps: [...invalidMonthTimestamps].sort(),
+    invalidAnchorTimestamps,
+    // A duplicate is ambiguous for a nominally monthly feed. Do not silently
+    // choose one quote and call the 12M statistic complete.
+    complete: missingMonths.length === 0 && duplicateMonths.length === 0,
+  };
+  return {
+    values: coverage.complete
+      ? expectedMonths.map((month) => valuesByMonth.get(month) as number)
+      : [],
+    coverage,
+  };
+}
+
+function noMonthlyAnchorCoverage(invalidAnchorTimestamps: string[]): CommodityCoverage {
+  return {
+    windowStart: null,
+    windowEnd: null,
+    expectedMonths: [],
+    observedMonths: [],
+    missingMonths: [],
+    duplicateMonths: [],
+    invalidMonthTimestamps: [],
+    invalidAnchorTimestamps,
+    complete: false,
+  };
+}
+
 export const commodityPriceResolver: NamespaceResolver = {
   name: 'commodityPrice',
   matches: (r) => r.startsWith('commodityPrice:'),
   async resolve(matched, ctx, state) {
     const perAlias: Record<
       string,
-      { value: number | null; sourceCode: string; aggregator: string; samples: number }
+      {
+        value: number | null;
+        sourceCode: string;
+        metric: string;
+        aggregator: string;
+        samples: number;
+        observedAt?: string;
+        cadence?: 'as_of' | 'canonical_monthly';
+        invalidTimestamps?: string[];
+        coverage?: CommodityCoverage;
+      }
     > = {};
     if (!ctx.ds.listIntelDataPoints) {
       for (const raw of matched) {
@@ -426,6 +608,7 @@ export const commodityPriceResolver: NamespaceResolver = {
           perAlias[varName] = {
             value: null,
             sourceCode: alias.sourceCode,
+            metric: alias.metric,
             aggregator: alias.aggregator,
             samples: 0,
           };
@@ -434,29 +617,165 @@ export const commodityPriceResolver: NamespaceResolver = {
       state.inputs.aggregates.commodity_price = perAlias;
       return;
     }
-    // Group needed aliases by sourceCode+metric so we hit the DB once per
-    // series even if multiple aggregators read it.
-    const seriesKey = (a: CommodityAlias) => `${a.sourceCode}::${a.metric}`;
-    const seriesCache = new Map<string, number[]>();
+    // Cache the two phases separately. 12M aliases first locate the latest
+    // valid historical month as-of the requested period, then read exactly
+    // the corresponding twelve calendar months.
+    const seriesKey = (a: CommodityAlias, start: Date, end: Date) =>
+      `${a.sourceCode}::${a.metric}::${start.toISOString()}::${end.toISOString()}`;
+    const anchorKey = (a: CommodityAlias) =>
+      `${a.sourceCode}::${a.metric}::anchor::${ctx.period.end.toISOString()}`;
+    const seriesCache = new Map<
+      string,
+      Array<{ metric: string; datetime: Date; value: number; unit?: string | null }>
+    >();
+    const anchorCandidatesCache = new Map<
+      string,
+      Array<{ metric: string; datetime: Date; value: number; unit?: string | null }>
+    >();
     for (const raw of matched) {
       const varName = raw.slice('commodityPrice:'.length);
       const alias = COMMODITY_PRICE_ALIASES.find((a) => a.varName === varName);
       if (!alias) continue;
-      const key = seriesKey(alias);
-      if (!seriesCache.has(key)) {
+
+      if (alias.aggregator === 'latest') {
+        if (hasMonthlyStatisticAlias(alias)) {
+          // Paired latest + 12M aliases must agree on what a monthly
+          // observation is. Reuse the same bounded descending candidate
+          // cache the 12M branch uses so a newer mid-month corrupt row cannot
+          // become the latest while being rejected as a statistical anchor.
+          const candidateKey = anchorKey(alias);
+          if (!anchorCandidatesCache.has(candidateKey)) {
+            anchorCandidatesCache.set(
+              candidateKey,
+              await ctx.ds.listIntelDataPoints({
+                organizationId: ctx.organizationId,
+                sourceCode: alias.sourceCode,
+                metric: alias.metric,
+                end: ctx.period.end,
+                order: 'desc',
+                limit: 500,
+              }),
+            );
+          }
+          const candidates = [...(anchorCandidatesCache.get(candidateKey) ?? [])]
+            .filter((row) => row.datetime < ctx.period.end && Number.isFinite(row.value))
+            .sort((a, b) => b.datetime.getTime() - a.datetime.getTime());
+          const invalidTimestamps = candidates
+            .filter((row) => !isCanonicalUtcMonthStart(row.datetime))
+            .map((row) => row.datetime.toISOString())
+            .sort();
+          const observed = candidates.find((row) => isCanonicalUtcMonthStart(row.datetime));
+          const value = observed?.value ?? null;
+          if (value !== null) {
+            state.context[varName] = value;
+            state.inputs.resolved[varName] = value;
+          }
+          perAlias[varName] = {
+            value,
+            sourceCode: alias.sourceCode,
+            metric: alias.metric,
+            aggregator: alias.aggregator,
+            samples: observed ? 1 : 0,
+            cadence: 'canonical_monthly',
+            invalidTimestamps,
+            ...(observed ? { observedAt: observed.datetime.toISOString() } : {}),
+          };
+          continue;
+        }
+        // Latest is an as-of read: low-frequency annual/quarterly sources
+        // remain valid in later periods, but no observation at/after the
+        // period end may leak backwards.
         const rows = await ctx.ds.listIntelDataPoints({
           organizationId: ctx.organizationId,
           sourceCode: alias.sourceCode,
           metric: alias.metric,
-          limit: 24, // up to 2y monthly — enough for 12m windows + buffer
+          end: ctx.period.end,
+          order: 'desc',
+          limit: 1,
         });
-        seriesCache.set(
-          key,
-          rows.map((r) => r.value),
+        const observed = [...rows]
+          .filter((row) => row.datetime < ctx.period.end && Number.isFinite(row.value))
+          .sort((a, b) => b.datetime.getTime() - a.datetime.getTime())[0];
+        const value = observed?.value ?? null;
+        if (value !== null) {
+          state.context[varName] = value;
+          state.inputs.resolved[varName] = value;
+        }
+        perAlias[varName] = {
+          value,
+          sourceCode: alias.sourceCode,
+          metric: alias.metric,
+          aggregator: alias.aggregator,
+          samples: observed ? 1 : 0,
+          cadence: 'as_of',
+          ...(observed ? { observedAt: observed.datetime.toISOString() } : {}),
+        };
+        continue;
+      }
+
+      const candidateKey = anchorKey(alias);
+      if (!anchorCandidatesCache.has(candidateKey)) {
+        anchorCandidatesCache.set(
+          candidateKey,
+          await ctx.ds.listIntelDataPoints({
+            organizationId: ctx.organizationId,
+            sourceCode: alias.sourceCode,
+            metric: alias.metric,
+            end: ctx.period.end,
+            order: 'desc',
+            // Bounded defensive scan: monthly sources should find the anchor
+            // immediately; a corrupt run of noncanonical points fails closed.
+            limit: 500,
+          }),
         );
       }
-      const series = seriesCache.get(key) ?? [];
-      const value = aggregateCommodity(series, alias.aggregator);
+      const candidates = [...(anchorCandidatesCache.get(candidateKey) ?? [])]
+        .filter((row) => row.datetime < ctx.period.end && Number.isFinite(row.value))
+        .sort((a, b) => b.datetime.getTime() - a.datetime.getTime());
+      const invalidAnchorTimestamps = candidates
+        .filter((row) => !isCanonicalUtcMonthStart(row.datetime))
+        .map((row) => row.datetime.toISOString())
+        .sort();
+      const anchor = candidates.find((row) => isCanonicalUtcMonthStart(row.datetime));
+      const assessed = anchor
+        ? (() => {
+            const window = trailingTwelveMonthWindow(anchor.datetime);
+            const key = seriesKey(alias, window.start, window.end);
+            return { window, key };
+          })()
+        : null;
+      let coverage: CommodityCoverage;
+      let values: number[] = [];
+      if (assessed) {
+        if (!seriesCache.has(assessed.key)) {
+          seriesCache.set(
+            assessed.key,
+            await ctx.ds.listIntelDataPoints({
+              organizationId: ctx.organizationId,
+              sourceCode: alias.sourceCode,
+              metric: alias.metric,
+              start: assessed.window.start,
+              end: assessed.window.end,
+              order: 'asc',
+              limit: 100,
+            }),
+          );
+        }
+        const series = [...(seriesCache.get(assessed.key) ?? [])].sort(
+          (a, b) => a.datetime.getTime() - b.datetime.getTime(),
+        );
+        const result = assessMonthlyCoverage(
+          series,
+          assessed.window.start,
+          assessed.window.end,
+          invalidAnchorTimestamps,
+        );
+        values = result.values;
+        coverage = result.coverage;
+      } else {
+        coverage = noMonthlyAnchorCoverage(invalidAnchorTimestamps);
+      }
+      const value = aggregateCommodity(values, alias.aggregator);
       if (value !== null && Number.isFinite(value)) {
         state.context[varName] = value;
         state.inputs.resolved[varName] = value;
@@ -464,8 +783,11 @@ export const commodityPriceResolver: NamespaceResolver = {
       perAlias[varName] = {
         value,
         sourceCode: alias.sourceCode,
+        metric: alias.metric,
         aggregator: alias.aggregator,
-        samples: series.length,
+        samples: coverage.observedMonths.length,
+        ...(anchor ? { observedAt: anchor.datetime.toISOString() } : {}),
+        coverage,
       };
     }
     state.inputs.aggregates.commodity_price = perAlias;

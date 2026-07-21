@@ -168,8 +168,8 @@ export interface RecomputeDataSource {
   /**
    * Phase 7.I — external commodity / weather observations from the
    * `IntelDataPoint` table. Returns observations matching the source +
-   * metric filter, ordered by datetime ascending (oldest first) so
-   * callers can compute trailing windows by `.slice(-N)`.
+   * metric filter. Callers choose deterministic datetime order explicitly;
+   * the default ascending order is retained for historical window reads.
    *
    * Returns `[]` when no rows match — the resolver downstream maps
    * empty → "data not available", which surfaces as `unknown` IV status.
@@ -187,6 +187,8 @@ export interface RecomputeDataSource {
     /** Hard cap on rows returned. Defaults to 50 so a 5y monthly history
      *  doesn't blow up memory on every recompute. */
     limit?: number;
+    /** Datetime ordering. Defaults to ascending for backwards compatibility. */
+    order?: 'asc' | 'desc';
   }): Promise<
     Array<{ metric: string; datetime: Date; value: number; unit?: string | null }>
   >;
@@ -489,7 +491,17 @@ export interface RecomputeAggregates {
    * region=Salyan, no data yet" so a missing weather feed reads as a
    * data-pipeline state, not a silent zero.
    */
-  weather?: Record<string, { value: number | null; region: string | null }>;
+  weather?: Record<
+    string,
+    {
+      value: number | null;
+      region: string | null;
+      sourceCode?: string;
+      metric?: string;
+      /** ISO timestamp of the observation selected inside the target period. */
+      observedAt?: string;
+    }
+  >;
   /**
    * Phase 7.I — per-alias commodity-price observations the
    * `commodityPriceResolver` derived from IntelDataPoint. `samples`
@@ -501,8 +513,36 @@ export interface RecomputeAggregates {
     {
       value: number | null;
       sourceCode: string;
+      metric: string;
       aggregator: string;
       samples: number;
+      /** ISO timestamp selected for latest, or the canonical monthly anchor for 12M stats. */
+      observedAt?: string;
+      /** `as_of` preserves low-frequency observations; `canonical_monthly` is a monthly-feed guard. */
+      cadence?: 'as_of' | 'canonical_monthly';
+      /** Rejected timestamps for the selected policy, retained for audit. */
+      invalidTimestamps?: string[];
+      /**
+       * Present for 12-month statistics. A monthly series is decision-usable
+       * only when every calendar month in this exact historical window is
+       * represented once. This prevents a future quote or duplicate month
+       * from quietly filling a historical gap.
+       */
+      coverage?: {
+        /** Inclusive UTC month boundary, serialized as YYYY-MM-DD. */
+        windowStart: string | null;
+        /** Exclusive UTC month boundary, serialized as YYYY-MM-DD. */
+        windowEnd: string | null;
+        expectedMonths: string[];
+        observedMonths: string[];
+        missingMonths: string[];
+        duplicateMonths: string[];
+        /** Non-canonical timestamps skipped from a nominally monthly series. */
+        invalidMonthTimestamps: string[];
+        /** Non-canonical candidates skipped while choosing the 12M anchor. */
+        invalidAnchorTimestamps: string[];
+        complete: boolean;
+      };
     }
   >;
 }

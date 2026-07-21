@@ -104,7 +104,7 @@ export function createPrismaDataSource(
     // is in the client but the table doesn't exist. We catch the table-
     // missing error and return [] so the resolver downgrades cleanly to
     // "data not available" rather than throwing inside recompute.
-    async listIntelDataPoints({ organizationId, sourceCode, metric, start, end, limit = 50 }) {
+    async listIntelDataPoints({ organizationId, sourceCode, metric, start, end, limit = 50, order = 'asc' }) {
       const where: {
         organizationId: string;
         sourceCode: string;
@@ -120,7 +120,7 @@ export function createPrismaDataSource(
       try {
         const rows = await prisma.intelDataPoint.findMany({
           where,
-          orderBy: { datetime: 'asc' },
+          orderBy: { datetime: order },
           take: limit,
           select: { metric: true, datetime: true, value: true, unit: true },
         });
