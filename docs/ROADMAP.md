@@ -656,7 +656,12 @@ Top-3 causes cover 64% of the emptiness. Prioritized tasks (cells cleared, effor
 8. ⬜ **Balance sheets not imported for CPC/PROMALT/AZSF** — 6 cells, M. FP_INVENTORY_TURNS needs `inventory`.
 9. ⬜ **PROMALT 2025 P&L missing entirely** — 7 cells, S. One workbook; cascades into carbon/ESG via budgetLine revenue.
 10. ⬜ **Weather rainfall 2025 backfill (EDEN)** — 1 cell, S; 2026 already seeded.
-11. ⬜ **EDEN 2026 EBITDA margin `out_of_range`** — 1 cell, S. Data exists but fails the sanity band — verify EDEN 2026 revenue/EBITDA figures (data-quality check, not a gap).
+11. ✅ **EDEN 2026 EBITDA margin `out_of_range` root cause resolved** — the risk
+    aggregator used the wrong PLF.07 income sign and divided a Jan–Dec captured EBITDA
+    subtotal by Jan–May P&L. The 2026-07-21 production guard now normalizes signs and
+    refuses mixed month bases: the former −401.79% is gone; the cell remains honestly
+    `unknown` (`ebitda_basis_mismatch`) until EDEN supplies either Jun–Dec P&L or a
+    confirmed Jan–May EBITDA. This is an owner-data follow-up, not a computed zero.
 
 Quick wins: #4, #6, #7, #9, #10 (~25+ cells for small effort). Biggest lever: #1–#3 (82 cells).
 Related, same root family: statement-controls «blocked» causes (net-change-in-cash skipped by importer; no distributions model; currency tags — see item 5).
