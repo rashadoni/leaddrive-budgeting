@@ -966,7 +966,7 @@ export function makeCounterpartyHandler(
 
 // ──────────────────────────────────────────────────────────────────────
 // LEGAL_CASES — court-disputes register → 5 court_disputes_* OperationalFacts
-// (court_disputes_open → LEGAL_CASES_ACTIVE) + Company.settings.courtDisputes.
+// (total/open → LEGAL_CASES_TOTAL/ACTIVE) + Company.settings.courtDisputes.
 // Ports scripts/import-court-disputes-detailed.mjs. 2026-06-21.
 // ──────────────────────────────────────────────────────────────────────
 
@@ -1002,8 +1002,15 @@ export function makeLegalCasesHandler(
           // set + date (scoped to one company), then re-create.
           await tx.operationalFact.deleteMany({
             where: {
+              organizationId: ctx.organizationId,
               companyId,
-              metric: { in: [...COURT_DISPUTE_METRICS, "LEGAL_CASES_ACTIVE"] },
+              metric: {
+                in: [
+                  ...COURT_DISPUTE_METRICS,
+                  "LEGAL_CASES_TOTAL",
+                  "LEGAL_CASES_ACTIVE",
+                ],
+              },
               date: recordDate,
             },
           })
@@ -1014,9 +1021,10 @@ export function makeLegalCasesHandler(
               { metric: "court_disputes_as_defendant", value: agg.as_defendant },
               { metric: "court_disputes_as_plaintiff", value: agg.as_plaintiff },
               { metric: "court_disputes_money_claims", value: agg.money_claims },
-              // Canonical metric the LEGAL_CASES_ACTIVE indicator reads directly,
-              // so the import lights up the indicator with NO separate alias step
-              // (= court_disputes_open: active = not-closed cases).
+              // Canonical metrics the LEGAL_CASES_TOTAL / ACTIVE indicators
+              // read directly, so the import lights up both indicators with no
+              // separate alias step.
+              { metric: "LEGAL_CASES_TOTAL", value: agg.total },
               { metric: "LEGAL_CASES_ACTIVE", value: agg.open },
             ].map((m) => ({
               organizationId: ctx.organizationId,
@@ -1024,7 +1032,7 @@ export function makeLegalCasesHandler(
               metric: m.metric,
               date: recordDate,
               value: m.value,
-              unit: m.metric === "LEGAL_CASES_ACTIVE" ? "cases" : "count",
+              unit: m.metric.startsWith("LEGAL_CASES_") ? "cases" : "count",
               source: `multi-import:${input.sheetName}`,
             })),
           })
@@ -1050,7 +1058,7 @@ export function makeLegalCasesHandler(
               } as unknown as Prisma.InputJsonValue,
             },
           })
-          rows += COURT_DISPUTE_METRICS.length + 1 // +1 canonical LEGAL_CASES_ACTIVE
+          rows += COURT_DISPUTE_METRICS.length + 2 // +2 canonical LEGAL_CASES_TOTAL / ACTIVE
         }
         // Report the companies resolved per row so the orchestrator
         // recomputes them — a cross-entity register has no sheet entityCode.
@@ -1100,6 +1108,7 @@ export function makeAuditFindingsHandler(
           const pct = auditCompletedPct(agg)
           await tx.operationalFact.deleteMany({
             where: {
+              organizationId: ctx.organizationId,
               companyId,
               metric: { in: [...AUDIT_FINDING_METRICS, "AUDIT_CLOSED_PCT", "AUDIT_MAJOR_OPEN"] },
               date: recordDate,

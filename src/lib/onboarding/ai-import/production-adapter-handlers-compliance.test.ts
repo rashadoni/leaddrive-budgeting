@@ -32,7 +32,7 @@ function tx() {
       update: vi.fn(async () => ({})),
     },
   }
-  return { t: t as never, created }
+  return { t, created }
 }
 function sheet(rows: unknown[][], name: string, headerRows: number): XLSX.WorkBook {
   const aoa = [...Array.from({ length: headerRows }, () => ["H"]), ...rows]
@@ -43,7 +43,7 @@ function sheet(rows: unknown[][], name: string, headerRows: number): XLSX.WorkBo
 }
 
 describe("compliance adapters emit canonical indicator facts", () => {
-  it("LEGAL_CASES adapter writes LEGAL_CASES_ACTIVE (= open cases)", async () => {
+  it("LEGAL_CASES adapter writes canonical total and active counts", async () => {
     const wb = sheet(
       [
         [1, "2026", "Bakı", "ATS", "CPC MMC", "mülki", "d", "", "", "davam edir"],
@@ -55,11 +55,21 @@ describe("compliance adapters emit canonical indicator facts", () => {
     const handler = makeLegalCasesHandler({} as never, { value: null }, async () => ctx())
     const res = await handler({ workbook: wb, sheetName: "Məhkəmə mübahisələri", entityCode: null, year: 2025, organizationId: "org_1", XLSX } as never)
     const { t, created } = tx()
-    await res.applyToDb(t)
-    const canonical = created.find((f) => f.metric === "LEGAL_CASES_ACTIVE")
-    expect(canonical).toBeDefined()
-    expect(canonical!.value).toBe(1) // 2 cases, 1 closed → 1 active
-    expect(canonical!.companyId).toBe("co_cpc")
+    await res.applyToDb(t as never)
+    const total = created.find((f) => f.metric === "LEGAL_CASES_TOTAL")
+    const active = created.find((f) => f.metric === "LEGAL_CASES_ACTIVE")
+    expect(total?.value).toBe(2)
+    expect(active?.value).toBe(1) // 2 cases, 1 closed → 1 active
+    expect(active!.companyId).toBe("co_cpc")
+    expect(t.operationalFact.deleteMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        organizationId: "org_1",
+        companyId: "co_cpc",
+        metric: {
+          in: expect.arrayContaining(["LEGAL_CASES_TOTAL", "LEGAL_CASES_ACTIVE"]),
+        },
+      }),
+    })
   })
 
   it("AUDIT_FINDINGS adapter writes AUDIT_CLOSED_PCT + AUDIT_MAJOR_OPEN", async () => {
@@ -68,10 +78,16 @@ describe("compliance adapters emit canonical indicator facts", () => {
     const handler = makeAuditFindingsHandler({} as never, { value: null }, async () => ctx())
     const res = await handler({ workbook: wb, sheetName: "Follow-up", entityCode: null, year: 2025, organizationId: "org_1", XLSX } as never)
     const { t, created } = tx()
-    await res.applyToDb(t)
+    await res.applyToDb(t as never)
     const pct = created.find((f) => f.metric === "AUDIT_CLOSED_PCT")
     const major = created.find((f) => f.metric === "AUDIT_MAJOR_OPEN")
     expect(pct?.value).toBe(50) // 1 of 2 completed
     expect(major?.value).toBe(1) // 1 open major
+    expect(t.operationalFact.deleteMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        organizationId: "org_1",
+        companyId: "co_azsf",
+      }),
+    })
   })
 })
