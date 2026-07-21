@@ -23,6 +23,10 @@ import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { parsePeriod } from "@/lib/risk/periods"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
+import {
+  isForeignCurrencyLine,
+  isValidExchangeRate,
+} from "@/lib/risk/pnl-aggregation"
 
 export async function GET(
   request: NextRequest,
@@ -138,6 +142,7 @@ export async function GET(
       department: true,
       lineType: true,
       plannedAmount: true,
+      originalAmount: true,
       currencyCode: true,
       exchangeRate: true,
       sortOrder: true,
@@ -168,12 +173,17 @@ export async function GET(
   type Row = (typeof rows)[number]
   const enriched = rows.map((r: Row) => {
     const accountType = r.account?.accountType ?? r.lineType ?? "unknown"
-    const isForeign = r.currencyCode != null && r.currencyCode !== baseCcy
-    const rate = r.exchangeRate ?? 1
-    const amountBase = isForeign ? r.plannedAmount * rate : r.plannedAmount
-    if (!summary[accountType]) summary[accountType] = { count: 0, total: 0 }
-    summary[accountType].count += 1
-    summary[accountType].total += amountBase
+    const isForeign = isForeignCurrencyLine(r, baseCcy)
+    const hasValidRate = !isForeign || isValidExchangeRate(r.exchangeRate)
+    // Do not turn an invalid foreign row into an apparent base-currency
+    // number. Keep the source row visible for audit, but exclude it from the
+    // totals which mirror the recompute resolver's fail-closed semantics.
+    const amountBase = hasValidRate ? r.plannedAmount : null
+    if (amountBase != null) {
+      if (!summary[accountType]) summary[accountType] = { count: 0, total: 0 }
+      summary[accountType].count += 1
+      summary[accountType].total += amountBase
+    }
     return {
       id: r.id,
       accountCode: r.account?.code ?? null,
@@ -187,8 +197,10 @@ export async function GET(
       department: r.department,
       plannedAmount: r.plannedAmount,
       amountBase,
+      originalAmount: r.originalAmount ?? null,
       currencyCode: r.currencyCode ?? baseCcy,
       exchangeRate: r.exchangeRate ?? null,
+      conversionError: hasValidRate ? null : "missing_or_invalid_exchange_rate",
       monthIndex:
         r.monthIndex ??
         (r.sortOrder >= 0 && r.sortOrder <= 11 ? r.sortOrder : null),

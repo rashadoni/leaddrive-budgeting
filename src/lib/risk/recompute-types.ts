@@ -59,7 +59,11 @@ export interface CurrencyRateRow {
 }
 
 export interface BudgetLineRow {
+  /** Canonical amount in the company's base/reporting currency. */
   plannedAmount: number;
+  /** Original foreign-currency amount, retained as source evidence. Missing
+   *  on legacy rows; FX exposure treats a missing value as unproven. */
+  originalAmount?: number | null;
   currencyCode: string | null;
   exchangeRate: number | null;
   accountType: string | null;
@@ -413,7 +417,8 @@ export interface CurrencyRateAggregate {
 export interface BudgetLineAggregate {
   line_count: number;
   /** Phase 7.M Step 4 (2026-05-19) — count of lines that carry an
-   *  explicit non-base currencyCode + exchangeRate. Used by the
+   *  explicit non-base currencyCode + finite positive exchangeRate +
+   *  finite originalAmount. Used by the
    *  zombie-row guard to distinguish "genuinely 100% domestic" from
    *  "xlsx importer dropped the currency column". When `line_count > 0`
    *  but `foreign_line_count === 0`, any FX-share formula evaluates

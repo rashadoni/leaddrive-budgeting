@@ -3,7 +3,7 @@
  * Handler test for `/api/budget-lines/monthly-series` (GET).
  *
  * 12-month series for a single account. Locks accountCode-vs-category
- * priority, FX conversion to AZN base, sub-group RBAC scope, and
+ * priority, base-amount FX evidence gating, sub-group RBAC scope, and
  * monthIndex bucketing.
  */
 
@@ -106,17 +106,30 @@ describe("GET /api/budget-lines/monthly-series", () => {
     expect(body.months[5].lineCount).toBe(1)
   })
 
-  it("converts foreign currency × exchangeRate into AZN base", async () => {
+  it("keeps foreign already-base plannedAmount unchanged", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     prismaMock.budgetLine.findMany.mockResolvedValue([
-      { sortOrder: 0, plannedAmount: 100, currencyCode: "USD", exchangeRate: 1.7 }, // → 170
-      { sortOrder: 0, plannedAmount: 50,  currencyCode: "AZN", exchangeRate: 1 },   // → 50
+      { sortOrder: 0, plannedAmount: 170, currencyCode: "USD", exchangeRate: 1.7 },
+      { sortOrder: 0, plannedAmount: 50,  currencyCode: "AZN", exchangeRate: null },
     ])
     const res = await GET(
       makeRequest("/api/budget-lines/monthly-series?companyId=c1&accountCode=601-01&year=2026"),
     )
     const body = await res.json()
     expect(body.months[0].amountBase).toBeCloseTo(220, 4)
+  })
+
+  it("excludes foreign rows with an invalid rate without excluding base AZN", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetLine.findMany.mockResolvedValue([
+      { sortOrder: 0, plannedAmount: 200, currencyCode: "AZN", exchangeRate: null },
+      { sortOrder: 0, plannedAmount: 170, currencyCode: "USD", exchangeRate: 0 },
+    ])
+    const res = await GET(
+      makeRequest("/api/budget-lines/monthly-series?companyId=c1&accountCode=601-01&year=2026"),
+    )
+    const body = await res.json()
+    expect(body.months[0]).toMatchObject({ amountBase: 200, lineCount: 1 })
   })
 
   it("uses accountCode when provided (priority over category)", async () => {

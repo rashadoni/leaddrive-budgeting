@@ -36,13 +36,9 @@ describe("convertToBase", () => {
     expect(convertToBase(50_000, 0.034)).toBeCloseTo(1700, 4)
   })
 
-  it("returns amount unchanged when rate is null", () => {
-    expect(convertToBase(100, null)).toBe(100)
-    expect(convertToBase(50_000, null)).toBe(50_000)
-  })
-
-  it("returns amount unchanged when rate is undefined", () => {
-    expect(convertToBase(100, undefined)).toBe(100)
+  it("rejects null or undefined rate instead of fabricating a 1:1 conversion", () => {
+    expect(() => convertToBase(100, null)).toThrow(/finite positive exchange rate/i)
+    expect(() => convertToBase(100, undefined)).toThrow(/finite positive exchange rate/i)
   })
 
   it("returns amount unchanged when rate === 1 (shortcut, identical numeric result)", () => {
@@ -50,10 +46,10 @@ describe("convertToBase", () => {
     expect(convertToBase(50_000.555, 1)).toBe(50_000.555)
   })
 
-  it("returns amount unchanged when rate is 0 (falsy guard, treated as no rate)", () => {
-    // 0 is falsy → caller likely didn't fetch a real rate → safest
-    // behaviour is "no-op" rather than zeroing the amount.
-    expect(convertToBase(100, 0)).toBe(100)
+  it("rejects non-positive and non-finite rates", () => {
+    expect(() => convertToBase(100, 0)).toThrow(/finite positive exchange rate/i)
+    expect(() => convertToBase(100, -1)).toThrow(/finite positive exchange rate/i)
+    expect(() => convertToBase(100, Number.NaN)).toThrow(/finite positive exchange rate/i)
   })
 
   it("handles zero amount cleanly (× any non-1 rate is 0)", () => {
@@ -85,16 +81,21 @@ describe("getRate (Prisma-bound)", () => {
     expect(prisma.currency.findFirst).not.toHaveBeenCalled()
   })
 
-  it("falls back to Currency table when history is empty", async () => {
+  it("returns null when no historical rate exists (does not use Currency table fallback)", async () => {
     ;(prisma.currencyRateHistory.findFirst as unknown as MockFn).mockResolvedValue(null)
     ;(prisma.currency.findFirst as unknown as MockFn).mockResolvedValue({ exchangeRate: 1.65 })
-    expect(await getRate("org1", "EUR")).toBe(1.65)
+    expect(await getRate("org1", "EUR")).toBeNull()
+    expect(prisma.currency.findFirst).not.toHaveBeenCalled()
   })
 
-  it("defaults to 1 when neither history nor currency table has the code", async () => {
+  it("returns null for an invalid historical rate", async () => {
+    ;(prisma.currencyRateHistory.findFirst as unknown as MockFn).mockResolvedValue({ rate: 0 })
+    expect(await getRate("org1", "XYZ")).toBeNull()
+  })
+
+  it("returns null when no rate record exists", async () => {
     ;(prisma.currencyRateHistory.findFirst as unknown as MockFn).mockResolvedValue(null)
-    ;(prisma.currency.findFirst as unknown as MockFn).mockResolvedValue(null)
-    expect(await getRate("org1", "XYZ")).toBe(1)
+    expect(await getRate("org1", "XYZ")).toBeNull()
   })
 })
 
@@ -158,5 +159,20 @@ describe("processCurrencyFields (Prisma-bound)", () => {
     expect(out.plannedAmount).toBe(170)
     expect(out.exchangeRate).toBe(1.70)
     expect(out.originalAmount).toBe(100)
+  })
+
+  it("fails closed when foreign currency has no valid historical rate", async () => {
+    ;(prisma.currency.findFirst as unknown as MockFn).mockResolvedValue({ code: "AZN" })
+    ;(prisma.currencyRateHistory.findFirst as unknown as MockFn).mockResolvedValue(null)
+    await expect(processCurrencyFields("org1", 100, "USD")).rejects.toThrow(
+      /finite positive historical exchange rate/i,
+    )
+  })
+
+  it("fails closed when a caller supplies a zero foreign rate", async () => {
+    ;(prisma.currency.findFirst as unknown as MockFn).mockResolvedValue({ code: "AZN" })
+    await expect(processCurrencyFields("org1", 100, "USD", 0)).rejects.toThrow(
+      /finite positive historical exchange rate/i,
+    )
   })
 })

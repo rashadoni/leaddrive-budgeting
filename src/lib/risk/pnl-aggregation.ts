@@ -12,8 +12,16 @@ import { isDaCode } from "../budgeting/da-codes"
 import { pnlSectionFromCode, revenueContribution } from "../budgeting/coa-role"
 
 export interface PnlLineInput {
+  /**
+   * Canonical reported/base amount. Foreign source amounts are retained below
+   * as provenance; they are never converted a second time during read-side
+   * aggregation.
+   */
   plannedAmount: number
+  /** Original source-currency amount for a foreign line, when evidenced. */
+  originalAmount?: number | null
   currencyCode: string | null
+  /** Source conversion evidence retained with the line; not a read-side multiplier. */
   exchangeRate: number | null
   /** account.accountType ?? lineType — "revenue" | "cogs" | "expense" | ... */
   accountType: string | null
@@ -46,11 +54,36 @@ export interface PnlAggregates {
 }
 
 /**
+ * A null currency is legacy/base data. A base-currency tag is likewise base
+ * data even when it has no exchange-rate evidence. Only an explicit non-base
+ * code is foreign and therefore subject to the stricter evidence gate.
+ */
+export function isForeignCurrencyLine(
+  line: Pick<PnlLineInput, "currencyCode">,
+  baseCurrency: string | null | undefined,
+): boolean {
+  return line.currencyCode != null && line.currencyCode !== baseCurrency
+}
+
+/** A source conversion rate is usable only when finite and strictly positive. */
+export function isValidExchangeRate(
+  exchangeRate: number | null | undefined,
+): exchangeRate is number {
+  return (
+    typeof exchangeRate === "number" &&
+    Number.isFinite(exchangeRate) &&
+    exchangeRate > 0
+  )
+}
+
+/**
  * Aggregate P&L lines into the terminal's financial context values.
  * `baseCurrency` = the company's base currency; a line tagged with it (or with
  * a null currency) is treated as base, never foreign. Foreign lines without an
  * exchange rate are skipped (counted in `missing_rate_count`) rather than
- * assumed 1:1, exactly as the resolver does.
+ * assumed 1:1. `plannedAmount` is already the reported/base amount by the
+ * BudgetLine contract; `originalAmount` and `exchangeRate` preserve source
+ * evidence and must not trigger a second conversion here.
  */
 export function aggregatePnlLines(
   lines: ReadonlyArray<PnlLineInput>,
@@ -68,13 +101,12 @@ export function aggregatePnlLines(
   let da_total = 0
 
   for (const l of lines) {
-    const isForeign = l.currencyCode != null && l.currencyCode !== baseCurrency
-    if (isForeign && l.exchangeRate == null) {
+    const isForeign = isForeignCurrencyLine(l, baseCurrency)
+    if (isForeign && !isValidExchangeRate(l.exchangeRate)) {
       missing_rate_count += 1
       continue
     }
-    const rate = l.exchangeRate ?? 1
-    const amountBase = isForeign ? l.plannedAmount * rate : l.plannedAmount
+    const amountBase = l.plannedAmount
 
     const code = l.accountCode ?? ""
     const section = pnlSectionFromCode(code, l.accountType)
@@ -136,11 +168,9 @@ export function activePnlMonths(
   let unattributedLineCount = 0
 
   for (const l of lines) {
-    const isForeign = l.currencyCode != null && l.currencyCode !== baseCurrency
-    if (isForeign && l.exchangeRate == null) continue
-    const amountBase = isForeign
-      ? l.plannedAmount * (l.exchangeRate ?? 1)
-      : l.plannedAmount
+    const isForeign = isForeignCurrencyLine(l, baseCurrency)
+    if (isForeign && !isValidExchangeRate(l.exchangeRate)) continue
+    const amountBase = l.plannedAmount
     if (amountBase === 0) continue
 
     const section = pnlSectionFromCode(l.accountCode ?? "", l.accountType)

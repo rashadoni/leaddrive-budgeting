@@ -4,7 +4,7 @@
  *
  * Tier-3 drill-down — surfaces BudgetLine rows that fed the indicator
  * formula. Locks org-scoped IV lookup, sub-group RBAC 404,
- * period→sortOrder math, AZN base FX conversion, accountType
+ * period→sortOrder math, base-amount FX evidence gating, accountType
  * summarization, and 500-row cap.
  */
 
@@ -86,7 +86,7 @@ describe("GET /api/indicators/values/[id]/drilldown", () => {
     expect(res.status).toBe(500)
   })
 
-  it("200 happy path — converts foreign FX to AZN base, summarises by accountType", async () => {
+  it("200 happy path — keeps canonical base amounts and exposes source evidence", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     prismaMock.indicatorValue.findFirst.mockResolvedValue({
       id: "iv1", value: 100, status: "green", period: "2026-Q1",
@@ -97,7 +97,7 @@ describe("GET /api/indicators/values/[id]/drilldown", () => {
     prismaMock.budgetLine.findMany.mockResolvedValue([
       {
         id: "L1", category: "Salaries", department: null, lineType: "expense",
-        plannedAmount: 1000, currencyCode: "USD", exchangeRate: 1.7,
+        plannedAmount: 1700, originalAmount: 1000, currencyCode: "USD", exchangeRate: 1.7,
         sortOrder: 0, notes: null,
         account: { code: "601", name: "Wages", nameEn: "Wages", accountType: "expense" },
       },
@@ -112,7 +112,8 @@ describe("GET /api/indicators/values/[id]/drilldown", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     const expense = body.lines.find((l: { id: string }) => l.id === "L1")
-    expect(expense.amountBase).toBeCloseTo(1700, 4) // 1000 * 1.7
+    expect(expense.amountBase).toBeCloseTo(1700, 4)
+    expect(expense.originalAmount).toBe(1000)
     expect(body.summary.expense.total).toBeCloseTo(1700, 4)
     expect(body.summary.revenue.total).toBe(5000)
     expect(body.resolved).toMatchObject({ opex: 4_300_000 })
@@ -123,6 +124,34 @@ describe("GET /api/indicators/values/[id]/drilldown", () => {
     // the realized indicator value it explains.
     const where = prismaMock.budgetLine.findMany.mock.calls[0][0].where
     expect(where.plan).toMatchObject({ year: 2026, kind: "actual" })
+  })
+
+  it("keeps invalid foreign source visible but excludes it from summary totals", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.indicatorValue.findFirst.mockResolvedValue({
+      id: "iv1", value: 100, status: "green", period: "2026-Q1",
+      inputs: {}, companyId: "c1", indicator: {}, company: {},
+    })
+    prismaMock.budgetLine.findMany.mockResolvedValue([
+      {
+        id: "L1", department: null, lineType: "expense", plannedAmount: 170,
+        originalAmount: 100, currencyCode: "USD", exchangeRate: 0,
+        sortOrder: 0, monthIndex: null, notes: null, account: null,
+      },
+      {
+        id: "L2", department: null, lineType: "expense", plannedAmount: 200,
+        originalAmount: null, currencyCode: "AZN", exchangeRate: null,
+        sortOrder: 0, monthIndex: null, notes: null, account: null,
+      },
+    ])
+    const res = await GET(makeRequest("/api/indicators/values/iv1/drilldown"), makeParams("iv1"))
+    const body = await res.json()
+    expect(body.lines.find((l: { id: string }) => l.id === "L1")).toMatchObject({
+      amountBase: null,
+      originalAmount: 100,
+      conversionError: "missing_or_invalid_exchange_rate",
+    })
+    expect(body.summary.expense).toEqual({ count: 1, total: 200 })
   })
 
   it("truncates when 500-row cap reached", async () => {

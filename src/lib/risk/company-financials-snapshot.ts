@@ -15,6 +15,10 @@
  * as "macro-placeholder, no real financials" with confidence=low.
  */
 import type { PrismaClient } from "@prisma/client"
+import {
+  isForeignCurrencyLine,
+  isValidExchangeRate,
+} from "./pnl-aggregation"
 
 export interface CompanyFinancialsSnapshot {
   revenueAZN: number | null
@@ -42,9 +46,9 @@ export async function getCompanyFinancialsSnapshot(
   year: number,
   organizationId?: string,
 ): Promise<CompanyFinancialsSnapshot> {
-  // Fetch per-line (not groupBy._sum) so foreign-currency lines can be
-  // FX-normalized to base before summing — a raw groupBy would add a USD
-  // plannedAmount straight into the "AZN" totals (the return type promises AZN).
+  // Fetch per-line (not groupBy._sum) so the foreign-evidence gate can be
+  // applied before summing. `plannedAmount` is already a base-currency amount;
+  // foreign source values live in `originalAmount` and are never re-converted.
   const lines = await prisma.budgetLine.findMany({
     where: {
       companyId,
@@ -62,19 +66,24 @@ export async function getCompanyFinancialsSnapshot(
       // live data — corrupting the intel crossing-scan that consumes it.
       deletedAt: null,
     },
-    select: { lineType: true, plannedAmount: true, currencyCode: true, exchangeRate: true },
+    select: {
+      lineType: true,
+      plannedAmount: true,
+      originalAmount: true,
+      currencyCode: true,
+      exchangeRate: true,
+    },
   })
 
-  // FX-normalize to base (AZN). Mirror aggregatePnlLines: a foreign line
-  // (currencyCode set and != base) with NO exchangeRate can't be converted, so
-  // SKIP it rather than summing a raw foreign amount as if it were AZN. Base /
-  // blank-currency lines pass through unconverted. (No-op for all-AZN data.)
+  // Mirror aggregatePnlLines: a foreign line must have a finite positive
+  // source rate. Base / blank-currency lines pass through with no rate. The
+  // accepted `plannedAmount` remains its already-normalized base amount.
   const BASE_CCY = "AZN"
   const byType = new Map<string, number>()
   for (const l of lines) {
-    const isForeign = l.currencyCode != null && l.currencyCode !== BASE_CCY
-    if (isForeign && l.exchangeRate == null) continue // unconvertible — exclude
-    const amountBase = isForeign ? l.plannedAmount * (l.exchangeRate as number) : l.plannedAmount
+    const isForeign = isForeignCurrencyLine(l, BASE_CCY)
+    if (isForeign && !isValidExchangeRate(l.exchangeRate)) continue
+    const amountBase = l.plannedAmount
     byType.set(l.lineType, (byType.get(l.lineType) ?? 0) + amountBase)
   }
   const revenueAZN = byType.get("revenue") ?? null

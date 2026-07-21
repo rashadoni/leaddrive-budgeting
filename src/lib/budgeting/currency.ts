@@ -8,33 +8,38 @@ export function convertToBase(
   amount: number,
   exchangeRate: number | null | undefined,
 ): number {
-  if (!exchangeRate || exchangeRate === 1) return amount
+  if (
+    typeof exchangeRate !== "number" ||
+    !Number.isFinite(exchangeRate) ||
+    exchangeRate <= 0
+  ) {
+    throw new Error("A finite positive exchange rate is required for foreign currency")
+  }
   return amount * exchangeRate
 }
 
 /**
- * Get the latest exchange rate for a currency within an org.
- * Falls back to the Currency table if no history entry exists.
+ * Get the latest valid historical exchange rate for a currency within an org.
+ * A current Currency-table value is not evidence for a historical conversion,
+ * so absence returns null rather than silently fabricating a 1:1 rate.
  */
 export async function getRate(
   orgId: string,
   currencyCode: string,
-): Promise<number> {
+): Promise<number | null> {
   // First check CurrencyRateHistory for the most recent rate
   const historyRate = await prisma.currencyRateHistory.findFirst({
     where: { organizationId: orgId, currencyCode },
     orderBy: { rateDate: "desc" },
   })
-  if (historyRate) return historyRate.rate
-
-  // Fallback to Currency table
-  const currency = await prisma.currency.findFirst({
-    where: { organizationId: orgId, code: currencyCode },
-  })
-  if (currency) return currency.exchangeRate
-
-  // Default: 1 (assume base currency)
-  return 1
+  if (
+    historyRate &&
+    Number.isFinite(historyRate.rate) &&
+    historyRate.rate > 0
+  ) {
+    return historyRate.rate
+  }
+  return null
 }
 
 /**
@@ -84,7 +89,16 @@ export async function processCurrencyFields(
   }
 
   // Get exchange rate if not provided
-  const rate = exchangeRate || (await getRate(orgId, currencyCode))
+  const rate = exchangeRate ?? (await getRate(orgId, currencyCode))
+  if (
+    typeof rate !== "number" ||
+    !Number.isFinite(rate) ||
+    rate <= 0
+  ) {
+    throw new Error(
+      `A finite positive historical exchange rate is required for foreign currency ${currencyCode}`,
+    )
+  }
 
   return {
     plannedAmount: convertToBase(amount, rate),

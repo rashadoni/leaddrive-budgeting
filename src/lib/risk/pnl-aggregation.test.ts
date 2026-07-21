@@ -43,11 +43,23 @@ describe("aggregatePnlLines", () => {
     expect(a.domestic_cogs).toBe(100)
   })
 
-  it("converts foreign lines at the exchange rate and tags them imported", () => {
+  it("uses foreign source evidence but keeps already-base planned amounts unchanged", () => {
     const a = aggregatePnlLines(
       [
-        line({ accountType: "cogs", plannedAmount: 100, currencyCode: "USD", exchangeRate: 1.7 }),
-        line({ accountType: "expense", plannedAmount: 50, currencyCode: "USD", exchangeRate: 1.7 }),
+        line({
+          accountType: "cogs",
+          plannedAmount: 170,
+          originalAmount: 100,
+          currencyCode: "USD",
+          exchangeRate: 1.7,
+        }),
+        line({
+          accountType: "expense",
+          plannedAmount: 85,
+          originalAmount: 50,
+          currencyCode: "USD",
+          exchangeRate: 1.7,
+        }),
       ],
       "AZN",
     )
@@ -58,7 +70,7 @@ describe("aggregatePnlLines", () => {
     expect(a.imported_opex).toBe(85)
   })
 
-  it("skips foreign lines without a rate (counted, not assumed 1:1)", () => {
+  it("skips foreign lines without a finite positive rate (counted, not assumed 1:1)", () => {
     const a = aggregatePnlLines(
       [
         line({ accountType: "revenue", plannedAmount: 1000, currencyCode: "AZN" }),
@@ -69,6 +81,20 @@ describe("aggregatePnlLines", () => {
     expect(a.revenue).toBe(1000)
     expect(a.cogs).toBe(0) // the rate-less foreign cogs line was skipped
     expect(a.missing_rate_count).toBe(1)
+  })
+
+  it("fails closed for non-positive and non-finite foreign rates, while base AZN accepts null", () => {
+    const a = aggregatePnlLines(
+      [
+        line({ accountType: "cogs", plannedAmount: 200, currencyCode: "AZN", exchangeRate: null }),
+        line({ accountType: "cogs", plannedAmount: 170, currencyCode: "USD", exchangeRate: 0 }),
+        line({ accountType: "cogs", plannedAmount: 170, currencyCode: "USD", exchangeRate: Number.NaN }),
+        line({ accountType: "cogs", plannedAmount: 170, currencyCode: "USD", exchangeRate: Number.POSITIVE_INFINITY }),
+      ],
+      "AZN",
+    )
+    expect(a.cogs).toBe(200)
+    expect(a.missing_rate_count).toBe(3)
   })
 
   it("sums D&A add-back from depreciation account codes (703-11 / 721-11)", () => {
@@ -154,12 +180,12 @@ describe("aggregatePnlLines", () => {
     expect(a.revenue).toBe(-5_000)
   })
 
-  it("FX-converts negative-stored foreign PLF.07 income before normalizing its sign", () => {
+  it("does not double-convert a foreign base amount before normalizing PLF.07 income", () => {
     const a = aggregatePnlLines(
       [line({
         accountType: "revenue", lineType: "expense",
-        accountCode: "PLF.07.02.02", plannedAmount: -100,
-        currencyCode: "USD", exchangeRate: 1.7,
+        accountCode: "PLF.07.02.02", plannedAmount: -170,
+        originalAmount: -100, currencyCode: "USD", exchangeRate: 1.7,
       })],
       "AZN",
     )

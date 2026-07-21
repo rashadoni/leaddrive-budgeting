@@ -3,8 +3,8 @@
  *
  * Pure async over a prisma-like `{ budgetLine: { findMany } }`. Locks:
  *  - AZN lines sum straight + ebitda = revenue − cogs − opex.
- *  - A foreign line with a rate is FX-converted (not summed at face value).
- *  - A foreign line with NO rate is skipped (the latent face-value bug).
+ *  - A foreign line with valid evidence keeps its already-base plannedAmount.
+ *  - A foreign line with no/invalid rate is skipped (fail-closed).
  *  - organizationId, when supplied, is pinned in the where (defense-in-depth).
  *  - No lines → nulls (the "macro-placeholder, low-confidence" contract).
  */
@@ -14,6 +14,7 @@ import { getCompanyFinancialsSnapshot } from "./company-financials-snapshot"
 type Line = {
   lineType: string
   plannedAmount: number
+  originalAmount?: number | null
   currencyCode: string | null
   exchangeRate: number | null
 }
@@ -45,12 +46,27 @@ describe("getCompanyFinancialsSnapshot", () => {
     expect(s.ebitdaAZN).toBe(400) // 1000 − 400 − 200
   })
 
-  it("FX-converts a foreign line that HAS a rate (USD → AZN)", async () => {
+  it("keeps a foreign line's already-base planned amount unchanged", async () => {
     const p = fakePrisma([
-      { lineType: "revenue", plannedAmount: 100, currencyCode: "USD", exchangeRate: 1.7 },
+      {
+        lineType: "revenue",
+        plannedAmount: 170,
+        originalAmount: 100,
+        currencyCode: "USD",
+        exchangeRate: 1.7,
+      },
     ])
     const s = await getCompanyFinancialsSnapshot(p, "c1", 2026)
-    expect(s.revenueAZN).toBeCloseTo(170) // 100 × 1.7, not 100 at face value
+    expect(s.revenueAZN).toBeCloseTo(170)
+  })
+
+  it("skips a foreign line with non-positive rate but accepts base AZN with null", async () => {
+    const p = fakePrisma([
+      { lineType: "revenue", plannedAmount: 500, currencyCode: "AZN", exchangeRate: null },
+      { lineType: "revenue", plannedAmount: 170, currencyCode: "USD", exchangeRate: 0 },
+    ])
+    const s = await getCompanyFinancialsSnapshot(p, "c1", 2026)
+    expect(s.revenueAZN).toBe(500)
   })
 
   it("REGRESSION (terminal-audit P3): skips a foreign line with no exchange rate (no face-value sum)", async () => {

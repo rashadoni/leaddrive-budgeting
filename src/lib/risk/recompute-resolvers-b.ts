@@ -7,7 +7,12 @@
  */
 import { tryEvaluateFormula, type FormulaFunction } from './formula-engine';
 import type { Period } from './periods';
-import { activePnlMonths, aggregatePnlLines } from './pnl-aggregation';
+import {
+  activePnlMonths,
+  aggregatePnlLines,
+  isForeignCurrencyLine,
+  isValidExchangeRate,
+} from './pnl-aggregation';
 import {
   getIndustryEmissionFactor,
   type EmissionScope,
@@ -151,8 +156,10 @@ export const budgetLineResolver: NamespaceResolver = {
     state.inputs.resolved.ebitda = ebitda;
     state.inputs.resolved.da_total = da_total;
 
-    // Phase 7.M Step 4 follow-up (2026-05-19) — count foreign-tagged
-    // lines explicitly so the zombie-row guard can distinguish "this
+    // Count foreign lines only when their source amount and conversion
+    // evidence are both present. The FX-share guard must never mistake a
+    // base amount merely tagged "USD" for evidenced source exposure.
+    // This lets the zombie-row guard distinguish "this
     // company is genuinely 100% domestic" from "the importer didn't
     // populate currencyCode on any line, so imported_* defaulted to 0".
     // Without the count, FX_IMPORTED_INPUT cells everywhere read as
@@ -160,9 +167,10 @@ export const budgetLineResolver: NamespaceResolver = {
     // import dropped the currency column.
     const foreign_line_count = lines.filter(
       (l) =>
-        l.currencyCode != null &&
-        l.currencyCode !== baseCcy &&
-        l.exchangeRate != null,
+        isForeignCurrencyLine(l, baseCcy) &&
+        isValidExchangeRate(l.exchangeRate) &&
+        typeof l.originalAmount === 'number' &&
+        Number.isFinite(l.originalAmount),
     ).length;
 
     state.inputs.aggregates.budget_line = {
@@ -183,18 +191,16 @@ export const budgetLineResolver: NamespaceResolver = {
     // --- Sub-aggregations (`budgetLine.<sub>`) ----------------------------
     // Each requested sub becomes a context var with the same name. We run
     // the matching pass over the same `lines` array — one DB read total.
-    // Lines that were skipped above (foreign with no rate) are also
-    // skipped here for consistency.
+    // Lines that were skipped above (foreign without a finite positive rate)
+    // are also skipped here for consistency. `plannedAmount` is already
+    // base/reporting currency and must never be multiplied on read.
     const validLines = lines
-      .filter(
-        (l) => !(l.currencyCode != null && l.exchangeRate == null),
+      .filter((l) =>
+        !isForeignCurrencyLine(l, baseCcy) || isValidExchangeRate(l.exchangeRate),
       )
       .map((l) => ({
         line: l,
-        amountBase:
-          l.currencyCode != null
-            ? l.plannedAmount * (l.exchangeRate ?? 1)
-            : l.plannedAmount,
+        amountBase: l.plannedAmount,
       }));
     const subs = matched
       .filter((m) => m.startsWith('budgetLine.'))

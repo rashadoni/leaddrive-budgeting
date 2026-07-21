@@ -232,6 +232,7 @@ function bl(
 ): BudgetLineRow {
   return {
     plannedAmount: 100,
+    originalAmount: null,
     currencyCode: null,
     exchangeRate: null,
     accountType: 'expense',
@@ -648,11 +649,12 @@ describe('buildContext — budgetLine namespace', () => {
     expect(inputs.aggregates.budget_line?.line_count).toBe(3);
   });
 
-  it('FX-converts foreign-currency cost lines to base', async () => {
+  it('keeps foreign already-base planned cost lines unchanged', async () => {
     const ds = mockDs({
       budgetLines: [
         bl({
-          plannedAmount: 100,
+          plannedAmount: 170,
+          originalAmount: 100,
           currencyCode: 'USD',
           exchangeRate: 1.7,
           accountType: 'cogs',
@@ -665,7 +667,7 @@ describe('buildContext — budgetLine namespace', () => {
       period: parsePeriod('2026'),
       requiredInputs: ['budgetLine'],
     });
-    // 100 × 1.7 + 50 = 170 + 50 = 220
+    // 170 base + 50 base = 220. The USD 100 stays provenance only.
     expect(context.cogs).toBeCloseTo(220);
   });
 
@@ -676,6 +678,7 @@ describe('buildContext — budgetLine namespace', () => {
       budgetLines: [
         bl({
           plannedAmount: 100,
+          originalAmount: 100,
           currencyCode: 'USD',
           exchangeRate: 1,
           accountType: 'cogs',
@@ -683,6 +686,7 @@ describe('buildContext — budgetLine namespace', () => {
         bl({ plannedAmount: 300, accountType: 'cogs' }), // AZN cogs
         bl({
           plannedAmount: 500,
+          originalAmount: 500,
           currencyCode: 'USD',
           exchangeRate: 1,
           accountType: 'expense', // foreign opex — imported_total_cost aggregate only
@@ -776,6 +780,22 @@ describe('buildContext — budgetLine namespace', () => {
       requiredInputs: ['budgetLine'],
     });
     // USD/no-rate skipped, AZN included.
+    expect(context.cogs).toBe(200);
+    expect(inputs.aggregates.budget_line?.missing_rate_count).toBe(1);
+  });
+
+  it('fails closed for a non-positive foreign rate while base AZN null remains valid', async () => {
+    const ds = mockDs({
+      budgetLines: [
+        bl({ plannedAmount: 170, originalAmount: 100, currencyCode: 'USD', exchangeRate: 0, accountType: 'cogs' }),
+        bl({ plannedAmount: 200, currencyCode: 'AZN', exchangeRate: null, accountType: 'cogs' }),
+      ],
+    });
+    const { context, inputs } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026'),
+      requiredInputs: ['budgetLine'],
+    });
     expect(context.cogs).toBe(200);
     expect(inputs.aggregates.budget_line?.missing_rate_count).toBe(1);
   });
@@ -959,9 +979,9 @@ describe('createPrismaDataSource.listBudgetLines — month filter math (monthInd
     // monthIndex with out-of-range sortOrder surfaces null (non-monthly).
     const { prisma, findMany } = makePrismaSpy();
     findMany.mockResolvedValueOnce([
-      { plannedAmount: 100, currencyCode: null, exchangeRate: null, sortOrder: 0, monthIndex: 5, lineType: 'revenue', account: null },
-      { plannedAmount: 200, currencyCode: null, exchangeRate: null, sortOrder: 7, monthIndex: null, lineType: 'revenue', account: null },
-      { plannedAmount: 300, currencyCode: null, exchangeRate: null, sortOrder: 99, monthIndex: null, lineType: 'revenue', account: null },
+      { plannedAmount: 100, originalAmount: null, currencyCode: null, exchangeRate: null, sortOrder: 0, monthIndex: 5, lineType: 'revenue', account: null },
+      { plannedAmount: 200, originalAmount: null, currencyCode: null, exchangeRate: null, sortOrder: 7, monthIndex: null, lineType: 'revenue', account: null },
+      { plannedAmount: 300, originalAmount: null, currencyCode: null, exchangeRate: null, sortOrder: 99, monthIndex: null, lineType: 'revenue', account: null },
     ]);
     const ds = createPrismaDataSource(prisma);
     const rows = await ds.listBudgetLines({
@@ -1282,14 +1302,15 @@ describe('buildContext — budgetLine sub-aggregations', () => {
     expect(context.rd_spend).toBe(100);
   });
 
-  it('foreign-currency lines with rate are FX-converted in sub-aggs', async () => {
+  it('foreign-currency sub-aggregations keep canonical base plannedAmount', async () => {
     const ds = mockDs({
       budgetLines: [
         bl({
-          plannedAmount: 100,
+          plannedAmount: 170,
+          originalAmount: 100,
           accountType: 'expense',
           currencyCode: 'USD',
-          exchangeRate: 1.7, // 100 USD = 170 AZN
+          exchangeRate: 1.7,
           accountCategory: 'rd',
           accountName: 'R&D in USD',
         }),
@@ -1516,7 +1537,8 @@ describe('buildContext — AGRO_FX_RISK end-to-end', () => {
       currencyRates: [rate('AZN', 1, true), rate('USD', 1.7)],
       budgetLines: [
         bl({
-          plannedAmount: 100,
+          plannedAmount: 170,
+          originalAmount: 100,
           currencyCode: 'USD',
           exchangeRate: 1.7,
           accountType: 'cogs',
@@ -3768,12 +3790,12 @@ describe('recomputeIndicator — FX zombie-guard (Phase 7.M Step 4)', () => {
     });
   });
 
-  it('keeps FX_IMPORTED_INPUT at classified status when at least one foreign line exists', async () => {
-    // 1 AZN cogs line + 1 USD cogs line with exchangeRate → imported>0
+  it('keeps FX_IMPORTED_INPUT classified when at least one foreign line has source evidence', async () => {
+    // 1 AZN cogs line + 1 USD cogs line with source amount + exchangeRate.
     const ds = mockDs({
       budgetLines: [
         { id: 'l1', planId: 'p', companyId: 'c1', accountType: 'cogs', plannedAmount: 1000, currencyCode: 'AZN', exchangeRate: null, year: 2026, month: 4 } as never,
-        { id: 'l2', planId: 'p', companyId: 'c1', accountType: 'cogs', plannedAmount: 100, currencyCode: 'USD', exchangeRate: 1.7, year: 2026, month: 4 } as never,
+        { id: 'l2', planId: 'p', companyId: 'c1', accountType: 'cogs', plannedAmount: 170, originalAmount: 100, currencyCode: 'USD', exchangeRate: 1.7, year: 2026, month: 4 } as never,
       ],
     });
     const result = await recomputeIndicator(ds, {
@@ -3783,9 +3805,29 @@ describe('recomputeIndicator — FX zombie-guard (Phase 7.M Step 4)', () => {
       period: '2026-04',
     });
     expect(result.ok).toBe(true);
-    // imported = 170 (100 * 1.7), total = 1170, share = 14.5%
+    // imported = 170 base, total = 1170, share = 14.5%
     expect(result.value).toBeCloseTo(14.5, 1);
     expect(result.status).toBe('green');
+  });
+
+  it('marks FX_IMPORTED_INPUT unknown when foreign tags lack source amount evidence', async () => {
+    const ds = mockDs({
+      budgetLines: [
+        bl({ plannedAmount: 1_000, currencyCode: 'AZN', exchangeRate: null, accountType: 'cogs' }),
+        bl({ plannedAmount: 170, originalAmount: null, currencyCode: 'USD', exchangeRate: 1.7, accountType: 'cogs' }),
+      ],
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c1',
+      definition: FX_IMPORTED_INPUT_TEST,
+      period: '2026-04',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe('unknown');
+    expect(ds.state.upserts[0].inputs.error).toMatchObject({
+      code: 'no_foreign_currency_lines',
+    });
   });
 
   // Phase 7.M Tier 6 (2026-05-21) — non_finite → specific code swap.

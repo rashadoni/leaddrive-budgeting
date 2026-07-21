@@ -380,6 +380,7 @@ export function createPrismaDataSource(
         },
         select: {
           plannedAmount: true,
+          originalAmount: true,
           currencyCode: true,
           exchangeRate: true,
           // Phase 7.E perMonth chain — `sortOrder` doubles as month
@@ -410,6 +411,7 @@ export function createPrismaDataSource(
         (
           r: {
             plannedAmount: number;
+            originalAmount: number | null;
             currencyCode: string | null;
             exchangeRate: number | null;
             sortOrder: number;
@@ -425,6 +427,7 @@ export function createPrismaDataSource(
           },
         ) => ({
           plannedAmount: r.plannedAmount,
+          originalAmount: r.originalAmount,
           currencyCode: r.currencyCode,
           exchangeRate: r.exchangeRate,
           accountType: r.account?.accountType ?? r.lineType ?? null,

@@ -18,6 +18,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
+import {
+  isForeignCurrencyLine,
+  isValidExchangeRate,
+} from "@/lib/risk/pnl-aggregation"
 
 export async function GET(request: NextRequest) {
   const session = await requireRole(request, "viewer")
@@ -106,9 +110,9 @@ export async function GET(request: NextRequest) {
   for (const r of rows as Row[]) {
     const m = r.monthIndex ?? r.sortOrder
     if (m < 0 || m > 11) continue
-    const isForeign = r.currencyCode != null && r.currencyCode !== baseCcy
-    const rate = r.exchangeRate ?? 1
-    const amountBase = isForeign ? r.plannedAmount * rate : r.plannedAmount
+    const isForeign = isForeignCurrencyLine(r, baseCcy)
+    if (isForeign && !isValidExchangeRate(r.exchangeRate)) continue
+    const amountBase = r.plannedAmount
     months[m].amountBase += amountBase
     months[m].lineCount += 1
   }
