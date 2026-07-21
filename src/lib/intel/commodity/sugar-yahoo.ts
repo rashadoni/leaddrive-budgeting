@@ -36,7 +36,11 @@ const SUGAR_METRIC = "SUGAR_RAW_USD_TONNE"
 /**
  * Yahoo Finance Chart API endpoint. `SB=F` = front-month ICE Sugar #11.
  * `interval=1mo&range=2y` returns ~24 monthly bars — we take the last 12
- * to populate a rolling year. Spec (unofficial):
+ * to populate a rolling year. Historical backfill uses the same endpoint
+ * with explicit Unix `period1` (inclusive) / `period2` (exclusive) bounds.
+ * The historical variant requests daily bars and preserves the last observed
+ * trading close of each calendar month, avoiding an upstream monthly-bar gap.
+ * Spec (unofficial):
  *   https://query1.finance.yahoo.com/v7/finance/chart/{symbol}
  */
 const YAHOO_SUGAR_URL =
@@ -57,6 +61,61 @@ interface YahooChartResult {
     }>
     error?: { code?: string; description?: string } | null
   }
+}
+
+export interface SugarYahooHistoryRange {
+  /** Inclusive UTC month boundary. */
+  start: Date
+  /** Exclusive UTC month boundary. */
+  end: Date
+}
+
+function isExactUtcMonthStart(date: Date): boolean {
+  return (
+    date.getUTCDate() === 1 &&
+    date.getUTCHours() === 0 &&
+    date.getUTCMinutes() === 0 &&
+    date.getUTCSeconds() === 0 &&
+    date.getUTCMilliseconds() === 0
+  )
+}
+
+function epochSeconds(date: Date): number {
+  return Math.floor(date.getTime() / 1000)
+}
+
+export function sugarYahooHistoryRangeForYear(year: number): SugarYahooHistoryRange {
+  if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+    throw new Error(`Historical sugar year must be an integer from 1900 to 2100; got ${year}`)
+  }
+  return {
+    start: new Date(Date.UTC(year, 0, 1)),
+    end: new Date(Date.UTC(year + 1, 0, 1)),
+  }
+}
+
+/**
+ * Build the public Yahoo Chart URL for an exact historical range. `period1`
+ * is inclusive and `period2` exclusive. Keeping this explicit prevents a
+ * current trailing-range request from silently filling a historical period.
+ */
+export function sugarYahooHistoricalUrl(range: SugarYahooHistoryRange): string {
+  if (
+    !isExactUtcMonthStart(range.start) ||
+    !isExactUtcMonthStart(range.end) ||
+    range.start.getTime() >= range.end.getTime()
+  ) {
+    throw new Error("Historical sugar range must use increasing UTC month-start boundaries")
+  }
+  const params = new URLSearchParams({
+    // Yahoo's 2025 monthly endpoint omits June. Daily bars contain an actual
+    // June 30 close, so group real daily observations deterministically below
+    // rather than interpolating a missing monthly value.
+    interval: "1d",
+    period1: String(epochSeconds(range.start)),
+    period2: String(epochSeconds(range.end)),
+  })
+  return `https://query1.finance.yahoo.com/v8/finance/chart/SB%3DF?${params.toString()}`
 }
 
 /**
@@ -101,6 +160,65 @@ export function yahooSugarResponseToDataPoints(
   // Trailing N months — most recent last after sort.
   points.sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
   return points.slice(-maxMonths)
+}
+
+/**
+ * Normalize real daily Yahoo bars inside the requested historical range into
+ * one monthly point: the final valid trading close in each UTC calendar
+ * month. Rows outside `[start, end)` are discarded defensively even when
+ * Yahoo honours the URL bounds. A month with no daily bar stays missing — no
+ * interpolation, forward-fill, or zero is ever emitted.
+ */
+export function yahooSugarHistoricalResponseToDataPoints(
+  response: YahooChartResult,
+  range: SugarYahooHistoryRange,
+): CommodityDataPoint[] {
+  const query = {
+    endpoint: "yahoo-chart-v8",
+    symbol: "SB=F",
+    interval: "1d",
+    period1: epochSeconds(range.start),
+    period2: epochSeconds(range.end),
+    period1Inclusive: true,
+    period2Exclusive: true,
+  }
+  const result = response.chart?.result?.[0]
+  const timestamps = result?.timestamp
+  const closes = result?.indicators?.quote?.[0]?.close
+  if (!Array.isArray(timestamps) || !Array.isArray(closes)) return []
+  const lastByMonth = new Map<string, { timestamp: number; close: number; datetime: Date }>()
+  for (let i = 0; i < timestamps.length; i += 1) {
+    const timestamp = timestamps[i]
+    const close = closes[i]
+    if (typeof timestamp !== "number" || typeof close !== "number" || !Number.isFinite(close)) continue
+    const observedAt = new Date(timestamp * 1000)
+    if (observedAt < range.start || observedAt >= range.end) continue
+    const datetime = new Date(Date.UTC(observedAt.getUTCFullYear(), observedAt.getUTCMonth(), 1))
+    const key = datetime.toISOString()
+    const existing = lastByMonth.get(key)
+    if (!existing || timestamp > existing.timestamp) {
+      lastByMonth.set(key, { timestamp, close, datetime })
+    }
+  }
+  return [...lastByMonth.values()]
+    .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
+    .map(({ timestamp, close, datetime }) => ({
+      sourceCode: SUGAR_SOURCE,
+      metric: SUGAR_METRIC,
+      datetime,
+      value: Math.round(close * CENTS_PER_LB_TO_USD_PER_TONNE * 10) / 10,
+      unit: "USD/tonne",
+      raw: {
+        closeCentsLb: close,
+        timestamp,
+        observedAt: new Date(timestamp * 1000).toISOString(),
+        aggregation: "last_daily_close",
+        query,
+        requestedStart: range.start.toISOString(),
+        requestedEnd: range.end.toISOString(),
+        cadence: "monthly",
+      },
+    }))
 }
 
 export function createSugarYahooAdapter(
@@ -158,6 +276,68 @@ export function createSugarYahooAdapter(
         )
       }
       return { source: SUGAR_SOURCE, dataPoints: points, errors, fetched: true }
+    },
+  }
+}
+
+/**
+ * Free, explicit historical variant for a one-year manual backfill. It is
+ * deliberately not part of the scheduled adapter factory: callers must name
+ * the target year and invoke the separate dry-run-first operations path.
+ */
+export function createSugarYahooHistoricalAdapter(
+  year: number,
+  opts: CommodityAdapterOptions = {},
+): CommodityAdapter {
+  const range = sugarYahooHistoryRangeForYear(year)
+  const url = sugarYahooHistoricalUrl(range)
+  const fetchImpl = opts.fetchImpl ?? fetch
+  return {
+    source: SUGAR_SOURCE,
+    label: `${SUGAR_LABEL} / historical ${year}`,
+    async fetch(): Promise<CommodityFetchResult> {
+      let response: Response
+      try {
+        response = await fetchImpl(url, {
+          headers: { "User-Agent": "BudgetPro/1.0 (+intel-history-backfill)" },
+        })
+      } catch (e) {
+        return {
+          source: SUGAR_SOURCE,
+          dataPoints: [],
+          errors: [`fetch failed: ${e instanceof Error ? e.message : String(e)}`],
+          fetched: false,
+        }
+      }
+      if (!response.ok) {
+        return {
+          source: SUGAR_SOURCE,
+          dataPoints: [],
+          errors: [`HTTP ${response.status} from ${url}`],
+          fetched: true,
+        }
+      }
+      let parsed: YahooChartResult
+      try {
+        parsed = (await response.json()) as YahooChartResult
+      } catch (e) {
+        return {
+          source: SUGAR_SOURCE,
+          dataPoints: [],
+          errors: [`JSON parse failed: ${e instanceof Error ? e.message : String(e)}`],
+          fetched: true,
+        }
+      }
+      const errors: string[] = []
+      const yahooErr = parsed.chart?.error
+      if (yahooErr?.code) {
+        errors.push(`Yahoo error ${yahooErr.code}: ${yahooErr.description ?? ""}`)
+      }
+      const dataPoints = yahooSugarHistoricalResponseToDataPoints(parsed, range)
+      if (dataPoints.length === 0 && errors.length === 0) {
+        errors.push("Response had no usable monthly bars inside requested historical range")
+      }
+      return { source: SUGAR_SOURCE, dataPoints, errors, fetched: true }
     },
   }
 }

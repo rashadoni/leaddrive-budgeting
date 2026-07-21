@@ -91,6 +91,25 @@ describe("ingestCommodityData — happy path (in-memory fallback)", () => {
 })
 
 describe("ingestCommodityData — error handling", () => {
+  it("does not turn a missing table into an in-memory success when strict persistence is required", async () => {
+    const adapter = makeAdapter("src_a", [sample({ sourceCode: "src_a", metric: "M1" })])
+    const prisma = {
+      intelDataPoint: {
+        upsert: vi.fn().mockRejectedValue(Object.assign(new Error("table missing"), { code: "P2021" })),
+      },
+    }
+    const result = await ingestCommodityData(
+      ORG,
+      [adapter],
+      { prisma: prisma as never, allowInMemoryFallback: false },
+      NOW,
+    )
+
+    expect(result.pointsWritten).toBe(0)
+    expect(result.errors.join(" ")).toMatch(/write failed/)
+    expect(getCommodityMemorySize()).toBe(0)
+  })
+
   it("adapter throwing doesn't abort other adapters", async () => {
     const a1: CommodityAdapter = {
       source: "src_a",

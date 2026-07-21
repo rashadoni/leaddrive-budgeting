@@ -203,9 +203,20 @@ export {
 } from "./weather-openmeteo"
 export {
   createSugarYahooAdapter,
+  createSugarYahooHistoricalAdapter,
   SUGAR_YAHOO_SOURCE,
   SUGAR_YAHOO_METRIC,
+  sugarYahooHistoryRangeForYear,
+  sugarYahooHistoricalUrl,
+  yahooSugarHistoricalResponseToDataPoints,
 } from "./sugar-yahoo"
+export {
+  runSugarYahooHistoricalBackfill,
+  assessSugarYahooHistoricalCoverage,
+  type SugarYahooHistoricalBackfillOptions,
+  type SugarYahooHistoricalBackfillResult,
+  type SugarYahooHistoricalCoverage,
+} from "./sugar-yahoo-backfill"
 export {
   ingestCommodityData,
   clearCommodityMemoryForTests,

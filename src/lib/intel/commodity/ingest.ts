@@ -73,6 +73,12 @@ export function getInMemoryDataPoints(
 export interface IngestOptions {
   /** Test seam: override Prisma client. Default = real prisma from @/lib/prisma. */
   prisma?: typeof defaultPrisma
+  /**
+   * Defaults to true for scheduled feeds during a migration rollout. Manual
+   * historical imports can set false: reporting an in-memory fallback as a
+   * completed backfill would be materially misleading after process restart.
+   */
+  allowInMemoryFallback?: boolean
 }
 
 export interface IngestResult {
@@ -138,47 +144,52 @@ export async function ingestCommodityData(
         continue
       }
       try {
-        await tryPrismaThenFallback<void>(
-          async () => {
-            await prisma.intelDataPoint.upsert({
-              where: {
-                organizationId_sourceCode_metric_datetime: {
-                  organizationId: orgId,
-                  sourceCode: point.sourceCode,
-                  metric: point.metric,
-                  datetime: point.datetime,
-                },
-              },
-              create: {
+        const persistToPrisma = async () => {
+          await prisma.intelDataPoint.upsert({
+            where: {
+              organizationId_sourceCode_metric_datetime: {
                 organizationId: orgId,
                 sourceCode: point.sourceCode,
                 metric: point.metric,
                 datetime: point.datetime,
-                value: point.value,
-                unit: point.unit ?? null,
-                raw: (point.raw ?? Prisma.JsonNull) as Prisma.NullableJsonNullValueInput,
               },
-              update: {
-                value: point.value,
-                unit: point.unit ?? null,
-                raw: (point.raw ?? Prisma.JsonNull) as Prisma.NullableJsonNullValueInput,
-                fetchedAt: new Date(),
-              },
-            })
-            // Mirror to memory for read-through
-            memoryStore.set(
-              memoryKey(orgId, point.sourceCode, point.metric, point.datetime),
-              { ...point, organizationId: orgId },
-            )
-          },
-          () => {
-            // Fallback: write to memory only
-            memoryStore.set(
-              memoryKey(orgId, point.sourceCode, point.metric, point.datetime),
-              { ...point, organizationId: orgId },
-            )
-          },
-        )
+            },
+            create: {
+              organizationId: orgId,
+              sourceCode: point.sourceCode,
+              metric: point.metric,
+              datetime: point.datetime,
+              value: point.value,
+              unit: point.unit ?? null,
+              raw: (point.raw ?? Prisma.JsonNull) as Prisma.NullableJsonNullValueInput,
+            },
+            update: {
+              value: point.value,
+              unit: point.unit ?? null,
+              raw: (point.raw ?? Prisma.JsonNull) as Prisma.NullableJsonNullValueInput,
+              fetchedAt: new Date(),
+            },
+          })
+          // Mirror to memory for read-through
+          memoryStore.set(
+            memoryKey(orgId, point.sourceCode, point.metric, point.datetime),
+            { ...point, organizationId: orgId },
+          )
+        }
+        if (opts.allowInMemoryFallback === false) {
+          await persistToPrisma()
+        } else {
+          await tryPrismaThenFallback<void>(
+            persistToPrisma,
+            () => {
+              // Fallback: write to memory only
+              memoryStore.set(
+                memoryKey(orgId, point.sourceCode, point.metric, point.datetime),
+                { ...point, organizationId: orgId },
+              )
+            },
+          )
+        }
         pointsWritten++
       } catch (e) {
         errors.push(
