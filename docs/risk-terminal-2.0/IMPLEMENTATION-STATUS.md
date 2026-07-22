@@ -2947,17 +2947,16 @@ shadow-gate condition #6 in its strongest form.**
 ### Limits
 
 - Conditions #4 (small-entity floor validation on real EDEN data), #5
-  (scope-aware materiality + render-all-failures UI guard), #7 (currency floor
-  pre-registration), #8 (builder-sign tests on real imports), the runtime
+  (scope-aware materiality + render-all-failures UI guard), #8
+  (builder-sign tests on real imports), the runtime
   dual-currency runs and the shadow close cycle remain open; most need the
   canonical mart or real pilot data.
 
 ### Next task
 
-The remaining pure-ish candidate is **#7 currency floor pre-registration** (a
-documented policy-fixture concern, not code) and **#8 builder-sign unit tests
-against real pilot imports** (needs real data extracts). The rest wait on the
-canonical mart and the shadow close cycle.
+The remaining pure-ish candidate is **#8 builder-sign unit tests against real
+pilot imports** (needs real data extracts). The rest wait on the canonical mart
+and the shadow close cycle.
 
 ---
 
@@ -2994,3 +2993,51 @@ disclosed on the surface itself: 3–4 of 6 controls show `blocked` — that is 
 honest data-health finding, not a defect. Implemented largely by a delegated
 subagent from a workflow-designed spec; two recorded deviations (unreachable
 403 branch tested as 401; extra i18n keys for zero hardcoded strings).
+
+---
+
+## 46. B1.8 — pilot currency floor pre-registration (shadow-gate condition #7) (2026-07-22)
+
+**Status: `implemented` + `tested`. Pure policy fixture, no runtime caller. NOT
+decision-grade — the shadow policy remains pinned to `provisional`.**
+
+### Outcome
+
+- `SHADOW_STATEMENT_POLICY` now pre-registers the pilot currency set
+  AZN/USD/EUR/GBP/TRY/RUB in both floor maps, closing T-1 shadow-gate condition
+  #7 for the known pilot envelope.
+- Absolute floors use the recorded minor-unit shape: AZN 1.00 and non-AZN
+  0.01. Non-AZN materiality fixed floors are deliberately zero placeholders:
+  this prevents a local-currency shadow run from failing closed merely because
+  the currency is unknown, while condition #5 (scope-aware materiality) remains
+  open and not silently invented.
+- No financial value, statement row, formula, threshold, status colour, provider,
+  credential, schema, migration, production write or decision-grade flip changed.
+
+### Files
+
+- `src/lib/risk/statement-controls-adapter.ts`
+- `src/lib/risk/statement-controls-adapter.test.ts`
+- `docs/risk-terminal-2.0/06-OWNER-DECISION-PACK-T1-T5.md`
+- `docs/risk-terminal-2.0/08-AUTONOMOUS-WORK-PLAN.md`
+- `docs/risk-terminal-2.0/IMPLEMENTATION-STATUS.md`
+
+### Limits
+
+- Condition #5 remains open: materiality must become scope-aware before any
+  decision-grade use.
+- Condition #8 remains data-gated: builder sign convention needs tests against
+  real pilot imports.
+- Runtime dual-currency runs, FX-review queue and one full shadow close cycle
+  remain unbuilt.
+
+### Evidence
+
+- `npx vitest run src/lib/risk/statement-controls-adapter.test.ts` — 1 file /
+  30 passed / 0 failed.
+- `npx tsc --noEmit` — exit 0.
+- `npm run build` — exit 0, 160 routes; Turbopack emitted the existing
+  `next.config.ts` NFT tracing warning through `api/help-videos/[file]`.
+- `npx vitest run --reporter=dot` — 591 files / 7,344 passed / 121 skipped /
+  0 failed.
+- `git diff --check` — clean.

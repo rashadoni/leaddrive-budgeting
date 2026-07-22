@@ -58,9 +58,29 @@ export const SHADOW_STATEMENT_POLICY: StatementReconciliationPolicy = Object.fre
   id: "t1-option-a-shape-shadow-v1",
   approval: "provisional", // NEVER "approved" — owner-gated (§7.1); guarded by unit test
   relativeTolerance: 0.00001, // 0.1 bp, recorded T-1 Option A SHAPE
-  absoluteFloorByCurrency: Object.freeze({ AZN: 1.0, USD: 0.01, EUR: 0.01, GBP: 0.01 }),
+  // Owner pack §7.1 condition #7: pre-register the pilot currencies before any
+  // dual-currency shadow run. Minor-unit floors are arithmetic guards only; the
+  // policy remains provisional and cannot mint pass/fail.
+  absoluteFloorByCurrency: Object.freeze({
+    AZN: 1.0,
+    USD: 0.01,
+    EUR: 0.01,
+    GBP: 0.01,
+    TRY: 0.01,
+    RUB: 0.01,
+  }),
   materialityRate: 0.001,
-  materialityFloorByCurrency: Object.freeze({ AZN: 10_000 }), // AZN-only as recorded; a non-AZN scope blocks via policy_currency_floor_missing — correct fail-closed outcome
+  // Fixed non-AZN materiality floors are NOT owner-approved. Pre-registration
+  // uses a zero fixed floor so non-AZN pilot scopes evaluate under the relative
+  // materiality rate while condition #5 (scope-aware materiality) remains open.
+  materialityFloorByCurrency: Object.freeze({
+    AZN: 10_000,
+    USD: 0,
+    EUR: 0,
+    GBP: 0,
+    TRY: 0,
+    RUB: 0,
+  }),
 })
 
 /**

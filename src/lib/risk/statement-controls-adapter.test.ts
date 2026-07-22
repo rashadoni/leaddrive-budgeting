@@ -110,10 +110,32 @@ describe("SHADOW_STATEMENT_POLICY", () => {
       id: "t1-option-a-shape-shadow-v1",
       approval: "provisional",
       relativeTolerance: 0.00001,
-      absoluteFloorByCurrency: { AZN: 1.0, USD: 0.01, EUR: 0.01, GBP: 0.01 },
+      absoluteFloorByCurrency: {
+        AZN: 1.0,
+        USD: 0.01,
+        EUR: 0.01,
+        GBP: 0.01,
+        TRY: 0.01,
+        RUB: 0.01,
+      },
       materialityRate: 0.001,
-      materialityFloorByCurrency: { AZN: 10_000 },
+      materialityFloorByCurrency: {
+        AZN: 10_000,
+        USD: 0,
+        EUR: 0,
+        GBP: 0,
+        TRY: 0,
+        RUB: 0,
+      },
     })
+  })
+
+  it("pre-registers every pilot currency in both floor maps without approving the policy", () => {
+    for (const currency of ["AZN", "USD", "EUR", "GBP", "TRY", "RUB"]) {
+      expect(SHADOW_STATEMENT_POLICY.absoluteFloorByCurrency[currency]).toBeDefined()
+      expect(SHADOW_STATEMENT_POLICY.materialityFloorByCurrency[currency]).toBeDefined()
+    }
+    expect(SHADOW_STATEMENT_POLICY.approval).toBe("provisional")
   })
 
   it("is frozen, including the currency-floor maps", () => {

@@ -45,7 +45,11 @@ Owner: Rashad. Исполнитель: Claude (автономно, слайса�
   сохраняющих кнопок. Карта video-assets.ts: роут → slug.
 
 ## Трек 4 — TRUST CORE (продолжение B1, shadow)
-- ⬜ 4.1 Условие #7: пре-регистрация валютных полов (конфиг-фикстура при появлении валют).
+- ✅ 4.1 Условие #7: пре-регистрация валютных полов готова как
+  shadow-only policy fixture 2026-07-22: `SHADOW_STATEMENT_POLICY` теперь
+  заранее содержит AZN/USD/EUR/GBP/TRY/RUB в обеих floor maps и тестом
+  закрепляет, что policy остаётся `provisional`. Не включает decision-grade,
+  не меняет финансовые строки и не запускает runtime caller.
 - ⬜ 4.2 Условие #8: builder-sign тесты на реальных импортах (после Трека 1 данных).
 - ⬜ 4.3 Stage F каркас: provider-neutral адаптер SourceArtifact/DataRevision,
   externalAsOf, tenant-scope, shadow-only. БЕЗ провайдеров/credentials/оплат.
