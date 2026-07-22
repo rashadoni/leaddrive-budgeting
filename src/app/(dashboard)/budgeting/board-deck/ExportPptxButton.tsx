@@ -16,7 +16,7 @@ import { useTranslations } from "next-intl";
  * generations concurrently. On error a small inline "Export failed"
  * label appears for the user; they can click again to retry.
  *
- * Phase 7.G Turn LIV — threads `?lang=` and `?regenerate=` from the
+ * Threads the safe `?lang=` state from the
  * current page URL to the export route. The page narrative respects
  * these params (Turn LIII NarrativeLanguagePicker pushes `?lang=`); a
  * download triggered while reading the RU narrative MUST produce a RU
@@ -38,17 +38,13 @@ export function ExportPptxButton({ period }: { period: string }) {
     try {
       const params = new URLSearchParams();
       params.set("period", period);
-      // Phase 7.G Turn LIV — propagate language + regenerate so the
-      // downloaded PPTX matches what the user is reading on the page.
+      // Propagate language so a cached narrative matches the page. Export is
+      // read-only and never forwards the legacy paid `regenerate` flag.
       // Only forward keys the route knows about (defensive — page
       // searchParams may carry unrelated query state).
       const lang = searchParams.get("lang");
       if (lang === "en" || lang === "ru" || lang === "az") {
         params.set("lang", lang);
-      }
-      const regenerate = searchParams.get("regenerate");
-      if (regenerate === "1" || regenerate === "true") {
-        params.set("regenerate", regenerate);
       }
       const url = `/api/budgeting/board-deck/export-pptx?${params.toString()}`;
       const res = await fetch(url, { method: "GET", credentials: "include" });

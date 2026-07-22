@@ -19,6 +19,7 @@ import {
   runNarration,
   isNarrationLanguage,
   NARRATION_PROMPT_VERSION,
+  NarrationProviderResponseError,
   type NarrationInput,
 } from "./narrate-snapshot";
 import { getAnthropicClient } from "@/lib/ai/client";
@@ -205,6 +206,30 @@ describe("buildNarrationPrompt", () => {
     expect(prompt).toContain("AAC has 4 red indicators");
   });
 
+  it("sorts prompt alerts deterministically before truncation", () => {
+    const alert = (ruleId: string, message: string) => ({
+      ruleId,
+      ruleName: ruleId,
+      severity: "critical" as const,
+      message,
+      messageKey: `alerts.${ruleId}`,
+      messageParams: {},
+      affectedCompanyIds: ["co_1"],
+    });
+    const prompt = buildNarrationPrompt(
+      makeInput({
+        snapshot: makeSnapshot({
+          matchesBySeverity: {
+            critical: [alert("z-rule", "Z evidence"), alert("a-rule", "A evidence")],
+            warning: [],
+            info: [],
+          },
+        }),
+      }),
+    );
+    expect(prompt.indexOf("A evidence")).toBeLessThan(prompt.indexOf("Z evidence"));
+  });
+
   it("renders empty-alert sections as `(none)`", () => {
     const prompt = buildNarrationPrompt(
       makeInput({
@@ -346,7 +371,13 @@ describe("runNarration — failure modes", () => {
         stop_reason: "max_tokens",
       }),
     );
-    await expect(runNarration(makeInput())).rejects.toThrow(/max_tokens/);
+    const error = await runNarration(makeInput()).catch((err) => err);
+    expect(error).toBeInstanceOf(NarrationProviderResponseError);
+    expect(error).toMatchObject({
+      modelName: "claude-sonnet-4-5-20250929",
+      usage: { inputTokens: 1500, outputTokens: 700 },
+    });
+    expect(error.message).toMatch(/max_tokens/);
   });
 
   it("throws on empty content array", async () => {

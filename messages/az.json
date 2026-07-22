@@ -2727,21 +2727,44 @@
       "narrative": {
         "ariaLabel": "İcraçı icmal",
         "eyebrow": "İcraçı icmal",
-        "attribution": "{model} · prompt {version} · snapshot {generatedAt}",
+        "attribution": "{model} · prompt {version} · AI vaxtı {generatedAt}",
+        "staleAttribution": "KÖHNƏ AI keşi (>24 saat) · {model} · prompt {version} · AI vaxtı {generatedAt}",
         "languagePickerAriaLabel": "Hekayə dili"
+      },
+      "narrativeControls": {
+        "ariaLabel": "AI icmal idarələri və xərc sərhədi",
+        "eyebrow": "AI icmal · yalnız açıq istifadəçi əməliyyatı",
+        "cached": "Məhz bu snapshot üçün keşlənmiş icmal göstərilir. Səhifəni açmaq, dili dəyişmək və eksport AI çağırmır.",
+        "stale": "Bu snapshot üçün 24 saatdan köhnə keşlənmiş icmal göstərilir. İstifadədən əvvəl yoxlayın və ya açıq şəkildə yeniləyin.",
+        "absent": "Bu snapshot və dil üçün keşlənmiş icmal yoxdur. Deterministik göstəricilər yenə əlçatandır.",
+        "costDisclosure": "Yarat/Yenilə Anthropic-in ödənişli çağırışıdır, keş və audit hadisəsi yazır. Menecer rolu tələb olunur.",
+        "generate": "AI ilə yarat",
+        "regenerate": "AI ilə yenilə",
+        "generating": "Yaradılır…",
+        "error": "AI icmalı yaratmaq alınmadı"
+      },
+      "evidence": {
+        "ariaLabel": "Şura snapshot-unun sübut sərhədləri",
+        "eyebrow": "Sübut sərhədi",
+        "scopeFull": "Əhatə: bu istifadəçiyə görünən bütün {companies} əməliyyat şirkəti.",
+        "scopeRestricted": "Əhatə: istifadəçinin alt-qrup icazəsində olan {companies} əməliyyat şirkəti.",
+        "coverage": "Örtük: {expected} gözlənilən matris yerindən {observed} saxlanmış indikator sətri. Çatışmayan yer sıfır və ya yaşıl deyil.",
+        "scoreMethod": "Holding balı: yalnız hesablanmış əməliyyat şirkətlərinin bərabər çəkili ortasıdır; hesablanmayanlar çıxarılır. Şirkət balları konfiqurasiya edilmiş indikator çəkilərini və keyfiyyət cərimələrini nəzərə alır.",
+        "alertBoundary": "Xəbərdarlıqlar bu snapshot üzərində qaydaların nəticəsidir. Sıfır nəticə bütün məlumatın tam və ya yaşıl olduğunu sübut etmir.",
+        "assembledAt": "Səhifə {period} dövrü üçün {timestamp} vaxtında yığılıb; yığılma vaxtı mənbə təzəliyi deyil. Bu, əməliyyat risk snapshot-udur, audit olunmuş konsolidə maliyyə hesabatı deyil."
       },
       "topAlerts": {
         "ariaLabel": "Əsas xəbərdarlıqlar",
         "eyebrow": "Şura üçün əsas xəbərdarlıqlar",
         "showingOf": "{showing} / {total} göstərilir",
         "affectedCount": "{count, plural, one {# təsirə uğrayan sub-co} other {# təsirə uğrayan sub-co}}",
-        "allClear": "✓ Xəbərdarlıq yoxdur — bütün sistemlər yaşıl.",
+        "allClear": "Bu snapshot-da heç bir konfiqurasiya edilmiş qayda işə düşməyib. Bu, bütün məlumatın tam və ya yaşıl olduğunu sübut etmir.",
         "viewAll": "Risk Terminal-da bütün xəbərdarlıqlar"
       },
       "footer": {
         "ariaLabel": "Səhifə əməliyyatları",
         "eyebrow": "Paylaş + detallar",
-        "subtitle": "Təqdimatı ixrac edin, çap edin və ya əməliyyat detalları üçün Risk Terminal-ı açın.",
+        "subtitle": "Eksport və çap yalnız bu snapshot və keşlənmiş icmaldan istifadə edir — AI işə düşmür. Detallar üçün Risk Terminal-ı açın.",
         "terminalCta": "Risk Terminal aç"
       },
       "metrics": {
@@ -2754,7 +2777,49 @@
         "indicatorCoverageContext": "{sectors} sektorda",
         "trendAriaLabel": "12 aylıq mürəkkəb bal trendi",
         "trendTitle": "Mürəkkəb bal trendi (12 ay)",
-        "trendEmpty": "Hələ aylıq məlumat yoxdur. Qrafik 2+ aylıq snapshot hesablandıqdan sonra dolacaq."
+        "trendEmpty": "Bu əhatə üçün aylıq məlumat yoxdur. Qrafik 2+ aylıq snapshot hesablandıqdan sonra dolacaq.",
+        "trendBoundary": "Aylıq saxlanmış snapshot-lar cari indikator çəkiləri və cari keyfiyyət cərimələri ilə yenidən hesablanır; boşluqlar interpolasiya edilmir. Cari il Bakı vaxtı ilə cari ayda dayanır."
+      },
+      "riskFlags": {
+        "title": "Keyfiyyət risk işarələri",
+        "subtitle": "Bala sabit cərimə kimi daxil edilən daxili finance-ops qeydləri. Bunlar müstəqil yoxlanmış xarici faktlar deyil.",
+        "flaggedEntities": "İşarəli şirkətlər",
+        "empty": "Görünən şirkətlər üçün keyfiyyət işarəsi konfiqurasiya edilməyib. İşarənin olmaması riskin xaricdən yoxlandığını göstərmir.",
+        "penalty": "−{penalty} bal",
+        "tags": {
+          "subsidy_dependency": { "label": "Subsidiya asılılığı", "description": "Subsidiya və ya tənzimlənən qiymətlərə daxili olaraq qeyd edilmiş məruz qalma" },
+          "non_transparent_structure": { "label": "Qeyri-şəffaf struktur", "description": "Əlaqəli tərəf və ya auditi olmayan bölgü üzrə daxili qeyd" },
+          "data_absence": { "label": "Məlumat çatışmazlığı", "description": "Əsas məlumat örtüyündə daxili qeyd edilmiş boşluq" }
+        }
+      },
+      "pptx": {
+        "period": "DÖVR {period}",
+        "aiSummary": "RƏHBƏRLİK ÜÇÜN AI İCMALI",
+        "deterministicSnapshot": "DETERMİNİSTİK RİSK SNAPSHOT-U",
+        "holdingComposite": "HOLDİNG MÜRƏKKƏB BALI",
+        "contributing": "{total} sub-co-dan {contributing} hesablanıb",
+        "coverSummary": "{operational} əməliyyat · {observed} saxlanmış sətir / {expected} gözlənilən yer · {red} qırmızı · {amber} sarı · {green} yaşıl",
+        "evidenceFooter": "Əməliyyat risk snapshot-u · boşluqlar sıfır və ya yaşıl deyil · audit olunmuş konsolidə maliyyə hesabatı deyil.",
+        "executiveNarrative": "İCRAÇI İCMAL",
+        "aiAttribution": "AI yaradıb · {model} · prompt {version} · vaxt {generatedAt}",
+        "aiAttributionStale": "KÖHNƏ AI keşi (>24 saat) · {model} · prompt {version} · vaxt {generatedAt}",
+        "keyMetrics": "ƏSAS GÖSTƏRİCİLƏR",
+        "periodOverview": "Dövr {period} · icazəli əməliyyat icmalı",
+        "noContributors": "hesablanmış əməliyyat şirkəti yoxdur",
+        "redContext": "{observed} saxlanmış sətirdə {red} qırmızı / {expected} gözlənilən yer",
+        "operationalEntities": "Əməliyyat şirkətləri",
+        "indicatorsTracked": "{indicators} tətbiq olunan indikator tərifi",
+        "trendNext": "Aylıq mürəkkəb bal trendi növbəti slayddadır.",
+        "trendSubtitle": "Saxlanmış aylıq ballar · seçilmiş dövr {period}",
+        "compositeScore": "Mürəkkəb bal",
+        "latest": "Son ({period}): {score}/100 · {band}",
+        "bands": { "green": "yaşıl", "amber": "sarı", "red": "qırmızı", "unknown": "naməlum" },
+        "trendBoundary": "0–100 şkalası · cari çəkilər və keyfiyyət cərimələri · boşluqlar interpolasiya edilmir · cari il Bakı vaxtı ilə cari ayda dayanır",
+        "noRulesTriggered": "Konfiqurasiya edilmiş qayda işə düşməyib",
+        "rankedAlerts": "Critical-first konfiqurasiya edilmiş qayda uyğunluqları ({total})",
+        "affected": "Təsirlənən kodlar: {codes}",
+        "showingAlerts": "{total} nəticədən {showing} göstərilir; scoped siyahı Risk Terminal-dadır.",
+        "flagsShowing": "{total} konfiqurasiya edilmiş işarə sətrindən {showing} göstərilir."
       }
     },
     "intelFeedPanel": {

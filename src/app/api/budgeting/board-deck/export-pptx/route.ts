@@ -28,7 +28,7 @@
  * accent.
  *
  * Companion to `/budgeting/board-deck` page. Calls the same shared
- * `buildBoardSnapshot` + `getOrCreateNarration` helpers, so the deck
+ * `buildBoardSnapshot` + cache-read-only narration helpers, so the deck
  * is byte-identical between the live page and the downloadable PPTX
  * within a 24h cache window.
  *
@@ -43,7 +43,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import PptxGenJS from "pptxgenjs";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
 import { getLogger } from "@/lib/log";
@@ -68,14 +68,14 @@ import {
   type NarrationLanguage,
   type NarrationOutput,
 } from "@/lib/board-deck/narrate-snapshot";
-import { getOrCreateNarration } from "@/lib/board-deck/get-or-create-narration";
-import { hasAnthropicKey } from "@/lib/ai/client";
+import { getCachedNarration } from "@/lib/board-deck/get-or-create-narration";
+import { getCompanyScope } from "@/lib/rbac/company-scope";
 import { computeHoldingComposite } from "@/features/board-deck/lib/holding-composite";
+import { verifyBatchNarrative } from "@/lib/risk/batch-narrative-fact-check";
+import { RISK_TAG_PENALTY_TABLE } from "@/lib/risk/composite-score";
 
 export const runtime = "nodejs";
-// LLM narration adds ~10-30s on top of the PPTX serialization on cache
-// miss. Cache hit = ~3s end-to-end. Default 10s Vercel limit would
-// cut a cold-start off; 90s covers the worst case.
+// PPTX serialization can be CPU-heavy for a large holding.
 export const maxDuration = 90;
 
 // Light theme palette — mirrors page.tsx Turn LI design tokens.
@@ -123,7 +123,12 @@ export async function GET(req: NextRequest) {
   }
   const period = rawPeriod;
 
-  const snapshot = await buildBoardSnapshot({ orgId, period });
+  const scope = await getCompanyScope(orgId, auth.userId, auth.role);
+  const snapshot = await buildBoardSnapshot({
+    orgId,
+    period,
+    companyIds: scope.ids == null ? null : [...scope.ids],
+  });
   if (!snapshot) {
     return NextResponse.json(
       { error: "Organization not found" },
@@ -131,34 +136,44 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const tTerminal = await getTranslations("terminal");
-  const tIndustries = (await getTranslations(
-    "industries",
-  )) as unknown as IndustryTranslator;
-
   const langParam = req.nextUrl.searchParams.get("lang");
+  const locale = await getLocale();
   const narrationLanguage: NarrationLanguage =
     typeof langParam === "string" && isNarrationLanguage(langParam)
       ? langParam
-      : "en";
-  const regenerateParam = req.nextUrl.searchParams.get("regenerate");
-  const bypassCache =
-    regenerateParam === "1" || regenerateParam === "true";
-  let narration: NarrationOutput | null = null;
-  if (hasAnthropicKey()) {
-    narration = await getOrCreateNarration(
+      : isNarrationLanguage(locale)
+        ? locale
+        : "en";
+  const tTerminal = await getTranslations({
+    locale: narrationLanguage,
+    namespace: "terminal",
+  });
+  const tIndustries = (await getTranslations({
+    locale: narrationLanguage,
+    namespace: "industries",
+  })) as unknown as IndustryTranslator;
+  // Exports are read-only: include the exact cached narrative if present,
+  // otherwise export the deterministic snapshot without invoking paid AI.
+  const cachedNarration = await getCachedNarration({
+    organizationId: orgId,
+    snapshot,
+    language: narrationLanguage,
+  });
+  let narration: NarrationOutput | null = cachedNarration?.narration ?? null;
+  if (narration) {
+    const factCheck = verifyBatchNarrative(
+      `${narration.headline}\n${narration.paragraphs.join("\n")}`,
       {
-        organizationId: orgId,
-        snapshot,
-        language: narrationLanguage,
-        audit: {
-          route: "/api/budgeting/board-deck/export-pptx",
-          userAgent: req.headers.get("user-agent") ?? undefined,
-          actorUserId: auth.userId,
-        },
+        period,
+        totals: snapshot.totals,
+        compositeByCompany: snapshot.compositeByCompany,
+        countsByCompany: snapshot.countsByCompany,
+        matchesBySeverity: snapshot.matchesBySeverity,
       },
-      { bypassCache },
     );
+    // PPTX cannot yet render the on-page fact-check banner. Withhold a
+    // flagged narrative rather than exporting unsupported claims silently.
+    if (factCheck.flags.length > 0) narration = null;
   }
 
   // Phase 7.G Turn LVI — 12-month trailing composite trend for the
@@ -186,6 +201,13 @@ export async function GET(req: NextRequest) {
         currentPeriod: period,
         operationalIds,
         indicatorIds,
+        weightByIndicatorId: new Map(
+          snapshot.indicators.map((indicator) => [
+            indicator.id,
+            indicator.weight ?? 1,
+          ]),
+        ),
+        riskTagsByCompany: snapshot.riskTagsByCompany,
       },
       { prisma },
     );
@@ -203,6 +225,9 @@ export async function GET(req: NextRequest) {
     narration,
     trendSeries,
     holdingComposite,
+    narrationLanguage,
+    cachedNarration?.generatedAt ?? null,
+    cachedNarration?.isStale ?? false,
   );
 
   const filename = `board-deck-${snapshot.org.slug}-${period}.pptx`;
@@ -247,7 +272,11 @@ async function renderBoardDeckPptx(
   narration: NarrationOutput | null,
   trendSeries: Awaited<ReturnType<typeof buildTrendSeries>>,
   holdingComposite: ReturnType<typeof computeHoldingComposite>,
+  language: NarrationLanguage,
+  narrationGeneratedAt: string | null,
+  narrationIsStale: boolean,
 ): Promise<ArrayBuffer> {
+  const tx = tTerminal as (key: string, values?: Record<string, unknown>) => string;
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
   pptx.title = `Board Snapshot — ${snap.org.name} — ${snap.period}`;
@@ -273,7 +302,7 @@ async function renderBoardDeckPptx(
     bold: true,
     charSpacing: 4,
   });
-  cover.addText(`PERIOD ${snap.period}`, {
+  cover.addText(tx("boardDeck.pptx.period", { period: snap.period }), {
     x: 8.6,
     y: 0.4,
     w: 4.1,
@@ -286,7 +315,9 @@ async function renderBoardDeckPptx(
   });
 
   // AI eyebrow + huge headline
-  cover.addText("AI EXECUTIVE SUMMARY", {
+  cover.addText(
+    narration ? tx("boardDeck.pptx.aiSummary") : tx("boardDeck.pptx.deterministicSnapshot"),
+    {
     x: 0.6,
     y: 1.5,
     w: 12.1,
@@ -296,7 +327,8 @@ async function renderBoardDeckPptx(
     color: ACCENT_AI,
     bold: true,
     charSpacing: 5,
-  });
+    },
+  );
   const headline =
     narration?.headline ??
     (tTerminal as (k: string, v?: Record<string, unknown>) => string)(
@@ -331,7 +363,7 @@ async function renderBoardDeckPptx(
     fill: { color: heroBandHex },
     line: { color: heroBandHex, width: 0 },
   });
-  cover.addText("HOLDING COMPOSITE", {
+  cover.addText(tx("boardDeck.pptx.holdingComposite"), {
     x: 0.9,
     y: 3.95,
     w: 5.0,
@@ -355,8 +387,14 @@ async function renderBoardDeckPptx(
   });
   cover.addText(
     holdingComposite.score === null
-      ? `0 / ${holdingComposite.totalCount} sub-cos`
-      : `${holdingComposite.contributingCount} of ${holdingComposite.totalCount} sub-cos`,
+      ? tx("boardDeck.pptx.contributing", {
+          contributing: 0,
+          total: holdingComposite.totalCount,
+        })
+      : tx("boardDeck.pptx.contributing", {
+          contributing: holdingComposite.contributingCount,
+          total: holdingComposite.totalCount,
+        }),
     {
       x: 0.9,
       y: 5.4,
@@ -398,7 +436,14 @@ async function renderBoardDeckPptx(
 
   // CTA + footer
   cover.addText(
-    `${snap.totals.operational} operational sub-cos · ${snap.totals.cells} cells · ${snap.totals.red} red · ${snap.totals.amber} amber · ${snap.totals.green} green`,
+    tx("boardDeck.pptx.coverSummary", {
+      operational: snap.totals.operational,
+      observed: snap.cells.length,
+      expected: snap.totals.cells,
+      red: snap.totals.red,
+      amber: snap.totals.amber,
+      green: snap.totals.green,
+    }),
     {
       x: 0.6,
       y: 6.4,
@@ -410,7 +455,7 @@ async function renderBoardDeckPptx(
     },
   );
   cover.addText(
-    "Confidential — intended for board / executive recipients only.",
+    tx("boardDeck.pptx.evidenceFooter"),
     {
       x: 0.6,
       y: 6.9,
@@ -430,7 +475,7 @@ async function renderBoardDeckPptx(
   if (narration !== null) {
     const narrSlide = pptx.addSlide();
     narrSlide.background = { color: BG_CREAM };
-    narrSlide.addText("EXECUTIVE NARRATIVE", {
+    narrSlide.addText(tx("boardDeck.pptx.executiveNarrative"), {
       x: 0.6,
       y: 0.4,
       w: 12.1,
@@ -473,7 +518,16 @@ async function renderBoardDeckPptx(
       });
     });
     narrSlide.addText(
-      `AI-generated · ${narration.modelName} · prompt ${narration.promptVersion}`,
+      tx(
+        narrationIsStale
+          ? "boardDeck.pptx.aiAttributionStale"
+          : "boardDeck.pptx.aiAttribution",
+        {
+          model: narration.modelName,
+          version: narration.promptVersion,
+          generatedAt: narrationGeneratedAt ?? "—",
+        },
+      ),
       {
         x: 0.6,
         y: 6.95,
@@ -489,7 +543,7 @@ async function renderBoardDeckPptx(
   // ───────────────────────────── Slide 3 — Key metrics ───────────────────────
   const metricsSlide = pptx.addSlide();
   metricsSlide.background = { color: BG_CREAM };
-  metricsSlide.addText("KEY METRICS", {
+  metricsSlide.addText(tx("boardDeck.pptx.keyMetrics"), {
     x: 0.6,
     y: 0.4,
     w: 12.1,
@@ -501,7 +555,7 @@ async function renderBoardDeckPptx(
     charSpacing: 5,
   });
   metricsSlide.addText(
-    `Period ${snap.period} · holding overview`,
+    tx("boardDeck.pptx.periodOverview", { period: snap.period }),
     {
       x: 0.6,
       y: 0.85,
@@ -521,25 +575,34 @@ async function renderBoardDeckPptx(
     context: string;
   }> = [
     {
-      label: "Holding composite",
+      label: tx("boardDeck.pptx.holdingComposite"),
       value: scoreText,
       accent: heroBandHex,
       context:
         holdingComposite.score === null
-          ? "no contributing sub-cos"
-          : `${holdingComposite.contributingCount} contributing of ${holdingComposite.totalCount}`,
+          ? tx("boardDeck.pptx.noContributors")
+          : tx("boardDeck.pptx.contributing", {
+              contributing: holdingComposite.contributingCount,
+              total: holdingComposite.totalCount,
+            }),
     },
     {
-      label: "Red cells",
+      label: tx("boardDeck.metrics.redCellsLabel"),
       value: String(snap.totals.red),
       accent: BAND_RED,
-      context: `of ${snap.totals.cells} total`,
+      context: tx("boardDeck.pptx.redContext", {
+        red: snap.totals.red,
+        observed: snap.cells.length,
+        expected: snap.totals.cells,
+      }),
     },
     {
-      label: "Operational sub-cos",
+      label: tx("boardDeck.pptx.operationalEntities"),
       value: String(snap.totals.operational),
       accent: ACCENT_AI,
-      context: `${snap.totals.indicators} indicators tracked`,
+      context: tx("boardDeck.pptx.indicatorsTracked", {
+        indicators: snap.totals.indicators,
+      }),
     },
   ];
   const cardW = 3.85;
@@ -599,7 +662,7 @@ async function renderBoardDeckPptx(
     });
   });
   metricsSlide.addText(
-    "12-month composite trend continues on next slide.",
+    tx("boardDeck.pptx.trendNext"),
     {
       x: 0.6,
       y: 6.95,
@@ -627,7 +690,7 @@ async function renderBoardDeckPptx(
   // ugly).
   const trendSlide = pptx.addSlide();
   trendSlide.background = { color: BG_CREAM };
-  trendSlide.addText("12-MONTH COMPOSITE TREND", {
+  trendSlide.addText(tx("boardDeck.metrics.trendTitle"), {
     x: 0.6,
     y: 0.4,
     w: 12.1,
@@ -639,7 +702,7 @@ async function renderBoardDeckPptx(
     charSpacing: 5,
   });
   trendSlide.addText(
-    `Holding-level composite, monthly · period anchor ${snap.period}`,
+    tx("boardDeck.pptx.trendSubtitle", { period: snap.period }),
     {
       x: 0.6,
       y: 0.85,
@@ -662,7 +725,7 @@ async function renderBoardDeckPptx(
       fill: { color: CARD_WHITE },
       line: { color: BAND_GREY, width: 0.5 },
     });
-    trendSlide.addText("No monthly data yet for this trailing window.", {
+    trendSlide.addText(tx("boardDeck.metrics.trendEmpty"), {
       x: 1.5,
       y: 3.5,
       w: 10.33,
@@ -685,7 +748,10 @@ async function renderBoardDeckPptx(
     // formatter instance reused per chart render; locale stays "en"
     // since PowerPoint chart axis labels are EN-only in current
     // export contract.
-    const monthFmt = new Intl.DateTimeFormat("en", { month: "short" });
+    const monthFmt = new Intl.DateTimeFormat(language, {
+      month: "short",
+      timeZone: "UTC",
+    });
     const labels = trendSeries.map((p) => {
       const [, monthStr] = p.period.split("-");
       const monthIdx = Number(monthStr) - 1;
@@ -695,7 +761,7 @@ async function renderBoardDeckPptx(
     const values = trendSeries.map((p) => p.score);
     trendSlide.addChart(
       "line",
-      [{ name: "Composite score", labels, values }],
+      [{ name: tx("boardDeck.pptx.compositeScore"), labels, values }],
       {
         x: 0.6,
         y: 1.6,
@@ -722,7 +788,11 @@ async function renderBoardDeckPptx(
     const lastPoint = trendSeries[trendSeries.length - 1];
     if (lastPoint && lastPoint.score !== null) {
       trendSlide.addText(
-        `Latest (${lastPoint.period}): ${lastPoint.score}/100${lastPoint.band ? ` · ${lastPoint.band}` : ""}`,
+        tx("boardDeck.pptx.latest", {
+          period: lastPoint.period,
+          score: lastPoint.score,
+          band: lastPoint.band ? tx(`boardDeck.pptx.bands.${lastPoint.band}`) : "",
+        }),
         {
           x: 0.6,
           y: 6.55,
@@ -737,7 +807,7 @@ async function renderBoardDeckPptx(
     }
   }
   trendSlide.addText(
-    "Score scale: 0–100 · band thresholds: ≥67 green · ≥34 amber · <34 red",
+    tx("boardDeck.pptx.trendBoundary"),
     {
       x: 0.6,
       y: 6.95,
@@ -753,7 +823,7 @@ async function renderBoardDeckPptx(
   // ───────────────────────────── Slide 5 — Top alerts ────────────────────────
   const alertsSlide = pptx.addSlide();
   alertsSlide.background = { color: BG_CREAM };
-  alertsSlide.addText("TOP ALERTS", {
+  alertsSlide.addText(tx("boardDeck.topAlerts.eyebrow"), {
     x: 0.6,
     y: 0.4,
     w: 12.1,
@@ -766,8 +836,8 @@ async function renderBoardDeckPptx(
   });
   alertsSlide.addText(
     snap.matches.length === 0
-      ? "All systems green"
-      : `Critical-first ranked alerts (${snap.matches.length} total)`,
+      ? tx("boardDeck.pptx.noRulesTriggered")
+      : tx("boardDeck.pptx.rankedAlerts", { total: snap.matches.length }),
     {
       x: 0.6,
       y: 0.85,
@@ -789,19 +859,19 @@ async function renderBoardDeckPptx(
       fill: { color: CARD_WHITE },
       line: { color: BAND_GREY, width: 0.5 },
     });
-    alertsSlide.addText("✓", {
+    alertsSlide.addText("◆", {
       x: 1.5,
       y: 2.7,
       w: 10.33,
       h: 1.2,
       fontFace: "Inter",
       fontSize: 64,
-      color: BAND_GREEN,
+      color: BAND_GREY,
       align: "center",
       bold: true,
     });
     alertsSlide.addText(
-      "No alerts triggered — all systems green.",
+      tx("boardDeck.topAlerts.allClear"),
       {
         x: 1.5,
         y: 4.0,
@@ -867,7 +937,15 @@ async function renderBoardDeckPptx(
         .map((id) => snap.idToCode.get(id) ?? id.slice(0, 8))
         .join(", ");
 
-      alertsSlide.addText(severity.toUpperCase(), {
+      alertsSlide.addText(
+        tx(
+          severity === "critical"
+            ? "alertsPanel.severityCritical"
+            : severity === "warning"
+              ? "alertsPanel.severityWarning"
+              : "alertsPanel.severityInfo",
+        ).toUpperCase(),
+        {
         x: 0.85,
         y: cy + 0.15,
         w: 1.4,
@@ -877,7 +955,8 @@ async function renderBoardDeckPptx(
         color: SEVERITY_DOT[severity],
         bold: true,
         charSpacing: 4,
-      });
+        },
+      );
       alertsSlide.addText(ruleLabel, {
         x: 2.3,
         y: cy + 0.15,
@@ -899,7 +978,7 @@ async function renderBoardDeckPptx(
         valign: "top",
       });
       if (affected.length > 0) {
-        alertsSlide.addText(`Affected: ${affected}`, {
+        alertsSlide.addText(tx("boardDeck.pptx.affected", { codes: affected }), {
           x: 0.85,
           y: cy + 1.25,
           w: 11.7,
@@ -913,10 +992,118 @@ async function renderBoardDeckPptx(
 
     if (snap.matches.length > top.length) {
       alertsSlide.addText(
-        `Showing ${top.length} of ${snap.matches.length} — open the Risk Terminal for the full feed.`,
+        tx("boardDeck.pptx.showingAlerts", {
+          showing: top.length,
+          total: snap.matches.length,
+        }),
         {
           x: 0.6,
           y: 6.95,
+          w: 12.1,
+          h: 0.3,
+          fontFace: "Inter",
+          fontSize: 9,
+          color: INK_FAINT,
+          italic: true,
+        },
+      );
+    }
+  }
+
+  // ───────────────────────────── Slide 6 — Qualitative flags ────────────────
+  // The hero composite already includes these fixed penalties. Export the
+  // classifications and their internal-evidence boundary so the score cannot
+  // shift invisibly in a board pack.
+  const flagsSlide = pptx.addSlide();
+  flagsSlide.background = { color: BG_CREAM };
+  flagsSlide.addText(tx("boardDeck.riskFlags.title"), {
+    x: 0.6,
+    y: 0.4,
+    w: 12.1,
+    h: 0.4,
+    fontFace: "Inter",
+    fontSize: 11,
+    color: ACCENT_AI,
+    bold: true,
+    charSpacing: 4,
+  });
+  flagsSlide.addText(tx("boardDeck.riskFlags.subtitle"), {
+    x: 0.6,
+    y: 0.9,
+    w: 12.1,
+    h: 0.7,
+    fontFace: "Inter",
+    fontSize: 14,
+    color: INK,
+  });
+  const flagRows = snap.operational.flatMap((company) =>
+    (snap.riskTagsByCompany.get(company.id) ?? []).map((tag) => ({
+      company,
+      tag,
+      penalty: RISK_TAG_PENALTY_TABLE[tag] ?? 0,
+    })),
+  );
+  if (flagRows.length === 0) {
+    flagsSlide.addText(tx("boardDeck.riskFlags.empty"), {
+      x: 1.2,
+      y: 2.7,
+      w: 10.9,
+      h: 1,
+      fontFace: "Inter",
+      fontSize: 15,
+      color: INK_MUTED,
+      align: "center",
+      italic: true,
+    });
+  } else {
+    flagRows.slice(0, 14).forEach(({ company, tag, penalty }, index) => {
+      const y = 1.8 + index * 0.34;
+      let industry = company.industry ?? "—";
+      if (company.industry) {
+        try {
+          industry = tIndustries(company.industry as never);
+        } catch {
+          // Keep stored code as a transparent fallback.
+        }
+      }
+      flagsSlide.addText(
+        `${company.code} · ${company.name} · ${industry}`,
+        {
+          x: 0.6,
+          y,
+          w: 7.2,
+          h: 0.28,
+          fontFace: "Inter",
+          fontSize: 10,
+          color: INK,
+        },
+      );
+      flagsSlide.addText(
+        `${tag in RISK_TAG_PENALTY_TABLE ? tx(`boardDeck.riskFlags.tags.${tag}.label` as never) : tag} · ${tx(
+          "boardDeck.riskFlags.penalty",
+          { penalty },
+        )}`,
+        {
+          x: 7.9,
+          y,
+          w: 4.8,
+          h: 0.28,
+          fontFace: "Courier New",
+          fontSize: 9,
+          color: INK_MUTED,
+          align: "right",
+        },
+      );
+    });
+    if (flagRows.length > 14) {
+      flagsSlide.addText(
+        tx("boardDeck.pptx.flagsShowing", {
+          showing: 14,
+          total: flagRows.length,
+        }),
+        {
+          x: 0.6,
+          y: 6.85,
           w: 12.1,
           h: 0.3,
           fontFace: "Inter",

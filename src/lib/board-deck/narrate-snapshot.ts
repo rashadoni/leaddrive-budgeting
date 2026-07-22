@@ -51,7 +51,7 @@ const LANGUAGE_LABEL: Record<NarrationLanguage, string> = {
 
 /** Hand-bumped on any change to SYSTEM_PROMPT or
  *  buildNarrationPrompt structure. v1 = initial Phase E.2 ship. */
-export const NARRATION_PROMPT_VERSION = "v1";
+export const NARRATION_PROMPT_VERSION = "v2";
 
 export interface NarrationInput {
   snapshot: BoardSnapshot;
@@ -73,18 +73,39 @@ export interface NarrationOutput {
   promptVersion: string;
 }
 
-const SYSTEM_PROMPT = `You are an executive-summary writer for the board deck of an Azerbaijani diversified holding (~60 operational sub-companies across 14 sectors: hospitality, agro, food processing, pharma, real estate, services, industrial, etc.).
+/** The provider returned a billable response, but it could not be accepted as
+ * Board Deck narrative. Carries only billing metadata; response text is never
+ * propagated into audit storage. */
+export class NarrationProviderResponseError extends Error {
+  readonly modelName: string;
+  readonly usage?: { inputTokens: number; outputTokens: number };
 
-Your audience: the CFO and board of directors. They need a 1-line headline that names the dominant story this period + 3 paragraphs of context they can read in <60 seconds before walking into the meeting.
+  constructor(
+    message: string,
+    context: {
+      modelName: string;
+      usage?: { inputTokens: number; outputTokens: number };
+    },
+  ) {
+    super(message);
+    this.name = "NarrationProviderResponseError";
+    this.modelName = context.modelName;
+    this.usage = context.usage;
+  }
+}
+
+const SYSTEM_PROMPT = `You are an executive-summary writer for an operational-risk board snapshot. Use only the evidence supplied in the user message.
+
+Your audience is the CFO and board of directors. They need a one-line headline and three short paragraphs they can read in under sixty seconds.
 
 Hard constraints:
-  - Output STRICT JSON matching the schema. No markdown fences, no commentary, no apology.
-  - \`headline\` ≤120 characters. Names the dominant story this period — not a summary of metrics, but a NARRATIVE ("Hospitality recovery offsets industrial drag" beats "Mixed results across sectors").
-  - \`paragraphs\` is EXACTLY three strings. Paragraph 1: what's driving the headline (cite top 1-3 composite-score outliers + top 1-3 alerts). Paragraph 2: where the risk concentration is (sector / company patterns). Paragraph 3: what the CFO should bring to the board (concrete actions or watch-items, not "investigate further").
-  - Each paragraph ≤200 words. CFO-readable. NO finance jargon a non-specialist couldn't follow ("EBITDA" / "OpEx" OK; "depreciation curtailment" / "amortization recapture" no).
-  - Recommendations target the SECTOR. Hospitality → ADR/occupancy; agro_crops → yield/ha, water/fertilizer intensity, sugar content, drought-risk hedging via forward contracts on ICE Sugar #11; food_processing (sugar refining) → extraction rate, raw-input price exposure, capacity utilization; pharma → margin/inventory; industrial → utilization + input costs; real_estate → occupancy + rent collection. Don't suggest cross-sector pivots.
-  - When the snapshot includes agro_crops or food_processing companies and the period covers a harvest cycle, explicitly reference: per-hectare yield, sugar content %, fertilizer/water intensity, ICE Sugar #11 trend (sugar_price_latest vs sugar_price_mean_12m). Generic "monitor crop performance" advice = worse answer than tailored "lock 30% of Q3 cane output via Nov ICE futures while AGRO_SUGAR_PRICE_TREND is +8% above 12M mean".
-  - When the snapshot has zero red alerts and ≥80% green cells, lead with that — don't manufacture risk for theatrical effect.
+  - Output STRICT JSON matching the schema. No markdown fences, commentary, or apology.
+  - \`headline\` ≤120 characters and names the dominant evidence-backed story for the selected period.
+  - \`paragraphs\` is EXACTLY three strings. Paragraph 1: evidence driving the headline. Paragraph 2: risk concentration visible in supplied scores and triggered rules. Paragraph 3: what to bring to the board; recommend verification or a watch-item when evidence does not support a concrete action.
+  - Each paragraph ≤200 words and readable by a non-specialist.
+  - Never invent company scale, sector facts, market prices, trends, currency, materiality, root causes, source freshness, audit assurance, or transactions absent from the user message.
+  - Expected matrix slots are not observed data. Missing slots are absent, never zero or green. Zero triggered rules does not prove all systems are green.
+  - Composite scores are operational risk indicators, not audited financial results. Qualify recommendations accordingly.
 
 Schema (use EXACTLY these field names):
   {
@@ -140,7 +161,7 @@ export function buildNarrationPrompt(input: NarrationInput): string {
   const TOP_ALERTS_PER_SEVERITY = 6;
   const alertBlock = (["critical", "warning", "info"] as const)
     .map((sev) => {
-      const list = snapshot.matchesBySeverity[sev]
+      const list = sortedNarrationAlerts(snapshot.matchesBySeverity[sev])
         .slice(0, TOP_ALERTS_PER_SEVERITY)
         .map(
           (m) =>
@@ -157,13 +178,14 @@ export function buildNarrationPrompt(input: NarrationInput): string {
 
   return `Holding: ${snapshot.org.name}
 Period: ${snapshot.period}
-Generated: ${snapshot.generatedAt}
 
 Totals:
   Operational sub-cos: ${snapshot.totals.operational}
   Indicators: ${snapshot.totals.indicators}
-  Cells: ${snapshot.totals.cells}
+  Expected matrix slots: ${snapshot.totals.cells}
+  Persisted indicator rows: ${snapshot.cells.length}
   Green / Amber / Red: ${snapshot.totals.green} / ${snapshot.totals.amber} / ${snapshot.totals.red}
+  Missing or unclassified slots are not represented by those three status counts.
 
 Top ${TOP_COMPOSITES} composite scores (worst-first):
 ${compositeBlock || "  (no operational sub-cos)"}
@@ -182,6 +204,18 @@ Return STRICT JSON in this exact shape (no markdown):
     "paragraph 3 — what the CFO should bring to the board"
   ]
 }`;
+}
+
+/** Stable order shared with the narration cache hash. Alert-rule evaluation
+ * order is an implementation detail and must not change a paid prompt while
+ * retaining the same cache key. */
+export function sortedNarrationAlerts<T extends {
+  ruleId: string;
+  message: string;
+}>(alerts: readonly T[]): T[] {
+  return [...alerts].sort((a, b) =>
+    `${a.ruleId}|${a.message}`.localeCompare(`${b.ruleId}|${b.message}`),
+  );
 }
 
 /** Validate + shape the LLM's parsed JSON. Throws on shape violation
@@ -265,47 +299,59 @@ export async function runNarration(
     messages: [{ role: "user", content: userMessage }],
   });
 
-  if (response.stop_reason === "max_tokens") {
-    throw new Error(
-      `Board narration truncated at max_tokens=${maxTokens}. Re-run with higher maxTokens — RU/AZ output needs more headroom than EN.`,
-    );
-  }
-
-  const textBlocks = response.content
-    .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
-    .map((b) => b.text);
-  if (textBlocks.length === 0) {
-    throw new Error(
-      `Board narration: response had no text content (got: ${JSON.stringify(response.content.map((b) => b.type))})`,
-    );
-  }
-  const raw = textBlocks.join("\n").trim();
-  const jsonText = extractJsonFromText(raw);
-  if (!jsonText) {
-    throw new Error(
-      `Board narration: response did not contain valid JSON. Raw: ${raw.slice(0, 200)}…`,
-    );
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (err) {
-    throw new Error(
-      `Board narration: response did not contain valid JSON. Parse error: ${err instanceof Error ? err.message : String(err)}. Raw: ${raw.slice(0, 200)}…`,
-    );
-  }
-
-  const shapedBody = validateAndShape(parsed);
-  const out: NarrationOutput = {
-    ...shapedBody,
+  const responseContext = {
     modelName: response.model ?? model,
-    promptVersion: NARRATION_PROMPT_VERSION,
+    usage: response.usage
+      ? {
+          inputTokens: response.usage.input_tokens,
+          outputTokens: response.usage.output_tokens,
+        }
+      : undefined,
   };
-  if (response.usage) {
-    out.usage = {
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
+
+  try {
+
+    if (response.stop_reason === "max_tokens") {
+      throw new Error(
+        `Board narration truncated at max_tokens=${maxTokens}. Re-run with higher maxTokens — RU/AZ output needs more headroom than EN.`,
+      );
+    }
+
+    const textBlocks = response.content
+      .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
+      .map((b) => b.text);
+    if (textBlocks.length === 0) {
+      throw new Error(
+        `Board narration: response had no text content (got: ${JSON.stringify(response.content.map((b) => b.type))})`,
+      );
+    }
+    const raw = textBlocks.join("\n").trim();
+    const jsonText = extractJsonFromText(raw);
+    if (!jsonText) {
+      throw new Error(
+        `Board narration: response did not contain valid JSON. Raw: ${raw.slice(0, 200)}…`,
+      );
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (err) {
+      throw new Error(
+        `Board narration: response did not contain valid JSON. Parse error: ${err instanceof Error ? err.message : String(err)}. Raw: ${raw.slice(0, 200)}…`,
+      );
+    }
+
+    const shapedBody = validateAndShape(parsed);
+    return {
+      ...shapedBody,
+      modelName: responseContext.modelName,
+      promptVersion: NARRATION_PROMPT_VERSION,
+      ...(responseContext.usage ? { usage: responseContext.usage } : {}),
     };
+  } catch (err) {
+    throw new NarrationProviderResponseError(
+      err instanceof Error ? err.message : String(err),
+      responseContext,
+    );
   }
-  return out;
 }

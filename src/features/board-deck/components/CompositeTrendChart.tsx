@@ -15,7 +15,7 @@
  * to client + add hover-tooltips; deferred.
  */
 
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import type { TrendPoint } from "@/features/board-deck/lib/build-trend-series";
 
 export interface CompositeTrendChartProps {
@@ -52,25 +52,15 @@ function indexToX(index: number, total: number): number {
 }
 
 /** Compact month label "YYYY-MM" → "Jan" / "Feb" / ... */
-function monthAbbreviation(period: string): string {
+function monthAbbreviation(period: string, locale: string): string {
   const m = period.match(/^\d{4}-(\d{2})$/);
   if (!m) return period;
   const idx = Number(m[1]) - 1;
-  const labels = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-  return labels[idx] ?? period;
+  if (idx < 0 || idx > 11) return period;
+  return new Intl.DateTimeFormat(locale, {
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(2020, idx, 1)));
 }
 
 /** Build the SVG `path d` for the line. Skips null points (creates
@@ -99,6 +89,7 @@ export async function CompositeTrendChart({
   series,
 }: CompositeTrendChartProps) {
   const t = await getTranslations("terminal");
+  const locale = await getLocale();
 
   const hasAnyData = series.some((p) => p.score !== null);
   if (!hasAnyData) {
@@ -140,6 +131,9 @@ export async function CompositeTrendChart({
     >
       <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4">
         {t("boardDeck.metrics.trendTitle")}
+      </p>
+      <p className="mb-3 text-xs text-muted-foreground">
+        {t("boardDeck.metrics.trendBoundary")}
       </p>
       <svg
         viewBox={`0 0 ${VIEWBOX_W} ${VIEWBOX_H}`}
@@ -240,7 +234,7 @@ export async function CompositeTrendChart({
               textAnchor="middle"
               fontFamily="JetBrains Mono, monospace"
             >
-              {monthAbbreviation(period)}
+              {monthAbbreviation(period, locale)}
             </text>
           );
         })}

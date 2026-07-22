@@ -121,6 +121,22 @@ const ALERTS_READ_MESSAGE = '[data-testid="alerts-guide-read-message"]';
 const ALERTS_READ_PAGINATION = '[data-testid="alerts-guide-read-pagination"]';
 const ALERTS_READ_DEEPLINK = '[data-testid="alerts-guide-read-deeplink"]';
 
+// ── Board Deck evidence-boundary guide ─────────────────────────────────
+// Strictly hover-only. The page, language state and exports are cache-read-only;
+// the guide never presses Generate/Refresh, export, print, terminal links or
+// any other control. Every selector is present even when narrative, alerts,
+// monthly history or qualitative flags are absent.
+const BOARD_ROOT = '[data-testid="board-deck-guide-root"]';
+const BOARD_HERO = '[data-testid="board-deck-hero"]';
+const BOARD_SCORE = '[data-testid="hero-score-caption"]';
+const BOARD_EVIDENCE = '[data-testid="board-deck-guide-evidence"]';
+const BOARD_AI = '[data-testid="board-deck-guide-ai-boundary"]';
+const BOARD_METRICS = '[data-testid="board-deck-metrics-row"]';
+const BOARD_TREND = '[data-testid="composite-trend-chart"]';
+const BOARD_ALERTS = '[data-testid="board-deck-top-alerts"]';
+const BOARD_FLAGS = '[data-testid="board-deck-risk-flags"]';
+const BOARD_FOOTER = '[data-testid="board-deck-footer-actions"]';
+
 // ── Workspace / P&L execution view ────────────────────────────────────────
 // READONLY-safe: the only clicks toggle local list/matrix/materiality state.
 // No export, sync, create, edit, save or delete action is touched.
@@ -1233,6 +1249,128 @@ export default {
           await p.waitForSelector(ALERTS_READ_DEEPLINK, { timeout: 15000 });
           await h.hover(ALERTS_READ_DEEPLINK);
           await h.moveTo(ALERTS_SCOPE);
+        },
+      },
+    ],
+  },
+  "board-deck": {
+    route: "/budgeting/board-deck",
+    title: {
+      az: "Board Deck: sübut sərhədləri",
+      en: "Board Deck: evidence boundaries",
+      ru: "Board Deck: границы доказательности",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "Board Deck seçilmiş period üçün istifadəçinin icazə verdiyi əməliyyat şirkətlərinin risk snapshot-udur. Səhifənin açılma vaxtı məlumat mənbələrinin təzəliyi deyil və ekran audit olunmuş konsolidə maliyyə hesabatı sayılmır. Bu təlim yalnız real elementlər üzərində cursor gəzdirir; heç bir düymə basmır, məlumat yazmır və provider çağırmır.",
+          en: "Board Deck is a risk snapshot for the selected period and the operational entities this user is allowed to see. The page assembly time is not source-data freshness, and this screen is not audited consolidated financial statements. This walkthrough only moves the cursor across real controls; it presses nothing, writes nothing, and invokes no provider.",
+          ru: "Board Deck — это снимок рисков выбранного периода по операционным компаниям, доступным пользователю. Время сборки страницы не является свежестью источников, а экран не заменяет аудированную консолидированную отчётность. Гайд только перемещает курсор по реальным элементам: ничего не нажимает, не записывает и не вызывает провайдера.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(BOARD_ROOT, { timeout: 15000 });
+          await p.waitForSelector(BOARD_HERO, { timeout: 15000 });
+          await h.hover(BOARD_HERO);
+        },
+      },
+      {
+        voice: {
+          az: "Evidence boundary əhatəni açıq göstərir: full scope və ya istifadəçinin alt-qrupu. Burada persisted indikator sətirlərinin sayı gözlənilən company-by-indicator matris yerləri ilə müqayisə olunur. Çatışmayan slot sıfır deyil, yaşıl deyil və təxminlə doldurulmur; coverage və lineage ayrıca yoxlanmadan bu snapshot decision-grade adlandırılmamalıdır.",
+          en: "The evidence boundary names the scope explicitly: full visible scope or the user's subgroup. It compares persisted indicator rows with expected company-by-indicator matrix slots. A missing slot is not zero, not green, and is never imputed; coverage and lineage still require review before anyone treats the snapshot as decision-grade.",
+          ru: "Блок доказательности явно показывает охват: весь доступный scope или подгруппу пользователя. Число сохранённых строк индикаторов сопоставляется с ожидаемыми слотами матрицы компания-на-индикатор. Отсутствующий слот — не ноль и не зелёный статус, он не заполняется догадкой; до проверки покрытия и происхождения снимок нельзя считать decision-grade.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(BOARD_EVIDENCE, { timeout: 15000 });
+          await h.hover(BOARD_EVIDENCE);
+        },
+      },
+      {
+        voice: {
+          az: "Hero balı sıfırdan yüzə qədərdir. Holding səviyyəsində yalnız hesablanmış əməliyyat şirkətlərinin bərabər çəkili ortası götürülür; balı olmayan şirkətlər orta hesabdan çıxarılır və caption iştirak edən sayını göstərir. Şirkət balının daxilində konfiqurasiya edilmiş indikator çəkiləri və keyfiyyət risk cərimələri tətbiq olunur.",
+          en: "The hero score runs from zero to one hundred. At holding level it is an equal-weight mean of scored operational entities only; entities without a score are skipped, and the caption discloses the contributing count. Within each entity score, configured indicator weights and qualitative risk penalties apply.",
+          ru: "Hero-балл лежит в диапазоне от нуля до ста. На уровне холдинга это среднее с равным весом только по оценённым операционным компаниям; компании без балла исключаются, а caption показывает число участников. Внутри балла компании учитываются настроенные веса индикаторов и качественные штрафы риска.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(BOARD_SCORE, { timeout: 15000 });
+          await h.hover(BOARD_SCORE);
+        },
+      },
+      {
+        voice: {
+          az: "Üç metric card cari scoped snapshot-u kontekstləşdirir. Red cells yalnız saxlanmış qırmızı statuslardır; denominator gözlənilən bütün matris slotlarıdır. Red sub-companies kompozit bandı göstərir. Indicators tracked isə tətbiq olunan indikator təriflərinin sayıdır, onların hər biri üçün təzə və reconciled evidence olduğunu sübut etmir.",
+          en: "Three metric cards contextualize the current scoped snapshot. Red cells counts only persisted red statuses, while its denominator is all expected matrix slots. Red sub-companies reflects the composite band. Indicators tracked counts applicable definitions, not proof that every definition has fresh, reconciled evidence.",
+          ru: "Три карточки дают контекст текущему scoped-снимку. Красные ячейки считают только сохранённые red-статусы, тогда как denominator — все ожидаемые слоты матрицы. Красные субкомпании относятся к composite band. Число отслеживаемых индикаторов — это число применимых определений, а не доказательство свежих и сверенных данных по каждому из них.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(BOARD_METRICS, { timeout: 15000 });
+          await h.hover(BOARD_METRICS);
+        },
+      },
+      {
+        voice: {
+          az: "Trend ayrıca persisted aylıq periodları göstərir və boş aylar qrafikdə boş qalır; sistem onları interpolasiya etmir. Müqayisəni formula baxımından uyğun saxlamaq üçün aylıq ballar cari indikator çəkiləri və cari keyfiyyət cərimələri ilə yenidən hesablanır. Buna görə bu qrafik point-in-time risk-tag tarixçəsi deyil və illik hero periodu ilə eyni grain kimi oxunmamalıdır.",
+          en: "The trend uses separate persisted monthly periods and leaves missing months as gaps rather than interpolating them. To keep the formula comparable, monthly scores are recalculated with current indicator weights and current qualitative penalties. It is therefore not point-in-time risk-tag history and must not be read as the same grain as an annual hero period.",
+          ru: "Тренд использует отдельные сохранённые месячные периоды и оставляет отсутствующие месяцы пробелами без интерполяции. Для сопоставимости формулы месячные баллы пересчитываются с текущими весами индикаторов и текущими качественными штрафами. Поэтому это не point-in-time история risk tags и не тот же grain, что годовой hero-период.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(BOARD_TREND, { timeout: 15000 });
+          await h.hover(BOARD_TREND);
+        },
+      },
+      {
+        voice: {
+          az: "AI bölməsi xərc sərhədini daimi göstərir. Adi page load, dil dəyişikliyi, PPTX, PDF və print yalnız exact-snapshot cache-ni oxuyur; cache miss provider çağırmır. Generate və Refresh ayrıca manager-only POST əməliyyatıdır, Anthropic xərcinə, narrative cache yazısına və audit event-ə səbəb ola bilər. Təlim həmin düyməni heç vaxt basmır.",
+          en: "The AI panel makes the cost boundary permanent. Ordinary page loads, language changes, PPTX, PDF, and print read only the exact-snapshot cache; a cache miss never calls a provider. Generate and Refresh are separate manager-only POST actions that may spend Anthropic budget, write narrative cache, and emit an audit event. This guide never presses them.",
+          ru: "AI-блок постоянно показывает границу расходов. Обычная загрузка, смена языка, PPTX, PDF и печать только читают кэш точного снимка; cache miss не вызывает провайдера. Generate и Refresh — отдельные manager-only POST-действия, способные потратить бюджет Anthropic, записать кэш обзора и audit event. Гайд их никогда не нажимает.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(BOARD_AI, { timeout: 15000 });
+          await h.hover(BOARD_AI);
+        },
+      },
+      {
+        voice: {
+          az: "Keşlənmiş narrative varsa, model və prompt versiyası ilə birlikdə göstərilir; exact source snapshot hash ilə əlaqələndirilir. İyirmi dörd saatdan köhnə sətir stale kimi işarələnir, lakin avtomatik yenilənmir. Narrative yoxdursa deterministic metrics qalır və sistem uydurma mətn yaratmır. AI mətni həmişə underlying source və fact-check warning ilə birlikdə nəzərdən keçirilməlidir.",
+          en: "When cached narrative exists, it is attributed to a model and prompt version and tied to the exact source snapshot hash. A row older than twenty-four hours is marked stale but is not auto-refreshed. With no narrative, deterministic metrics remain and the system fabricates no text. AI prose still requires review against underlying sources and any fact-check warning.",
+          ru: "Если кэшированный обзор есть, он снабжён моделью и версией prompt и связан с hash точного исходного снимка. Запись старше двадцати четырёх часов помечается stale, но не обновляется автоматически. Без обзора остаются детерминированные метрики, текст не выдумывается. AI-текст всё равно нужно сверять с источниками и предупреждениями fact-check.",
+        },
+        do: async (p, l, h) => {
+          await h.hover(BOARD_AI);
+          await h.moveTo(BOARD_EVIDENCE);
+        },
+      },
+      {
+        voice: {
+          az: "Top Alerts cari scoped snapshot üzərində konfiqurasiya edilmiş qaydalardan ən yüksək prioritetli üç match-i göstərir. Severity ehtimal və ya maliyyə materiality ölçüsü deyil. Heç bir match yoxdursa mesaj yalnız qaydanın işə düşmədiyini deyir; bütün indikatorların yaşıl, məlumatın tam və ya riskin həll edildiyini iddia etmir.",
+          en: "Top Alerts shows up to three highest-priority matches from configured rules evaluated on the current scoped snapshot. Severity is not probability or financial materiality. If there are no matches, the message says only that no configured rule triggered; it does not claim all indicators are green, data is complete, or risk is resolved.",
+          ru: "Top Alerts показывает до трёх наиболее приоритетных совпадений настроенных правил на текущем scoped-снимке. Severity не является вероятностью или финансовой существенностью. Если совпадений нет, сообщение означает только отсутствие срабатывания правил; оно не утверждает, что все индикаторы зелёные, данные полны или риск устранён.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(BOARD_ALERTS, { timeout: 15000 });
+          await h.hover(BOARD_ALERTS);
+        },
+      },
+      {
+        voice: {
+          az: "Qualitative Risk Flags subsidy dependency, non-transparent structure və data absence kimi daxili classification-ları göstərir. Hər flag sabit kompozit cərimə daşıyır və scoped şirkət üzrə görünür. Bunlar Moody's, S and P, FactSet və ya auditor tərəfindən yoxlanmış xarici faktlar deyil. Boş state belə riskin araşdırıldığını sübut etmir.",
+          en: "Qualitative Risk Flags surfaces internal classifications such as subsidy dependency, non-transparent structure, and data absence. Each flag carries a fixed composite penalty and is shown within company scope. These are not external facts verified by Moody's, S&P, FactSet, or an auditor. Even an empty state does not prove that the risks were investigated.",
+          ru: "Qualitative Risk Flags показывает внутренние классификации: зависимость от субсидий, непрозрачную структуру и недостаток данных. Каждая метка несёт фиксированный штраф к composite и ограничена доступными компаниями. Это не внешние факты, проверенные Moody's, S&P, FactSet или аудитором. Даже пустое состояние не доказывает, что риски исследованы.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(BOARD_FLAGS, { timeout: 15000 });
+          await h.hover(BOARD_FLAGS);
+        },
+      },
+      {
+        voice: {
+          az: "Footer PPTX və PDF eksportu, browser print və Risk Terminal keçidini birləşdirir. Eksportlar həmin scoped snapshot və varsa cache-only narrative istifadə edir, AI yaratmır. Təhlükəsiz review ardıcıllığı: period və scope-u təsdiqləyin, coverage və gaps-i oxuyun, alert və flags mənbələrini yoxlayın, sonra səlahiyyətli paylaşma qərarı verin. Bu scene kontrolleri yalnız göstərir.",
+          en: "The footer groups PPTX and PDF export, browser print, and the Risk Terminal link. Exports use this scoped snapshot and cache-only narrative when available; they never generate AI. A safe review sequence is to confirm period and scope, read coverage and gaps, inspect alert and flag sources, and only then make an authorized sharing decision. This scene only points to the controls.",
+          ru: "Footer объединяет экспорт PPTX и PDF, browser print и переход в Risk Terminal. Экспорты используют этот scoped-снимок и только кэшированный обзор, если он есть; AI не генерируется. Безопасный порядок: подтвердить период и scope, изучить покрытие и пробелы, проверить источники алертов и меток и лишь затем принять уполномоченное решение о передаче. Сцена только показывает контролы.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(BOARD_FOOTER, { timeout: 15000 });
+          await h.hover(BOARD_FOOTER);
+          await h.moveTo(BOARD_ROOT);
         },
       },
     ],

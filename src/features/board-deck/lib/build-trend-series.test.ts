@@ -69,7 +69,7 @@ describe("buildTrendSeries — anchor parsing", () => {
     };
   }
 
-  it("annual period anchors to December (12 months ending Dec of that year)", async () => {
+  it("completed annual period anchors to December", async () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const prisma = makePrisma(findMany);
     await buildTrendSeries(
@@ -80,7 +80,7 @@ describe("buildTrendSeries — anchor parsing", () => {
         indicatorIds: ["ind_1"],
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { prisma: prisma as any },
+      { prisma: prisma as any, asOf: new Date("2027-01-15T00:00:00Z") },
     );
     const where = findMany.mock.calls[0][0].where;
     // Anchor at Dec 2026 → trailing 12 months covers Jan→Dec 2026.
@@ -90,6 +90,24 @@ describe("buildTrendSeries — anchor parsing", () => {
     expect(where.period.in).toHaveLength(12);
     expect(where.period.in[0]).toBe("2026-01");
     expect(where.period.in[11]).toBe("2026-12");
+  });
+
+  it("current-year annual period stops at the current Baku month", async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const prisma = makePrisma(findMany);
+    await buildTrendSeries(
+      {
+        organizationId: "org_1",
+        currentPeriod: "2026",
+        operationalIds: ["co_1"],
+        indicatorIds: ["ind_1"],
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { prisma: prisma as any, asOf: new Date("2026-07-21T12:00:00Z") },
+    );
+    const periods = findMany.mock.calls[0][0].where.period.in;
+    expect(periods.at(-1)).toBe("2026-07");
+    expect(periods).not.toContain("2026-08");
   });
 
   it("monthly period uses itself as anchor", async () => {
@@ -257,6 +275,42 @@ describe("buildTrendSeries — averaging", () => {
     expect(result[1].score).toBeNull();
     // Last month has data.
     expect(result[2].score).not.toBeNull();
+  });
+
+  it("uses current indicator weights and qualitative penalties like the hero score", async () => {
+    const rows = [
+      {
+        companyId: "co_1",
+        indicatorId: "green_heavy",
+        value: 1,
+        status: "green",
+        period: "2026-04",
+      },
+      {
+        companyId: "co_1",
+        indicatorId: "red_light",
+        value: 1,
+        status: "red",
+        period: "2026-04",
+      },
+    ];
+    const result = await buildTrendSeries(
+      {
+        organizationId: "org_1",
+        currentPeriod: "2026-04",
+        operationalIds: ["co_1"],
+        indicatorIds: ["green_heavy", "red_light"],
+        weightByIndicatorId: new Map([
+          ["green_heavy", 3],
+          ["red_light", 1],
+        ]),
+        riskTagsByCompany: new Map([["co_1", ["data_absence"]]]),
+      },
+      // (100*3 + 0*1) / 4 = 75, then data_absence penalty 12 => 63.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { prisma: makePrisma(rows) as any, monthsBack: 1 },
+    );
+    expect(result[0]).toEqual({ period: "2026-04", score: 63, band: "amber" });
   });
 
   it("query shape: WHERE org + period IN [12 months] + companyId IN + indicatorId IN", async () => {

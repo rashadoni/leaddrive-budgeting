@@ -194,7 +194,7 @@ describe("ExportPptxButton — Turn LIV URL passthrough", () => {
     expect(url).toContain("lang=ru");
   });
 
-  it("threads ?regenerate=1 from page URL into the export request", async () => {
+  it("does not forward legacy ?regenerate=1 into read-only export", async () => {
     searchParamsState = "regenerate=1";
     const fetchSpy = mockFetchOk();
     silenceAnchorClick();
@@ -204,7 +204,7 @@ describe("ExportPptxButton — Turn LIV URL passthrough", () => {
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
     const url = fetchSpy.mock.calls[0][0] as string;
-    expect(url).toContain("regenerate=1");
+    expect(url).not.toContain("regenerate");
   });
 
   it("rejects unknown lang values (defensive — only en/ru/az pass through)", async () => {
@@ -220,7 +220,7 @@ describe("ExportPptxButton — Turn LIV URL passthrough", () => {
     expect(url).not.toContain("lang=");
   });
 
-  it("ignores unrelated page query state (only forwards lang + regenerate)", async () => {
+  it("ignores unrelated page query state (only forwards language)", async () => {
     searchParamsState = "noise=1&debug=true";
     const fetchSpy = mockFetchOk();
     silenceAnchorClick();

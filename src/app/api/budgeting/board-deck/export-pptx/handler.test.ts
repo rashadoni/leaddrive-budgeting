@@ -24,6 +24,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 // just need a stub that returns the key back so localized output stays
 // deterministic and the pptxgenjs render doesn't throw on missing keys.
 vi.mock("next-intl/server", () => ({
+  getLocale: vi.fn(async () => "en"),
   getTranslations: vi.fn(async () => {
     const t = (k: string) => k;
     return t;
@@ -36,23 +37,18 @@ vi.mock("next-intl/server", () => ({
 // Default: narrationMock returns null (cache miss + LLM degraded
 // gracefully, deck renders without narrative slide). Tests opt in to
 // the populated fixture below.
-const { aiClientMock, narrateMock, trendMock } = vi.hoisted(() => ({
-  aiClientMock: { hasAnthropicKey: vi.fn().mockReturnValue(true) },
-  narrateMock: { getOrCreateNarration: vi.fn() },
+const { narrateMock, trendMock, scopeMock } = vi.hoisted(() => ({
+  narrateMock: { getCachedNarration: vi.fn() },
   trendMock: { buildTrendSeries: vi.fn() },
+  scopeMock: { getCompanyScope: vi.fn() },
 }));
-vi.mock("@/lib/ai/client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/ai/client")>(
-    "@/lib/ai/client",
-  );
-  return { ...actual, ...aiClientMock };
-});
 vi.mock("@/lib/board-deck/get-or-create-narration", async () => {
   const actual = await vi.importActual<
     typeof import("@/lib/board-deck/get-or-create-narration")
   >("@/lib/board-deck/get-or-create-narration");
   return { ...actual, ...narrateMock };
 });
+vi.mock("@/lib/rbac/company-scope", () => scopeMock);
 // Phase 7.G Turn LVI — buildTrendSeries powers the new trend-chart
 // slide. Default empty array (matches the empty IndicatorValue
 // fixture); populated tests opt in via mockResolvedValue.
@@ -65,6 +61,7 @@ vi.mock("@/features/board-deck/lib/build-trend-series", async () => {
 
 import { mockSession, makeRequest } from "@/test/api-harness";
 import { GET } from "./route";
+import { getTranslations } from "next-intl/server";
 
 const ORG_ID = "org_demo";
 
@@ -77,10 +74,11 @@ beforeEach(() => {
   prismaMock.company.findMany.mockReset().mockResolvedValue([]);
   prismaMock.indicatorDefinition.findMany.mockReset().mockResolvedValue([]);
   prismaMock.indicatorValue.findMany.mockReset().mockResolvedValue([]);
-  aiClientMock.hasAnthropicKey.mockReturnValue(true);
-  // Default: cache miss + LLM-failure path → null. Each test that
-  // wants populated narration opts in via mockResolvedValue.
-  narrateMock.getOrCreateNarration.mockReset().mockResolvedValue(null);
+  scopeMock.getCompanyScope.mockReset().mockResolvedValue({
+    ids: null,
+    bypassed: false,
+  });
+  narrateMock.getCachedNarration.mockReset().mockResolvedValue(null);
   // Phase 7.G Turn LVI — default empty trend series; populated path
   // opt-in via per-test mockResolvedValue.
   trendMock.buildTrendSeries.mockReset().mockResolvedValue([]);
@@ -216,30 +214,29 @@ describe("GET /api/budgeting/board-deck/export-pptx", () => {
     expect(ivCall.where.period).toMatch(/^\d{4}$/);
   });
 
-  it("calls getOrCreateNarration with the resolved snapshot (always-on default)", async () => {
+  it("reads only the exact cached narration for the resolved snapshot", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
-    narrateMock.getOrCreateNarration.mockResolvedValue({
-      headline: "Hospitality recovery offsets industrial drag.",
-      paragraphs: ["P1", "P2", "P3"],
-      modelName: "claude-sonnet-4-5-20250929",
-      promptVersion: "v1",
-      usage: { inputTokens: 1500, outputTokens: 700 },
+    narrateMock.getCachedNarration.mockResolvedValue({
+      narration: {
+        headline: "Hospitality recovery offsets industrial drag.",
+        paragraphs: ["P1", "P2", "P3"],
+        modelName: "claude-sonnet-4-5-20250929",
+        promptVersion: "v1",
+        usage: { inputTokens: 1500, outputTokens: 700 },
+      },
+      generatedAt: "2025-01-01T00:00:00.000Z",
+      isStale: false,
     });
 
     const res = await GET(
       makeRequest("/api/budgeting/board-deck/export-pptx?period=2025"),
     );
     expect(res.status).toBe(200);
-    // v2: narration is ALWAYS attempted (cache may or may not hit;
-    // mocked function fires regardless). Old `?narrate=1` opt-in
-    // dropped Turn XLVII.
-    expect(narrateMock.getOrCreateNarration).toHaveBeenCalledTimes(1);
-    const [input, optsMaybe] = narrateMock.getOrCreateNarration.mock.calls[0];
+    expect(narrateMock.getCachedNarration).toHaveBeenCalledTimes(1);
+    const [input] = narrateMock.getCachedNarration.mock.calls[0];
     expect(input.snapshot.org.name).toBe("Demo Holding");
     expect(input.organizationId).toBe(ORG_ID);
     expect(input.language).toBe("en"); // default
-    // bypassCache defaults to false (no `?regenerate=1`).
-    expect(optsMaybe?.bypassCache).toBeFalsy();
     // PPTX still ships.
     const buf = Buffer.from(await res.arrayBuffer());
     expect(buf[0]).toBe(0x50);
@@ -248,11 +245,15 @@ describe("GET /api/budgeting/board-deck/export-pptx", () => {
 
   it("respects ?lang= query param", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
-    narrateMock.getOrCreateNarration.mockResolvedValue({
-      headline: "x",
-      paragraphs: ["a", "b", "c"],
-      modelName: "m",
-      promptVersion: "v1",
+    narrateMock.getCachedNarration.mockResolvedValue({
+      narration: {
+        headline: "x",
+        paragraphs: ["a", "b", "c"],
+        modelName: "m",
+        promptVersion: "v1",
+      },
+      generatedAt: "2025-01-01T00:00:00.000Z",
+      isStale: false,
     });
 
     await GET(
@@ -260,31 +261,27 @@ describe("GET /api/budgeting/board-deck/export-pptx", () => {
         "/api/budgeting/board-deck/export-pptx?period=2025&lang=ru",
       ),
     );
-    const arg = narrateMock.getOrCreateNarration.mock.calls[0][0];
+    const arg = narrateMock.getCachedNarration.mock.calls[0][0];
     expect(arg.language).toBe("ru");
+    expect(vi.mocked(getTranslations)).toHaveBeenCalledWith({
+      locale: "ru",
+      namespace: "terminal",
+    });
   });
 
-  it("?regenerate=1 sets bypassCache on the cache helper", async () => {
+  it("legacy ?regenerate=1 remains read-only and only checks cache", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
-    narrateMock.getOrCreateNarration.mockResolvedValue({
-      headline: "Fresh",
-      paragraphs: ["a", "b", "c"],
-      modelName: "m",
-      promptVersion: "v1",
-    });
-
     await GET(
       makeRequest(
         "/api/budgeting/board-deck/export-pptx?period=2025&regenerate=1",
       ),
     );
-    const opts = narrateMock.getOrCreateNarration.mock.calls[0][1];
-    expect(opts?.bypassCache).toBe(true);
+    expect(narrateMock.getCachedNarration).toHaveBeenCalledTimes(1);
   });
 
-  it("renders deck WITHOUT narrative when getOrCreateNarration returns null (graceful degradation)", async () => {
+  it("renders deck WITHOUT narrative when cache is absent", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
-    narrateMock.getOrCreateNarration.mockResolvedValue(null);
+    narrateMock.getCachedNarration.mockResolvedValue(null);
 
     const res = await GET(
       makeRequest("/api/budgeting/board-deck/export-pptx?period=2025"),
@@ -295,15 +292,13 @@ describe("GET /api/budgeting/board-deck/export-pptx", () => {
     expect(buf[1]).toBe(0x4b);
   });
 
-  it("skips narration entirely when ANTHROPIC_API_KEY missing", async () => {
+  it("never checks or calls a paid provider during GET export", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
-    aiClientMock.hasAnthropicKey.mockReturnValue(false);
-
     const res = await GET(
       makeRequest("/api/budgeting/board-deck/export-pptx?period=2025"),
     );
     expect(res.status).toBe(200);
-    expect(narrateMock.getOrCreateNarration).not.toHaveBeenCalled();
+    expect(narrateMock.getCachedNarration).toHaveBeenCalledTimes(1);
   });
 
   // Phase 7.G Turn LVI — trend chart slide

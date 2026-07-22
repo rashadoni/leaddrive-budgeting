@@ -33,6 +33,9 @@ import {
   isAggregateRollup,
   type HeatMapCell,
 } from '@/lib/risk/heatmap-matrix';
+import { RISK_TAGS } from '@/lib/risk/risk-tags';
+
+const CANONICAL_RISK_TAGS = new Set<string>(RISK_TAGS);
 
 export interface BoardSnapshotOrg {
   name: string;
@@ -58,6 +61,7 @@ export interface BoardSnapshotIndicator {
   direction: string | null;
   unit: string | null;
   sortOrder: number | null;
+  weight: number | null;
 }
 
 export interface BoardSnapshotStatusCounts {
@@ -103,8 +107,10 @@ export interface BoardSnapshot {
 export async function buildBoardSnapshot(args: {
   orgId: string;
   period: string;
+  /** Null/undefined = full org; array = caller's RBAC-visible companies. */
+  companyIds?: readonly string[] | null;
 }): Promise<BoardSnapshot | null> {
-  const { orgId, period } = args;
+  const { orgId, period, companyIds } = args;
 
   const [org, companiesRaw, indicatorsRaw] = await Promise.all([
     prisma.organization.findUnique({
@@ -112,7 +118,11 @@ export async function buildBoardSnapshot(args: {
       select: { name: true, slug: true, settings: true },
     }),
     prisma.company.findMany({
-      where: { organizationId: orgId, isActive: true },
+      where: {
+        organizationId: orgId,
+        isActive: true,
+        ...(companyIds != null ? { id: { in: [...companyIds] } } : {}),
+      },
       select: {
         id: true,
         code: true,
@@ -220,7 +230,13 @@ export async function buildBoardSnapshot(args: {
     const raw = (co as { settings?: { riskTags?: unknown } | null }).settings
       ?.riskTags;
     if (Array.isArray(raw)) {
-      const tags = raw.filter((t): t is string => typeof t === 'string');
+      // Legacy or misspelled values carry no configured score penalty and
+      // have no localized disclosure. Exclude them at the shared snapshot
+      // boundary so page, narrative and PPTX cannot disagree.
+      const tags = raw.filter(
+        (t): t is string =>
+          typeof t === 'string' && CANONICAL_RISK_TAGS.has(t),
+      );
       if (tags.length > 0) riskTagsByCompanyId.set(co.id, tags);
     }
   }

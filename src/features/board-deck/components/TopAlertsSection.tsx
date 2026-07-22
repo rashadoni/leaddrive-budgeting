@@ -103,7 +103,7 @@ export async function TopAlertsSection({
         </p>
         <p
           data-testid="top-alerts-empty"
-          className="text-sm text-[#00D4AA]"
+          className="text-sm text-muted-foreground"
         >
           {t("boardDeck.topAlerts.allClear")}
         </p>

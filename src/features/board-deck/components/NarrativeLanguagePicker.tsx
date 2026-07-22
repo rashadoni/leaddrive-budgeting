@@ -12,9 +12,8 @@
  * mirroring the IndicatorDetail forecast-language picker pattern
  * (3 small mono buttons; active = lavender border, idle = muted) but
  * with router-push semantics so the server snapshot can re-resolve
- * `narrationLanguage` and `getOrCreateNarration` can return the cached
- * row for the new language (or LLM-call on first switch — same 24h
- * cache window per language).
+ * `narrationLanguage` and the read-only cache helper can return the cached
+ * row for the new language. A missing row stays absent.
  *
  * Why router-push instead of client-side language state:
  *   - The narrative is built server-side (`runNarration` → cache row).
@@ -24,9 +23,8 @@
  *     reader's chosen language so a CFO can send the link as RU and
  *     the recipient sees RU regardless of their browser locale.
  *
- * Cache cost: each language flip on a fresh snapshot costs ~$0.05 +
- * 10-30s (LLM call). After 3 flips per snapshot, all 3 languages are
- * cached → subsequent flips are instant from cache (24h TTL).
+ * Cost boundary: language navigation never calls the provider. Paid
+ * generation is a separate explicit manager POST action.
  */
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
@@ -53,9 +51,7 @@ export function NarrativeLanguagePicker({
     if (lang === currentLanguage || isPending) return;
     const next = new URLSearchParams(searchParams.toString());
     next.set("lang", lang);
-    // Drop `regenerate` if present — the user is switching language,
-    // not asking for a fresh LLM call on the current language. The
-    // new language has its own cache key; let the cache-hit path run.
+    // Drop the retired paid GET escape hatch if it appears in an old link.
     next.delete("regenerate");
     const query = next.toString();
     startTransition(() => {

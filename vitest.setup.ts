@@ -371,7 +371,7 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'boardDeck.topAlerts.eyebrow': 'Top alerts for the board',
   'boardDeck.topAlerts.showingOf': 'Showing {showing} of {total}',
   'boardDeck.topAlerts.affectedCount': '{count} affected sub-cos',
-  'boardDeck.topAlerts.allClear': '✓ No alerts triggered — all systems green.',
+  'boardDeck.topAlerts.allClear': 'No configured alert rule triggered in this snapshot. This does not prove that all data is green or complete.',
   'boardDeck.topAlerts.viewAll': 'View all alerts in Risk Terminal',
   'boardDeck.footer.ariaLabel': 'Page actions',
   'boardDeck.footer.eyebrow': 'Share + drill-down',

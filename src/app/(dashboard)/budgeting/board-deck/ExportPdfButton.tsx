@@ -3,12 +3,7 @@
 import { useState } from "react";
 import { FileText, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-// Recovery 2026-05-16: brave-lehmann's `SummaryLanguage` (from the
-// abandoned `generate-summary` module) was the same shape as main's
-// canonical `Language` exported by `lib/ai/prompts`. Re-aliased here
-// to keep the public API of this button stable while consuming the
-// canonical type.
-import type { Language as SummaryLanguage } from "@/lib/ai/prompts";
+import { useSearchParams } from "next/navigation";
 
 /**
  * Phase 7.G Turn XLVII (Phase E.1) — server-side PDF export button.
@@ -26,15 +21,7 @@ import type { Language as SummaryLanguage } from "@/lib/ai/prompts";
  * dialog, identical output across browsers, includes the AI summary
  * if requested.
  */
-export function ExportPdfButton({
-  period,
-  withSummary = false,
-  language = "en",
-}: {
-  period: string;
-  withSummary?: boolean;
-  language?: SummaryLanguage;
-}) {
+export function ExportPdfButton({ period }: { period: string }) {
   // Namespace is `terminal.boardDeck.exports` — board-deck i18n lives under the
   // `terminal` root (FooterActions + all sibling sections use
   // getTranslations("terminal")). The bare "boardDeck.exports" missed (root
@@ -43,6 +30,7 @@ export function ExportPdfButton({
   const t = useTranslations("terminal.boardDeck.exports");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
 
   async function handleClick() {
     if (busy) return;
@@ -50,8 +38,8 @@ export function ExportPdfButton({
     setError(null);
     try {
       const params = new URLSearchParams({ period });
-      if (withSummary) {
-        params.set("summary", "true");
+      const language = searchParams.get("lang");
+      if (language === "en" || language === "ru" || language === "az") {
         params.set("lang", language);
       }
       const url = `/api/budgeting/board-deck/export-pdf?${params.toString()}`;

@@ -52,6 +52,7 @@ export interface TrendPoint {
  *  (anchor for trailing-12-months walk). */
 function periodAnchorYearMonth(
   rawPeriod: string,
+  asOf: Date,
 ): { year: number; month: number } {
   // Try monthly format first.
   const monthMatch = rawPeriod.match(/^(\d{4})-(\d{2})$/);
@@ -67,10 +68,26 @@ function periodAnchorYearMonth(
   // Annual or unknown — anchor on December of that year.
   const yearMatch = rawPeriod.match(/^(\d{4})$/);
   if (yearMatch) {
-    return { year: Number(yearMatch[1]), month: 12 };
+    const selectedYear = Number(yearMatch[1]);
+    const bakuParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Baku",
+      year: "numeric",
+      month: "numeric",
+    }).formatToParts(asOf);
+    const currentYear = Number(bakuParts.find((p) => p.type === "year")?.value);
+    const currentMonth = Number(bakuParts.find((p) => p.type === "month")?.value);
+    return {
+      year: selectedYear,
+      // A current-year annual view must not chart future months as historical
+      // gaps. Completed years remain anchored to December.
+      month:
+        selectedYear === currentYear && currentMonth >= 1 && currentMonth <= 12
+          ? currentMonth
+          : 12,
+    };
   }
   // Fallback: treat as current calendar (defensive).
-  const now = new Date();
+  const now = asOf;
   return { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 };
 }
 
@@ -109,6 +126,10 @@ export interface BuildTrendSeriesInput {
   operationalIds: readonly string[];
   /** Indicator ids to score. Mirrors snapshot.indicators. */
   indicatorIds: readonly string[];
+  /** Current indicator weights, matching the selected snapshot formula. */
+  weightByIndicatorId?: ReadonlyMap<string, number>;
+  /** Current qualitative penalties, applied consistently across trend points. */
+  riskTagsByCompany?: ReadonlyMap<string, readonly string[]>;
 }
 
 export interface BuildTrendSeriesOptions {
@@ -116,6 +137,8 @@ export interface BuildTrendSeriesOptions {
   prisma?: PrismaSurface;
   /** Override months back (default 12). */
   monthsBack?: number;
+  /** Clock seam for current-year annual anchoring. */
+  asOf?: Date;
 }
 
 /** Build a 12-month trailing trend series.
@@ -134,7 +157,10 @@ export async function buildTrendSeries(
   ) {
     // Nothing to score — return empty-shape series so the chart
     // still renders (12 null points = flat baseline).
-    const { year, month } = periodAnchorYearMonth(input.currentPeriod);
+    const { year, month } = periodAnchorYearMonth(
+      input.currentPeriod,
+      opts.asOf ?? new Date(),
+    );
     return trailingMonths(year, month, monthsBack).map((period) => ({
       period,
       score: null,
@@ -142,7 +168,10 @@ export async function buildTrendSeries(
     }));
   }
 
-  const { year, month } = periodAnchorYearMonth(input.currentPeriod);
+  const { year, month } = periodAnchorYearMonth(
+    input.currentPeriod,
+    opts.asOf ?? new Date(),
+  );
   const periods = trailingMonths(year, month, monthsBack);
 
   if (!opts.prisma) {
@@ -196,10 +225,12 @@ export async function buildTrendSeries(
       indicatorId: r.indicatorId,
       value: r.value as number,
       status: r.status,
+      weight: input.weightByIndicatorId?.get(r.indicatorId) ?? 1,
     }));
     const composites = computeCompositeByCompany(
       cells,
       input.operationalIds as string[],
+      input.riskTagsByCompany,
     );
     let sum = 0;
     let count = 0;

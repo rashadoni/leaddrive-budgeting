@@ -59,6 +59,40 @@ function pdfFilename(period: string): string {
   return `board-deck-${period}.pdf`;
 }
 
+function trustedAppOrigin(): string | null {
+  const configured = process.env.NEXTAUTH_URL;
+  if (!configured) return null;
+  try {
+    const url = new URL(configured);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      url.username ||
+      url.password
+    ) {
+      return null;
+    }
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+const SESSION_COOKIE_PREFIXES = [
+  "authjs.session-token",
+  "__Secure-authjs.session-token",
+  // Retain compatibility with deployments migrated from NextAuth v4 or
+  // configured with the legacy cookie name. CSRF/callback cookies are never
+  // needed by the read-only renderer.
+  "next-auth.session-token",
+  "__Secure-next-auth.session-token",
+] as const;
+
+function isSessionCookie(name: string): boolean {
+  return SESSION_COOKIE_PREFIXES.some(
+    (prefix) => name === prefix || name.startsWith(`${prefix}.`),
+  );
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req);
   if (isAuthError(auth)) return auth;
@@ -78,39 +112,37 @@ export async function GET(req: NextRequest) {
   }
   const period = rawPeriod;
 
-  const wantSummary = req.nextUrl.searchParams.get("summary") === "true";
   const language = parseLanguage(req.nextUrl.searchParams.get("lang"));
 
-  // Build the target URL the headless browser will hit. Same-origin so
-  // the session cookie travels naturally; we replay caller's cookies on
-  // the playwright context to authenticate the internal page request.
-  const protocol = req.nextUrl.protocol; // "http:" / "https:"
-  const host = req.headers.get("host") ?? req.nextUrl.host;
-  const params = new URLSearchParams({ period });
-  if (wantSummary) {
-    params.set("summary", "true");
-    params.set("lang", language);
+  // Never derive the Chromium destination or session-cookie scope from the
+  // request Host header: a crafted Host could turn this authenticated route
+  // into SSRF/session-token exfiltration. NEXTAUTH_URL is deployment-owned.
+  const appOrigin = trustedAppOrigin();
+  if (!appOrigin) {
+    return NextResponse.json(
+      { error: "PDF export unavailable", message: "Trusted application origin is not configured." },
+      { status: 503, headers: { "Cache-Control": "private, no-store" } },
+    );
   }
-  const targetUrl = `${protocol}//${host}/budgeting/board-deck?${params.toString()}`;
+  const params = new URLSearchParams({ period });
+  // The page resolves cached narrative only. Language is safe to forward on
+  // every export; the retired `summary` flag can no longer trigger AI.
+  params.set("lang", language);
+  const targetUrl = `${appOrigin}/budgeting/board-deck?${params.toString()}`;
 
-  // Replay caller's session cookies so the internal page sees the
-  // SAME authenticated user. We rely on host parsing to set the
-  // cookie domain correctly — host can be `localhost:3000`,
-  // `app.example.com`, etc. Strip the port for the cookie domain.
+  // Replay caller's session cookie only to the deployment-owned origin so the
+  // internal page sees the same authenticated user.
   //
-  // Architect Turn-XLVII Проблема fix: filter to next-auth.*-prefixed
-  // cookies only. Replaying ALL cookies (analytics, CSRF, third-party)
-  // would unnecessarily expand the surface area of what the headless
-  // browser accepts; we only need the session token to authenticate.
-  const hostNoPort = host.split(":")[0];
+  // Replay only Auth.js/legacy NextAuth session-token chunks. Replaying all
+  // cookies (analytics, CSRF, third-party) would unnecessarily expand the
+  // headless browser's credential surface.
   const callerCookies = req.cookies
     .getAll()
-    .filter((c) => c.name.startsWith("next-auth."))
+    .filter((c) => isSessionCookie(c.name))
     .map((c) => ({
       name: c.name,
       value: c.value,
-      domain: hostNoPort,
-      path: "/",
+      url: appOrigin,
     }));
 
   let browser;
@@ -133,10 +165,23 @@ export async function GET(req: NextRequest) {
     const context = await browser.newContext();
     if (callerCookies.length > 0) await context.addCookies(callerCookies);
     const page = await context.newPage();
-    await page.goto(targetUrl, {
+    const renderResponse = await page.goto(targetUrl, {
       waitUntil: "networkidle",
       timeout: RENDER_TIMEOUT_MS,
     });
+    const renderedUrl = new URL(page.url());
+    if (
+      !renderResponse?.ok() ||
+      renderedUrl.origin !== appOrigin ||
+      renderedUrl.pathname !== "/budgeting/board-deck"
+    ) {
+      throw new Error(
+        `Authenticated Board Deck render was not reached (status ${renderResponse?.status() ?? "none"}, path ${renderedUrl.pathname}).`,
+      );
+    }
+    await page
+      .locator('[data-testid="board-deck-guide-root"]')
+      .waitFor({ state: "attached", timeout: RENDER_TIMEOUT_MS });
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,

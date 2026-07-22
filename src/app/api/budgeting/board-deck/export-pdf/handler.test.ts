@@ -12,10 +12,29 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const { chromiumLaunchMock, browserMock, contextMock, pageMock } = vi.hoisted(
+const {
+  chromiumLaunchMock,
+  browserMock,
+  contextMock,
+  pageMock,
+  renderResponseMock,
+  locatorMock,
+} = vi.hoisted(
   () => {
+    const renderResponseMock = {
+      ok: vi.fn(() => true),
+      status: vi.fn(() => 200),
+    };
+    const locatorMock = {
+      waitFor: vi.fn().mockResolvedValue(undefined),
+    };
     const pageMock = {
-      goto: vi.fn().mockResolvedValue(undefined),
+      goto: vi.fn().mockResolvedValue(renderResponseMock),
+      url: vi.fn(
+        () =>
+          "http://trusted-budgetpro.test:3000/budgeting/board-deck?period=2025&lang=en",
+      ),
+      locator: vi.fn(() => locatorMock),
       pdf: vi.fn().mockResolvedValue(Buffer.from("%PDF-1.4\nfake pdf body")),
     };
     const contextMock = {
@@ -27,7 +46,14 @@ const { chromiumLaunchMock, browserMock, contextMock, pageMock } = vi.hoisted(
       close: vi.fn().mockResolvedValue(undefined),
     };
     const chromiumLaunchMock = vi.fn().mockResolvedValue(browserMock);
-    return { chromiumLaunchMock, browserMock, contextMock, pageMock };
+    return {
+      chromiumLaunchMock,
+      browserMock,
+      contextMock,
+      pageMock,
+      renderResponseMock,
+      locatorMock,
+    };
   },
 );
 
@@ -43,12 +69,22 @@ const ORG_ID = "org_demo";
 const USER_ID = "u1";
 
 beforeEach(() => {
+  process.env.NEXTAUTH_URL = "http://trusted-budgetpro.test:3000";
   chromiumLaunchMock.mockReset().mockResolvedValue(browserMock);
   browserMock.newContext.mockClear();
   browserMock.close.mockClear().mockResolvedValue(undefined);
   contextMock.addCookies.mockClear().mockResolvedValue(undefined);
   contextMock.newPage.mockClear().mockResolvedValue(pageMock);
-  pageMock.goto.mockClear().mockResolvedValue(undefined);
+  renderResponseMock.ok.mockClear().mockReturnValue(true);
+  renderResponseMock.status.mockClear().mockReturnValue(200);
+  locatorMock.waitFor.mockClear().mockResolvedValue(undefined);
+  pageMock.goto.mockClear().mockResolvedValue(renderResponseMock);
+  pageMock.url
+    .mockClear()
+    .mockReturnValue(
+      "http://trusted-budgetpro.test:3000/budgeting/board-deck?period=2025&lang=en",
+    );
+  pageMock.locator.mockClear().mockReturnValue(locatorMock);
   pageMock.pdf
     .mockClear()
     .mockResolvedValue(Buffer.from("%PDF-1.4\nfake pdf body"));
@@ -73,6 +109,16 @@ describe("GET /api/budgeting/board-deck/export-pdf", () => {
     expect(chromiumLaunchMock).not.toHaveBeenCalled();
   });
 
+  it("fails closed before Chromium when trusted origin is missing or unsafe", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
+    process.env.NEXTAUTH_URL = "file:///etc/passwd";
+    const res = await GET(
+      makeRequest("/api/budgeting/board-deck/export-pdf?period=2025"),
+    );
+    expect(res.status).toBe(503);
+    expect(chromiumLaunchMock).not.toHaveBeenCalled();
+  });
+
   it("returns 200 with PDF Content-Type + Content-Disposition + non-empty body", async () => {
     await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
     const res = await GET(
@@ -89,7 +135,7 @@ describe("GET /api/budgeting/board-deck/export-pdf", () => {
     expect(buf.toString().startsWith("%PDF-1.4")).toBe(true);
   });
 
-  it("composes target URL with period + summary + lang params", async () => {
+  it("composes target URL with period + safe cached-narrative language", async () => {
     await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
     await GET(
       makeRequest(
@@ -98,13 +144,40 @@ describe("GET /api/budgeting/board-deck/export-pdf", () => {
     );
     expect(pageMock.goto).toHaveBeenCalledTimes(1);
     const navigatedUrl = pageMock.goto.mock.calls[0][0] as string;
+    expect(navigatedUrl).toMatch(/^http:\/\/trusted-budgetpro\.test:3000\//);
     expect(navigatedUrl).toContain("/budgeting/board-deck?");
     expect(navigatedUrl).toContain("period=2026");
-    expect(navigatedUrl).toContain("summary=true");
+    expect(navigatedUrl).not.toContain("summary=");
     expect(navigatedUrl).toContain("lang=ru");
   });
 
-  it("does NOT include summary/lang query when ?summary not set", async () => {
+  it("ignores a hostile Host header for Chromium target and cookie scope", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
+    const req = makeRequest(
+      "/api/budgeting/board-deck/export-pdf?period=2026&lang=ru",
+      {
+        headers: {
+          host: "attacker.example",
+          cookie: "authjs.session-token=secret-session",
+        },
+      },
+    );
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    expect(pageMock.goto.mock.calls[0][0]).toMatch(
+      /^http:\/\/trusted-budgetpro\.test:3000\/budgeting\/board-deck/,
+    );
+    expect(pageMock.goto.mock.calls[0][0]).not.toContain("attacker.example");
+    expect(contextMock.addCookies).toHaveBeenCalledWith([
+      expect.objectContaining({
+        name: "authjs.session-token",
+        value: "secret-session",
+        url: "http://trusted-budgetpro.test:3000",
+      }),
+    ]);
+  });
+
+  it("defaults the safe cached-narrative language to en", async () => {
     await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
     await GET(
       makeRequest("/api/budgeting/board-deck/export-pdf?period=2025"),
@@ -112,7 +185,7 @@ describe("GET /api/budgeting/board-deck/export-pdf", () => {
     const navigatedUrl = pageMock.goto.mock.calls[0][0] as string;
     expect(navigatedUrl).toContain("period=2025");
     expect(navigatedUrl).not.toContain("summary=");
-    expect(navigatedUrl).not.toContain("lang=");
+    expect(navigatedUrl).toContain("lang=en");
   });
 
   it("rejects unsupported language and falls back to 'en'", async () => {
@@ -127,12 +200,12 @@ describe("GET /api/budgeting/board-deck/export-pdf", () => {
     expect(navigatedUrl).not.toContain("lang=fr");
   });
 
-  it("replays caller's next-auth cookies on browser context, filters non-session cookies", async () => {
+  it("replays only Auth.js session-token chunks and filters CSRF/non-session cookies", async () => {
     await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
     const req = makeRequest("/api/budgeting/board-deck/export-pdf?period=2025", {
       headers: {
         cookie:
-          "next-auth.session-token=abc123; next-auth.csrf-token=xyz789; analytics=ga-id; another=cookie-value",
+          "authjs.session-token.0=abc123; authjs.session-token.1=def456; authjs.csrf-token=xyz789; analytics=ga-id; another=cookie-value",
       },
     });
     await GET(req);
@@ -141,15 +214,14 @@ describe("GET /api/budgeting/board-deck/export-pdf", () => {
       name: string;
       value: string;
     }>;
-    // Session token + CSRF token are next-auth.* — both should pass through.
-    expect(cookies.find((c) => c.name === "next-auth.session-token")?.value).toBe(
+    expect(cookies.find((c) => c.name === "authjs.session-token.0")?.value).toBe(
       "abc123",
     );
-    expect(cookies.find((c) => c.name === "next-auth.csrf-token")?.value).toBe(
-      "xyz789",
+    expect(cookies.find((c) => c.name === "authjs.session-token.1")?.value).toBe(
+      "def456",
     );
-    // Architect Turn-XLVII Проблема fix: non-next-auth cookies must be
-    // filtered out so the headless browser surface stays minimal.
+    expect(cookies.every((c) => (c as { url?: string }).url === "http://trusted-budgetpro.test:3000")).toBe(true);
+    expect(cookies.find((c) => c.name === "authjs.csrf-token")).toBeUndefined();
     expect(cookies.find((c) => c.name === "analytics")).toBeUndefined();
     expect(cookies.find((c) => c.name === "another")).toBeUndefined();
     expect(cookies).toHaveLength(2);
@@ -165,6 +237,27 @@ describe("GET /api/budgeting/board-deck/export-pdf", () => {
     });
     await GET(req);
     expect(contextMock.addCookies).not.toHaveBeenCalled();
+  });
+
+  it("fails closed instead of exporting a redirected login page", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
+    pageMock.url.mockReturnValueOnce("http://trusted-budgetpro.test:3000/login");
+    const res = await GET(
+      makeRequest("/api/budgeting/board-deck/export-pdf?period=2025"),
+    );
+    expect(res.status).toBe(504);
+    expect(pageMock.pdf).not.toHaveBeenCalled();
+    expect(browserMock.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when the Board Deck render marker is absent", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
+    locatorMock.waitFor.mockRejectedValueOnce(new Error("marker missing"));
+    const res = await GET(
+      makeRequest("/api/budgeting/board-deck/export-pdf?period=2025"),
+    );
+    expect(res.status).toBe(504);
+    expect(pageMock.pdf).not.toHaveBeenCalled();
   });
 
   it("does not call addCookies when caller has no cookies at all", async () => {

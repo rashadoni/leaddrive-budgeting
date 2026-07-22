@@ -115,11 +115,11 @@ describe("TopAlertsSection — truncation footnote", () => {
 });
 
 describe("TopAlertsSection — all-clear empty state", () => {
-  it("renders 'all clear' message when zero alerts", async () => {
+  it("renders a neutral no-rule-match boundary when zero alerts", async () => {
     await renderSection(makeMatches({}), 3);
     const empty = screen.getByTestId("top-alerts-empty");
-    expect(empty.textContent).toContain("✓");
-    expect(empty.textContent).toContain("all systems green");
+    expect(empty.textContent).toContain("No configured alert rule triggered");
+    expect(empty.textContent).toContain("does not prove");
     // No alerts list when empty.
     expect(screen.queryByTestId("top-alerts-list")).toBeNull();
   });

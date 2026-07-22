@@ -27,6 +27,11 @@ import {
 } from "@testing-library/react";
 import { ExportPdfButton } from "./ExportPdfButton";
 
+let searchParamsState = "";
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(searchParamsState),
+}));
+
 let fetchMock: MockInstance;
 
 function pdfResponse() {
@@ -40,6 +45,7 @@ function pdfResponse() {
 }
 
 beforeEach(() => {
+  searchParamsState = "";
   fetchMock = vi.fn(async () => pdfResponse()) as unknown as MockInstance;
   global.fetch = fetchMock as unknown as typeof fetch;
   // Stub URL.createObjectURL + revokeObjectURL — happy-dom doesn't
@@ -77,27 +83,25 @@ describe("ExportPdfButton", () => {
     expect(url).toBe("/api/budgeting/board-deck/export-pdf?period=2025");
   });
 
-  it("threads withSummary + language into URL params", async () => {
-    render(
-      <ExportPdfButton period="2026" withSummary={true} language="ru" />,
-    );
+  it("threads safe cached-narrative language into URL params", async () => {
+    searchParamsState = "lang=ru";
+    render(<ExportPdfButton period="2026" />);
     fireEvent.click(screen.getByRole("button"));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const url = fetchMock.mock.calls[0][0] as string;
     expect(url).toContain("period=2026");
-    expect(url).toContain("summary=true");
     expect(url).toContain("lang=ru");
   });
 
-  it("does NOT add summary/lang when withSummary=false", async () => {
-    render(
-      <ExportPdfButton period="2025" withSummary={false} language="en" />,
-    );
+  it("does not forward legacy regenerate or unrelated query state", async () => {
+    searchParamsState = "regenerate=1&noise=true";
+    render(<ExportPdfButton period="2025" />);
     fireEvent.click(screen.getByRole("button"));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const url = fetchMock.mock.calls[0][0] as string;
-    expect(url).not.toContain("summary=");
     expect(url).not.toContain("lang=");
+    expect(url).not.toContain("regenerate");
+    expect(url).not.toContain("noise");
   });
 
   it("renders error state on non-ok response", async () => {

@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // Mock the audit logger so the test doesn't reach Prisma for it.
 const { logAuditMock } = vi.hoisted(() => ({
-  logAuditMock: vi.fn().mockResolvedValue({ ok: true }),
+  logAuditMock: vi.fn().mockResolvedValue({ ok: true, id: "audit_1" }),
 }));
 vi.mock("@/lib/audit/log", async () => {
   const actual = await vi.importActual<typeof import("@/lib/audit/log")>(
@@ -28,12 +28,14 @@ vi.mock("@/lib/audit/log", async () => {
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 import {
+  getCachedNarration,
   getOrCreateNarration,
   snapshotHash,
   NARRATION_CACHE_TTL_MS,
 } from "./get-or-create-narration";
 import type { BoardSnapshot } from "./build-snapshot";
 import type { NarrationOutput } from "./narrate-snapshot";
+import { NarrationProviderResponseError } from "./narrate-snapshot";
 
 function makeSnapshot(
   overrides: Partial<BoardSnapshot> = {},
@@ -93,7 +95,10 @@ interface MockPrismaShape {
     create: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
   };
-  auditEvent: { create: ReturnType<typeof vi.fn> };
+  auditEvent: {
+    create: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+  };
 }
 
 /**
@@ -118,7 +123,10 @@ function makePrismaShape(): MockPrismaShape {
       create: vi.fn().mockResolvedValue({}),
       update: vi.fn().mockResolvedValue({}),
     },
-    auditEvent: { create: vi.fn().mockResolvedValue({ id: "audit_1" }) },
+    auditEvent: {
+      create: vi.fn().mockResolvedValue({ id: "audit_1" }),
+      update: vi.fn().mockResolvedValue({ id: "audit_1" }),
+    },
   };
 }
 
@@ -128,6 +136,7 @@ function makePrisma(): MockPrismaShape & PrismaSurfaceForTest {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  logAuditMock.mockResolvedValue({ ok: true, id: "audit_1" });
 });
 
 // ---------------------------------------------------------------------------
@@ -209,6 +218,163 @@ describe("snapshotHash", () => {
       }),
     );
     expect(a).not.toBe(b);
+  });
+
+  it("changes when prompt-visible company identity changes", () => {
+    const a = snapshotHash(makeSnapshot());
+    const renamed = makeSnapshot();
+    renamed.operational = renamed.operational.map((company) => ({
+      ...company,
+      name: "Renamed entity",
+      industry: "hospitality",
+    }));
+    expect(snapshotHash(renamed)).not.toBe(a);
+  });
+
+  it("changes when prompt-visible alert content changes at the same count", () => {
+    const first = makeSnapshot({
+      matchesBySeverity: {
+        critical: [{
+          ruleId: "r1",
+          ruleName: "Rule",
+          severity: "critical",
+          message: "First evidence",
+          messageKey: "alerts.messages.r1",
+          messageParams: {},
+          affectedCompanyIds: ["co_1"],
+        }],
+        warning: [],
+        info: [],
+      },
+    });
+    const second = makeSnapshot({
+      matchesBySeverity: {
+        critical: [{
+          ruleId: "r1",
+          ruleName: "Rule",
+          severity: "critical",
+          message: "Changed evidence",
+          messageKey: "alerts.messages.r1",
+          messageParams: {},
+          affectedCompanyIds: ["co_1"],
+        }],
+        warning: [],
+        info: [],
+      },
+    });
+    expect(snapshotHash(second)).not.toBe(snapshotHash(first));
+  });
+
+  it("is stable when only alert evaluation order changes", () => {
+    const alertA = {
+      ruleId: "a-rule",
+      ruleName: "A",
+      severity: "critical" as const,
+      message: "A evidence",
+      messageKey: "alerts.a",
+      messageParams: {},
+      affectedCompanyIds: ["co_1"],
+    };
+    const alertB = {
+      ruleId: "b-rule",
+      ruleName: "B",
+      severity: "critical" as const,
+      message: "B evidence",
+      messageKey: "alerts.b",
+      messageParams: {},
+      affectedCompanyIds: ["co_1"],
+    };
+    const first = makeSnapshot({
+      matchesBySeverity: { critical: [alertA, alertB], warning: [], info: [] },
+    });
+    const reordered = makeSnapshot({
+      matchesBySeverity: { critical: [alertB, alertA], warning: [], info: [] },
+    });
+    expect(snapshotHash(reordered)).toBe(snapshotHash(first));
+  });
+});
+
+describe("getCachedNarration — read-only boundary", () => {
+  it("returns exact cached content and never writes or audits", async () => {
+    const prisma = makePrisma();
+    prisma.boardDeckNarration.findUnique.mockResolvedValue({
+      headline: "Cached",
+      paragraphs: ["a", "b", "c"],
+      modelName: "m",
+      promptVersion: "v1",
+      tokensIn: 10,
+      tokensOut: 5,
+      generatedAt: new Date("2026-05-07T10:00:00.000Z"),
+    });
+    const result = await getCachedNarration(
+      {
+        organizationId: "org_1",
+        snapshot: makeSnapshot(),
+        language: "en",
+      },
+      {
+        prisma: prisma as never,
+        now: () => new Date("2026-05-07T11:00:00.000Z"),
+      },
+    );
+    expect(result).toMatchObject({
+      narration: { headline: "Cached", paragraphs: ["a", "b", "c"] },
+      generatedAt: "2026-05-07T10:00:00.000Z",
+      isStale: false,
+    });
+    expect(prisma.boardDeckNarration.create).not.toHaveBeenCalled();
+    expect(prisma.boardDeckNarration.update).not.toHaveBeenCalled();
+    expect(logAuditMock).not.toHaveBeenCalled();
+  });
+
+  it("returns an expired exact row with a stale marker instead of generating", async () => {
+    const prisma = makePrisma();
+    prisma.boardDeckNarration.findUnique.mockResolvedValue({
+      headline: "Old cached",
+      paragraphs: ["a", "b", "c"],
+      modelName: "m",
+      promptVersion: "v1",
+      tokensIn: 0,
+      tokensOut: 0,
+      generatedAt: new Date("2026-05-01T00:00:00.000Z"),
+    });
+    const result = await getCachedNarration(
+      {
+        organizationId: "org_1",
+        snapshot: makeSnapshot(),
+        language: "ru",
+      },
+      {
+        prisma: prisma as never,
+        now: () => new Date("2026-05-03T00:00:00.000Z"),
+      },
+    );
+    expect(result?.isStale).toBe(true);
+    expect(prisma.boardDeckNarration.create).not.toHaveBeenCalled();
+    expect(logAuditMock).not.toHaveBeenCalled();
+  });
+
+  it("treats malformed cached paragraphs as absent", async () => {
+    const prisma = makePrisma();
+    prisma.boardDeckNarration.findUnique.mockResolvedValue({
+      headline: "Broken",
+      paragraphs: ["only one"],
+      modelName: "m",
+      promptVersion: "v1",
+      tokensIn: 0,
+      tokensOut: 0,
+      generatedAt: new Date(),
+    });
+    await expect(
+      getCachedNarration(
+        {
+          organizationId: "org_1",
+          snapshot: makeSnapshot(),
+          language: "az",
+        },
+        { prisma: prisma as never },
+      ),
+    ).resolves.toBeNull();
   });
 });
 
@@ -366,14 +532,29 @@ describe("getOrCreateNarration — cache miss", () => {
     expect(typeof createArg.data.snapshotHash).toBe("string");
     expect(createArg.data.snapshotHash).toMatch(/^[0-9a-f]{64}$/);
 
-    // Audit emitted (settle the void promise on a microtask boundary).
-    await new Promise((r) => setImmediate(r));
+    // An awaited event is durable before the paid call starts.
     expect(logAuditMock).toHaveBeenCalledTimes(1);
     const auditArg = logAuditMock.mock.calls[0][1];
     expect(auditArg.event.action).toBe("ai_board_deck_narration_run");
     expect(auditArg.event.entityId).toBe("org_1");
-    expect(auditArg.event.metadata.tokensIn).toBe(1500);
+    expect(auditArg.event.metadata.tokensIn).toBe(0);
+    expect(auditArg.event.metadata.modelName).toBe("pending-provider-response");
+    expect(auditArg.event.metadata.outcome).toBe("pending");
     expect(auditArg.actorUserId).toBe("u_admin");
+
+    expect(prisma.auditEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "audit_1", organizationId: "org_1" },
+        data: {
+          metadata: expect.objectContaining({
+            tokensIn: 1500,
+            tokensOut: 700,
+            modelName: VALID_OUTPUT.modelName,
+            outcome: "succeeded",
+          }),
+        },
+      }),
+    );
   });
 
   it("regenerates when snapshot hash differs from cached row", async () => {
@@ -466,9 +647,77 @@ describe("getOrCreateNarration — bypassCache + race + LLM failure", () => {
     );
 
     expect(result).toBeNull();
-    // No row written, no audit emitted.
+    // No row written; the paid attempt was durably audited before provider use.
     expect(prisma.boardDeckNarration.create).not.toHaveBeenCalled();
-    expect(logAuditMock).not.toHaveBeenCalled();
+    expect(logAuditMock).toHaveBeenCalledTimes(1);
+    expect(logAuditMock.mock.calls[0][1].event.action).toBe(
+      "ai_board_deck_narration_run",
+    );
+    expect(prisma.auditEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          metadata: expect.objectContaining({
+            outcome: "provider_failed",
+            tokensIn: 0,
+            tokensOut: 0,
+          }),
+        },
+      }),
+    );
+  });
+
+  it("finalizes failed-response audit with billable provider usage", async () => {
+    const prisma = makePrisma();
+    const runImpl = vi.fn().mockRejectedValue(
+      new NarrationProviderResponseError("invalid response JSON", {
+        modelName: "claude-billable-response",
+        usage: { inputTokens: 1234, outputTokens: 321 },
+      }),
+    );
+
+    const result = await getOrCreateNarration(
+      { organizationId: "org_1", snapshot: makeSnapshot(), language: "en" },
+      { prisma, runNarrationImpl: runImpl },
+    );
+
+    expect(result).toBeNull();
+    expect(prisma.auditEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          metadata: expect.objectContaining({
+            outcome: "provider_failed",
+            modelName: "claude-billable-response",
+            tokensIn: 1234,
+            tokensOut: 321,
+          }),
+        },
+      }),
+    );
+  });
+
+  it("withholds the provider call when the pre-provider audit cannot persist", async () => {
+    const prisma = makePrisma();
+    const runImpl = vi.fn().mockResolvedValue(VALID_OUTPUT);
+    logAuditMock.mockRejectedValueOnce(new Error("audit unavailable"));
+    const result = await getOrCreateNarration(
+      { organizationId: "org_1", snapshot: makeSnapshot(), language: "en" },
+      { prisma, runNarrationImpl: runImpl },
+    );
+    expect(result).toBeNull();
+    expect(runImpl).not.toHaveBeenCalled();
+    expect(prisma.boardDeckNarration.create).not.toHaveBeenCalled();
+  });
+
+  it("withholds the provider call when audit resolves ok=false", async () => {
+    const prisma = makePrisma();
+    const runImpl = vi.fn().mockResolvedValue(VALID_OUTPUT);
+    logAuditMock.mockResolvedValueOnce({ ok: false, error: "db unavailable" });
+    const result = await getOrCreateNarration(
+      { organizationId: "org_1", snapshot: makeSnapshot(), language: "en" },
+      { prisma, runNarrationImpl: runImpl },
+    );
+    expect(result).toBeNull();
+    expect(runImpl).not.toHaveBeenCalled();
   });
 
   it("logs but tolerates non-P2002 write failure", async () => {

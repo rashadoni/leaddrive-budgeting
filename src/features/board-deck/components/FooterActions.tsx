@@ -24,7 +24,7 @@ import { ExportPdfButton } from "@/app/(dashboard)/budgeting/board-deck/ExportPd
  * Phase 7.G Turn LV — Suspense fallback for ExportPptxButton.
  *
  * Turn LIV gave ExportPptxButton a `useSearchParams()` dependency
- * (URL-thread for `?lang=` + `?regenerate=`). Per Next.js App Router
+ * (URL-thread for cache-only `?lang=`). Per Next.js App Router
  * spec, any client component reading `useSearchParams` MUST sit
  * inside a `<Suspense>` boundary or the parent route is forced to
  * dynamic-render-only. The board-deck page is fully dynamic today
@@ -86,7 +86,9 @@ export async function FooterActions({ period }: FooterActionsProps) {
               export via Playwright headless Chromium. Sibling to the PPTX
               button; no Suspense wrapper needed because ExportPdfButton
               doesn't consume `useSearchParams`. */}
-          <ExportPdfButton period={period} />
+          <Suspense fallback={null}>
+            <ExportPdfButton period={period} />
+          </Suspense>
           <PrintButton />
           <Link
             href="/budgeting/terminal"

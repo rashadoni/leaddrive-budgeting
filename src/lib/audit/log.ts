@@ -355,6 +355,9 @@ export type AuditEventInput =
         tokensOut: number;
         modelName: string;
         promptVersion: string;
+        /** Two-phase paid-call lifecycle. `pending` is written before the
+         * provider call; the same event is finalized after the response. */
+        outcome: 'pending' | 'succeeded' | 'provider_failed';
       };
     }
   | {

@@ -45,14 +45,14 @@ const GENERATED_AT = "2026-05-07T10:00:00.000Z";
 async function renderSection(
   narration: NarrationOutput | null,
   generatedAt = GENERATED_AT,
-  currentLanguage: "en" | "ru" | "az" = "en",
   factCheck?: Parameters<typeof NarrativeSection>[0]["factCheck"],
+  isStale = false,
 ) {
   const tree = await NarrativeSection({
     narration,
     generatedAt,
-    currentLanguage,
     factCheck,
+    isStale,
   });
   if (tree === null) return null;
   render(tree as React.ReactElement);
@@ -71,6 +71,13 @@ describe("NarrativeSection — happy path", () => {
     expect(paragraphs[0].textContent).toBe(NARRATION.paragraphs[0]);
     expect(paragraphs[1].textContent).toBe(NARRATION.paragraphs[1]);
     expect(paragraphs[2].textContent).toBe(NARRATION.paragraphs[2]);
+  });
+
+  it("keeps stale-cache disclosure visible for print/PDF", async () => {
+    await renderSection(NARRATION, GENERATED_AT, undefined, true);
+    const attribution = screen.getByTestId("narrative-attribution");
+    expect(attribution.textContent).toContain("STALE");
+    expect(attribution.className).not.toContain("print:hidden");
   });
 
   it("renders attribution with model + version + truncated ISO timestamp", async () => {
@@ -98,7 +105,7 @@ describe("NarrativeSection — Phase 8 C5 fact-check banner", () => {
   });
 
   it("does NOT render banner when factCheck has zero flags", async () => {
-    await renderSection(NARRATION, GENERATED_AT, "en", {
+    await renderSection(NARRATION, GENERATED_AT, {
       flags: [],
       totalChecked: 5,
       matched: 5,
@@ -107,7 +114,7 @@ describe("NarrativeSection — Phase 8 C5 fact-check banner", () => {
   });
 
   it("renders amber banner with per-flag claim/reason/suggestion", async () => {
-    await renderSection(NARRATION, GENERATED_AT, "en", {
+    await renderSection(NARRATION, GENERATED_AT, {
       flags: [
         {
           claim: "92",

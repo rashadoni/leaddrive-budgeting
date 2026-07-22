@@ -39,12 +39,49 @@ beforeEach(() => {
 });
 
 describe('buildBoardSnapshot', () => {
+  it('applies an explicit company allow-list at the first company query', async () => {
+    await buildBoardSnapshot({
+      orgId: ORG_ID,
+      period: '2025',
+      companyIds: ['co_visible_1', 'co_visible_2'],
+    });
+    expect(prismaMock.company.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: ORG_ID,
+          isActive: true,
+          id: { in: ['co_visible_1', 'co_visible_2'] },
+        }),
+      }),
+    );
+  });
+
   it('returns null when org row is missing', async () => {
     prismaMock.organization.findUnique.mockResolvedValue(null);
     const snap = await buildBoardSnapshot({ orgId: ORG_ID, period: '2025' });
     expect(snap).toBeNull();
     // Other queries still ran (Promise.all fan-out) but caller short-circuits.
     expect(prismaMock.organization.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps only canonical risk tags at the shared snapshot boundary', async () => {
+    prismaMock.company.findMany.mockResolvedValue([
+      {
+        id: 'co_alpha',
+        code: 'ALPHA',
+        name: 'Alpha LLC',
+        industry: 'hospitality',
+        level: 2,
+        isActive: true,
+        role: 'operational',
+        sortOrder: 1,
+        settings: {
+          riskTags: ['data_absence', 'legacy_unknown_tag', 42],
+        },
+      },
+    ]);
+    const snap = await buildBoardSnapshot({ orgId: ORG_ID, period: '2025' });
+    expect(snap?.riskTagsByCompany.get('co_alpha')).toEqual(['data_absence']);
   });
 
   it('assembles snapshot — composite + counts + alerts byte-equal page', async () => {

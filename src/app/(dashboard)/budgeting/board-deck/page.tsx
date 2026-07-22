@@ -8,8 +8,9 @@ import {
   type NarrationLanguage,
   type NarrationOutput,
 } from "@/lib/board-deck/narrate-snapshot";
-import { getOrCreateNarration } from "@/lib/board-deck/get-or-create-narration";
-import { hasAnthropicKey } from "@/lib/ai/client";
+import { getCachedNarration } from "@/lib/board-deck/get-or-create-narration";
+import { getCompanyScope } from "@/lib/rbac/company-scope";
+import { hasRole } from "@/lib/permissions";
 import { computeHoldingComposite } from "@/features/board-deck/lib/holding-composite";
 import { buildTrendSeries } from "@/features/board-deck/lib/build-trend-series";
 import { getLogger } from "@/lib/log";
@@ -24,6 +25,7 @@ import { verifyBatchNarrative } from "@/lib/risk/batch-narrative-fact-check";
 import { TopAlertsSection } from "@/features/board-deck/components/TopAlertsSection";
 import { RiskFlagsSection } from "@/features/board-deck/components/RiskFlagsSection";
 import { FooterActions } from "@/features/board-deck/components/FooterActions";
+import { NarrationControls } from "@/features/board-deck/components/NarrationControls";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -56,7 +58,7 @@ export const metadata = {
 export default async function BoardDeckPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; lang?: string; regenerate?: string }>;
+  searchParams: Promise<{ period?: string; lang?: string }>;
 }) {
   const session = await auth();
   // `auth()` (NextAuth server-side) puts orgId at session.user.organizationId
@@ -93,19 +95,23 @@ export default async function BoardDeckPage({
   // Phase 7.E C3 v2 — single shared helper assembles the snapshot;
   // `/api/budgeting/board-deck/export-pptx` consumes the same helper so
   // the page render and PPTX export stay byte-for-byte identical.
-  const snapshot = await buildBoardSnapshot({ orgId, period });
+  const scope = await getCompanyScope(
+    orgId,
+    session.user.id,
+    session.user.role ?? "viewer",
+  );
+  const snapshot = await buildBoardSnapshot({
+    orgId,
+    period,
+    companyIds: scope.ids == null ? null : [...scope.ids],
+  });
   if (!snapshot) {
     redirect("/budgeting");
   }
 
-  // Phase 7.G E.2 v2 (Turn XLVII) — AI-narrated executive summary
-  // ON BY DEFAULT, backed by the BoardDeckNarration cache. Cache hit
-  // = no LLM call. Cache miss = ~$0.05 + 10-30s, then writes the row
-  // for subsequent reads. `?regenerate=1` (admin escape hatch)
-  // bypasses the cache to force a fresh LLM call.
-  // Language follows the user's locale (next-intl) — `?lang=` query
-  // param overrides for ad-hoc inspection. Failure mode unchanged
-  // (returns null → page renders without narrative section).
+  // Page loads and language switches are strictly cache-read-only. A cache
+  // miss or stale row must never trigger paid AI or a tenant-data write.
+  // Managers can explicitly generate through the POST-only control below.
   const localeRaw = await getLocale();
   const langParam = params.lang;
   const narrationLanguage: NarrationLanguage =
@@ -114,23 +120,12 @@ export default async function BoardDeckPage({
       : isNarrationLanguage(localeRaw)
         ? localeRaw
         : "en";
-  const bypassCache =
-    params.regenerate === "1" || params.regenerate === "true";
-  let narration: NarrationOutput | null = null;
-  if (hasAnthropicKey()) {
-    narration = await getOrCreateNarration(
-      {
-        organizationId: orgId,
-        snapshot,
-        language: narrationLanguage,
-        audit: {
-          route: "/budgeting/board-deck",
-          actorUserId: session?.user?.id ?? null,
-        },
-      },
-      { bypassCache },
-    );
-  }
+  const cachedNarration = await getCachedNarration({
+    organizationId: orgId,
+    snapshot,
+    language: narrationLanguage,
+  });
+  const narration: NarrationOutput | null = cachedNarration?.narration ?? null;
   const {
     org,
     operational,
@@ -166,6 +161,10 @@ export default async function BoardDeckPage({
       currentPeriod: period,
       operationalIds: operational.map((c) => c.id),
       indicatorIds: indicators.map((i: IndicatorShape) => i.id),
+      weightByIndicatorId: new Map(
+        indicators.map((indicator) => [indicator.id, indicator.weight ?? 1]),
+      ),
+      riskTagsByCompany,
     },
     { prisma },
   ).catch((err) => {
@@ -188,7 +187,10 @@ export default async function BoardDeckPage({
   const tMetrics = await getTranslations("terminal");
 
   return (
-    <div className="board-deck mx-auto max-w-5xl space-y-8 px-4 py-6 print:max-w-none print:px-0 print:py-0">
+    <div
+      data-testid="board-deck-guide-root"
+      className="board-deck mx-auto max-w-5xl space-y-8 px-4 py-6 print:max-w-none print:px-0 print:py-0"
+    >
       {/* Phase 7.G Turn XLVIII (v2 Turn 2) — Hero section: huge AI
           headline + ONE composite score + 3 lead-in lines + CTA.
           Replaces the v1 header strip + Holding totals stat-grid.
@@ -201,6 +203,48 @@ export default async function BoardDeckPage({
         generatedAt={generatedAt}
         composite={holdingComposite}
         narration={narration}
+      />
+
+      <section
+        data-testid="board-deck-guide-evidence"
+        aria-label={tMetrics("boardDeck.evidence.ariaLabel")}
+        className="rounded-lg border border-border bg-card px-6 py-5 print:border-black"
+      >
+        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+          {tMetrics("boardDeck.evidence.eyebrow")}
+        </p>
+        <div className="mt-3 grid gap-3 text-sm text-foreground/85 md:grid-cols-2">
+          <p>
+            {tMetrics(
+              scope.ids == null
+                ? "boardDeck.evidence.scopeFull"
+                : "boardDeck.evidence.scopeRestricted",
+              { companies: operational.length },
+            )}
+          </p>
+          <p>
+            {tMetrics("boardDeck.evidence.coverage", {
+              observed: snapshot.cells.length,
+              expected: totals.cells,
+            })}
+          </p>
+          <p>{tMetrics("boardDeck.evidence.scoreMethod")}</p>
+          <p>{tMetrics("boardDeck.evidence.alertBoundary")}</p>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          {tMetrics("boardDeck.evidence.assembledAt", {
+            timestamp: generatedAt.replace("T", " ").slice(0, 19) + "Z",
+            period,
+          })}
+        </p>
+      </section>
+
+      <NarrationControls
+        period={period}
+        language={narrationLanguage}
+        canGenerate={hasRole(session.user.role ?? "viewer", "manager")}
+        hasNarration={narration !== null}
+        isStale={cachedNarration?.isStale ?? false}
       />
 
       {/* CTA anchor target. `sr-only` hides it visually but it stays
@@ -263,8 +307,8 @@ export default async function BoardDeckPage({
           drill-downs, which v2 has killed. */}
       <NarrativeSection
         narration={narration}
-        generatedAt={generatedAt}
-        currentLanguage={narrationLanguage}
+        generatedAt={cachedNarration?.generatedAt ?? generatedAt}
+        isStale={cachedNarration?.isStale ?? false}
         // Phase 8 C5 — batch fact-check banner. Runs over the joined
         // headline + paragraphs against the snapshot's org-wide
         // numbers. Cheap (~1ms regex); silent when narration is null.

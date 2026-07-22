@@ -35,7 +35,6 @@
 
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
-import { prisma as defaultPrisma } from "@/lib/prisma";
 import { prismaAdmin } from "@/lib/db/prisma-admin"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log";
 import { getLogger } from "@/lib/log";
@@ -45,7 +44,10 @@ import { getLogger } from "@/lib/log";
 // cache-write-failed + audit-emission-failed.
 const log = getLogger("board-deck:narration");
 import {
+  NARRATION_PROMPT_VERSION,
+  NarrationProviderResponseError,
   runNarration,
+  sortedNarrationAlerts,
   type NarrationLanguage,
   type NarrationOutput,
 } from "./narrate-snapshot";
@@ -68,6 +70,8 @@ export function snapshotHash(snapshot: BoardSnapshot): string {
       const c = snapshot.compositeByCompany.get(co.id);
       return {
         code: co.code,
+        name: co.name,
+        industry: co.industry,
         score: c?.score ?? null,
         band: c?.band ?? "unknown",
       };
@@ -75,23 +79,45 @@ export function snapshotHash(snapshot: BoardSnapshot): string {
     // Sort to ensure deterministic ordering even if upstream changes.
     .sort((a, b) => a.code.localeCompare(b.code));
 
-  const alertCounts = {
-    critical: snapshot.matchesBySeverity.critical.length,
-    warning: snapshot.matchesBySeverity.warning.length,
-    info: snapshot.matchesBySeverity.info.length,
-  };
+  const alerts = (["critical", "warning", "info"] as const).flatMap(
+    (severity) =>
+      sortedNarrationAlerts(snapshot.matchesBySeverity[severity])
+        .map((match) => ({
+          severity,
+          ruleId: match.ruleId,
+          ruleName: match.ruleName,
+          message: match.message,
+          messageKey: match.messageKey ?? null,
+          messageParams: match.messageParams ?? null,
+          affectedCompanyIds: [...match.affectedCompanyIds].sort(),
+        })),
+  );
 
   const payload = {
-    org: snapshot.org.slug,
+    promptVersion: NARRATION_PROMPT_VERSION,
+    org: { slug: snapshot.org.slug, name: snapshot.org.name },
     period: snapshot.period,
     totals: snapshot.totals,
+    persistedIndicatorRows: snapshot.cells.length,
     composites: compositeRows,
-    alertCounts,
+    alerts,
   };
 
   return createHash("sha256")
-    .update(JSON.stringify(payload))
+    .update(JSON.stringify(canonicalize(payload)))
     .digest("hex");
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, child]) => [key, canonicalize(child)]),
+    );
+  }
+  return value;
 }
 
 interface AuditContext {
@@ -120,6 +146,20 @@ interface PrismaSurface {
   auditEvent: PrismaClient["auditEvent"];
 }
 
+interface ReadPrismaSurface {
+  boardDeckNarration: {
+    findUnique: PrismaClient["boardDeckNarration"]["findUnique"];
+  };
+}
+
+export interface CachedNarrationResult {
+  narration: NarrationOutput;
+  /** When the AI narrative itself was generated (not when the page snapshot was read). */
+  generatedAt: string;
+  /** A stale row is still safe to display, but the UI must disclose its age. */
+  isStale: boolean;
+}
+
 export interface GetOrCreateNarrationOptions {
   /** Bypass the cache entirely — write a fresh narration regardless
    *  of existing rows. Used by an admin-only "Regenerate" path. */
@@ -133,6 +173,70 @@ export interface GetOrCreateNarrationOptions {
   /** Override "now" (test seam, lets us assert stale-after behavior
    *  without time travel). */
   now?: () => Date;
+}
+
+export interface GetCachedNarrationOptions {
+  /** Inject Prisma client (test seam). */
+  prisma?: ReadPrismaSurface;
+  /** Override TTL (test seam). */
+  ttlMs?: number;
+  /** Override "now" (test seam). */
+  now?: () => Date;
+}
+
+/**
+ * Read the exact `(org, period, snapshot hash, language)` cache row without
+ * calling an AI provider, mutating the cache, or emitting an audit event.
+ *
+ * Expired rows remain visible with `isStale=true`: absence must not silently
+ * replace previously generated board narrative, while the caller can clearly
+ * label that an explicit paid refresh is required.
+ */
+export async function getCachedNarration(
+  input: Pick<
+    GetOrCreateNarrationInput,
+    "organizationId" | "snapshot" | "language"
+  >,
+  opts: GetCachedNarrationOptions = {},
+): Promise<CachedNarrationResult | null> {
+  const prismaClient =
+    opts.prisma ?? (prismaAdmin as unknown as ReadPrismaSurface);
+  const ttl = opts.ttlMs ?? NARRATION_CACHE_TTL_MS;
+  const now = opts.now ?? (() => new Date());
+  const hash = snapshotHash(input.snapshot);
+  const cached = await prismaClient.boardDeckNarration.findUnique({
+    where: {
+      organizationId_period_snapshotHash_language: {
+        organizationId: input.organizationId,
+        period: input.snapshot.period,
+        snapshotHash: hash,
+        language: input.language,
+      },
+    },
+  });
+  if (!cached || cached.paragraphs.length !== 3) return null;
+
+  return {
+    narration: {
+      headline: cached.headline,
+      paragraphs: [
+        cached.paragraphs[0],
+        cached.paragraphs[1],
+        cached.paragraphs[2],
+      ],
+      modelName: cached.modelName,
+      promptVersion: cached.promptVersion,
+      usage:
+        cached.tokensIn > 0 || cached.tokensOut > 0
+          ? {
+              inputTokens: cached.tokensIn,
+              outputTokens: cached.tokensOut,
+            }
+          : undefined,
+    },
+    generatedAt: cached.generatedAt.toISOString(),
+    isStale: now().getTime() - cached.generatedAt.getTime() >= ttl,
+  };
 }
 
 /** Look up cached narration; on miss, call the LLM, write the row,
@@ -187,6 +291,53 @@ export async function getOrCreateNarration(
     }
   }
 
+  const auditMetadataBase = {
+    period: input.snapshot.period,
+    language: input.language,
+    snapshotHash: hash,
+    promptVersion: NARRATION_PROMPT_VERSION,
+  };
+
+  // Cache miss (or stale or bypass) — record explicit intent before any paid
+  // provider call. If audit is unavailable, fail closed and spend nothing.
+  let auditId: string;
+  try {
+    const audit = await logAuditEvent(prismaAdmin, {
+      organizationId: input.organizationId,
+      actorUserId: input.audit?.actorUserId ?? null,
+      event: {
+        action: "ai_board_deck_narration_run",
+        entityType: "Organization",
+        entityId: input.organizationId,
+        metadata: {
+          ...auditMetadataBase,
+          tokensIn: 0,
+          tokensOut: 0,
+          modelName: "pending-provider-response",
+          outcome: "pending",
+        },
+      },
+      context: buildAuditContext({
+        route: input.audit?.route,
+        userAgent: input.audit?.userAgent,
+      }),
+    });
+    if (!audit.ok) {
+      log.error("pre-provider audit rejected; paid call withheld", {
+        organizationId: input.organizationId,
+        err: audit.error,
+      });
+      return null;
+    }
+    auditId = audit.id;
+  } catch (err) {
+    log.error("pre-provider audit failed; paid call withheld", {
+      organizationId: input.organizationId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+
   // Cache miss (or stale or bypass) — call LLM.
   let result: NarrationOutput;
   try {
@@ -194,10 +345,66 @@ export async function getOrCreateNarration(
       snapshot: input.snapshot,
       language: input.language,
     });
-  } catch {
-    // Failure path: caller renders without narrative.
+  } catch (err) {
+    // Preserve the attempted paid action without storing raw provider or
+    // billing error text. A failed status is materially different from a
+    // successful zero-token call in usage/audit reporting.
+    await prismaClient.auditEvent
+      .update({
+        where: { id: auditId, organizationId: input.organizationId },
+        data: {
+          metadata: {
+            ...auditMetadataBase,
+            tokensIn:
+              err instanceof NarrationProviderResponseError
+                ? (err.usage?.inputTokens ?? 0)
+                : 0,
+            tokensOut:
+              err instanceof NarrationProviderResponseError
+                ? (err.usage?.outputTokens ?? 0)
+                : 0,
+            modelName:
+              err instanceof NarrationProviderResponseError
+                ? err.modelName
+                : "provider-response-unavailable",
+            outcome: "provider_failed",
+          },
+        },
+      })
+      .catch((err: unknown) => {
+        log.error("provider-failure audit finalization failed", {
+          organizationId: input.organizationId,
+          auditId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      });
     return null;
   }
+
+  // Finalize the same durable audit row with actual provider usage. If this
+  // write fails, the pre-provider row remains explicitly `pending` rather
+  // than falsely claiming a zero-token success.
+  await prismaClient.auditEvent
+    .update({
+      where: { id: auditId, organizationId: input.organizationId },
+      data: {
+        metadata: {
+          ...auditMetadataBase,
+          tokensIn: result.usage?.inputTokens ?? 0,
+          tokensOut: result.usage?.outputTokens ?? 0,
+          modelName: result.modelName,
+          promptVersion: result.promptVersion,
+          outcome: "succeeded",
+        },
+      },
+    })
+    .catch((err: unknown) => {
+      log.error("provider-success audit finalization failed", {
+        organizationId: input.organizationId,
+        auditId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
 
   // Persist. Upsert isn't ideal because findUnique-then-update vs
   // create races on concurrent miss — use create with conflict
@@ -258,36 +465,6 @@ export async function getOrCreateNarration(
       });
     }
   }
-
-  // Audit emission (cache miss — LLM dollars spent, attestation
-  // needed). Non-blocking — failure logs but doesn't propagate.
-  void logAuditEvent(defaultPrisma, {
-    organizationId: input.organizationId,
-    actorUserId: input.audit?.actorUserId ?? null,
-    event: {
-      action: "ai_board_deck_narration_run",
-      entityType: "Organization",
-      entityId: input.organizationId,
-      metadata: {
-        period: input.snapshot.period,
-        language: input.language,
-        snapshotHash: hash,
-        tokensIn: result.usage?.inputTokens ?? 0,
-        tokensOut: result.usage?.outputTokens ?? 0,
-        modelName: result.modelName,
-        promptVersion: result.promptVersion,
-      },
-    },
-    context: buildAuditContext({
-      route: input.audit?.route,
-      userAgent: input.audit?.userAgent,
-    }),
-  }).catch((err) => {
-    log.error("audit emission failed (non-blocking)", {
-      organizationId: input.organizationId,
-      err: err instanceof Error ? err.message : String(err),
-    });
-  });
 
   return result;
 }

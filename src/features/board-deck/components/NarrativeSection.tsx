@@ -19,12 +19,8 @@
  */
 
 import { getTranslations } from "next-intl/server";
-import type {
-  NarrationLanguage,
-  NarrationOutput,
-} from "@/lib/board-deck/narrate-snapshot";
+import type { NarrationOutput } from "@/lib/board-deck/narrate-snapshot";
 import type { FactCheckResult } from "@/lib/risk/narrative-fact-check";
-import { NarrativeLanguagePicker } from "./NarrativeLanguagePicker";
 
 export interface NarrativeSectionProps {
   narration: NarrationOutput | null;
@@ -32,20 +28,19 @@ export interface NarrativeSectionProps {
    *  attribution footer so reviewers can correlate the narrative to
    *  a specific snapshot version. */
   generatedAt: string;
-  /** Currently-resolved narration language (`?lang=` or locale).
-   *  Drives the active state of the language picker. */
-  currentLanguage: NarrationLanguage;
   /** Phase 8 C5 — optional batch-narrative fact-check result. Renders
    *  an amber banner under the article body when flags is non-empty.
    *  Absent → no banner (back-compat with cached/older render paths). */
   factCheck?: FactCheckResult;
+  /** Cache age boundary, kept visible in browser print/PDF output. */
+  isStale?: boolean;
 }
 
 export async function NarrativeSection({
   narration,
   generatedAt,
-  currentLanguage,
   factCheck,
+  isStale = false,
 }: NarrativeSectionProps) {
   if (narration === null) return null;
   const t = await getTranslations("terminal");
@@ -56,11 +51,10 @@ export async function NarrativeSection({
       data-testid="board-deck-narrative-full"
       className="rounded-lg bg-card border border-border px-6 md:px-12 py-10 md:py-12 print:border-black print:break-inside-avoid"
     >
-      <div className="flex items-center justify-between gap-4 mb-6">
+      <div className="mb-6">
         <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
           {t("boardDeck.narrative.eyebrow")}
         </p>
-        <NarrativeLanguagePicker currentLanguage={currentLanguage} />
       </div>
       <div
         className="space-y-4 font-serif text-base md:text-lg leading-relaxed text-foreground/90 max-w-2xl print:text-black"
@@ -78,7 +72,7 @@ export async function NarrativeSection({
           data-testid="board-deck-narrative-fact-check"
           role="status"
           aria-live="polite"
-          className="mt-6 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 print:hidden"
+          className="mt-6 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2.5"
         >
           <div className="text-amber-700 dark:text-amber-300 text-[10px] uppercase tracking-wider mb-1">
             {t("varianceExplainer.factCheck.title")}
@@ -106,11 +100,16 @@ export async function NarrativeSection({
         data-testid="narrative-attribution"
         className="mt-8 text-[10px] font-mono text-muted-foreground/60 tracking-wide"
       >
-        {t("boardDeck.narrative.attribution", {
+        {t(
+          isStale
+            ? "boardDeck.narrative.staleAttribution"
+            : "boardDeck.narrative.attribution",
+          {
           model: narration.modelName,
           version: narration.promptVersion,
           generatedAt: generatedAt.replace("T", " ").slice(0, 19) + "Z",
-        })}
+          },
+        )}
       </p>
     </section>
   );
