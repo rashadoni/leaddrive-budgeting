@@ -43,6 +43,7 @@ describe("GET /api/budgeting/cash-flow/odds", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.data.year).toBe(2026)
+    expect(body.data.entryCount).toBe(0)
     expect(body.data.sections).toHaveLength(3)
     expect(body.data.sections.map((s: { activity: string }) => s.activity)).toEqual([
       "operating", "investing", "financing",
@@ -63,6 +64,7 @@ describe("GET /api/budgeting/cash-flow/odds", () => {
     const res = await GET(makeRequest("/api/budgeting/cash-flow/odds?year=2026"))
     const body = await res.json()
     const op = body.data.sections.find((s: { activity: string }) => s.activity === "operating")
+    expect(body.data.entryCount).toBe(4)
     expect(op.totalInflow).toBe(1000)
     expect(op.totalOutflow).toBe(300)
     expect(op.net).toBe(700)
@@ -83,6 +85,7 @@ describe("GET /api/budgeting/cash-flow/odds", () => {
     const res = await GET(makeRequest("/api/budgeting/cash-flow/odds?year=2026&compareYear=2025"))
     const body = await res.json()
     const op = body.data.sections.find((s: { activity: string }) => s.activity === "operating")
+    expect(body.data.compareEntryCount).toBe(1)
     expect(op.compareNet).toBe(1000)
     expect(op.yoyChange).toBe(100) // 100% YoY growth
   })
@@ -96,6 +99,30 @@ describe("GET /api/budgeting/cash-flow/odds", () => {
     const body = await res.json()
     const op = body.data.sections.find((s: { activity: string }) => s.activity === "operating")
     expect(op.totalInflow).toBe(500)
+  })
+
+  it("does not treat bridge-only evidence as a movement statement", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.cashFlowEntry.findMany.mockResolvedValueOnce([
+      { activityType: null, entryType: "bridge", amount: 500, month: 12, source: "CF.05" },
+    ])
+    const res = await GET(makeRequest("/api/budgeting/cash-flow/odds?year=2026"))
+    const body = await res.json()
+    expect(body.data.entryCount).toBe(0)
+    expect(body.data.grandInflow).toBe(0)
+    expect(body.data.grandOutflow).toBe(0)
+  })
+
+  it("keeps an explicitly evidenced zero-value movement", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.cashFlowEntry.findMany.mockResolvedValueOnce([
+      { activityType: "operating", entryType: "inflow", amount: 0, month: 1, category: "Zero receipt", source: null },
+    ])
+    const res = await GET(makeRequest("/api/budgeting/cash-flow/odds?year=2026"))
+    const body = await res.json()
+    expect(body.data.entryCount).toBe(1)
+    expect(body.data.grandInflow).toBe(0)
+    expect(body.data.grandNet).toBe(0)
   })
 
   it("org-scoped query filters by organizationId + year AND excludes soft-deleted (deletedAt:null)", async () => {

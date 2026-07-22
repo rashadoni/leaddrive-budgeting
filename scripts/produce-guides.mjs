@@ -340,6 +340,25 @@ async function recordSection(context, slug, lang, audio, out, poster) {
   const units = unitsOf(scenario);
   const isDo = Boolean(scenario.scenes);
   const page = await context.newPage();
+  const readonlyMutationViolations = [];
+  if (READONLY) {
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+      if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method())) {
+        readonlyMutationViolations.push(`${request.method()} ${request.url()}`);
+        await route.abort("blockedbyclient");
+        return;
+      }
+      await route.continue();
+    });
+  }
+  const assertReadonlyNoMutations = () => {
+    if (readonlyMutationViolations.length > 0) {
+      throw new Error(
+        `READONLY blocked mutating request(s): ${readonlyMutationViolations.join(", ")}`,
+      );
+    }
+  };
   // recordVideo for this page starts ~now; anchor scene offsets to this instant.
   const t0 = Date.now();
   let posterSaved = false;
@@ -383,15 +402,22 @@ async function recordSection(context, slug, lang, audio, out, poster) {
       try {
         if (isDo) await unit.do?.(page, lang, helpers);
         else await performAction(page, unit);
-      } catch (e) { log(`      · scene ${i + 1} action skipped: ${e.message}`); }
+      } catch (e) {
+        if (isDo) throw e;
+        log(`      · scene ${i + 1} action skipped: ${e.message}`);
+      }
+
+      assertReadonlyNoMutations();
 
       // Hold the scene for exactly its narration length (+ tail).
       const targetEnd = offsets[i] + durMs + TAIL_MS;
       const remain = targetEnd - (Date.now() - t0);
       if (remain > 0) await sleep(remain);
+      assertReadonlyNoMutations();
     }
 
     await sleep(END_PAD_MS); // ensure the video always outlasts the last voice
+    assertReadonlyNoMutations();
   } finally {
     await page.close(); // finalizes this page's webm
   }
@@ -409,7 +435,7 @@ async function recordSection(context, slug, lang, audio, out, poster) {
 }
 
 async function performAction(page, step) {
-  if (step.preclick) {
+  if (step.preclick && !READONLY) {
     const pre = await firstLocator(page, step.preclick);
     await pre?.click({ timeout: 4000 }).catch(() => {});
     await page.waitForTimeout(500);
@@ -804,12 +830,50 @@ function makeHelpers(page) {
     async click(sel) {
       const { loc, x, y } = await point(sel);
       await page.waitForTimeout(250);
+      if (READONLY) {
+        await loc?.hover({ timeout: 6000 }).catch(() => {});
+        await pulse(page, x, y);
+        await page.waitForTimeout(400);
+        return;
+      }
       await (loc?.click({ timeout: 8000 }).catch(() => page.mouse.click(x, y).catch(() => {})));
       await pulse(page, x, y);
       await page.waitForTimeout(400);
     },
+    // Explicitly reviewed READONLY-safe interaction. Scenarios may use this
+    // only for local view toggles or GET-only controls, and scenario tests pin
+    // the exact selector constants. Mutating controls must never be passed.
+    async safeClick(sel) {
+      if (typeof sel !== "string") {
+        throw new Error("safeClick requires one exact selector string");
+      }
+      const loc = page.locator(sel);
+      const count = await loc.count();
+      if (count !== 1) {
+        throw new Error(`safeClick expected exactly one ${sel}, found ${count}`);
+      }
+      if (!(await loc.isVisible())) {
+        throw new Error(`safeClick target is not visible: ${sel}`);
+      }
+      await loc.scrollIntoViewIfNeeded({ timeout: 8000 });
+      const box = await loc.boundingBox();
+      if (!box) throw new Error(`safeClick has no bounding box: ${sel}`);
+      const x = box.x + box.width / 2;
+      const y = box.y + Math.min(box.height / 2, 40);
+      await page.mouse.move(x, y, { steps: 18 });
+      await page.waitForTimeout(250);
+      await loc.click({ timeout: 8000 });
+      await pulse(page, x, y);
+      await page.waitForTimeout(400);
+    },
     async fill(sel, text) {
-      const { loc } = await point(sel);
+      const { loc, x, y } = await point(sel);
+      if (READONLY) {
+        await loc?.hover({ timeout: 6000 }).catch(() => {});
+        await pulse(page, x, y);
+        await page.waitForTimeout(400);
+        return;
+      }
       await loc?.click({ timeout: 6000 }).catch(() => {});
       await loc?.selectText().catch(() => {});
       await loc?.pressSequentially(String(text), { delay: 26, timeout: 20000 }).catch(() => {});

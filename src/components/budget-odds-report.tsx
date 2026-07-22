@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import { useTranslations } from "next-intl"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { DataBoundary } from "@/components/ui/data-boundary"
 import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, ArrowDownToLine, ArrowUpFromLine } from "lucide-react"
@@ -40,7 +40,9 @@ interface ODDSSection {
 
 interface ODDSData {
   year: number
+  entryCount: number
   compareYear?: number
+  compareEntryCount?: number
   sections: ODDSSection[]
   grandInflow: number
   grandOutflow: number
@@ -66,6 +68,16 @@ export function BudgetODDSReport({ year }: { year: number }) {
 
   if (isLoading) return <DataBoundary loading>{null}</DataBoundary>
   if (!data) return <div className="p-6 text-center text-muted-foreground">{t("oddsNoData")}</div>
+  if (data.entryCount === 0) {
+    return (
+      <div
+        className="p-6 text-center text-muted-foreground"
+        data-testid="cash-flow-odds-empty"
+      >
+        {t("oddsNoEvidence", { year })}
+      </div>
+    )
+  }
 
   const toggleSection = (activity: string) => {
     const next = new Set(expandedSections)
@@ -81,7 +93,7 @@ export function BudgetODDSReport({ year }: { year: number }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="cash-flow-odds-report">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -108,11 +120,13 @@ export function BudgetODDSReport({ year }: { year: number }) {
         const color = SECTION_COLORS[section.activity]
 
         return (
-          <Card key={section.activity} className="overflow-hidden">
+          <Card key={section.activity} className="overflow-hidden" data-testid={`cash-flow-odds-${section.activity}`}>
             <div className="h-1" style={{ backgroundColor: color }} />
-            <CardHeader
-              className="pb-2 cursor-pointer hover:bg-muted/30 transition-colors"
+            <button
+              type="button"
+              className="w-full p-6 pb-2 text-left cursor-pointer hover:bg-muted/30 transition-colors"
               onClick={() => toggleSection(section.activity)}
+              aria-expanded={isExpanded}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -132,7 +146,7 @@ export function BudgetODDSReport({ year }: { year: number }) {
                   )}
                 </div>
               </div>
-            </CardHeader>
+            </button>
 
             {isExpanded && (
               <CardContent className="pt-0">
@@ -184,7 +198,7 @@ export function BudgetODDSReport({ year }: { year: number }) {
       })}
 
       {/* Grand Total */}
-      <Card className="bg-muted/30">
+      <Card className="bg-muted/30" data-testid="cash-flow-odds-total">
         <CardContent className="py-4">
           <div className="flex items-center justify-between">
             <span className="text-sm font-bold">{t("oddsNetCashFlow")}</span>

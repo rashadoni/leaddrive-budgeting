@@ -36,6 +36,12 @@ export async function GET(req: NextRequest) {
 
   // Group by activity type
   const activities = ["operating", "investing", "financing"] as const
+  const movementEntries = entries.filter(
+    (entry: CashFlowEntry) => entry.entryType === "inflow" || entry.entryType === "outflow",
+  )
+  const compareMovementEntries = compareEntries.filter(
+    (entry: CashFlowEntry) => entry.entryType === "inflow" || entry.entryType === "outflow",
+  )
   const activityLabels: Record<string, string> = {
     operating: "Operating Activities",
     investing: "Investing Activities",
@@ -43,7 +49,7 @@ export async function GET(req: NextRequest) {
   }
 
   const sections = activities.map((activity) => {
-    const activityEntries = entries.filter((e: CashFlowEntry) => (e.activityType || "operating") === activity)
+    const activityEntries = movementEntries.filter((e: CashFlowEntry) => (e.activityType || "operating") === activity)
     const inflows = activityEntries.filter((e: CashFlowEntry) => e.entryType === "inflow")
     const outflows = activityEntries.filter((e: CashFlowEntry) => e.entryType === "outflow")
 
@@ -67,7 +73,7 @@ export async function GET(req: NextRequest) {
     // Compare year
     let compareNet = 0
     if (compareYear) {
-      const compEntries = compareEntries.filter((e: CashFlowEntry) => (e.activityType || "operating") === activity)
+      const compEntries = compareMovementEntries.filter((e: CashFlowEntry) => (e.activityType || "operating") === activity)
       const compIn = compEntries.filter((e: CashFlowEntry) => e.entryType === "inflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0)
       const compOut = compEntries.filter((e: CashFlowEntry) => e.entryType === "outflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0)
       compareNet = compIn - compOut
@@ -104,7 +110,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     data: {
       year,
+      entryCount: movementEntries.length,
       compareYear: compareYear ? parseInt(compareYear) : undefined,
+      compareEntryCount: compareYear ? compareMovementEntries.length : undefined,
       sections,
       grandInflow,
       grandOutflow,

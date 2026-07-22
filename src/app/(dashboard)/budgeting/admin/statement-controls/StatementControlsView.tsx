@@ -239,6 +239,7 @@ export default function StatementControlsView({ companies }: { companies: Compan
         </label>
         <button
           type="button"
+          data-testid="statement-controls-run"
           onClick={() => void run(selectedId, period)}
           disabled={!selectedId || loading}
           className="rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-sm hover:bg-muted disabled:opacity-50 transition-colors"

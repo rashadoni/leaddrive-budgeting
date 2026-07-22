@@ -10,11 +10,12 @@
  */
 import { useState } from "react"
 import { useSession } from "next-auth/react"
+import { useLocale, useTranslations } from "next-intl"
 import { useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Banknote, Trash2 } from "lucide-react"
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+const MONTH_KEYS = ["monthJan", "monthFeb", "monthMar", "monthApr", "monthMay", "monthJun", "monthJul", "monthAug", "monthSep", "monthOct", "monthNov", "monthDec"] as const
 
 interface Entry {
   id: string
@@ -27,6 +28,8 @@ interface Entry {
 }
 
 export function BudgetCashFlowEntries({ entries, year }: { entries: Entry[]; year: number }) {
+  const t = useTranslations("budgeting")
+  const locale = useLocale()
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId
   const role = session?.user?.role
@@ -34,6 +37,17 @@ export function BudgetCashFlowEntries({ entries, year }: { entries: Entry[]; yea
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const activityLabel = (activityType: string | null) => {
+    if (activityType === "operating") return t("oddsActivityOperating")
+    if (activityType === "investing") return t("oddsActivityInvesting")
+    if (activityType === "financing") return t("oddsActivityFinancing")
+    return activityType ?? "—"
+  }
+  const entryTypeLabel = (entryType: string) => {
+    if (entryType === "inflow") return t("cashFlowEntryTypeInflow")
+    if (entryType === "outflow") return t("cashFlowEntryTypeOutflow")
+    return entryType
+  }
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["budgeting", "cash-flow", year] })
 
@@ -59,7 +73,7 @@ export function BudgetCashFlowEntries({ entries, year }: { entries: Entry[]; yea
   }
 
   async function remove(id: string) {
-    if (!window.confirm("Удалить эту запись Cash Flow? (мягкое удаление, восстановимо через Data Archive)")) return
+    if (!window.confirm(t("cashFlowEntryDeleteConfirm"))) return
     setError(null)
     setBusyId(id)
     try {
@@ -82,9 +96,9 @@ export function BudgetCashFlowEntries({ entries, year }: { entries: Entry[]; yea
   if (!entries || entries.length === 0) {
     return (
       <Card>
-        <CardContent className="p-12 text-center text-muted-foreground">
+        <CardContent className="p-12 text-center text-muted-foreground" data-testid="cash-flow-entries-empty">
           <Banknote className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">Нет записей Cash Flow за {year}</p>
+          <p className="font-medium">{t("cashFlowEntriesEmpty", { year })}</p>
         </CardContent>
       </Card>
     )
@@ -93,10 +107,11 @@ export function BudgetCashFlowEntries({ entries, year }: { entries: Entry[]; yea
   const sorted = [...entries].sort((a, b) => a.month - b.month || a.entryType.localeCompare(b.entryType))
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-testid="cash-flow-entry-list">
       <div className="text-xs text-muted-foreground">
-        {entries.length} записей · {year}
-        {canEdit ? " · ✎ суммы/тип/описание правятся inline, ✕ — мягкое удаление" : " · только просмотр (нужна роль manager+)"}
+        {canEdit
+          ? t("cashFlowEntriesEditableSummary", { count: entries.length, year })
+          : t("cashFlowEntriesReadonlySummary", { count: entries.length, year })}
       </div>
       {error && (
         <div className="rounded-lg border border-red-500/40 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
@@ -107,18 +122,20 @@ export function BudgetCashFlowEntries({ entries, year }: { entries: Entry[]; yea
         <table className="w-full text-sm">
           <thead className="bg-muted text-xs">
             <tr>
-              <th className="text-left p-2">Мес.</th>
-              <th className="text-left p-2">Тип</th>
-              <th className="text-left p-2">Активность</th>
-              <th className="text-left p-2">Описание</th>
-              <th className="text-right p-2">Сумма</th>
+              <th className="text-left p-2">{t("cashFlowEntryColMonth")}</th>
+              <th className="text-left p-2">{t("cashFlowEntryColType")}</th>
+              <th className="text-left p-2">{t("cashFlowEntryColActivity")}</th>
+              <th className="text-left p-2">{t("cashFlowEntryColDescription")}</th>
+              <th className="text-right p-2">{t("cashFlowEntryColAmount")}</th>
               {canEdit && <th className="p-2" />}
             </tr>
           </thead>
           <tbody>
             {sorted.map((e) => (
               <tr key={e.id} className={`border-t ${busyId === e.id ? "opacity-50" : ""}`}>
-                <td className="p-2 text-xs">{MONTHS[e.month - 1] ?? e.month}</td>
+                <td className="p-2 text-xs">
+                  {MONTH_KEYS[e.month - 1] ? t(MONTH_KEYS[e.month - 1]).slice(0, 3) : e.month}
+                </td>
                 <td className="p-2">
                   {canEdit ? (
                     <select
@@ -129,14 +146,16 @@ export function BudgetCashFlowEntries({ entries, year }: { entries: Entry[]; yea
                       }}
                       className="text-xs rounded border border-border bg-background px-1 py-0.5"
                     >
-                      <option value="inflow">inflow</option>
-                      <option value="outflow">outflow</option>
+                      <option value="inflow">{t("cashFlowEntryTypeInflow")}</option>
+                      <option value="outflow">{t("cashFlowEntryTypeOutflow")}</option>
                     </select>
                   ) : (
-                    <span className={`text-xs ${e.entryType === "inflow" ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>{e.entryType}</span>
+                    <span className={`text-xs ${e.entryType === "inflow" ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                      {entryTypeLabel(e.entryType)}
+                    </span>
                   )}
                 </td>
-                <td className="p-2 text-xs text-muted-foreground">{e.activityType ?? "—"}</td>
+                <td className="p-2 text-xs text-muted-foreground">{activityLabel(e.activityType)}</td>
                 <td className="p-2">
                   {canEdit ? (
                     <input
@@ -167,7 +186,7 @@ export function BudgetCashFlowEntries({ entries, year }: { entries: Entry[]; yea
                       className="w-24 text-xs text-right bg-transparent border border-transparent hover:border-border focus:border-emerald-500 focus:outline-none rounded px-1 tabular-nums"
                     />
                   ) : (
-                    <span className="text-xs tabular-nums">{e.amount.toLocaleString("ru-RU")}</span>
+                    <span className="text-xs tabular-nums">{e.amount.toLocaleString(locale)}</span>
                   )}
                 </td>
                 {canEdit && (
@@ -177,7 +196,7 @@ export function BudgetCashFlowEntries({ entries, year }: { entries: Entry[]; yea
                       onClick={() => remove(e.id)}
                       disabled={busyId === e.id}
                       className="text-red-600 hover:text-red-800 disabled:opacity-40"
-                      title="Удалить запись"
+                      title={t("cashFlowEntryDeleteTitle")}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>

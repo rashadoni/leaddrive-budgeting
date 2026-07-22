@@ -40,24 +40,38 @@ export async function GET(req: NextRequest) {
   // Build monthly plan vs fact
   const monthly = []
   for (let m = 1; m <= 12; m++) {
+    const salesForecastRows = salesForecasts.filter(
+      (f: typeof salesForecasts[number]) => f.month === m,
+    )
+    const revenueActualRows = budgetActuals.filter(
+      (a: typeof budgetActuals[number]) =>
+        a.lineType === "revenue" &&
+        a.expenseDate &&
+        new Date(a.expenseDate).getMonth() + 1 === m,
+    )
+    const expenseForecastRows = expenseForecasts.filter(
+      (f: typeof expenseForecasts[number]) => f.month === m,
+    )
+    const expenseActualRows = budgetActuals.filter(
+      (a: typeof budgetActuals[number]) =>
+        (a.lineType === "expense" || a.lineType === "cogs") &&
+        a.expenseDate &&
+        new Date(a.expenseDate).getMonth() + 1 === m,
+    )
     // Revenue plan: from SalesForecast
-    const revenuePlan = salesForecasts
-      .filter((f: typeof salesForecasts[number]) => f.month === m)
+    const revenuePlan = salesForecastRows
       .reduce((s: number, f: typeof salesForecasts[number]) => s + (f.amount || 0), 0)
 
     // Revenue fact: from BudgetActual
-    const revenueFact = budgetActuals
-      .filter((a: typeof budgetActuals[number]) => a.lineType === "revenue" && a.expenseDate && new Date(a.expenseDate).getMonth() + 1 === m)
+    const revenueFact = revenueActualRows
       .reduce((s: number, a: typeof budgetActuals[number]) => s + (a.actualAmount || 0), 0)
 
     // Expense plan: from ExpenseForecast
-    const expensePlan = expenseForecasts
-      .filter((f: typeof expenseForecasts[number]) => f.month === m)
+    const expensePlan = expenseForecastRows
       .reduce((s: number, f: typeof expenseForecasts[number]) => s + (f.amount || 0), 0)
 
     // Expense fact: from BudgetActual
-    const expenseFact = budgetActuals
-      .filter((a: typeof budgetActuals[number]) => (a.lineType === "expense" || a.lineType === "cogs") && a.expenseDate && new Date(a.expenseDate).getMonth() + 1 === m)
+    const expenseFact = expenseActualRows
       .reduce((s: number, a: typeof budgetActuals[number]) => s + (a.actualAmount || 0), 0)
 
     const netPlan = revenuePlan - expensePlan
@@ -66,6 +80,12 @@ export async function GET(req: NextRequest) {
     monthly.push({
       month: m,
       label: MONTH_NAMES[m - 1],
+      evidence: {
+        revenuePlan: salesForecastRows.length,
+        revenueFact: revenueActualRows.length,
+        expensePlan: expenseForecastRows.length,
+        expenseFact: expenseActualRows.length,
+      },
       revenuePlan,
       revenueFact,
       revenueVariance: revenueFact - revenuePlan,
@@ -84,10 +104,26 @@ export async function GET(req: NextRequest) {
   const totalRevenueFact = monthly.reduce((s, m) => s + m.revenueFact, 0)
   const totalExpensePlan = monthly.reduce((s, m) => s + m.expensePlan, 0)
   const totalExpenseFact = monthly.reduce((s, m) => s + m.expenseFact, 0)
+  const completeMonths = monthly.filter(
+    (month) =>
+      month.evidence.revenuePlan > 0 &&
+      month.evidence.revenueFact > 0 &&
+      month.evidence.expensePlan > 0 &&
+      month.evidence.expenseFact > 0,
+  ).length
 
   return NextResponse.json({
     data: {
       year,
+      evidenceCounts: {
+        salesForecasts: salesForecasts.length,
+        expenseForecasts: expenseForecasts.length,
+        budgetActuals: budgetActuals.length,
+      },
+      evidenceCoverage: {
+        completeMonths,
+        totalMonths: 12,
+      },
       monthly,
       totals: {
         revenuePlan: totalRevenuePlan,

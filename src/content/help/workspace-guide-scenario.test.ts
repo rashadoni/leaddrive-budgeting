@@ -43,7 +43,7 @@ describe('Workspace help-video scenario', () => {
 
   it('clicks only local read-only view toggles', () => {
     const actions = workspace.scenes.map((scene) => scene.do.toString()).join('\n');
-    const clickedTargets = Array.from(actions.matchAll(/h\.click\(([^)]+)\)/g)).map(
+    const clickedTargets = Array.from(actions.matchAll(/h\.safeClick\(([^)]+)\)/g)).map(
       (match) => match[1],
     );
 
@@ -53,6 +53,7 @@ describe('Workspace help-video scenario', () => {
       'WS_LIST_BUTTON',
     ]);
     expect(actions).not.toContain('h.fill(');
+    expect(actions).not.toContain('h.click(');
     expect(actions).not.toContain('matrix-seed');
     expect(actions).not.toContain('.catch(() => {})');
   });

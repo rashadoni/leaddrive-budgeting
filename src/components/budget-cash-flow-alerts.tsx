@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useLocale, useTranslations } from "next-intl"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -23,11 +24,7 @@ interface Props {
   onResolve?: (alertId: string) => void
 }
 
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-
-function fmt(n: number): string {
-  return n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-}
+const MONTH_KEYS = ["monthJan", "monthFeb", "monthMar", "monthApr", "monthMay", "monthJun", "monthJul", "monthAug", "monthSep", "monthOct", "monthNov", "monthDec"] as const
 
 const ALERT_STYLES: Record<string, { bg: string; icon: string }> = {
   negative_balance: { bg: "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800", icon: "text-red-600 dark:text-red-400" },
@@ -38,7 +35,19 @@ const ALERT_STYLES: Record<string, { bg: string; icon: string }> = {
 const COLLAPSED_COUNT = 2
 
 export function BudgetCashFlowAlerts({ alerts, onResolve }: Props) {
+  const t = useTranslations("budgeting")
+  const locale = useLocale()
   const [expanded, setExpanded] = useState(false)
+  const fmt = (n: number): string => new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(n)
+  const alertTypeLabel = (alertType: string) => {
+    if (alertType === "negative_balance") return t("cashFlowAlertTypeNegativeBalance")
+    if (alertType === "low_balance") return t("cashFlowAlertTypeLowBalance")
+    if (alertType === "large_outflow") return t("cashFlowAlertTypeLargeOutflow")
+    return alertType.replaceAll("_", " ")
+  }
 
   if (alerts.length === 0) return null
 
@@ -46,18 +55,18 @@ export function BudgetCashFlowAlerts({ alerts, onResolve }: Props) {
   const hiddenCount = alerts.length - COLLAPSED_COUNT
 
   return (
-    <Card>
+    <Card data-testid="cash-flow-alerts">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center justify-between">
           <span className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-red-500" />
-            Cash Flow Alerts
+            {t("cashFlowAlertsTitle")}
             <Badge className="bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300 text-[10px] px-1.5">{alerts.length}</Badge>
           </span>
           {hiddenCount > 0 && (
             <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setExpanded(!expanded)}>
               {expanded ? <ChevronUp className="h-3.5 w-3.5 mr-1" /> : <ChevronDown className="h-3.5 w-3.5 mr-1" />}
-              {expanded ? "Collapse" : `+${hiddenCount} more`}
+              {expanded ? t("cashFlowAlertsCollapse") : t("cashFlowAlertsMore", { count: hiddenCount })}
             </Button>
           )}
         </CardTitle>
@@ -74,13 +83,7 @@ export function BudgetCashFlowAlerts({ alerts, onResolve }: Props) {
           role="note"
         >
           <Info className="h-3 w-3 shrink-0 mt-px text-muted-foreground/80" />
-          <span>
-            «Скрыть» только убирает уведомление — баланс не меняется. Чтобы
-            устранить кассовый разрыв, скорректируйте план месяца во вкладке{" "}
-            <span className="font-medium text-foreground">P&L</span> или{" "}
-            <span className="font-medium text-foreground">Cash Flow → ОДДС</span>
-            .
-          </span>
+          <span>{t("cashFlowAlertDismissNote")}</span>
         </div>
         <div className="space-y-1.5">
           {visible.map((alert) => {
@@ -91,13 +94,13 @@ export function BudgetCashFlowAlerts({ alerts, onResolve }: Props) {
                   <AlertTriangle className={`h-3.5 w-3.5 shrink-0 ${style.icon}`} />
                   <div>
                     <span className="text-xs font-medium">
-                      {MONTH_NAMES[alert.month - 1]} {alert.year}
+                      {MONTH_KEYS[alert.month - 1] ? t(MONTH_KEYS[alert.month - 1]).slice(0, 3) : alert.month} {alert.year}
                     </span>
                     <span className="text-[10px] text-muted-foreground ml-1.5">
-                      ({alert.alertType.replace("_", " ")})
+                      ({alertTypeLabel(alert.alertType)})
                     </span>
                     <span className="text-xs font-mono ml-2">
-                      Balance: <span className="font-bold text-red-700 dark:text-red-400">{fmt(alert.projectedBalance)}</span>
+                      {t("cashFlowAlertProjectedBalance", { amount: fmt(alert.projectedBalance) })}
                     </span>
                   </div>
                 </div>
@@ -107,10 +110,10 @@ export function BudgetCashFlowAlerts({ alerts, onResolve }: Props) {
                     variant="ghost"
                     className="h-7 text-xs"
                     onClick={() => onResolve(alert.id)}
-                    title="Hides this alert. Does NOT change the underlying budget — edit Plan rows to actually fix the negative balance."
+                    title={t("cashFlowAlertHideTitle")}
                   >
                     <EyeOff className="h-3.5 w-3.5 mr-1" />
-                    Скрыть
+                    {t("cashFlowAlertHide")}
                   </Button>
                 )}
               </div>

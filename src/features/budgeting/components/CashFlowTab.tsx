@@ -43,21 +43,22 @@ export function CashFlowTab() {
   )
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="cash-flow-guide-root">
       {/* Sub-view toggle */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1 bg-muted rounded-lg p-1">
+      <div className="flex items-center justify-between" data-testid="cash-flow-guide-header">
+        <div className="flex gap-1 bg-muted rounded-lg p-1" data-testid="cash-flow-subview-tabs">
           {[
-            { key: "overview" as const, label: t("cashFlowSubviewOverview") },
-            { key: "entries" as const, label: "Записи" },
-            { key: "odds" as const, label: t("cashFlowSubviewOdds") },
-            { key: "plan-fact" as const, label: t("cashFlowSubviewPlanFact") },
-          ].map(({ key, label }) => (
+            { key: "overview" as const, label: t("cashFlowSubviewOverview"), testId: "cash-flow-subview-overview" },
+            { key: "entries" as const, label: t("cashFlowSubviewEntries"), testId: "cash-flow-subview-entries" },
+            { key: "odds" as const, label: t("cashFlowSubviewOdds"), testId: "cash-flow-subview-odds" },
+            { key: "plan-fact" as const, label: t("cashFlowSubviewPlanFact"), testId: "cash-flow-subview-plan-fact" },
+          ].map(({ key, label, testId }) => (
             <button
               key={key}
               type="button"
               role="tab"
               aria-selected={subView === key}
+              data-testid={testId}
               onClick={() => setSubView(key)}
               // Sub-view tab pattern (similar to OnboardingTabbedPage).
               // motion-safe scale tap + focus ring + cursor pointer
@@ -76,6 +77,7 @@ export function CashFlowTab() {
           <Button
             size="sm"
             variant="outline"
+            data-testid="cash-flow-generate-from-budget"
             onClick={() => generateCashFlow.mutate({ year })}
             disabled={generateCashFlow.isPending}
           >
@@ -87,7 +89,7 @@ export function CashFlowTab() {
 
       {/* Sub-views */}
       {subView === "overview" && (
-        <>
+        <div data-testid="cash-flow-overview" className="space-y-6">
           {alerts.length > 0 && (
             <BudgetCashFlowAlerts
               alerts={alerts}
@@ -107,7 +109,7 @@ export function CashFlowTab() {
             </>
           ) : (
             <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
+              <CardContent className="py-12 text-center text-muted-foreground" data-testid="cash-flow-empty-state">
                 <Banknote className="h-12 w-12 mx-auto mb-3 opacity-30" />
                 <p className="font-medium text-lg mb-2">{t("cashFlowEmptyTitle")}</p>
                 <p className="text-sm">{t("cashFlowEmptyDesc", { year })}</p>
@@ -115,14 +117,24 @@ export function CashFlowTab() {
               </CardContent>
             </Card>
           )}
-        </>
+        </div>
       )}
 
       {subView === "entries" && (
-        <BudgetCashFlowEntries entries={cashFlowData?.entries ?? []} year={year} />
+        <div data-testid="cash-flow-entries-view">
+          <BudgetCashFlowEntries entries={cashFlowData?.entries ?? []} year={year} />
+        </div>
       )}
-      {subView === "odds" && <BudgetODDSReport year={year} />}
-      {subView === "plan-fact" && <BudgetPlanFactDashboard year={year} />}
+      {subView === "odds" && (
+        <div data-testid="cash-flow-odds-view">
+          <BudgetODDSReport year={year} />
+        </div>
+      )}
+      {subView === "plan-fact" && (
+        <div data-testid="cash-flow-plan-fact-view">
+          <BudgetPlanFactDashboard year={year} />
+        </div>
+      )}
     </div>
   )
 }

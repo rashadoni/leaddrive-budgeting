@@ -6,7 +6,7 @@
  *   { voice:{az,en,ru}, do: async (page, lang, h) => { ... } } ] } }
  *
  * h helpers move the VISIBLE cursor to a real element, then act:
- *   h.hover(sel) · h.click(sel) · h.moveTo(sel) · h.fill(sel,text) · h.sleep(ms)
+ *   h.hover(sel) · h.safeClick(sel) · h.moveTo(sel) · h.fill(sel,text) · h.sleep(ms)
  * A `sel` may be an array — the first selector that exists wins (fallback chain).
  *
  * Scene length == narration length (recorder holds each scene for its voice
@@ -43,14 +43,7 @@ const BANNER = ['[data-testid="statement-controls-shadow-banner"]', "main"];
 const BANNER_DETAIL = ['[data-testid="statement-controls-shadow-banner"] p', BANNER[0], "main"];
 const COMPANY_SELECT_SEL = '[data-testid="statement-controls-company-select"]';
 const COMPANY_SELECT = [COMPANY_SELECT_SEL, "main select"];
-const RUN_BTN = [
-  "main button:has-text('Run controls')",
-  "main button:has-text('Запустить контроли')",
-  "main button:has-text('Kontrolları işə sal')",
-  "main button:has-text('Running')",
-  "main button:has-text('Выполняется')",
-  "main button:has-text('İcra olunur')",
-];
+const RUN_BTN = '[data-testid="statement-controls-run"]';
 const RESULT = '[data-testid="statement-controls-result"]';
 const CARD_BS = ['[data-testid="statement-control-balance_sheet"]', "main"];
 const SIGN_CONV = ['[data-testid="statement-controls-sign-convention"]', "main"];
@@ -86,11 +79,41 @@ const WS_WATERFALL = ['[data-testid="workspace-waterfall"]', "main"];
 const WS_GAUGE = ['[data-testid="workspace-execution-gauge"]', "main"];
 const WS_CATEGORY_BARS = ['[data-testid="workspace-category-bars"]', "main"];
 const WS_CONTROLS = ['[data-testid="workspace-controls"]', "main"];
-const WS_MATERIAL = ['[data-testid="workspace-material-filter"]', WS_CONTROLS[0]];
-const WS_MATRIX_BUTTON = ['[data-testid="workspace-view-matrix"]', WS_CONTROLS[0]];
-const WS_LIST_BUTTON = ['[data-testid="workspace-view-list"]', WS_CONTROLS[0]];
+const WS_MATERIAL = '[data-testid="workspace-material-filter"]';
+const WS_MATRIX_BUTTON = '[data-testid="workspace-view-matrix"]';
+const WS_LIST_BUTTON = '[data-testid="workspace-view-list"]';
 const WS_MATRIX = ['[data-testid="workspace-matrix"]', "main"];
 const WS_TABLE = ['[data-testid="workspace-table"]', "main table", "main"];
+
+// ── Cash Flow guide readiness ─────────────────────────────────────────────
+// Production-safe with READONLY=true. Only the Entries/Overview local-state
+// tabs are clicked. Generate, alerts, inline fields and delete controls are
+// deliberately never passed to safeClick. The evidence selector is honest for
+// both states: real chart/table when rows exist, explicit empty-state otherwise.
+const CF_ROOT = '[data-testid="cash-flow-guide-root"]';
+const CF_HEADER = '[data-testid="cash-flow-guide-header"]';
+const CF_TABS = '[data-testid="cash-flow-subview-tabs"]';
+const CF_OVERVIEW_BUTTON = '[data-testid="cash-flow-subview-overview"]';
+const CF_ENTRIES_BUTTON = '[data-testid="cash-flow-subview-entries"]';
+const CF_GENERATE = '[data-testid="cash-flow-generate-from-budget"]';
+const CF_OVERVIEW = '[data-testid="cash-flow-overview"]';
+const CF_EVIDENCE = [
+  '[data-testid="cash-flow-chart"]',
+  '[data-testid="cash-flow-empty-state"]',
+];
+const CF_TOTALS = [
+  '[data-testid="cash-flow-chart-totals"]',
+  '[data-testid="cash-flow-empty-state"]',
+];
+const CF_MONTHLY = [
+  '[data-testid="cash-flow-monthly-table"]',
+  '[data-testid="cash-flow-empty-state"]',
+];
+const CF_ENTRIES_VIEW = '[data-testid="cash-flow-entries-view"]';
+const CF_ENTRIES_EVIDENCE = [
+  '[data-testid="cash-flow-entry-list"]',
+  '[data-testid="cash-flow-entries-empty"]',
+];
 
 // Select AZSEKER (code AZSF) from the company <select>. READONLY-safe: selecting
 // an option only changes local React state; the fetch is a GET. Find the option
@@ -189,7 +212,7 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(WS_CONTROLS);
-          await h.click(WS_MATERIAL);
+          await h.safeClick(WS_MATERIAL);
           await h.hover(WS_CONTROLS);
         },
       },
@@ -200,7 +223,7 @@ export default {
           ru: "Переключение со Списка на Матрицу меняет только представление на экране. Если матрица настроена, план раскладывается по подразделениям и типам затрат. Если она не настроена, экран прямо сообщает об этом и отдельно предлагает создание. В этом гайде мы не нажимаем эту кнопку: только проверяем вид, не создаём строки, не меняем суммы и не запускаем согласование.",
         },
         do: async (p, l, h) => {
-          await h.click(WS_MATRIX_BUTTON);
+          await h.safeClick(WS_MATRIX_BUTTON);
           await p.waitForSelector('[data-testid="workspace-matrix"]', { timeout: 8000 });
           await h.moveTo(WS_MATRIX);
         },
@@ -212,7 +235,7 @@ export default {
           ru: "После возврата в Список главная P&L-таблица становится дорожкой разбора. Выручка, себестоимость и операционные расходы разделены, а между ними по каноническим формулам рассчитаны валовая и операционная прибыль. План, факт и процент отклонения стоят рядом, поэтому от сводки можно перейти к конкретной строке счёта без смены логики.",
         },
         do: async (p, l, h) => {
-          await h.click(WS_LIST_BUTTON);
+          await h.safeClick(WS_LIST_BUTTON);
           await p.waitForSelector('[data-testid="workspace-table"]', { timeout: 8000 });
           await h.moveTo(WS_TABLE);
           await h.hover(WS_TABLE);
@@ -227,6 +250,106 @@ export default {
         do: async (p, l, h) => {
           await h.moveTo(WS_KPIS);
           await h.hover(WS_PROFIT);
+        },
+      },
+    ],
+  },
+  "cash-flow": {
+    route: "/budgeting?tab=cash-flow",
+    title: {
+      az: "Pul axını — mənbədən aylıq balansa",
+      en: "Cash Flow — from source entries to monthly balance",
+      ru: "Денежный поток — от исходных записей к месячному балансу",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "Bu, Büdcələşdirmə bölməsinin Pul axını sahəsidir. Yuxarıdakı dörd görünüş mənbə qeydlərini, aylıq pul axını icmalını, fəaliyyətlər üzrə hesabatı və gəlir-xərc plan-fakt analizini ayırır. Cari il sistem vaxtından seçilir; bu ekran təşkilat üzrə işləyir və yuxarıdakı büdcə planının Cash Flow məlumatını avtomatik məhdudlaşdırdığını güman etmək olmaz.",
+          en: "This is the Cash Flow area inside Budgeting. The four views separate source entries, the monthly cash overview, the statement by operating activity, and a revenue-and-expense plan-versus-actual analysis. The current year follows system time; this surface is organization-wide, so you must not assume the budget plan selected elsewhere automatically scopes the Cash Flow ledger.",
+          ru: "Это раздел «Денежный поток» внутри бюджетирования. Четыре представления разделяют исходные записи, месячный обзор денежных средств, отчёт по видам деятельности и анализ план-факт доходов и расходов. Текущий год берётся из системной даты; экран работает по организации, поэтому нельзя считать, что выбранный в другом месте бюджетный план автоматически ограничивает реестр Cash Flow.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CF_ROOT);
+          await h.hover(CF_HEADER);
+        },
+      },
+      {
+        voice: {
+          az: "İlk olaraq əsas icmalın sübut vəziyyətini yoxlayın. Real Cash Flow qeydləri varsa, qrafik və aylıq cədvəl görünür. Qeyd yoxdursa, ekran konkret il üçün məlumat olmadığını açıq bildirir. Boş vəziyyət sıfır daxilolma, sıfır ödəniş və ya sağlam balans demək deyil; o, hələ mənbə sübutunun daxil edilmədiyini göstərir.",
+          en: "Start by checking the evidence state of the overview. When real Cash Flow entries exist, the chart and monthly table appear. When no entries exist, the page explicitly says that the selected year has no data. That empty state is not zero inflow, zero payment, or a healthy balance; it means the source evidence has not been supplied yet.",
+          ru: "Начинайте с проверки состояния доказательств в обзоре. Когда существуют реальные записи Cash Flow, появляются график и месячная таблица. Если записей нет, экран прямо сообщает об отсутствии данных за выбранный год. Такое пустое состояние не означает нулевые поступления, нулевые платежи или здоровый баланс — исходные подтверждения ещё не загружены.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CF_OVERVIEW);
+          await h.hover(CF_EVIDENCE);
+        },
+      },
+      {
+        voice: {
+          az: "Mənbə qeydləri mövcud olduqda yuxarı kart yaşıl daxilolmaları və qırmızı ödənişləri sütunlarla, bağlanış balansını isə xəttlə göstərir. Başlıqdakı cəmlər seçilmiş ilin ümumi hərəkətini verir; hər hansı ayın bağlanış balansı mənfidirsə, pul kəsiri nişanı görünür. Boş vəziyyətdə bu rəqəmlər yaradılmır və sıfır kimi təqdim edilmir.",
+          en: "When source entries are available, the upper card plots inflows as green bars, payments as red bars, and closing balance as a line. The header totals summarize movement for the selected year, and a cash-gap badge appears if any month closes below zero. In the empty state these numbers are not fabricated and are not presented as zeros.",
+          ru: "Когда исходные записи доступны, верхняя карточка показывает поступления зелёными столбцами, платежи красными, а конечный баланс — линией. Итоги в заголовке суммируют движение выбранного года, и при отрицательном закрытии месяца появляется признак кассового разрыва. В пустом состоянии эти числа не создаются и не показываются как нули.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CF_TOTALS);
+          await h.hover(CF_TOTALS);
+        },
+      },
+      {
+        voice: {
+          az: "Aylıq cədvəldə məntiq açılış balansından başlayır, daxilolma və ödənişlərdən xalis hərəkəti hesablayır və bağlanış balansına keçir. Növbəti ay əvvəlki ayın bağlanışı ilə əlaqəli olmalıdır. Cədvəl yalnız həqiqi qeydlər olduqda audit izi kimi istifadə edilir; boş ekranı on iki sıfır ay kimi şərh etmək düzgün deyil.",
+          en: "The monthly table starts with opening balance, applies inflows and payments to calculate net movement, and arrives at closing balance. The next month should continue from the prior close. Use this table as an audit trail only when real entries exist; an empty screen must never be interpreted as twelve evidenced zero months.",
+          ru: "Месячная таблица начинается с начального баланса, применяет поступления и платежи, рассчитывает чистое движение и приходит к конечному балансу. Следующий месяц должен продолжать предыдущее закрытие. Используйте таблицу как дорожку проверки только при наличии реальных записей; пустой экран нельзя трактовать как двенадцать подтверждённых нулевых месяцев.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CF_MONTHLY);
+          await h.hover(CF_MONTHLY);
+        },
+      },
+      {
+        voice: {
+          az: "Sağdakı Büdcədən yarat düyməsi sadə görünüş filtri deyil. O, seçilmiş il üzrə yaradılmış Cash Flow qeydlərini yenidən qurur və təşkilatın uyğun büdcə planlarını emal edə bilər. Buna görə bu təlim düyməni yalnız göstərir, heç vaxt basmır. İstehsal məlumatında belə əməliyyat ayrıca preview, backup və sahib təsdiqi tələb edir.",
+          en: "The Generate from budget button is not a harmless view filter. It rebuilds generated Cash Flow entries for the selected year and may process eligible budget plans across the organization. This guide therefore points to the control but never presses it. On production data, that operation requires its own preview, backup, bounded scope, and explicit owner approval.",
+          ru: "Кнопка «Сгенерировать из бюджета» — не безобидный фильтр представления. Она перестраивает созданные системой записи Cash Flow за выбранный год и может обработать подходящие бюджетные планы всей организации. Поэтому гайд только показывает кнопку и никогда её не нажимает. На проде такая операция требует отдельного preview, резервной копии, ограниченного scope и явного разрешения владельца.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CF_GENERATE);
+          await h.hover(CF_GENERATE);
+        },
+      },
+      {
+        voice: {
+          az: "Digər tabları mənbə ilə qarışdırmayın. PAH görünüşü Cash Flow qeydlərini əməliyyat, investisiya və maliyyələşdirmə fəaliyyətinə ayırır. Gəlir-xərc plan-fakt görünüşü isə satış və xərc proqnozlarını büdcə faktı ilə müqayisə edir; o, Cash Flow reyestrinin uzlaşdırılması deyil. Hər iki görünüş giriş olmadıqda naməlum vəziyyət göstərməlidir, sıfır hesabat yox.",
+          en: "Do not confuse the supporting tabs with the source ledger. CFS groups Cash Flow entries into operating, investing, and financing activities. Revenue-and-expense plan versus actual compares sales and expense forecasts with budget actuals; it is not a reconciliation of Cash Flow entries. Both views must show an unknown empty state when their inputs are absent, never a fully populated zero report.",
+          ru: "Не смешивайте вспомогательные вкладки с исходным реестром. ОДДС группирует записи Cash Flow по операционной, инвестиционной и финансовой деятельности. План-факт доходов и расходов сравнивает прогнозы продаж и затрат с бюджетным фактом; это не сверка записей Cash Flow. При отсутствии входов оба экрана должны показывать неизвестное пустое состояние, а не заполненный нулевой отчёт.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CF_TABS);
+          await h.hover(CF_TABS);
+        },
+      },
+      {
+        voice: {
+          az: "Qeydlər görünüşü hesablamanın mənbəyinə enir: ay, daxilolma və ya ödəniş növü, fəaliyyət, təsvir və məbləğ. Manager və admin üçün bu sətirlər redaktə və yumşaq silmə idarələri daşıya bilər. Təlim yalnız lokal taba keçir; heç bir sahəyə fokus vermir, dəyəri dəyişmir, blur yaratmır və silmə düyməsinə toxunmur.",
+          en: "Entries is the drill-down to calculation sources: month, inflow or payment type, activity, description, and amount. For managers and administrators these rows may expose inline editing and recoverable soft-delete controls. The guide only switches the local tab; it never focuses a field, changes a value, triggers blur, or touches a delete action.",
+          ru: "«Записи» — это переход к источникам расчёта: месяц, тип поступления или платежа, деятельность, описание и сумма. Для менеджера и администратора строки могут содержать inline-редактирование и восстановимое мягкое удаление. Гайд лишь переключает локальную вкладку: не фокусирует поля, не меняет значения, не вызывает blur и не касается удаления.",
+        },
+        do: async (p, l, h) => {
+          await h.safeClick(CF_ENTRIES_BUTTON);
+          await p.waitForSelector(CF_ENTRIES_VIEW, { timeout: 8000 });
+          await h.moveTo(CF_ENTRIES_EVIDENCE);
+        },
+      },
+      {
+        voice: {
+          az: "İcmala qayıdanda düzgün iş ardıcıllığı belədir: əvvəl il və təşkilat scope-unu təsdiqləyin, sonra mənbə qeydlərinin mövcudluğunu yoxlayın, yalnız bundan sonra qrafik, aylıq balans və fəaliyyətlər üzrə hesabatı oxuyun. Məlumat yoxdursa, növbəti addım rəqəm uydurmaq və ya generatoru kor-koranə işə salmaq deyil, təsdiqlənmiş Cash Flow faylını preview ilə idxal etməkdir.",
+          en: "Back in Overview, the safe operating sequence is simple: confirm year and organization scope, verify that source entries exist, and only then interpret the chart, monthly balances, and activity statement. If evidence is absent, the next step is not to invent zeros or run the generator blindly; it is to preview and import an approved Cash Flow source file.",
+          ru: "После возврата в Обзор безопасный порядок прост: подтвердите год и scope организации, проверьте наличие исходных записей и только затем читайте график, месячные балансы и отчёт по деятельности. Если доказательств нет, следующий шаг — не придумывать нули и не запускать генератор вслепую, а сделать preview и импортировать утверждённый исходный файл Cash Flow.",
+        },
+        do: async (p, l, h) => {
+          await h.safeClick(CF_OVERVIEW_BUTTON);
+          await p.waitForSelector(CF_OVERVIEW, { timeout: 8000 });
+          await h.moveTo(CF_EVIDENCE);
         },
       },
     ],
@@ -284,7 +407,7 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(RUN_BTN);
-          await h.click(RUN_BTN);
+          await h.safeClick(RUN_BTN);
           await p.waitForSelector(RESULT, { timeout: 15000 }).catch(() => {});
         },
       },
