@@ -263,6 +263,83 @@ Claude Code must stop and request direction when:
 - a visual direction materially contradicts this spec;
 - a production deploy or merge is required and not explicitly authorized.
 
+## Current checkpoint — 2026-07-22
+
+### Repository and release
+
+- Project: `/home/rashad/projects/leaddrive-budgeting`
+- Branch: `main`
+- Live application release: `1e91b79d81b713665fa9c735a8b11a1f3557908b`
+- Board Deck release series:
+  - `4394f607` — evidence, subgroup and paid-action boundaries;
+  - `7180d3e4` — bounded production Chromium PDF rendering;
+  - `1e91b79d` — requested-locale PDF and print-only application chrome removal.
+- Exact GitHub CI runs: `29932400397`, `29934608187`, `29936766254` — green.
+- Final verified backup: `pre-deploy-2026-07-22T162054Z-1e91b79d81b7.sql.gz`,
+  gzip-valid, mode `0600`.
+
+### Completed and live-verified
+
+- Opening Board Deck, changing language, exporting PPTX or exporting PDF is
+  cache-read-only and cannot auto-run paid Anthropic generation.
+- Paid narration is isolated behind an explicit manager-only POST with a
+  localized cost disclosure and audit accounting.
+- EN/RU/AZ evidence boundaries describe subgroup scope, persisted/expected
+  coverage, `absent != zero/green`, score methodology and current-month limits.
+- PDF uses the deployment-owned Chromium binary, rate limit `2/min` per
+  organization/user/IP and a process-wide maximum of two concurrent renders.
+- PDF replays only allow-listed session cookies, pins the allow-listed requested
+  locale and fails closed on a login redirect.
+- Printed Board Deck hides the dashboard sidebar, header and help-video chrome.
+- Live production checks: EN/RU/AZ `200`; only GET requests; zero narration,
+  external, console or page-error calls. Live RU PDF: `200`, `application/pdf`,
+  62,961 bytes and `%PDF-`; its rendered first page contains Russian evidence
+  text and no application chrome. Earlier live PPTX: 103,308 bytes and `PK`.
+- Production counts stayed `5` BoardDeckNarration rows and `6`
+  `ai_board_deck_narration_run` audit events before/after verification: no paid
+  generation and no database write occurred.
+- Production is healthy, `/login` is `200`, and all 27 migrations are current.
+
+### Verification evidence
+
+- `npx tsc --noEmit` — passed.
+- Final targeted PDF/layout suites — 2 files, 27 tests passed.
+- Full `npx vitest run` — 591 files; 7,343 passed; 121 skipped; 0 failed.
+- `npm run build` — passed; 160 application routes/pages generated.
+- Pre-commit TypeScript and M7 scanner — passed.
+- Exact-SHA CI `29936766254` — full secret scan, Prisma generate, TypeScript,
+  RLS gate, M7 scanner, Vitest and Next.js build passed.
+- Independent adversarial review — PASS after the print help-video chrome fix.
+
+### Remaining plan
+
+1. Track 1 owner-data gates: operational facts; legal/audit registers;
+   customer/supplier registers; confirmed base/FX evidence; PROMALT 2025 P&L;
+   CPC/PROMALT/AZSF balance sheets; EDEN rainfall-region policy.
+2. Track 2 owner-question gate: confirm the two primary client questions, then
+   design and implement the simple `Overview/Today` decision screen.
+3. Track 3: READONLY EN/RU/AZ scenarios are prepared and live-tested; actual
+   TTS/video/poster assets still require paid-TTS permission, silence/frame
+   inspection and owner acceptance.
+4. Track 4: currency preregistration and real-import builder-sign tests wait on
+   owner evidence; Stage F provider-neutral shadow foundation is complete.
+5. Moody's, S&P/FactSet and paid Google Trends remain disabled until a separate
+   commercial approval. No credentials have been stored.
+
+### Blockers and worktree safety
+
+- No current engineering blocker in the released Board Deck slice.
+- Product blocker: the owner must confirm the two client questions before Track
+  2 implementation, per the approved plan.
+- Data/methodology blockers are the owner inputs listed above; missing data must
+  not be replaced with fabricated zeroes or historical series.
+- Media blocker: paid TTS and owner visual/audio acceptance.
+- Commercial blocker: licensed data-provider approval.
+- Existing mixed/untracked user files remain deliberately uncommitted and must
+  not be staged broadly: `.claude/settings.json`, `docs/ROADMAP.md`,
+  `docs/risk-terminal-2.0/08-AUTONOMOUS-WORK-PLAN.md`, `docs/security/`,
+  `output/`, and `scripts/*-local.ts`.
+
 ## 10. Copy-ready master prompt
 
 Copy the following into Claude Code:
