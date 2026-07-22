@@ -70,6 +70,28 @@ const FX_DATES = [
 ];
 const WHY = ['[data-testid="statement-controls-why"]', "main"];
 
+// ── Workspace / P&L execution view ────────────────────────────────────────
+// READONLY-safe: the only clicks toggle local list/matrix/materiality state.
+// No export, sync, create, edit, save or delete action is touched.
+const WS_TITLE = ["main h1", "h1", "main"];
+const WS_PLAN = ["main select >> nth=0", "main select"];
+const WS_COMPANY = ["main select >> nth=1", "main select"];
+const WS_CONTEXT = ['[data-testid="workspace-execution-context"]', "main"];
+const WS_KPIS = ['[data-testid="workspace-kpis"]', "main"];
+const WS_REVENUE = ['[data-testid="workspace-kpi-revenue"]', WS_KPIS[0]];
+const WS_COGS = ['[data-testid="workspace-kpi-cogs"]', WS_KPIS[0]];
+const WS_EXPENSES = ['[data-testid="workspace-kpi-expenses"]', WS_KPIS[0]];
+const WS_PROFIT = ['[data-testid="workspace-kpi-operating-profit"]', WS_KPIS[0]];
+const WS_WATERFALL = ['[data-testid="workspace-waterfall"]', "main"];
+const WS_GAUGE = ['[data-testid="workspace-execution-gauge"]', "main"];
+const WS_CATEGORY_BARS = ['[data-testid="workspace-category-bars"]', "main"];
+const WS_CONTROLS = ['[data-testid="workspace-controls"]', "main"];
+const WS_MATERIAL = ['[data-testid="workspace-material-filter"]', WS_CONTROLS[0]];
+const WS_MATRIX_BUTTON = ['[data-testid="workspace-view-matrix"]', WS_CONTROLS[0]];
+const WS_LIST_BUTTON = ['[data-testid="workspace-view-list"]', WS_CONTROLS[0]];
+const WS_MATRIX = ['[data-testid="workspace-matrix"]', "main"];
+const WS_TABLE = ['[data-testid="workspace-table"]', "main table", "main"];
+
 // Select AZSEKER (code AZSF) from the company <select>. READONLY-safe: selecting
 // an option only changes local React state; the fetch is a GET. Find the option
 // whose text names AZSEKER/AZSF (label is "<code> · <name>"), else the first real
@@ -92,6 +114,123 @@ const selectCompany = async (p, h) => {
 };
 
 export default {
+  "workspace": {
+    route: "/budgeting?tab=workspace",
+    title: {
+      az: "İş sahəsi — plan və fakt P&L",
+      en: "Workspace — plan versus actual P&L",
+      ru: "Рабочая область — план и факт P&L",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "Bu, Büdcələşdirmə bölməsinin əsas İş sahəsidir. Ekran bir seçilmiş büdcə planını fakt məlumatları ilə yanaşı göstərir və gəlir, maya dəyəri, əməliyyat xərcləri və əməliyyat mənfəəti üzrə rəhbər baxışı verir. Yuxarıdakı plan siyahısından il və ssenarini, yanındakı siyahıdan isə bütün holdinqi və ya ayrıca əməliyyat şirkətini seçmək olar.",
+          en: "This is the main Budgeting Workspace. It places one selected budget plan beside realized actuals and gives management a single view of revenue, cost of goods sold, operating expenses and operating profit. The first selector chooses the year and plan; the second switches between the consolidated holding and an individual operating company.",
+          ru: "Это основная Рабочая область раздела бюджетирования. Она ставит выбранный бюджетный план рядом с фактическими данными и даёт руководителю единый взгляд на выручку, себестоимость, операционные расходы и операционную прибыль. Первый список выбирает год и план, второй переключает весь холдинг или отдельную операционную компанию.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(WS_TITLE);
+          await h.hover(WS_PLAN);
+          await h.moveTo(WS_COMPANY);
+        },
+      },
+      {
+        voice: {
+          az: "Əvvəlcə dövr kontekstini oxuyun. Fakt yalnız ilin bir hissəsini əhatə edirsə, sarı məlumat sətri neçə ayın bağlandığını açıq deyir. Buna görə tam illik büdcəyə qarşı aşağı icra faizi avtomatik olaraq pis nəticə sayılmır; mövsümi şəkər və kənd təsərrüfatı biznesində ilin ilk ayları təbii olaraq daha zəif görünə bilər.",
+          en: "Start with the period context. When actuals cover only part of the year, the amber note states exactly how many months are closed. A low execution percentage against a full-year budget is therefore not automatically a bad result; in seasonal sugar and agriculture businesses the early months can legitimately look light.",
+          ru: "Начинайте с контекста периода. Если факт покрывает только часть года, жёлтая строка прямо указывает, сколько месяцев закрыто. Поэтому низкий процент исполнения против годового бюджета не означает автоматически плохой результат: в сезонном сахарном и аграрном бизнесе первые месяцы закономерно могут выглядеть слабо.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(WS_CONTEXT);
+          await h.hover(WS_CONTEXT);
+        },
+      },
+      {
+        voice: {
+          az: "Dörd üst kart P&L-in qısa xülasəsidir. Gəlir kartı planı və fakt icrasını, maya dəyəri kartı ümumi marjanı, xərclər kartı əməliyyat büdcəsinin istifadəsini, son kart isə gəlirdən maya dəyəri və əməliyyat xərcləri çıxıldıqdan sonrakı əməliyyat mənfəətini göstərir. Rəqəmlər seçilmiş plan və şirkət filtrinə uyğun yenilənir.",
+          en: "The four top cards are the P&L summary. Revenue shows the plan and actual execution; COGS shows the planned gross-margin basis; Expenses shows consumption of the operating budget; and the final card shows operating profit after revenue less COGS and operating expenses. Every figure follows the selected plan and company filter.",
+          ru: "Четыре верхние карточки — это краткое P&L. Выручка показывает план и исполнение факта, Себестоимость — основу плановой валовой маржи, Расходы — использование операционного бюджета, а последняя карточка — операционную прибыль после вычета себестоимости и операционных расходов. Все цифры следуют выбранному плану и фильтру компании.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(WS_REVENUE);
+          await h.hover(WS_COGS);
+          await h.hover(WS_EXPENSES);
+          await h.moveTo(WS_PROFIT);
+        },
+      },
+      {
+        voice: {
+          az: "Növbəti sətirdə şəlalə qrafiki büdcədən fakta keçidi izah edir: büdcə, proqnoz, fakt, fərq və il sonu proyeksiyası eyni ardıcıllıqda görünür. Sağdakı icra göstəricisi ayrıca xərc və gəlir faizlərini, üstəgəl ilin keçən hissəsini müqayisə edir. Bu, bir rəqəmə baxıb mövsümlülüyü unutmağın qarşısını alır.",
+          en: "The next row explains the movement from budget to reality. The waterfall lays out budget, forecast, actual, variance and year-end projection in one sequence. The execution gauge beside it separates expense and revenue execution and compares them with elapsed time, preventing a single percentage from hiding the seasonal basis.",
+          ru: "Следующий ряд объясняет переход от бюджета к реальности. Водопад последовательно показывает бюджет, прогноз, факт, отклонение и проекцию на конец года. Индикатор исполнения рядом разделяет исполнение расходов и выручки и сопоставляет их с прошедшей частью года, чтобы один процент не скрывал сезонную основу.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(WS_WATERFALL);
+          await h.hover(WS_WATERFALL);
+          await h.moveTo(WS_GAUGE);
+        },
+      },
+      {
+        voice: {
+          az: "Kateqoriyalar qrafiki fərqin harada yarandığını göstərir. Ən böyük gəlir və xərc sətirləri plan, proqnoz və fakt üzrə yanaşı verilir; kiçik uzun quyruq isə digər kateqoriyalarda birləşdirilir. Buradan diqqəti hansı məhsula, xərc ailəsinə və ya məsuliyyət sahəsinə yönəltmək lazım olduğunu tez görmək mümkündür.",
+          en: "The category chart shows where the variance comes from. The largest revenue and expense lines appear side by side for plan, forecast and actual, while the long tail is grouped into Other. It is the fastest way to see which product, cost family or responsibility area deserves the next drill-down.",
+          ru: "График по категориям показывает, откуда возникло отклонение. Крупнейшие строки выручки и расходов стоят рядом по плану, прогнозу и факту, а длинный хвост объединён в «Прочее». Так быстрее всего понять, какой продукт, семейство затрат или зона ответственности требует следующего разбора.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(WS_CATEGORY_BARS);
+          await h.hover(WS_CATEGORY_BARS);
+        },
+      },
+      {
+        voice: {
+          az: "Aşağıdakı idarəetmə sətrində heç nə bazaya yazmadan görünüşü daraltmaq olar. Axtarış kateqoriyanı tapır, növ filtri gəlirləri və xərcləri ayırır, Əhəmiyyətli düyməsi yalnız seçilmiş faiz və manat həddini keçən fərqləri saxlayır. Rəqəm formatı isə tam məbləğ ilə min və milyon qısa yazılışı arasında dəyişir.",
+          en: "The control row narrows the view without writing anything to the database. Search finds a category, the type filter separates revenue from expenses, Material only keeps variances above the chosen percentage or manat threshold, and the number-format toggle switches between full amounts and compact thousands or millions.",
+          ru: "Строка управления сужает представление без записи в базу. Поиск находит категорию, фильтр типа отделяет выручку от расходов, «Только существенные» оставляет отклонения выше выбранного процента или порога в манатах, а формат чисел переключает полные суммы на сокращённые тысячи и миллионы.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(WS_CONTROLS);
+          await h.click(WS_MATERIAL);
+          await h.hover(WS_CONTROLS);
+        },
+      },
+      {
+        voice: {
+          az: "Siyahıdan matris görünüşünə keçid yalnız ekrandakı təqdimatı dəyişir. Matris şöbə ilə xərc növünün kəsişməsində planı göstərir və böyük büdcədə struktur boşluqlarını tapmağa kömək edir. Bu əməliyyat oxuma rejimindədir: sətir yaratmır, məbləği dəyişmir və heç bir təsdiq prosesi başlatmır.",
+          en: "Switching from List to Matrix changes only the on-screen presentation. The matrix places the plan at the intersection of department and cost type, which helps reveal structural gaps in a large budget. This is a read-only view change: it creates no line, changes no amount and starts no approval workflow.",
+          ru: "Переключение со Списка на Матрицу меняет только представление на экране. Матрица раскладывает план на пересечении подразделения и типа затрат и помогает заметить структурные пробелы большого бюджета. Это режим чтения: он не создаёт строк, не меняет суммы и не запускает согласование.",
+        },
+        do: async (p, l, h) => {
+          await h.click(WS_MATRIX_BUTTON);
+          await p.waitForSelector('[data-testid="workspace-matrix"]', { timeout: 8000 }).catch(() => {});
+          await h.moveTo(WS_MATRIX);
+        },
+      },
+      {
+        voice: {
+          az: "Siyahıya qayıdanda əsas P&L cədvəli görünür. Gəlir, maya dəyəri və əməliyyat xərcləri ayrıca bölmələrdir; onların arasında ümumi mənfəət və əməliyyat mənfəəti kanonik düsturlarla hesablanır. Hər bölmədə plan, fakt və faiz fərqi yanaşıdır. Beləcə rəhbər xülasədən konkret hesab sətrinə qədər eyni məntiqi izləyir.",
+          en: "Back in List view, the main P&L table becomes the audit trail. Revenue, COGS and operating expenses are separate sections, with gross profit and operating profit calculated between them using the canonical formulas. Plan, actual and percentage variance sit side by side, so management can move from the summary to a specific account line without changing logic.",
+          ru: "После возврата в Список главная P&L-таблица становится дорожкой разбора. Выручка, себестоимость и операционные расходы разделены, а между ними по каноническим формулам рассчитаны валовая и операционная прибыль. План, факт и процент отклонения стоят рядом, поэтому от сводки можно перейти к конкретной строке счёта без смены логики.",
+        },
+        do: async (p, l, h) => {
+          await h.click(WS_LIST_BUTTON);
+          await p.waitForSelector('[data-testid="workspace-table"]', { timeout: 8000 }).catch(() => {});
+          await h.moveTo(WS_TABLE);
+          await h.hover(WS_TABLE);
+        },
+      },
+      {
+        voice: {
+          az: "İş sahəsinin əsas qaydası budur: əvvəl dövrü və şirkəti yoxlayın, sonra xülasə kartlarını oxuyun, fərqin mənbəyini qrafikdə tapın və yalnız bundan sonra cədvələ enin. Bu ardıcıllıq tam illik planı qismən faktla səhv müqayisə etmədən P&L riskini tez və dürüst izah etməyə imkan verir.",
+          en: "The Workspace has one simple operating rhythm: verify period and company first, read the summary cards, locate the driver in the charts, and only then drill into the table. Following that order lets you explain P&L risk quickly without mistaking a partial-year actual for a completed full-year result.",
+          ru: "У Рабочей области простой рабочий ритм: сначала проверьте период и компанию, затем прочитайте сводные карточки, найдите драйвер на графиках и только потом спускайтесь в таблицу. Такой порядок позволяет быстро объяснить риск P&L и не принять неполный годовой факт за завершённый результат всего года.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(WS_KPIS);
+          await h.hover(WS_PROFIT);
+        },
+      },
+    ],
+  },
   "statement-controls": {
     route: "/budgeting/admin/statement-controls",
     title: {

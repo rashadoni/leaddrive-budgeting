@@ -432,7 +432,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
       {/* Execution-% context — frames a partial-year actual vs the full-year
           budget so the % isn't misread as a low full-year execution. */}
       {showExecContext && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+        <div data-testid="workspace-execution-context" className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           <Info className="h-4 w-4 mt-0.5 shrink-0" />
           <span>{t("execContextNote", { covered: actualMonthsCovered, total: periodMonths })}</span>
         </div>
@@ -444,9 +444,9 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
         const grossMarginPct = totalRevenuePlanned > 0 ? ((totalRevenuePlanned - totalCOGSPlanned) / totalRevenuePlanned * 100) : 0
         const revExecPct = totalRevenuePlanned > 0 ? Math.round((totalRevenueActual / totalRevenuePlanned) * 100) : 0
         return (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div data-testid="workspace-kpis" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Revenue Budget */}
-            <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200 dark:from-indigo-950/30 dark:to-indigo-900/20 dark:border-indigo-800 p-5">
+            <div data-testid="workspace-kpi-revenue" className="rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200 dark:from-indigo-950/30 dark:to-indigo-900/20 dark:border-indigo-800 p-5">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t("sectionRevenues")}</span>
                 <div className="h-9 w-9 rounded-full bg-indigo-200 dark:bg-indigo-800 flex items-center justify-center">
@@ -457,7 +457,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
               <div className="text-xs text-muted-foreground mt-1">{byCategory.filter((c: BudgetCategoryRow) => c.lineType === "revenue").length} {t("colCategory").toLowerCase()} · {revExecPct}% {t("kpiExecution").toLowerCase()}</div>
             </div>
             {/* COGS Budget */}
-            <div className="rounded-xl bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 dark:from-cyan-950/30 dark:to-cyan-900/20 dark:border-cyan-800 p-5">
+            <div data-testid="workspace-kpi-cogs" className="rounded-xl bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 dark:from-cyan-950/30 dark:to-cyan-900/20 dark:border-cyan-800 p-5">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t("sectionCOGS")}</span>
                 <div className="h-9 w-9 rounded-full bg-cyan-200 dark:bg-cyan-800 flex items-center justify-center">
@@ -468,7 +468,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
               <div className="text-xs text-muted-foreground mt-1">{t("sectionMargin").split("(")[0].trim()}: {grossMarginPct.toFixed(1)}%</div>
             </div>
             {/* Operating Expenses */}
-            <div className="rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 dark:from-orange-950/30 dark:to-orange-900/20 dark:border-orange-800 p-5">
+            <div data-testid="workspace-kpi-expenses" className="rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 dark:from-orange-950/30 dark:to-orange-900/20 dark:border-orange-800 p-5">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t("sectionExpenses")}</span>
                 <div className="h-9 w-9 rounded-full bg-orange-200 dark:bg-orange-800 flex items-center justify-center">
@@ -479,7 +479,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
               <div className="text-xs text-muted-foreground mt-1">{byCategory.filter((c: BudgetCategoryRow) => c.lineType === "expense").length} {t("colCategory").toLowerCase()} · {Math.round(expExecPct)}% {t("kpiExecution").toLowerCase()}</div>
             </div>
             {/* Net Budget Position */}
-            <div className={`rounded-xl p-5 ${netPosition >= 0 ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800" : "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800"}`}>
+            <div data-testid="workspace-kpi-operating-profit" className={`rounded-xl p-5 ${netPosition >= 0 ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800" : "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800"}`}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t("operatingProfit")}</span>
                 <div className={`h-9 w-9 rounded-full flex items-center justify-center ${netPosition >= 0 ? "bg-emerald-200 dark:bg-emerald-800" : "bg-red-200 dark:bg-red-800"}`}>
@@ -495,8 +495,8 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
 
       {/* ROW 2: Waterfall + Gauge */}
       {byCategory.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Card className="lg:col-span-2 border-0 shadow-md">
+        <div data-testid="workspace-charts" className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Card data-testid="workspace-waterfall" className="lg:col-span-2 border-0 shadow-md">
             <CardHeader className="pb-1">
               <CardTitle className="text-sm font-semibold">{t("chartWaterfall") || "Budget Waterfall"}</CardTitle>
               <p className="text-[10px] text-muted-foreground">{t("chartWaterfallSubtitle") || "Budget → Forecast → Actual → Variance → Projection"}</p>
@@ -511,7 +511,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
               />
             </CardContent>
           </Card>
-          <Card className="lg:col-span-1 border-0 shadow-md">
+          <Card data-testid="workspace-execution-gauge" className="lg:col-span-1 border-0 shadow-md">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold">{t("budgetExecution") || "Budget Execution"}</CardTitle>
               <p className="text-[10px] text-muted-foreground">{budgetExecEmoji} {budgetExecLabel}</p>
@@ -530,7 +530,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
 
       {/* ROW 3: Category Bars */}
       {byCategory.length > 0 && (
-        <Card className="border-0 shadow-md">
+        <Card data-testid="workspace-category-bars" className="border-0 shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">{t("chartPlanForecastActual") || "Plan vs Actual by Category"}</CardTitle>
             <p className="text-[10px] text-muted-foreground">{byCategory.filter((c: BudgetCategoryRow) => c.planned > 0 || c.actual > 0).length} active categories</p>
@@ -585,7 +585,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
       )}
 
       {/* Actions */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div data-testid="workspace-controls" className="flex flex-wrap items-center gap-2">
         {autoActualTotal > 0 && (
           <Button size="sm" variant="outline" title={t("hintBtnSyncActuals")} onClick={handleSync} disabled={syncActuals.isPending}>
             {syncActuals.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}
@@ -597,11 +597,11 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
           <Button size="sm" variant="outline" title={t("hintBtnExport")}><DollarSign className="h-4 w-4 mr-1" /> {t("btnExport")}</Button>
         </a>
         <div className="flex items-center border rounded-md overflow-hidden">
-          <Button size="sm" variant={workspaceView === "list" ? "default" : "ghost"} className="h-8 text-xs rounded-none px-2"
+          <Button data-testid="workspace-view-list" size="sm" variant={workspaceView === "list" ? "default" : "ghost"} className="h-8 text-xs rounded-none px-2"
             onClick={() => setWorkspaceView("list")} title={t("wsViewList")}>
             <List className="h-4 w-4" />
           </Button>
-          <Button size="sm" variant={workspaceView === "matrix" ? "default" : "ghost"} className="h-8 text-xs rounded-none px-2"
+          <Button data-testid="workspace-view-matrix" size="sm" variant={workspaceView === "matrix" ? "default" : "ghost"} className="h-8 text-xs rounded-none px-2"
             onClick={() => setWorkspaceView("matrix")} title={t("wsViewMatrix")}>
             <LayoutGrid className="h-4 w-4" />
           </Button>
@@ -613,7 +613,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
           <option value="expense">{t("filterExpenses")}</option>
           <option value="revenue">{t("filterRevenues")}</option>
         </select>
-        <Button size="sm" variant={showMaterialOnly ? "default" : "outline"} className="h-8 text-xs"
+        <Button data-testid="workspace-material-filter" size="sm" variant={showMaterialOnly ? "default" : "outline"} className="h-8 text-xs"
           onClick={() => setShowMaterialOnly(!showMaterialOnly)} title={t("hintFilterMaterial")}>
           {t("filterMaterial")}
         </Button>
@@ -627,7 +627,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
             <span>₼</span>
           </div>
         )}
-        <Button size="sm" variant={compactNumbers ? "default" : "outline"} className="h-8 text-xs font-mono"
+        <Button data-testid="workspace-compact-numbers" size="sm" variant={compactNumbers ? "default" : "outline"} className="h-8 text-xs font-mono"
           onClick={() => setCompactNumbers(!compactNumbers)} title={t("wsCompactNumbersTitle")}>
           {compactNumbers ? "1.2M" : "1,234"}
         </Button>
@@ -635,7 +635,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
 
       {/* === MATRIX VIEW === */}
       {workspaceView === "matrix" && analytics?.matrix && analytics.matrix.cells.length > 0 && (
-        <BudgetMatrixGrid matrix={analytics.matrix} compact={compactNumbers} />
+        <div data-testid="workspace-matrix"><BudgetMatrixGrid matrix={analytics.matrix} compact={compactNumbers} /></div>
       )}
       {workspaceView === "matrix" && (!analytics?.matrix || analytics.matrix.cells.length === 0) && (
         <Card>
@@ -672,10 +672,10 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
       )}
 
       {/* === MAIN EDITABLE GRID === */}
-      {workspaceView === "list" && (<Card className="border-0 shadow-md overflow-hidden">
+      {workspaceView === "list" && (<Card data-testid="workspace-list" className="border-0 shadow-md overflow-hidden">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table data-testid="workspace-table" className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-[#1a3050] border-b-2 border-white/10">
                 <tr>
                   <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white/90"><span className="inline-flex items-center gap-1.5">{t("colCategory")} <InfoHint text={t("hintColCategory")} size={12} /></span></th>
@@ -833,4 +833,3 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
     </div>
   )
 }
-
