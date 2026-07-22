@@ -111,14 +111,20 @@ export default async function IntelHealthPage() {
   const maxDailyCount = Math.max(1, ...stats.last7Days.map((d) => d.count))
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div
+      className="mx-auto max-w-6xl space-y-6"
+      data-testid="data-control-intel-health"
+    >
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
         <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
       </header>
 
       {/* Status row */}
-      <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <section
+        className="grid grid-cols-1 md:grid-cols-4 gap-4"
+        data-testid="data-control-intel-health-summary"
+      >
         <Card>
           <Label>{t("labels.status")}</Label>
           <span

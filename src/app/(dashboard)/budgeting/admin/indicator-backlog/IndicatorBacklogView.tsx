@@ -16,7 +16,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   Mail,
   Upload,
@@ -42,12 +42,28 @@ import type {
 interface Props {
   companies: CompanyBacklog[];
   summary: BacklogSummary;
+  period: string;
 }
 
 type CategoryFilter = "all" | string;
 type OwnerFilter = "all" | string;
 
-export function IndicatorBacklogView({ companies, summary }: Props) {
+function localizedIndicatorName(
+  item: {
+    indicatorNameEn: string;
+    indicatorNameRu: string | null;
+    indicatorNameAz: string | null;
+  },
+  locale: string,
+): string {
+  if (locale === "az") return item.indicatorNameAz ?? item.indicatorNameEn;
+  if (locale === "ru") return item.indicatorNameRu ?? item.indicatorNameEn;
+  return item.indicatorNameEn;
+}
+
+export function IndicatorBacklogView({ companies, summary, period }: Props) {
+  const t = useTranslations("adminIndicatorBacklog");
+  const locale = useLocale();
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>("all");
   // Show all entities by default (incl. those at 100%) — user wanted to
@@ -73,38 +89,50 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
     categoryFilter !== "all" || ownerFilter !== "all" || hideComplete;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="data-control-backlog-content">
+      <div
+        className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+        data-testid="data-control-backlog-period"
+      >
+        {t("periodDisclosure", { period })}
+      </div>
       {/* ─── Summary cards with visual progress ─── */}
-      <div className="rounded-xl border border-border/60 bg-gradient-to-br from-card to-card/50 p-5">
+      <div
+        className="rounded-xl border border-border/60 bg-gradient-to-br from-card to-card/50 p-5"
+        data-testid="data-control-backlog-summary"
+      >
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
           <SummaryCell
-            label="Entities"
+            label={t("summary.entities")}
             value={summary.totalEntities}
-            sub="active sub-cos"
+            sub={t("summary.activeEntities")}
           />
           <SummaryCell
-            label="Total indicators"
+            label={t("summary.totalIndicators")}
             value={summary.totalApplicable}
-            sub="industry-applicable"
+            sub={t("summary.industryApplicable")}
           />
           <SummaryCell
-            label="With data"
+            label={t("summary.withData")}
             value={summary.totalPresent}
-            sub="have values"
+            sub={t("summary.haveValues")}
             tone="emerald"
             icon={CheckCircle2}
           />
           <SummaryCell
-            label="Missing"
+            label={t("summary.missing")}
             value={summary.totalMissing}
-            sub="awaiting data"
+            sub={t("summary.awaitingData")}
             tone="rose"
             icon={AlertCircle}
           />
           <SummaryCell
-            label="Holding readiness"
+            label={t("summary.holdingReadiness")}
             value={`${summary.overallReadinessPct}%`}
-            sub={`${summary.totalPresent} of ${summary.totalApplicable}`}
+            sub={t("summary.ratio", {
+              present: summary.totalPresent,
+              total: summary.totalApplicable,
+            })}
             tone={readinessTone(summary.overallReadinessPct)}
           />
         </div>
@@ -121,10 +149,10 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
           <div className="flex items-center gap-2 mb-3">
             <Users className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-medium text-foreground">
-              By owner role
+              {t("byOwnerTitle")}
             </h3>
             <span className="text-xs text-muted-foreground ml-auto">
-              Group by who provides the data — one email per owner
+              {t("byOwnerDescription")}
             </span>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -170,14 +198,14 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
       <div className="flex flex-wrap items-center gap-3 text-xs">
         <div className="inline-flex items-center gap-1.5 text-muted-foreground">
           <Filter className="h-3.5 w-3.5" />
-          <span>Filter:</span>
+          <span>{t("filterLabel")}:</span>
         </div>
         <FilterSelect
-          label="Category"
+          label={t("categoryLabel")}
           value={categoryFilter}
           onChange={setCategoryFilter}
           options={[
-            { value: "all", label: "All categories" },
+            { value: "all", label: t("allCategories") },
             ...summary.byCategory.map((c) => ({
               value: c.category,
               label: `${c.category} (${c.missingCount})`,
@@ -185,11 +213,11 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
           ]}
         />
         <FilterSelect
-          label="Owner"
+          label={t("ownerLabel")}
           value={ownerFilter}
           onChange={setOwnerFilter}
           options={[
-            { value: "all", label: "All owners" },
+            { value: "all", label: t("allOwners") },
             ...summary.byOwnerRole.map((r) => ({
               value: r.role,
               label: `${r.role} (${r.missingCount})`,
@@ -203,7 +231,7 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
             onChange={(e) => setHideComplete(e.target.checked)}
             className="rounded border-border"
           />
-          Hide entities at 100% ready
+          {t("hideComplete")}
         </label>
         {hasFilters && (
           <button
@@ -216,11 +244,11 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
             className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
           >
             <X className="h-3 w-3" />
-            Clear all filters
+            {t("clearFilters")}
           </button>
         )}
         <span className="ml-auto text-muted-foreground">
-          {filteredCompanies.length} entities shown
+          {t("entitiesShown", { n: filteredCompanies.length })}
         </span>
       </div>
 
@@ -228,11 +256,11 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
       <div className="space-y-4">
         {filteredCompanies.length === 0 && (
           <div className="rounded-lg border border-border/60 bg-card p-12 text-center text-sm text-muted-foreground">
-            No entities match the current filters.
+            {t("noEntitiesMatch")}
           </div>
         )}
         {filteredCompanies.map((co) => (
-          <EntityCard key={co.companyCode} company={co} />
+          <EntityCard key={co.companyCode} company={co} locale={locale} />
         ))}
       </div>
     </div>
@@ -342,7 +370,13 @@ function FilterSelect({
   );
 }
 
-function EntityCard({ company }: { company: CompanyBacklog }) {
+function EntityCard({
+  company,
+  locale,
+}: {
+  company: CompanyBacklog;
+  locale: string;
+}) {
   const t = useTranslations("adminIndicatorBacklog");
   const [expandedPresent, setExpandedPresent] = useState(false);
 
@@ -378,20 +412,33 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
     for (const [, bucket] of grouped) {
       const owner = bucket.owner;
       const recipient = owner.email ?? "";
-      const subject = `[${company.companyCode}] Missing data — ${bucket.items.length} indicator${bucket.items.length > 1 ? "s" : ""}`;
+      const subject = t("bulkEmail.subject", {
+        code: company.companyCode,
+        count: bucket.items.length,
+      });
+      const uploadUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/budgeting/admin/ai-import`;
       const lines = [
-        `Hi${owner.name ? " " + owner.name : ""},`,
+        owner.name
+          ? t("bulkEmail.greetingNamed", { name: owner.name })
+          : t("bulkEmail.greetingGeneric"),
         "",
-        `We're onboarding ${company.companyName} (${company.companyCode}) onto BudgetPro Risk Terminal and need data you own:`,
+        t("bulkEmail.intro", {
+          company: company.companyName,
+          code: company.companyCode,
+        }),
         "",
         ...bucket.items.map(
           (it) =>
-            `- ${it.indicatorCode} (${it.category}): ${it.owner.scope ?? "see system"}`,
+            `- ${t("bulkEmail.item", {
+              indicator: it.indicatorCode,
+              category: it.category,
+              scope: it.owner.scope ?? it.requiredInput,
+            })}`,
         ),
         "",
-        `Please send the file(s) when ready. Upload at ${typeof window !== "undefined" ? window.location.origin : ""}/budgeting/admin/ai-import`,
+        t("bulkEmail.sendFiles", { url: uploadUrl }),
         "",
-        `Thanks!`,
+        t("bulkEmail.thanks"),
       ];
       const body = encodeURIComponent(lines.join("\n"));
       drafts.push(
@@ -401,9 +448,7 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
     if (drafts.length > 0 && typeof window !== "undefined") {
       window.open(drafts[0], "_blank");
       if (drafts.length > 1) {
-        alert(
-          `Opened email to first owner (${grouped.size} groups total).`,
-        );
+        alert(t("bulkEmail.openedFirst", { count: grouped.size }));
       }
     }
   };
@@ -434,20 +479,20 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
                 </span>
               )}
             </div>
-            <div className="text-xs text-muted-foreground">
-              {company.presentCount} with data · {company.items.length} missing
-              · readiness{" "}
-              <span
-                className={`font-semibold ${
-                  company.readinessPct >= 80
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : company.readinessPct >= 50
-                      ? "text-amber-600 dark:text-amber-400"
-                      : "text-rose-600 dark:text-rose-400"
-                }`}
-              >
-                {company.readinessPct}%
-              </span>
+            <div
+              className={`text-xs ${
+                company.readinessPct >= 80
+                  ? "text-emerald-700 dark:text-emerald-300"
+                  : company.readinessPct >= 50
+                    ? "text-amber-700 dark:text-amber-300"
+                    : "text-rose-700 dark:text-rose-300"
+              }`}
+            >
+              {t("entitySummary", {
+                present: company.presentCount,
+                missing: company.items.length,
+                readiness: company.readinessPct,
+              })}
             </div>
           </div>
           {!isComplete && (
@@ -456,7 +501,7 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
                 type="button"
                 onClick={handleCsv}
                 className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-foreground/90 hover:bg-accent transition-colors"
-                title="Export gap list as CSV"
+                title={t("csvTitle")}
               >
                 <Download className="h-3.5 w-3.5" />
                 {t("csvBtn")}
@@ -465,7 +510,7 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
                 type="button"
                 onClick={handleEmailAll}
                 className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-foreground/90 hover:bg-accent transition-colors"
-                title="Email owners with grouped requests"
+                title={t("emailOwnersTitle")}
               >
                 <Mail className="h-3.5 w-3.5" />
                 {t("emailOwners")}
@@ -528,7 +573,7 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
                 ? company.presentItems
                 : company.presentItems.slice(0, 12)
               ).map((item) => (
-                <PresentChip key={item.indicatorCode} item={item} />
+                <PresentChip key={item.indicatorCode} item={item} locale={locale} />
               ))}
               {!expandedPresent && company.presentItems.length > 12 && (
                 <span className="text-[11px] text-muted-foreground/70 self-center px-2">
@@ -572,6 +617,7 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
                   item={item}
                   companyCode={company.companyCode}
                   companyName={company.companyName}
+                  locale={locale}
                 />
               ))}
             </div>
@@ -582,21 +628,26 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
   );
 }
 
-function PresentChip({ item }: { item: PresentItem }) {
-  // 2026-05-27 — human-readable name primary, code demoted to tooltip.
-  // Finance users found `AGRO_COMMODITY_VOL` and `FP_INVENTORY_TURNS`
-  // unreadable; show Russian name (fallback English) instead. Power users
-  // who want the code hover the chip.
+function PresentChip({ item, locale }: { item: PresentItem; locale: string }) {
+  const t = useTranslations("adminIndicatorBacklog");
+  // Human-readable locale name is primary; the stable code remains in the
+  // tooltip for power users and audit cross-reference.
   const ringClass = {
     green: "ring-emerald-300 dark:ring-emerald-700/60 bg-emerald-50/60 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200",
     amber: "ring-amber-300 dark:ring-amber-700/60 bg-amber-50/60 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200",
     red: "ring-rose-300 dark:ring-rose-700/60 bg-rose-50/60 dark:bg-rose-950/30 text-rose-800 dark:text-rose-200",
   }[item.status];
-  const displayName = item.indicatorNameRu ?? item.indicatorNameEn;
+  const displayName = localizedIndicatorName(item, locale);
   return (
     <span
       className={`inline-flex items-center gap-1.5 ring-1 rounded-md px-2 py-0.5 text-[11px] ${ringClass}`}
-      title={`${item.indicatorCode} · ${item.indicatorNameEn} · ${item.category} · ${item.unit} · status: ${item.status}`}
+      title={t("statusTooltip", {
+        code: item.indicatorCode,
+        name: displayName,
+        category: item.category,
+        unit: item.unit,
+        status: item.status,
+      })}
     >
       <StatusDot status={item.status} />
       <span className="font-medium">{displayName}</span>
@@ -608,25 +659,39 @@ function MissingRow({
   item,
   companyCode,
   companyName,
+  locale,
 }: {
   item: BacklogItem;
   companyCode: string;
   companyName: string;
+  locale: string;
 }) {
   const t = useTranslations("adminIndicatorBacklog");
+  const displayName = localizedIndicatorName(item, locale);
   const handleEmail = () => {
-    const subject = `[${companyCode}] Missing data — ${item.indicatorCode}`;
+    const subject = t("singleEmail.subject", {
+      code: companyCode,
+      indicator: item.indicatorCode,
+    });
+    const uploadUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/budgeting/admin/ai-import`;
     const body = [
-      `Hi${item.owner.name ? " " + item.owner.name : ""},`,
+      item.owner.name
+        ? t("bulkEmail.greetingNamed", { name: item.owner.name })
+        : t("bulkEmail.greetingGeneric"),
       "",
-      `We need data for ${companyName} (${companyCode}):`,
+      t("singleEmail.intro", { company: companyName, code: companyCode }),
       "",
-      `Indicator: ${item.indicatorCode} (${item.indicatorNameEn})`,
-      `Required: ${item.owner.scope ?? item.requiredInput}`,
+      t("singleEmail.indicator", {
+        code: item.indicatorCode,
+        name: displayName,
+      }),
+      t("singleEmail.required", {
+        scope: item.owner.scope ?? item.requiredInput,
+      }),
       "",
-      `Please send when ready. Upload at ${typeof window !== "undefined" ? window.location.origin : ""}/budgeting/admin/ai-import`,
+      t("bulkEmail.sendFiles", { url: uploadUrl }),
       "",
-      `Thanks!`,
+      t("bulkEmail.thanks"),
     ].join("\n");
     const url = `mailto:${item.owner.email ?? ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     if (typeof window !== "undefined") window.open(url, "_blank");
@@ -645,10 +710,9 @@ function MissingRow({
     >
       <Circle className="h-2 w-2 fill-rose-500 text-rose-500 shrink-0" />
       <div className="flex-1 min-w-0">
-        {/* 2026-05-27 — lead with human name, demote code to small mono
-            suffix. Russian name preferred for AZSEKER admin audience. */}
+        {/* Lead with the active-locale name; demote the stable code. */}
         <div className="text-[13px] font-medium text-foreground truncate">
-          {item.indicatorNameRu ?? item.indicatorNameEn}
+          {displayName}
         </div>
         <div className="flex items-baseline gap-2 mt-0.5">
           <span className="font-mono text-[10px] text-muted-foreground/80">
@@ -674,7 +738,7 @@ function MissingRow({
           type="button"
           onClick={handleEmail}
           className="inline-flex items-center gap-1 rounded border border-border bg-card px-2 py-1 text-[11px] text-foreground/80 hover:bg-accent hover:border-primary/40 transition-colors opacity-60 group-hover:opacity-100 shrink-0"
-          title={`Email ${item.owner.role}`}
+          title={t("emailRoleTitle", { role: item.owner.role })}
         >
           <Mail className="h-3 w-3" />
           {t("emailBtn")}

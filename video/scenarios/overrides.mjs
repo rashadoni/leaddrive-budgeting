@@ -63,6 +63,26 @@ const FX_DATES = [
 ];
 const WHY = ['[data-testid="statement-controls-why"]', "main"];
 
+// ── Data control group overview ─────────────────────────────────────────
+// Hover-only across eight admin routes. Per-scene `route` navigation is a
+// full-page GET; no Run, Refresh, e-mail, export, upload, inline-entry or
+// provider control is clicked. The detailed Statement Controls guide remains
+// a separate slug and is not replaced by this overview.
+const DC_READINESS = '[data-testid="data-control-readiness"]';
+const DC_READINESS_TABLE = '[data-testid="data-control-readiness-table"]';
+const DC_BACKLOG = '[data-testid="data-control-backlog"]';
+const DC_BACKLOG_PERIOD = '[data-testid="data-control-backlog-period"]';
+const DC_HEALTH = '[data-testid="data-control-indicator-health"]';
+const DC_HEALTH_PERIOD = '[data-testid="data-control-indicator-health-period"]';
+const DC_STATEMENT = '[data-testid="data-control-statement-controls"]';
+const DC_STATEMENT_BANNER = '[data-testid="statement-controls-shadow-banner"]';
+const DC_IFRS = '[data-testid="data-control-ifrs"]';
+const DC_COMPLIANCE = '[data-testid="data-control-compliance"]';
+const DC_DRIFT = '[data-testid="data-control-drift"]';
+const DC_DRIFT_FRESHNESS = '[data-testid="data-control-drift-freshness"]';
+const DC_INTEL = '[data-testid="data-control-intel-health"]';
+const DC_INTEL_SUMMARY = '[data-testid="data-control-intel-health-summary"]';
+
 // ── Workspace / P&L execution view ────────────────────────────────────────
 // READONLY-safe: the only clicks toggle local list/matrix/materiality state.
 // No export, sync, create, edit, save or delete action is touched.
@@ -1053,6 +1073,141 @@ export default {
       },
     ],
   },
+  "data-control": {
+    route: "/budgeting/admin/companies-readiness",
+    title: {
+      az: "Məlumat nəzarəti",
+      en: "Data control",
+      ru: "Контроль данных",
+    },
+    scenes: [
+      {
+        route: "/budgeting/admin/companies-readiness",
+        voice: {
+          az: "Məlumat nəzarəti səkkiz ayrı admin ekranını bir iş ardıcıllığında birləşdirir. Başlanğıc nöqtəsi şirkətlərin məlumat hazırlığıdır: burada hər əməliyyat şirkətinin P&L, balans, qarşı tərəflər, əməliyyat metrikləri, strateji kontekst, hesablanmış indikatorlar və valyuta sübutu üzrə əhatəsi görünür. Bu bal qərar üçün sertifikat deyil, məlumat toplama xəritəsidir.",
+          en: "Data control brings eight admin screens into one operating sequence. Start with Company Data Readiness, which maps each operating company's coverage across P&L, balance sheet, counterparties, operational metrics, strategic context, computed indicators, and evidenced currency data. This score is an onboarding map, not certification that the underlying numbers are current, reconciled, or decision-grade.",
+          ru: "Группа «Контроль данных» объединяет восемь админ-экранов в одну рабочую последовательность. Начинайте с готовности компаний: здесь показано покрытие P&L, баланса, контрагентов, операционных метрик, стратегического контекста, рассчитанных индикаторов и валютных доказательств. Этот балл является картой сбора данных, а не подтверждением актуальности, сверки или пригодности цифр для решений.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(DC_READINESS, { timeout: 15000 });
+          await h.hover(DC_READINESS);
+        },
+      },
+      {
+        route: "/budgeting/admin/companies-readiness",
+        voice: {
+          az: "Cədvəldə ən aşağı hazırlıq əvvəl göstərilir. Hər səviyyə mətn və işarə ilə verilir, rəng tək məna daşımır. Sətir açılanda sahələr üzrə boşluqlar görünür, indikator boşluqları keçidi isə həmin şirkət üçün daha konkret mənbə siyahısına aparır. Balans yalnız şirkətə birbaşa bağlanmış sətirlərdən, FX isə təsdiqlənmiş baza və tam xarici valyuta sübutundan kredit alır.",
+          en: "The table places the lowest-readiness companies first. Every level has text and a glyph, so colour is never the only signal. Expanding a row reveals area-level gaps, while the Indicator Backlog link leads to the specific missing sources for that company. Balance-sheet credit now requires rows directly scoped to the company, and FX credit requires one confirmed base plus complete foreign-currency evidence.",
+          ru: "Таблица сначала показывает компании с самой низкой готовностью. Каждый уровень обозначен текстом и символом, поэтому цвет не является единственным сигналом. Разворот строки раскрывает пробелы по областям, а ссылка на пробелы индикаторов ведёт к конкретным источникам компании. Баланс засчитывается только по строкам этой компании, а FX только при подтверждённой базе и полном валютном доказательстве.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(DC_READINESS_TABLE, { timeout: 15000 });
+          await h.hover(DC_READINESS_TABLE);
+        },
+      },
+      {
+        route: "/budgeting/admin/indicator-backlog",
+        voice: {
+          az: "İndikator məlumat boşluqları cari illik dövr üçün hansı tətbiq olunan indikatorlarda saxlanmış dəyər olduğunu, hansılarında mənbə çatışmadığını göstərir. Universal və sənaye indikatorları terminaldakı eyni tətbiq qaydasından keçir, şirkət üzrə açıq override isə üstün sayılır. Dövr yuxarıda görünür; bu ekran coverage göstərir, təzəlik, reconciliation və ya mənbə keyfiyyətini təsdiqləmir.",
+          en: "Indicator Backlog shows, for the displayed annual period, which applicable indicators have a stored value and which still lack a required source. Universal and industry indicators use the same applicability contract as the terminal, with explicit company overrides taking precedence. The period is visible at the top; this is coverage evidence, not proof of freshness, reconciliation, or source quality.",
+          ru: "Экран пробелов индикаторов показывает за указанный год, какие применимые индикаторы имеют сохранённое значение, а каким ещё нужен источник. Универсальные и отраслевые индикаторы используют тот же договор применимости, что и терминал, а явное правило компании имеет приоритет. Период показан сверху; это покрытие, а не доказательство свежести, сверки или качества источника.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(DC_BACKLOG, { timeout: 15000 });
+          await p.waitForSelector(DC_BACKLOG_PERIOD, { timeout: 15000 });
+          await h.hover(DC_BACKLOG_PERIOD);
+        },
+      },
+      {
+        route: "/budgeting/admin/indicator-health",
+        voice: {
+          az: "Indicator Health başqa sualı cavablandırır: məhz göstərilən dövrdə hesablamalar hansı vəziyyətdədir və unknown hüceyrələri hansı səbəbdən yaranıb. Xülasə artıq bütün tarixçəni bir sayda qarışdırmır; period açıq görünür. Aşağıdakı kateqoriyalar external feed, ingest boşluğu, formula edge case və düzgün leaf rollup kimi səbəbləri ayırır. Inline entry və source düymələri yazır, bu təlim onlara toxunmur.",
+          en: "Indicator Health answers a different question: for the displayed period, what computation states exist and why did unknown cells occur? The summary no longer mixes every historical row into one count; its period is explicit. Categories separate external feeds, ingestion gaps, formula edge cases, and valid leaf rollups. Inline entry and source actions can write or refresh data, so this guide activates none of them.",
+          ru: "Indicator Health отвечает на другой вопрос: какие состояния расчётов есть именно за показанный период и почему появились неизвестные ячейки. Сводка больше не смешивает всю историю в одном числе, её период указан явно. Категории разделяют внешние источники, пробелы импорта, граничные случаи формул и корректные leaf-rollup. Inline-ввод и действия с источниками могут писать данные, поэтому гайд их не запускает.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(DC_HEALTH, { timeout: 15000 });
+          await p.waitForSelector(DC_HEALTH_PERIOD, { timeout: 15000 });
+          await h.hover(DC_HEALTH_PERIOD);
+        },
+      },
+      {
+        route: "/budgeting/admin/statement-controls",
+        voice: {
+          az: "Statement Controls altı kanonik arifmetik əlaqəni göstərir, lakin daimi banner onun statusunu məhdudlaşdırır: shadow, provisional və qərar üçün deyil. Lineage və təsdiqlənmiş metodologiya qapıları tamamlanmayınca burada pass və fail qərarı verilmir. Ayrıca ətraflı video bu ekranı addım-addım izah edir; qrup icmalında biz Run düyməsini basmır və heç bir nəticəni sertifikat kimi təqdim etmirik.",
+          en: "Statement Controls evaluates six canonical arithmetic relationships, but its permanent banner limits the claim: shadow, provisional, and not decision-grade. Until lineage and approved methodology gates are complete, it does not certify a pass or fail. A separate detailed guide explains this screen step by step; this group overview does not press Run or present any result as assurance.",
+          ru: "Statement Controls оценивает шесть канонических арифметических связей, но постоянный баннер ограничивает вывод: shadow, provisional и не для решений. Пока не завершены происхождение данных и утверждение методологии, экран не сертифицирует pass или fail. Отдельный подробный гайд разбирает его пошагово; в групповом обзоре мы не нажимаем Run и не выдаём результат за assurance.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(DC_STATEMENT, { timeout: 15000 });
+          await p.waitForSelector(DC_STATEMENT_BANNER, { timeout: 15000 });
+          await h.hover(DC_STATEMENT_BANNER);
+        },
+      },
+      {
+        route: "/budgeting/admin/ifrs-conformance",
+        voice: {
+          az: "IFRS Conformance idxaldan sonra IAS 1 strukturunu diaqnostika edir, audit rəyi vermir. Şirkət seçildikdə balansın ən son dövrü tapılır; yalnız həmin dövrdə tək plan müəyyən olunarsa P&L eyni plan və ayadək YTD sətirləri ilə yoxlanır. Eyni tarixdə bir neçə plan varsa ekran qarışdırmaq əvəzinə abstain edir. Yaşıl nəticə belə mənbə rəqəmlərinin düzgünlüyünü ayrıca təsdiqləmir.",
+          en: "IFRS Conformance diagnoses IAS 1 structure after import; it is not an audit opinion. When a company is selected, the latest balance-sheet period is found, and P&L is checked only when one plan can be identified, using that same plan year-to-date through the balance-sheet month. Multiple plans at the same date now cause abstention instead of mixing. Even green structure does not verify source accuracy.",
+          ru: "IFRS Conformance диагностирует структуру IAS 1 после импорта, но не является аудиторским заключением. После выбора компании берётся последний период баланса, а P&L проверяется только при одном определённом плане, по этому же плану YTD до месяца баланса. Несколько планов на одну дату теперь приводят к отказу от вывода, а не к смешению. Даже зелёная структура не подтверждает точность источника.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(DC_IFRS, { timeout: 15000 });
+          await h.hover(DC_IFRS);
+        },
+      },
+      {
+        route: "/budgeting/admin/compliance",
+        voice: {
+          az: "Compliance & Legal Hub idxal edilmiş audit finding və məhkəmə işlərini filtr, mənbə və statusla göstərir. Bunlar təşkilatın saxlanmış registr qeydləridir, hüquqi rəy və ya tamlıq zəmanəti deyil. Assign, deadline və comment nəzarətləri yazma əməliyyatıdır; email və CSV isə xarici çıxış yaradır. Bu READONLY icmal yalnız mövcud evidence snapshot-u göstərir və heç bir düyməni aktivləşdirmir.",
+          en: "Compliance and Legal Hub presents imported audit findings and court cases with filters, source, and status. These are stored register records, not legal advice or a guarantee that the register is complete. Assign, deadline, and comment controls write data, while email and CSV create external output. This read-only overview shows only the existing evidence snapshot and activates none of those controls.",
+          ru: "Compliance and Legal Hub показывает импортированные аудиторские замечания и судебные дела с фильтрами, источником и статусом. Это сохранённые записи реестра, а не юридическое заключение и не гарантия полноты. Assign, deadline и comment записывают данные, а email и CSV создают внешний вывод. READONLY-обзор показывает только текущий снимок доказательств и ничего не запускает.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(DC_COMPLIANCE, { timeout: 15000 });
+          await h.hover(DC_COMPLIANCE);
+        },
+      },
+      {
+        route: "/budgeting/admin/drift",
+        voice: {
+          az: "Drift Dashboard üç əməliyyat siqnalını ayırır: reference feed təzəliyi, son reconciliation drift hadisələri və dayanan onboarding. Təzəlik kartındakı yaş yalnız mənbənin son uğurlu müşahidəsindən keçən vaxtdır; o, məzmunun iqtisadi cəhətdən doğru olduğunu sübut etmir. Yuxarıdakı Refresh sadəcə hesabatı GET ilə yeniləyir, kartlardakı Refresh now isə provider işi və yazı başlada bilər, ona görə toxunulmur.",
+          en: "Drift Dashboard separates three operational signals: reference-feed freshness, recent reconciliation drift events, and stalled onboarding. Age on a freshness card means time since the last successful observation; it does not prove that the content is economically correct. The top Refresh only reloads the report by GET, while card-level Refresh now can start provider work and writes, so this guide never clicks it.",
+          ru: "Drift Dashboard разделяет три операционных сигнала: свежесть справочных источников, недавние события reconciliation drift и остановленный onboarding. Возраст на карточке означает время после последнего успешного наблюдения, но не доказывает экономическую корректность содержания. Верхний Refresh лишь перечитывает отчёт через GET, а Refresh now на карточках может запустить provider и запись, поэтому гайд его не нажимает.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(DC_DRIFT, { timeout: 15000 });
+          await p.waitForSelector(DC_DRIFT_FRESHNESS, { timeout: 15000 });
+          await h.hover(DC_DRIFT_FRESHNESS);
+        },
+      },
+      {
+        route: "/budgeting/admin/intel-health",
+        voice: {
+          az: "Intel Health crawler müşahidəsini göstərir: sağlamlıq statusu, son işləmə, çıxış dili, son otuz gündə element sayı, yeddi günlük paylanma və mənbə qarışığı. Bu ekran xəbərin həqiqiliyini və sentiment nəticəsinin qərar üçün yararlı olduğunu təsdiqləmir; yalnız ingestion prosesinin nə etdiyini göstərir. Boş və ya stale status zamanı terminalda xəbər sübutu olmadığını dürüst qəbul etmək lazımdır.",
+          en: "Intel Health observes the crawler itself: health status, last run, output language, items over thirty days, seven-day distribution, and source mix. It does not certify that an article is true or that sentiment is decision-grade; it shows what the ingestion process actually produced. An empty or stale status means the terminal must treat news evidence as absent or old, not silently healthy.",
+          ru: "Intel Health наблюдает за самим crawler: статус, последний запуск, язык результата, число материалов за тридцать дней, распределение по семи дням и набор источников. Он не подтверждает истинность статьи и пригодность sentiment для решений, а показывает фактический результат ingestion. Пустой или stale статус означает, что терминал должен считать новостное доказательство отсутствующим или старым, а не здоровым.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(DC_INTEL, { timeout: 15000 });
+          await p.waitForSelector(DC_INTEL_SUMMARY, { timeout: 15000 });
+          await h.hover(DC_INTEL_SUMMARY);
+        },
+      },
+      {
+        route: "/budgeting/admin/companies-readiness",
+        voice: {
+          az: "Praktik ardıcıllıq belədir: əvvəl şirkət readiness ilə geniş boşluğu tapın, sonra Backlog-da konkret mənbə və sahibini görün, Indicator Health-də dövr üzrə hesablama səbəbini yoxlayın, Statement və IFRS kontrollarında əlaqələri araşdırın, Compliance, Drift və Intel ilə sübutun vəziyyətini tamamlayın. Yalnız bundan sonra write, refresh, email və ya AI addımına səlahiyyət və niyyətlə keçin.",
+          en: "The practical sequence is: find the broad company gap in Readiness, identify the exact source and owner in Backlog, inspect the period-specific computation reason in Indicator Health, examine relationships in Statement and IFRS controls, then complete the evidence picture with Compliance, Drift, and Intel. Only after that should an authorized user choose a write, refresh, email, or AI action with explicit intent.",
+          ru: "Практическая последовательность такая: найти общий пробел компании в Readiness, определить точный источник и владельца в Backlog, проверить причину расчёта за период в Indicator Health, изучить связи в Statement и IFRS controls, затем дополнить картину через Compliance, Drift и Intel. Только после этого уполномоченный пользователь явно выбирает запись, refresh, email или AI-действие.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(DC_READINESS, { timeout: 15000 });
+          await h.hover(DC_READINESS);
+        },
+      },
+    ],
+  },
   "statement-controls": {
     route: "/budgeting/admin/statement-controls",
     title: {
@@ -1113,9 +1268,9 @@ export default {
       // 5 — The balance-sheet card: delta, tolerance, source rows.
       {
         voice: {
-          az: "Balans kontrolunu götürək. O, manatla işarəli fərqi, müqayisə olunduğu dözümlülüyü və hər tərəfdəki mənbə sətirlərinin sayını göstərir — beləcə siz yalnız fərqi deyil, onu yaradan məlumatın həcmini, üstəgəl balansların necə oxunduğunu bildirən işarə konvensiyası sətrini görürsünüz.",
-          en: "Take the balance-sheet control. It shows the signed delta in manat, the tolerance it's compared against, and the source-row counts behind each side — so you see not just the gap, but how much real data produced it, plus the sign-convention line telling you how the balances were read.",
-          ru: "Возьмём контроль баланса. Он показывает знаковую разницу в манатах, допуск, с которым она сравнивается, и число исходных строк с каждой стороны — так вы видите не только расхождение, но и сколько данных его породило, вместе со строкой соглашения о знаках, объясняющей, как были прочитаны балансы.",
+          az: "Balans kontrolunu götürək. O, təsdiqlənmiş baza vahidi olduqda işarəli fərqi, əks halda vahidin əlçatmaz olduğunu, müqayisə dözümlülüyünü və hər tərəfdəki mənbə sətirlərinin sayını göstərir. Beləcə siz yalnız fərqi deyil, onu yaradan məlumatın həcmini və balansların necə oxunduğunu bildirən işarə konvensiyasını görürsünüz.",
+          en: "Take the balance-sheet control. It shows the signed delta in the confirmed base unit when one is available, otherwise the unit stays unavailable, alongside the comparison tolerance and the source-row counts behind each side. You see the gap, its evidence volume, and the sign convention used to read the balances.",
+          ru: "Возьмём контроль баланса. Он показывает знаковую разницу в подтверждённой базовой единице, если она доступна; иначе единица остаётся неизвестной. Рядом указаны допуск и число исходных строк с каждой стороны, поэтому видны само расхождение, объём его доказательств и соглашение о знаках.",
         },
         do: async (p, l, h) => {
           await p.waitForSelector(RESULT, { timeout: 12000 }).catch(() => {});
@@ -1138,9 +1293,9 @@ export default {
       // 7 — A blocked card (cash_flow_sum) + its missing-evidence list.
       {
         voice: {
-          az: "İndi bloklanmış kart — pul axını cəmi. Onun nə «keçdi», nə də «keçmədi» statusu var, çünki sübut sadəcə yoxdur: puldakı xalis dəyişiklik heç vaxt ayrıca sətir kimi saxlanılmır, ona görə də aşağıdakı komponent siyahısı bu girişi çatışmayan kimi qeyd edir. Bu kart sınıq deyil, dürüstdür — o, təxmin etməkdən imtina edir.",
-          en: "Now a blocked card — cash-flow sum. It carries no pass or fail because the evidence simply isn't there: net change in cash is never stored as a line, so the component list below marks that input as missing. This card is honest, not broken — it refuses to guess.",
-          ru: "Теперь заблокированная карточка — сумма денежных потоков. У неё нет ни «пройдено», ни «не пройдено», потому что доказательства просто нет: чистое изменение денежных средств не хранится отдельной строкой, поэтому список компонентов ниже помечает этот вход как отсутствующий. Карточка честна, а не сломана — она отказывается угадывать.",
+          az: "İndi bloklanmış kart pul axını cəmidir. Onun nə «keçdi», nə də «keçmədi» statusu var, çünki seçilmiş məlumat sahəsi və dövr üçün puldakı xalis dəyişiklik ayrıca mənbə sətri ilə təsdiqlənməyib. Aşağıdakı komponent siyahısı bu girişi çatışmayan kimi göstərir. Kart sınıq deyil; sübut olmadıqda təxmin etməkdən imtina edir.",
+          en: "Now consider the blocked cash-flow-sum card. It carries no pass or fail because net change in cash is not evidenced by a separate source line for this selected scope and period. The component list below marks that input as missing. The card is not broken; it refuses to guess when evidence is absent.",
+          ru: "Теперь рассмотрим заблокированную карточку суммы денежных потоков. У неё нет статуса «пройдено» или «не пройдено»: для выбранной области данных и периода чистое изменение денежных средств не подтверждено отдельной исходной строкой. Список компонентов помечает этот вход как отсутствующий. Карточка не сломана; без доказательств она отказывается угадывать.",
         },
         do: async (p, l, h) => {
           await h.moveTo(CARD_CFS);

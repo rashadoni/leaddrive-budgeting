@@ -42,7 +42,10 @@ export default async function IfrsConformancePage() {
 
   const t = await getTranslations("adminIfrs")
   return (
-    <div className="container mx-auto py-8 px-4 max-w-4xl">
+    <div
+      className="container mx-auto py-8 px-4 max-w-4xl"
+      data-testid="data-control-ifrs"
+    >
       <h1 className="text-2xl font-bold mb-1">{t("pageTitle")}</h1>
       <p className="text-sm text-muted-foreground mb-6 leading-relaxed">{t("pageDescription")}</p>
       <IfrsConformanceView companies={options} />

@@ -58,12 +58,13 @@ export async function GET(
   // Stage 3 RLS — the two statement reads run in one org-scoped tx; the
   // pure IFRS aggregation (small arrays) stays in the closure.
   return withOrgScope(orgId, async (tx) => {
-  // ── Balance sheet: load all (non-deleted), keep only the latest period ──
+  // ── Balance sheet: load all (non-deleted), keep one latest-plan period ──
   const allBsLines = await tx.balanceSheetLine.findMany({
     where: { companyId, organizationId: orgId, deletedAt: null },
     select: {
       lineType: true,
       amount: true,
+      planId: true,
       year: true,
       month: true,
       subType: true,
@@ -72,20 +73,37 @@ export async function GET(
     },
   })
   let period: string | null = null
+  let selectedPlanId: string | null = null
+  let sourcePlanCount = 0
+  let maxY: number | null = null
+  let maxM: number | null = null
   let bsRows: RawBsLine[] = []
   if (allBsLines.length > 0) {
     // Latest (year, month).
-    let maxY = -Infinity
-    let maxM = -Infinity
+    let latestYear = -Infinity
+    let latestMonth = -Infinity
     for (const l of allBsLines) {
-      if (l.year > maxY || (l.year === maxY && l.month > maxM)) {
-        maxY = l.year
-        maxM = l.month
+      if (l.year > latestYear || (l.year === latestYear && l.month > latestMonth)) {
+        latestYear = l.year
+        latestMonth = l.month
       }
     }
-    period = `${maxY}-${String(maxM).padStart(2, "0")}`
-    bsRows = allBsLines
-      .filter((l) => l.year === maxY && l.month === maxM)
+    maxY = latestYear
+    maxM = latestMonth
+    period = `${latestYear}-${String(latestMonth).padStart(2, "0")}`
+    const latestLines = allBsLines.filter(
+      (line) => line.year === latestYear && line.month === latestMonth,
+    )
+    const planIds = [...new Set(latestLines.map((line) => line.planId))]
+    sourcePlanCount = planIds.length
+    selectedPlanId = planIds.length === 1 ? planIds[0] : null
+
+    // Multiple plans at the same latest period are not one statement. Mixing
+    // them could manufacture a balanced result, so every BS check abstains.
+    bsRows = (selectedPlanId
+      ? latestLines.filter((line) => line.planId === selectedPlanId)
+      : []
+    )
       .map((l) => ({
         lineType: l.lineType,
         amount: l.amount,
@@ -98,8 +116,19 @@ export async function GET(
   }
 
   // ── Income statement: budget lines joined to the chart of accounts ──
-  const plLines = await tx.budgetLine.findMany({
-    where: { companyId, organizationId: orgId, deletedAt: null },
+  const plLines = selectedPlanId && maxY !== null && maxM !== null
+    ? await tx.budgetLine.findMany({
+    where: {
+      companyId,
+      organizationId: orgId,
+      planId: selectedPlanId,
+      plan: { year: maxY },
+      deletedAt: null,
+      // P&L evidence is YTD through the balance-sheet month. Only canonical
+      // monthIndex rows qualify: legacy null-month rows are indistinguishable
+      // from annual totals, so including them could fabricate YTD coverage.
+      monthIndex: { gte: 0, lte: maxM - 1 },
+    },
     select: {
       plannedAmount: true,
       accountId: true,
@@ -115,6 +144,7 @@ export async function GET(
       },
     },
   })
+    : []
   const plRows: RawPlLine[] = plLines.map((l) => ({
     amount: l.plannedAmount,
     accountType: l.account?.accountType ?? "",
@@ -131,6 +161,19 @@ export async function GET(
   return NextResponse.json({
     company: { id: company.id, code: company.code, name: company.name },
     period,
+    scope: {
+      status:
+        selectedPlanId !== null
+          ? "confirmed"
+          : sourcePlanCount > 1
+            ? "ambiguous"
+            : "missing",
+      basis: "same_plan_ytd",
+      planId: selectedPlanId,
+      sourcePlanCount,
+      balanceSheetRows: bsRows.length,
+      profitAndLossRows: plRows.length,
+    },
     report,
   })
   })

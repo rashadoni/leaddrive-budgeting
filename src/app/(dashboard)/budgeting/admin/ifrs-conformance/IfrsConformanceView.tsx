@@ -31,6 +31,14 @@ interface IfrsReport {
 interface IfrsResponse {
   company: { id: string; code: string; name: string }
   period: string | null
+  scope: {
+    status: "confirmed" | "ambiguous" | "missing"
+    basis: "same_plan_ytd"
+    planId: string | null
+    sourcePlanCount: number
+    balanceSheetRows: number
+    profitAndLossRows: number
+  }
   report: IfrsReport
 }
 
@@ -187,7 +195,7 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
   const attentionChecks = result ? result.report.checks.filter((c) => c.status === "warn" || c.status === "fail") : []
 
   return (
-    <div>
+    <div data-testid="data-control-ifrs-content">
       {/* Company selector */}
       <div className="flex flex-wrap items-end gap-3 mb-6">
         <label className="flex flex-col gap-1 text-sm">
@@ -227,6 +235,27 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
 
       {result && (
         <div data-testid="ifrs-result">
+          <div
+            className={`mb-4 rounded-md border px-3 py-2 text-xs ${
+              result.scope.status === "confirmed"
+                ? "border-border/70 bg-muted/30 text-muted-foreground"
+                : "border-amber-300/70 bg-amber-50 text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200"
+            }`}
+            data-testid="ifrs-scope-disclosure"
+          >
+            {result.scope.status === "confirmed"
+              ? t("scope.confirmed", {
+                  period: result.period ?? "—",
+                  bsRows: result.scope.balanceSheetRows,
+                  plRows: result.scope.profitAndLossRows,
+                })
+              : result.scope.status === "ambiguous"
+                ? t("scope.ambiguous", {
+                    count: result.scope.sourcePlanCount,
+                    period: result.period ?? "—",
+                  })
+                : t("scope.missing")}
+          </div>
           {/* Header: score + summary */}
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-5 pb-4 border-b">
             <div className="flex items-baseline gap-2">
@@ -297,7 +326,9 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
 
           {allSkipped ? (
             <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-              {t("noStatements")}
+              {result.scope.status === "ambiguous"
+                ? t("scope.noResult")
+                : t("noStatements")}
             </div>
           ) : (
             <ul className="space-y-2.5">

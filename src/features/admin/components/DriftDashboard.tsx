@@ -104,7 +104,10 @@ export function DriftDashboard() {
   }, [fetchReport]);
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
+    <div
+      className="p-6 max-w-[1400px] mx-auto space-y-6"
+      data-testid="data-control-drift"
+    >
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{t("title")}</h1>
@@ -131,6 +134,7 @@ export function DriftDashboard() {
       {report && (
         <>
           <Section
+            testId="data-control-drift-freshness"
             icon={<AlertTriangle className="text-amber-600" />}
             title={t("freshnessTitle")}
             subtitle={t("freshnessSubtitle")}
@@ -143,6 +147,7 @@ export function DriftDashboard() {
           </Section>
 
           <Section
+            testId="data-control-drift-events"
             icon={<AlertCircle className="text-red-600" />}
             title={t("driftsTitle")}
             subtitle={t("driftsSubtitle", { n: report.recentDrifts.length })}
@@ -161,6 +166,7 @@ export function DriftDashboard() {
           </Section>
 
           <Section
+            testId="data-control-drift-onboarding"
             icon={<Clock className="text-amber-600" />}
             title={t("stalledTitle")}
             subtitle={t("stalledSubtitle", { n: report.stalePending.length })}
@@ -201,18 +207,20 @@ export function DriftDashboard() {
 }
 
 function Section({
+  testId,
   icon,
   title,
   subtitle,
   children,
 }: {
+  testId: string;
   icon: React.ReactNode;
   title: string;
   subtitle: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-3">
+    <section className="space-y-3" data-testid={testId}>
       <div className="flex items-center gap-2">
         <div className="h-4 w-4 shrink-0">{icon}</div>
         <h2 className="text-lg font-semibold">{title}</h2>

@@ -1,18 +1,19 @@
 /**
  * Phase 7.M Step 5 (2026-05-19) — DB reader for per-company readiness.
  *
- * Joins six tables in one batch to compute readiness for every
+ * Reads the scoped evidence tables in one batch to compute readiness for every
  * operating company in an organisation. Returns a Map<companyId, score>
  * so the matrix endpoint can stamp `readiness` on each MatrixCompanyRow
  * without an N+1 fan-out.
  *
- * Performance shape: 6 grouped queries × org-scoped predicates. At
+ * Performance shape: bounded batch queries with org-scoped predicates. At
  * the holding's current scale (10-60 companies × a few hundred rows
  * each) this is ~50ms. If the holding grows past 500 companies, the
  * groupBy queries should be pushed into a single raw SQL or a
  * read-replica view.
  */
 import type { PrismaClient } from "@prisma/client"
+import { currentBakuYear } from "@/lib/risk/periods"
 import {
   computeCompanyReadiness,
   type ReadinessInputs,
@@ -30,6 +31,7 @@ export type CompanyReadinessMap = ReadonlyMap<string, ReadinessResult>
 export async function getCompanyReadiness(
   prisma: PrismaClient,
   organizationId: string,
+  period = currentBakuYear(),
 ): Promise<CompanyReadinessMap> {
   // 1. Companies in scope. Pre-filter pending/archived to mirror the
   //    matrix endpoint's company list.
@@ -37,6 +39,8 @@ export async function getCompanyReadiness(
     where: {
       organizationId,
       isActive: true,
+      level: 2,
+      role: "operational",
       status: { notIn: ["pending", "archived"] },
     },
     select: { id: true, settings: true },
@@ -72,56 +76,69 @@ export async function getCompanyReadiness(
     blByCompany.set(g.companyId, cur)
   }
 
-  // 3. Foreign-currency budget lines per company. Counts rows where
-  //    currencyCode is set AND differs from the company base. Because
-  //    the schema doesn't carry the base ccy on the budget_line, we
-  //    just look for "non-null currencyCode" — adequate proxy.
-  const fxGroups = await prisma.budgetLine.groupBy({
-    by: ["companyId"],
+  // 3. Foreign-currency evidence per company. FX readiness is earned only
+  //    when the organization has exactly one active, explicitly confirmed
+  //    base currency and a line preserves the complete foreign-source tuple.
+  //    A non-null currencyCode alone is not evidence: canonical imports may
+  //    tag base-currency lines, and a missing/ambiguous base makes comparison
+  //    impossible.
+  const confirmedBases = await prisma.currency.findMany({
+    where: { organizationId, isActive: true, isBase: true },
+    select: { code: true },
+  })
+  const confirmedBaseCode =
+    confirmedBases.length === 1 ? confirmedBases[0].code : null
+  const normalizedBaseCode = confirmedBaseCode?.trim().toUpperCase() ?? null
+  const fxRows = confirmedBaseCode
+    ? await prisma.budgetLine.findMany({
     where: {
       organizationId,
       companyId: { in: ids },
       deletedAt: null,
       currencyCode: { not: null },
       exchangeRate: { not: null },
+      originalAmount: { not: null },
+    },
+        select: {
+          companyId: true,
+          currencyCode: true,
+          exchangeRate: true,
+          originalAmount: true,
+        },
+      })
+    : []
+  const fxByCompany = new Set<string>(
+    fxRows
+      .filter(
+        (row) =>
+          row.companyId !== null &&
+          row.currencyCode?.trim().toUpperCase() !== normalizedBaseCode &&
+          typeof row.exchangeRate === "number" &&
+          Number.isFinite(row.exchangeRate) &&
+          row.exchangeRate > 0 &&
+          typeof row.originalAmount === "number" &&
+          Number.isFinite(row.originalAmount),
+      )
+      .map((row) => row.companyId as string),
+  )
+
+  // 4. Balance-sheet presence per company. BalanceSheetLine has a canonical
+  //    companyId; using a plan→BudgetLine bridge falsely credited every
+  //    company sharing a plan whenever any sibling had BS data.
+  const bsLineGroups = await prisma.balanceSheetLine.groupBy({
+    by: ["companyId"],
+    where: {
+      organizationId,
+      companyId: { in: ids },
+      deletedAt: null,
     },
     _count: { _all: true },
   })
-  const fxByCompany = new Set<string>(
-    fxGroups
-      .filter((g) => g.companyId !== null && g._count._all > 0)
-      .map((g) => g.companyId as string),
+  const companiesWithBs = new Set(
+    bsLineGroups
+      .filter((group) => group.companyId !== null && group._count._all > 0)
+      .map((group) => group.companyId as string),
   )
-
-  // 4. Balance sheet presence per company. BS lines are plan-scoped,
-  //    so we have to bridge via budget_plans → budget_lines to know
-  //    which plan contains each company's data. We look up which
-  //    plans have BS lines, then take the union of companies on those
-  //    plans.
-  const bsLineGroups = await prisma.balanceSheetLine.groupBy({
-    by: ["planId"],
-    where: { organizationId, deletedAt: null },
-    _count: { _all: true },
-  })
-  const plansWithBs = bsLineGroups
-    .filter((g) => g._count._all > 0)
-    .map((g) => g.planId)
-  const companiesWithBs = new Set<string>()
-  if (plansWithBs.length > 0) {
-    const planCompanyRows = await prisma.budgetLine.findMany({
-      where: {
-        organizationId,
-        planId: { in: plansWithBs },
-        companyId: { in: ids },
-        deletedAt: null,
-      },
-      select: { companyId: true },
-      distinct: ["companyId"],
-    })
-    for (const r of planCompanyRows) {
-      if (r.companyId) companiesWithBs.add(r.companyId)
-    }
-  }
 
   // 5. Counterparty counts per company × role.
   const cpGroups = await prisma.counterparty.groupBy({
@@ -162,6 +179,7 @@ export async function getCompanyReadiness(
     where: {
       organizationId,
       companyId: { in: ids },
+      period,
       status: { not: "unknown" },
     },
     _count: { _all: true },

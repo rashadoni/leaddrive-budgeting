@@ -20,6 +20,7 @@ import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { getCompanyReadiness } from "@/lib/server/get-company-readiness"
+import { currentBakuYear } from "@/lib/risk/periods"
 import { ReadinessTable, type ReadinessRow } from "./ReadinessTable"
 
 export const metadata = {
@@ -39,7 +40,8 @@ export default async function CompaniesReadinessPage() {
       organizationId: orgId,
       isActive: true,
       status: { notIn: ["pending", "archived"] },
-      level: { gt: 1 },
+      level: 2,
+      role: "operational",
     },
     select: {
       id: true,
@@ -50,7 +52,8 @@ export default async function CompaniesReadinessPage() {
     orderBy: { code: "asc" },
   })
 
-  const readinessMap = await getCompanyReadiness(prisma, orgId)
+  const period = currentBakuYear()
+  const readinessMap = await getCompanyReadiness(prisma, orgId, period)
 
   const rows: ReadinessRow[] = companies.map((c: (typeof companies)[number]) => {
     const r = readinessMap.get(c.id)
@@ -74,10 +77,19 @@ export default async function CompaniesReadinessPage() {
 
   const t = await getTranslations("adminCompaniesReadiness")
   return (
-    <div className="container mx-auto py-8 px-4 max-w-6xl">
+    <div
+      className="container mx-auto py-8 px-4 max-w-6xl"
+      data-testid="data-control-readiness"
+    >
       <h1 className="text-2xl font-bold mb-1">{t("pageTitle")}</h1>
       <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
         {t("pageDescription")}
+      </p>
+      <p
+        className="mb-4 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+        data-testid="data-control-readiness-period"
+      >
+        {t("periodDisclosure", { period })}
       </p>
 
       <ReadinessTable rows={rows} />

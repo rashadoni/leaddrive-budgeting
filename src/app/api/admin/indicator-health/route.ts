@@ -29,6 +29,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
+import { currentBakuYear, parsePeriod, PeriodParseError } from "@/lib/risk/periods"
 
 /** Map missing-variable name → human remediation guidance. */
 const REMEDIATION_MAP: Record<string, { category: string; remediation: string }> = {
@@ -118,7 +119,7 @@ const REMEDIATION_MAP: Record<string, { category: string; remediation: string }>
   imported_input_cost: {
     category: "ingest-gap",
     remediation:
-      "P&L importer is dropping currencyCode. Set BudgetLine.currencyCode='USD'/'EUR' for foreign-currency rows.",
+      "Verify foreign-source rows preserve a non-base currencyCode, originalAmount and a finite positive exchangeRate. A single confirmed organization base currency is also required.",
   },
 }
 
@@ -164,8 +165,19 @@ export async function GET(req: NextRequest) {
     )
   }
   const orgId = session.orgId
+  const period = req.nextUrl.searchParams.get("period") ?? currentBakuYear()
+  try {
+    parsePeriod(period)
+  } catch (error) {
+    if (error instanceof PeriodParseError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+    throw error
+  }
 
-  // Pull all IV rows with their indicator + company codes.
+  // Pull one explicit period only. Combining all historical IndicatorValue
+  // rows made the dashboard look like current completeness while actually
+  // counting a mixed-period row inventory.
   // 2026-05-27 Phase 8 F1 — narrow to IVs whose IndicatorDefinition is
   // currently active. After `scripts/audit-indicator-catalog.mjs` ran,
   // 61 catalog entries for industries the holding doesn't use (poultry,
@@ -177,6 +189,7 @@ export async function GET(req: NextRequest) {
     tx.indicatorValue.findMany({
       where: {
         organizationId: orgId,
+        period,
         indicator: { isActive: true },
       },
       select: {
@@ -225,7 +238,7 @@ export async function GET(req: NextRequest) {
           remediation = {
             category: "ingest-gap",
             remediation:
-              "P&L importer is dropping currencyCode. Set BudgetLine.currencyCode='USD'/'EUR' for foreign lines.",
+              "No evidenced foreign-currency rows exist for this period. Verify non-base currencyCode, originalAmount, a finite positive exchangeRate, and one confirmed organization base currency.",
           }
         }
         if (!remediation && errorCode === "rollup_no_children") {
@@ -280,6 +293,7 @@ export async function GET(req: NextRequest) {
     }))
 
   return NextResponse.json({
+    period,
     summary,
     unknownByErrorCode,
     gappyIndicators,

@@ -25,7 +25,10 @@ export default async function IndicatorHealthPage() {
   const t = await getTranslations("adminIndicatorHealth")
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-5xl">
+    <div
+      className="container mx-auto py-8 px-4 max-w-5xl"
+      data-testid="data-control-indicator-health"
+    >
       <h1 className="text-2xl font-bold mb-2">{t("pageTitle")}</h1>
       <p className="text-sm text-muted-foreground mb-6 leading-relaxed">{t("pageDescription")}</p>
       <IndicatorHealthView />

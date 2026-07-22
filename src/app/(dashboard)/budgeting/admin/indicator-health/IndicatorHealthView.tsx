@@ -58,6 +58,7 @@ interface HealthSummary {
 }
 
 interface HealthResponse {
+  period: string
   summary: HealthSummary
   unknownByErrorCode: Record<string, number>
   gappyIndicators: GappyIndicator[]
@@ -287,18 +288,31 @@ export function IndicatorHealthView() {
 
   const { summary, unknownByErrorCode, gappyIndicators } = data
 
-  const greenPct = ((summary.green / summary.totalIvs) * 100).toFixed(1)
-  const computedPct = (
-    ((summary.green + summary.amber + summary.red) / summary.totalIvs) *
-    100
-  ).toFixed(1)
+  const greenPct = summary.totalIvs > 0
+    ? ((summary.green / summary.totalIvs) * 100).toFixed(1)
+    : "0.0"
+  const computedPct = summary.totalIvs > 0
+    ? (
+        ((summary.green + summary.amber + summary.red) / summary.totalIvs) *
+        100
+      ).toFixed(1)
+    : "0.0"
 
   const hasActiveFilter = searchQuery || filterCategory || entityFilter
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="data-control-indicator-health-content">
+      <div
+        className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+        data-testid="data-control-indicator-health-period"
+      >
+        {t("periodDisclosure", { period: data.period })}
+      </div>
       {/* ── Summary tiles ────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div
+        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3"
+        data-testid="data-control-indicator-health-summary"
+      >
         {[
           { label: t("summaryGreen"), value: summary.green, sub: `${greenPct}%`, dot: "bg-emerald-500", num: "text-emerald-600 dark:text-emerald-400", accent: "border-l-emerald-500" },
           { label: t("summaryAmber"), value: summary.amber, sub: null, dot: "bg-amber-500", num: "text-amber-600 dark:text-amber-400", accent: "border-l-amber-500" },

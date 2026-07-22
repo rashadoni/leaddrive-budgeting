@@ -24,6 +24,9 @@ import {
   readOrgOwnerOverrides,
   type OwnerContact,
 } from "@/lib/onboarding/indicator-owner-map";
+import { currentBakuYear } from "@/lib/risk/periods";
+import { loadPairApplicabilityResolver } from "@/lib/risk/pair-applicability";
+import { preferOrgScopedDefinitions } from "@/lib/risk/targets";
 
 export interface BacklogItem {
   indicatorCode: string;
@@ -92,7 +95,7 @@ export async function computeIndicatorBacklog(
   orgId: string,
   options?: { companyCode?: string; period?: string },
 ): Promise<{ companies: CompanyBacklog[]; summary: BacklogSummary }> {
-  const period = options?.period ?? "2026";
+  const period = options?.period ?? currentBakuYear();
 
   // Load org settings for owner overrides
   const org = await prisma.organization.findUnique({
@@ -107,6 +110,8 @@ export async function computeIndicatorBacklog(
       organizationId: orgId,
       isActive: true,
       level: 2,
+      role: "operational",
+      status: { notIn: ["pending", "archived"] },
       ...(options?.companyCode ? { code: options.companyCode } : {}),
     },
     select: {
@@ -119,11 +124,16 @@ export async function computeIndicatorBacklog(
   });
 
   // Load all active indicators + their requiredInputs + names
-  const allIndicators = await prisma.indicatorDefinition.findMany({
-    where: { isActive: true },
+  const rawIndicators = await prisma.indicatorDefinition.findMany({
+    where: {
+      isActive: true,
+      OR: [{ organizationId: null }, { organizationId: orgId }],
+    },
     select: {
       id: true,
+      organizationId: true,
       code: true,
+      isActive: true,
       nameEn: true,
       nameRu: true,
       nameAz: true,
@@ -133,6 +143,12 @@ export async function computeIndicatorBacklog(
       industries: true,
       requiredInputs: true,
     },
+  });
+  const allIndicators = preferOrgScopedDefinitions(rawIndicators);
+  const pairApplicability = await loadPairApplicabilityResolver(prisma, {
+    organizationId: orgId,
+    companies,
+    definitions: allIndicators,
   });
 
   // Load IndicatorValues for these entities × this period in one batch
@@ -161,25 +177,11 @@ export async function computeIndicatorBacklog(
   // Build per-entity backlogs
   const result: CompanyBacklog[] = [];
   for (const co of companies) {
-    if (!co.industry) {
-      // No industry set → can't determine applicable indicators
-      result.push({
-        companyId: co.id,
-        companyCode: co.code,
-        companyName: co.name,
-        industry: null,
-        applicableCount: 0,
-        missingCount: 0,
-        presentCount: 0,
-        readinessPct: 0,
-        items: [],
-        presentItems: [],
-      });
-      continue;
-    }
-    // Filter to indicators applicable to this industry
-    const applicable = allIndicators.filter((ind) =>
-      ind.industries.includes(co.industry as string),
+    // Use the canonical pair contract: explicit company override wins;
+    // otherwise universal definitions apply everywhere and tagged definitions
+    // follow the company's activity profile.
+    const applicable = allIndicators.filter((indicator) =>
+      pairApplicability.isApplicable(co, indicator),
     );
     let presentCount = 0;
     let missingCount = 0;

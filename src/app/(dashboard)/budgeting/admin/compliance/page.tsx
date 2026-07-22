@@ -124,7 +124,10 @@ export default async function CompliancePage() {
 
   const t = await getTranslations("adminCompliance");
   return (
-    <div className="container mx-auto py-8 px-4 max-w-7xl">
+    <div
+      className="container mx-auto py-8 px-4 max-w-7xl"
+      data-testid="data-control-compliance"
+    >
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-1">{t("pageTitle")}</h1>
         <p className="text-sm text-muted-foreground leading-relaxed max-w-3xl">

@@ -492,7 +492,7 @@ export async function GET(request: NextRequest) {
     // HeatMap — the badge just doesn't render.
     let readinessMap: Awaited<ReturnType<typeof getCompanyReadiness>>
     try {
-      readinessMap = await getCompanyReadiness(prisma, session.orgId)
+      readinessMap = await getCompanyReadiness(prisma, session.orgId, period)
     } catch (err) {
       log.error('readiness fetch failed (non-fatal)', {
         err: err instanceof Error ? err.message : String(err),

@@ -31,54 +31,58 @@ export interface ReadinessRow {
 
 const TIER_PALETTE: Record<
   Tier,
-  { bg: string; fg: string; border: string; label: string; glyph: string }
+  { bg: string; fg: string; border: string; glyph: string }
 > = {
   complete: {
     bg: "bg-emerald-50 dark:bg-emerald-500/15",
     fg: "text-emerald-700 dark:text-emerald-300",
     border: "border-emerald-500/30",
-    label: "Complete",
     glyph: "●",
   },
   good: {
     bg: "bg-emerald-50 dark:bg-emerald-500/10",
     fg: "text-emerald-700 dark:text-emerald-400",
     border: "border-emerald-500/25",
-    label: "Good",
     glyph: "●",
   },
   partial: {
     bg: "bg-amber-50 dark:bg-amber-500/10",
     fg: "text-amber-700 dark:text-amber-400",
     border: "border-amber-500/30",
-    label: "Partial",
     glyph: "◐",
   },
   thin: {
     bg: "bg-orange-50 dark:bg-orange-500/10",
     fg: "text-orange-700 dark:text-orange-400",
     border: "border-orange-500/30",
-    label: "Thin",
     glyph: "◐",
   },
   empty: {
     bg: "bg-red-50 dark:bg-red-500/10",
     fg: "text-red-700 dark:text-red-400",
     border: "border-red-500/30",
-    label: "Empty",
     glyph: "○",
   },
 }
 
-const SORT_OPTIONS = [
-  { id: "score-asc", label: "Score ascending (worst first)" },
-  { id: "score-desc", label: "Score descending (best first)" },
-  { id: "code-asc", label: "Code A→Z" },
-  { id: "industry", label: "By industry" },
-] as const
-type SortId = (typeof SORT_OPTIONS)[number]["id"]
+const SORT_IDS = ["score-asc", "score-desc", "code-asc", "industry"] as const
+type SortId = (typeof SORT_IDS)[number]
+const SORT_MESSAGE_KEYS: Record<
+  SortId,
+  "scoreAsc" | "scoreDesc" | "codeAsc" | "industry"
+> = {
+  "score-asc": "scoreAsc",
+  "score-desc": "scoreDesc",
+  "code-asc": "codeAsc",
+  industry: "industry",
+}
 
-function buildCsv(rows: ReadonlyArray<ReadinessRow>): string {
+function buildCsv(
+  rows: ReadonlyArray<ReadinessRow>,
+  areaLabel: (id: string) => string,
+  areaMissing: (id: string) => string,
+  tierLabel: (tier: Tier) => string,
+): string {
   // Header
   const header = [
     "code",
@@ -92,7 +96,7 @@ function buildCsv(rows: ReadonlyArray<ReadinessRow>): string {
   for (const r of rows) {
     const missing = r.areas
       .filter((a) => a.missing)
-      .map((a) => `${a.label}: ${a.missing}`)
+      .map((a) => `${areaLabel(a.id)}: ${areaMissing(a.id)}`)
       .join("; ")
     const esc = (s: string) => `"${s.replace(/"/g, '""')}"`
     lines.push(
@@ -101,7 +105,7 @@ function buildCsv(rows: ReadonlyArray<ReadinessRow>): string {
         esc(r.name),
         esc(r.industry),
         String(r.score),
-        r.tier,
+        tierLabel(r.tier),
         esc(missing),
       ].join(","),
     )
@@ -170,7 +174,12 @@ export function ReadinessTable({
   }
 
   const handleExportCsv = () => {
-    const csv = buildCsv(sorted)
+    const csv = buildCsv(
+      sorted,
+      (id) => t(`areaLabels.${id}` as never),
+      (id) => t(`areaMissing.${id}` as never),
+      (tier) => t(`tiers.${tier}` as never),
+    )
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -181,9 +190,12 @@ export function ReadinessTable({
   }
 
   return (
-    <div>
+    <div data-testid="data-control-readiness-content">
       {/* Summary chips */}
-      <div className="flex flex-wrap items-center gap-2 mb-4 text-xs">
+      <div
+        className="flex flex-wrap items-center gap-2 mb-4 text-xs"
+        data-testid="data-control-readiness-summary"
+      >
         <button
           type="button"
           onClick={() => setTierFilter("all")}
@@ -214,7 +226,7 @@ export function ReadinessTable({
               <span aria-hidden="true" className="mr-1">
                 {p.glyph}
               </span>
-              {p.label} ({n})
+              {t(`tiers.${tier}` as never)} ({n})
             </button>
           )
         })}
@@ -225,9 +237,9 @@ export function ReadinessTable({
           className="text-xs border rounded px-2 py-1 bg-background"
           aria-label={t("sortOrderAriaLabel")}
         >
-          {SORT_OPTIONS.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
+          {SORT_IDS.map((id) => (
+            <option key={id} value={id}>
+              {t(`sort.${SORT_MESSAGE_KEYS[id]}` as never)}
             </option>
           ))}
         </select>
@@ -241,7 +253,10 @@ export function ReadinessTable({
       </div>
 
       {/* Table */}
-      <div className="border rounded overflow-hidden">
+      <div
+        className="border rounded overflow-hidden"
+        data-testid="data-control-readiness-table"
+      >
         <table className="w-full text-sm">
           <thead className="bg-muted">
             <tr className="text-left text-xs">
@@ -262,7 +277,7 @@ export function ReadinessTable({
                   colSpan={8}
                   className="p-6 text-center text-muted-foreground italic"
                 >
-                  No companies match the current filter.
+                  {t("noFilterMatches")}
                 </td>
               </tr>
             )}
@@ -272,7 +287,9 @@ export function ReadinessTable({
               const topMissing = r.areas
                 .filter((a) => a.missing)
                 .slice(0, 3)
-                .map((a) => a.label.toLowerCase())
+                .map((a) =>
+                  t(`areaLabels.${a.id}` as never).toLowerCase(),
+                )
                 .join(", ")
               return (
                 <ReadinessRowView
@@ -305,11 +322,13 @@ function ReadinessRowView({
   palette: (typeof TIER_PALETTE)[Tier]
   onToggle: () => void
 }) {
+  const t = useTranslations("adminCompaniesReadiness")
   return (
     <>
       <tr
         className="border-t hover:bg-muted/40 cursor-pointer"
         onClick={onToggle}
+        data-testid={`data-control-readiness-row-${row.code}`}
       >
         <td className="p-2 text-muted-foreground text-xs">
           {isOpen ? "▾" : "▸"}
@@ -325,7 +344,7 @@ function ReadinessRowView({
             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs ${palette.bg} ${palette.border} ${palette.fg}`}
           >
             <span aria-hidden="true">{palette.glyph}</span>
-            {palette.label}
+            {t(`tiers.${row.tier}` as never)}
           </span>
         </td>
         <td className="p-2 text-xs text-muted-foreground truncate max-w-[280px]">
@@ -336,7 +355,7 @@ function ReadinessRowView({
             href={`/budgeting/admin/indicator-backlog?company=${row.code}`}
             className="inline-flex items-center gap-1 rounded border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-primary hover:bg-primary/15 transition-colors"
           >
-            View →
+            {t("viewBacklog")} →
           </a>
         </td>
       </tr>
@@ -354,13 +373,13 @@ function ReadinessRowView({
                   >
                     <span className={cleared ? "text-foreground" : "text-muted-foreground"}>
                       {cleared ? "✓ " : "• "}
-                      {a.label}
+                      {t(`areaLabels.${a.id}` as never)}
                     </span>
                     <span className="font-mono tabular-nums text-muted-foreground">
                       {a.earned}/{a.weight}
                       {a.missing && (
                         <span className="ml-2 text-amber-500">
-                          ({a.missing})
+                          ({t(`areaMissing.${a.id}` as never)})
                         </span>
                       )}
                       <span className="ml-1 opacity-60">[{Math.round(pct)}%]</span>

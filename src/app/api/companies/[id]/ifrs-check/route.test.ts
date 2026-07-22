@@ -56,11 +56,11 @@ describe("GET /api/companies/[id]/ifrs-check", () => {
     // Latest period is a well-classified import: assets/liabilities carry a
     // subType, equity is split into 2 components.
     prismaMock.balanceSheetLine.findMany.mockResolvedValue([
-      { lineType: "asset", amount: 999, year: 2025, month: 12, subType: "current", accountId: "old" }, // older period — ignored
-      { lineType: "asset", amount: 326066365, year: 2026, month: 3, subType: "non_current", accountId: "a1" },
-      { lineType: "liability", amount: -128398951, year: 2026, month: 3, subType: "short_term", accountId: "l1" },
-      { lineType: "equity", amount: -100000000, year: 2026, month: 3, subType: null, accountId: "eq_cap" },
-      { lineType: "equity", amount: -97667414, year: 2026, month: 3, subType: null, accountId: "eq_ret" },
+      { lineType: "asset", amount: 999, planId: "plan-old", year: 2025, month: 12, subType: "current", accountId: "old" }, // older period — ignored
+      { lineType: "asset", amount: 326066365, planId: "plan-actual-2026", year: 2026, month: 3, subType: "non_current", accountId: "a1" },
+      { lineType: "liability", amount: -128398951, planId: "plan-actual-2026", year: 2026, month: 3, subType: "short_term", accountId: "l1" },
+      { lineType: "equity", amount: -100000000, planId: "plan-actual-2026", year: 2026, month: 3, subType: null, accountId: "eq_cap" },
+      { lineType: "equity", amount: -97667414, planId: "plan-actual-2026", year: 2026, month: 3, subType: null, accountId: "eq_ret" },
     ])
     prismaMock.budgetLine.findMany.mockResolvedValue([
       { plannedAmount: 5000, accountId: "r1", account: { accountType: "revenue", category: null, name: "Sales", nameRu: null, nameAz: null, nameEn: null } },
@@ -74,6 +74,21 @@ describe("GET /api/companies/[id]/ifrs-check", () => {
     const body = await res.json()
     expect(body.company.code).toBe("AZSEKER-MALT")
     expect(body.period).toBe("2026-03")
+    expect(body.scope).toMatchObject({
+      status: "confirmed",
+      basis: "same_plan_ytd",
+      planId: "plan-actual-2026",
+      sourcePlanCount: 1,
+    })
+    expect(prismaMock.budgetLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          planId: "plan-actual-2026",
+          plan: { year: 2026 },
+          monthIndex: { gte: 0, lte: 2 },
+        }),
+      }),
+    )
     expect(body.report.summary.fail).toBe(0)
     expect(body.report.summary.score).toBe(100)
     const bal = body.report.checks.find((c: { code: string }) => c.code === "bs_balances")
@@ -91,8 +106,8 @@ describe("GET /api/companies/[id]/ifrs-check", () => {
     await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
     // pnlNet = 5000 - 2000 - 1100 = 1900 ; equity current-year line = -1900 → ties.
     prismaMock.balanceSheetLine.findMany.mockResolvedValue([
-      { lineType: "asset", amount: 1900, year: 2026, month: 1, subType: "current", accountId: "a1", account: { name: "Cash", nameEn: null, nameRu: null, nameAz: null } },
-      { lineType: "equity", amount: -1900, year: 2026, month: 1, subType: null, accountId: "eq_cy", account: { name: "Current Year (Profit) / Loss", nameEn: null, nameRu: null, nameAz: null } },
+      { lineType: "asset", amount: 1900, planId: "plan-actual-2026", year: 2026, month: 1, subType: "current", accountId: "a1", account: { name: "Cash", nameEn: null, nameRu: null, nameAz: null } },
+      { lineType: "equity", amount: -1900, planId: "plan-actual-2026", year: 2026, month: 1, subType: null, accountId: "eq_cy", account: { name: "Current Year (Profit) / Loss", nameEn: null, nameRu: null, nameAz: null } },
     ])
     prismaMock.budgetLine.findMany.mockResolvedValue([
       { plannedAmount: 5000, accountId: "r1", account: { accountType: "revenue", category: null, name: "Sales", nameRu: null, nameAz: null, nameEn: null } },
@@ -123,6 +138,9 @@ describe("GET /api/companies/[id]/ifrs-check", () => {
 
   it("detects an Azerbaijani-named depreciation account via the name fallback", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
+    prismaMock.balanceSheetLine.findMany.mockResolvedValue([
+      { lineType: "asset", amount: 1, planId: "plan-actual-2026", year: 2026, month: 12, subType: "current", accountId: "a1" },
+    ])
     prismaMock.budgetLine.findMany.mockResolvedValue([
       { plannedAmount: 100, accountId: "x1", account: { accountType: "cogs", category: null, name: "Amortizasiya", nameRu: null, nameAz: "Amortizasiya xərcləri", nameEn: null } },
     ])
@@ -130,6 +148,28 @@ describe("GET /api/companies/[id]/ifrs-check", () => {
     const body = await res.json()
     const dep = body.report.checks.find((c: { code: string }) => c.code === "pnl_depreciation")
     expect(dep.status).toBe("pass")
+  })
+
+  it("abstains when the latest balance-sheet period contains multiple plans", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
+    prismaMock.balanceSheetLine.findMany.mockResolvedValue([
+      { lineType: "asset", amount: 100, planId: "plan-a", year: 2026, month: 6, subType: "current", accountId: "a1" },
+      { lineType: "liability", amount: -100, planId: "plan-b", year: 2026, month: 6, subType: "short_term", accountId: "l1" },
+    ])
+
+    const res = await GET(makeRequest(`/api/companies/${COMPANY_ID}/ifrs-check`), buildParams(COMPANY_ID))
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.scope).toMatchObject({
+      status: "ambiguous",
+      planId: null,
+      sourcePlanCount: 2,
+      balanceSheetRows: 0,
+      profitAndLossRows: 0,
+    })
+    expect(prismaMock.budgetLine.findMany).not.toHaveBeenCalled()
+    expect(body.report.checks.every((check: { status: string }) => check.status === "skip")).toBe(true)
   })
 
   it("returns 404 for a company in another tenant (no existence leak)", async () => {
