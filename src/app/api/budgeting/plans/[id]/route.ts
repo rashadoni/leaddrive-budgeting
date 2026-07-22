@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId, getSession, requireRole } from "@/lib/api-auth"
+import { getOrgId, getSession, hasRole, requireRole } from "@/lib/api-auth"
 // Stage 3 RLS — `prisma` kept ONLY for lockedResponse's 423-audit; data
 // access rides the withOrgScope tx.
 import { prisma } from "@/lib/prisma"
@@ -64,6 +64,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const { name, status, notes, rejectedReason } = data
+
+  // Every accepted field mutates plan metadata or workflow state. Viewers are
+  // read-only even when they call the route directly instead of using the UI.
+  if (!hasRole(role, "editor")) {
+    return NextResponse.json({ error: "Forbidden — requires editor role or higher" }, { status: 403 })
+  }
 
   // Stage 3 RLS — the whole approval workflow (lock check, role check,
   // status write, audit, comment, auto-line freeze, notification fan-out)

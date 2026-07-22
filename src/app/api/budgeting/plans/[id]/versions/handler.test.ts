@@ -69,6 +69,7 @@ describe("GET /api/budgeting/plans/[id]/versions", () => {
       expect.objectContaining({
         where: {
           organizationId: ORG_ID,
+          deletedAt: null,
           OR: [{ id: "root-1" }, { amendmentOf: "root-1" }],
         },
         orderBy: { version: "asc" },
@@ -92,6 +93,7 @@ describe("GET /api/budgeting/plans/[id]/versions", () => {
       expect.objectContaining({
         where: {
           organizationId: ORG_ID,
+          deletedAt: null,
           OR: [{ id: "root-1" }, { amendmentOf: "root-1" }],
         },
       }),

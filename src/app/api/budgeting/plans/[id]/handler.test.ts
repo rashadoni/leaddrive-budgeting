@@ -118,6 +118,18 @@ describe('PUT /api/budgeting/plans/[id] — handler', () => {
     expect(prismaMock.budgetPlan.updateMany).not.toHaveBeenCalled();
   });
 
+  it('returns 403 for every direct viewer mutation, including rename and submit', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_viewer', role: 'viewer' });
+    for (const json of [{ name: 'Renamed' }, { status: 'pending_approval' }]) {
+      const res = await PUT(
+        makeRequest(`/api/budgeting/plans/${PLAN_ID}`, { method: 'PUT', json }),
+        paramsFor(PLAN_ID),
+      );
+      expect(res.status).toBe(403);
+    }
+    expect(prismaMock.budgetPlan.updateMany).not.toHaveBeenCalled();
+  });
+
   it('returns 400 on invalid status enum', async () => {
     await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
     const res = await PUT(

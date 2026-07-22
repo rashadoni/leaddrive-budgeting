@@ -13,6 +13,7 @@ const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     budgetPlan: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
     budgetLine: { create: vi.fn() },
+    $queryRaw: vi.fn(),
     organization: { findUnique: vi.fn() },
     auditEvent: { create: vi.fn() },
   },
@@ -34,6 +35,7 @@ beforeEach(() => {
   prismaMock.budgetPlan.update.mockReset().mockResolvedValue({ id: "p1" })
   prismaMock.budgetPlan.create.mockReset().mockResolvedValue({ id: "p2", version: 2 })
   prismaMock.budgetLine.create.mockReset().mockResolvedValue({ id: "bl1" })
+  prismaMock.$queryRaw.mockReset().mockResolvedValue([{ pg_advisory_xact_lock: null }])
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
   prismaMock.auditEvent.create.mockReset().mockResolvedValue({ id: "a1" })
 })
@@ -80,6 +82,9 @@ describe("POST /api/budgeting/plans/[id]/create-version", () => {
       month: null,
       quarter: null,
       notes: "n/a",
+      kind: "budget",
+      isRolling: false,
+      rollingMonths: 12,
       amendmentOf: null,
       version: 1,
       lines: [
@@ -106,11 +111,13 @@ describe("POST /api/budgeting/plans/[id]/create-version", () => {
           version: 2,
           amendmentOf: "p1",
           status: "draft",
+          kind: "budget",
         }),
       }),
     )
     // Both lines cloned to new plan
     expect(prismaMock.budgetLine.create).toHaveBeenCalledTimes(2)
+    expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(1)
     // Regression (2026-05-31): the source-line load MUST exclude soft-deleted
     // lines, or archived budget lines get cloned into the new version and
     // resurrected as live rows. Lock the include filter.
@@ -137,6 +144,9 @@ describe("POST /api/budgeting/plans/[id]/create-version", () => {
       month: null,
       quarter: null,
       notes: null,
+      kind: "budget",
+      isRolling: false,
+      rollingMonths: 12,
       amendmentOf: "p1", // p1 is the ROOT
       version: 2,
       lines: [],
@@ -149,5 +159,37 @@ describe("POST /api/budgeting/plans/[id]/create-version", () => {
     const created = prismaMock.budgetPlan.create.mock.calls[0][0].data
     expect(created.amendmentOf).toBe("p1")
     expect(created.version).toBe(3)
+  })
+
+  it("allocates the next chain-wide version when creation starts from the root again", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce({
+        id: "p1",
+        organizationId: ORG_ID,
+        name: "Plan-A",
+        periodType: "annual",
+        year: 2026,
+        month: null,
+        quarter: null,
+        notes: null,
+        kind: "budget",
+        isRolling: false,
+        rollingMonths: 12,
+        amendmentOf: null,
+        version: 1,
+        lines: [],
+      })
+      .mockResolvedValueOnce({ version: 4 })
+
+    await POST(
+      makeRequest("/api/budgeting/plans/p1/create-version", { method: "POST" }),
+      makeParams("p1"),
+    )
+
+    const created = prismaMock.budgetPlan.create.mock.calls[0][0].data
+    expect(created.version).toBe(5)
+    expect(created.versionLabel).toBe("v5")
+    expect(created.kind).toBe("budget")
   })
 })

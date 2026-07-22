@@ -36,7 +36,7 @@ export async function POST(
     async (tx) => {
   // Find original plan
   const plan: PlanWithLines | null = await tx.budgetPlan.findFirst({
-    where: { id: planId, organizationId: orgId },
+    where: { id: planId, organizationId: orgId, deletedAt: null },
     // deletedAt:null (2026-05-31): clone/snapshot only LIVE lines — without it,
     // archived (soft-deleted) budget lines get copied into the new version and
     // resurrected as live rows.
@@ -79,7 +79,20 @@ export async function POST(
   // Determine root of version chain. amendmentOf + version are columns
   // on BudgetPlan (schema.prisma); the typed shape now exposes them.
   const rootId = plan.amendmentOf || plan.id
-  const currentVersion = plan.version || 1
+  // Serialize version allocation per organization/root for the lifetime of
+  // this transaction. Without the advisory xact lock, two concurrent POSTs
+  // can both observe the same max(version) and create duplicate vN rows.
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`budget-plan-version:${orgId}:${rootId}`}))`
+  const latestVersion = await tx.budgetPlan.findFirst({
+    where: {
+      organizationId: orgId,
+      deletedAt: null,
+      OR: [{ id: rootId }, { amendmentOf: rootId }],
+    },
+    orderBy: { version: "desc" },
+    select: { version: true },
+  })
+  const nextVersion = Math.max(plan.version || 1, latestVersion?.version || 1) + 1
 
   // Clone plan with incremented version
   const newPlan = await tx.budgetPlan.create({
@@ -90,11 +103,14 @@ export async function POST(
       year: plan.year,
       month: plan.month,
       quarter: plan.quarter,
+      kind: plan.kind,
       status: "draft",
       notes: plan.notes,
       amendmentOf: rootId,
-      version: currentVersion + 1,
-      versionLabel: `v${currentVersion + 1}`,
+      version: nextVersion,
+      versionLabel: `v${nextVersion}`,
+      isRolling: plan.isRolling,
+      rollingMonths: plan.rollingMonths,
     },
   })
 

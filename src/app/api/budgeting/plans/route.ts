@@ -38,6 +38,10 @@ const createPlanSchema = z.object({
   month: z.number().int().min(1).max(12).optional().nullable(),
   quarter: z.number().int().min(1).max(4).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
+  // UI sends this explicitly. Legacy API clients omitted it, so default to a
+  // forward budget here rather than falling through to Prisma's historical
+  // `actual` default and silently changing the plan's financial meaning.
+  kind: z.enum(["actual", "budget"]).default("budget"),
 }).strict()
 
 const DEPT_CATEGORY_MAP: Record<string, string> = {
@@ -131,7 +135,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 })
   }
 
-  const { name, periodType, year, month, quarter, notes } = data
+  const { name, periodType, year, month, quarter, notes, kind } = data
 
   // Check for duplicate plan in same period — ignore soft-deleted plans,
   // otherwise user can't re-create after a Reset/Delete.
@@ -141,6 +145,7 @@ export async function POST(req: NextRequest) {
         organizationId: orgId,
         periodType,
         year,
+        kind,
         deletedAt: null,
         ...(month ? { month } : {}),
         ...(quarter ? { quarter } : {}),
@@ -161,6 +166,7 @@ export async function POST(req: NextRequest) {
         month: month ?? null,
         quarter: quarter ?? null,
         notes: notes || null,
+        kind,
       },
     })
   )

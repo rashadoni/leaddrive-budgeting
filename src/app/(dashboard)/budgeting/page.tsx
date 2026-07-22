@@ -23,16 +23,9 @@ import { BUDGET_COLORS } from "@/lib/budget-chart-theme"
 import { PeriodLockBadge } from "@/features/budgeting/components/PeriodLockBadge"
 import {
   useBudgetPlans,
-  useUpdateBudgetPlan,
-  useDeleteBudgetPlan,
   useBudgetSections,
   useCreateBudgetSection,
   useDeleteBudgetSection,
-  useBudgetVersions,
-  useCreateBudgetVersion,
-  useBudgetDiff,
-  useExchangeRates,
-  useCreateRollingPlan,
 } from "@/lib/budgeting/hooks"
 import { VarianceTab } from "@/features/budgeting/components/VarianceTab"
 import { ComparisonTab } from "@/features/budgeting/components/ComparisonTab"
@@ -54,17 +47,14 @@ import {
 } from "@/lib/budgeting/types"
 import { COST_MODEL_KEY_OPTIONS } from "@/lib/budgeting/cost-model-map"
 import { pickDefaultPlanId } from "@/lib/budgeting/plan-select"
+import { planLineEvidence } from "@/lib/budgeting/plan-presentation"
 import { BudgetConfigTab } from "@/components/budget-config-tab"
 import { SalesForecastTab } from "@/components/sales-forecast-tab"
 import { ExpenseForecastTab } from "@/components/expense-forecast-tab"
 import { BudgetDepartmentAccess } from "@/components/budget-department-access"
-import { BudgetApprovalWorkflow } from "@/components/budget-approval-workflow"
-import { BudgetApprovalHistory } from "@/components/budget-approval-history"
-import { BudgetVersionHistory } from "@/components/budget-version-history"
 import { AIAnalyticsPanel } from "@/components/ai-analytics-panel"
 import { SECTION_LABELS, type Section } from "@/lib/ai/section-meta"
 import { execPct } from "@/lib/budgeting/exec-pct"
-import { BudgetVersionDiff } from "@/components/budget-version-diff"
 import { BudgetMarginSummary } from "@/components/budget-margin-summary"
 import { BudgetPnlView } from "@/components/budget-pnl-view"
 import { SalesBudgetTable } from "@/components/sales-budget-table"
@@ -351,10 +341,10 @@ export default function BudgetingPage() {
                 {plans.map(p => {
                   // Mark empty placeholder plans so the picker reads clearly
                   // (∅ = no budget lines yet). Populated plans sort first.
-                  const isEmpty = (p._count?.lines ?? 0) === 0
+                  const lineEvidence = planLineEvidence(p)
                   return (
                     <option key={p.id} value={p.id}>
-                      {p.name} — {periodLabel(p, t)}{isEmpty ? " · ∅" : ""}
+                      {p.name} — {periodLabel(p, t)}{lineEvidence.state === "empty" ? ` · ${t("plansPickerEmpty")}` : lineEvidence.state === "unknown" ? ` · ${t("plansPickerUnknown")}` : ""}
                     </option>
                   )
                 })}

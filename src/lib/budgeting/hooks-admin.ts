@@ -128,7 +128,7 @@ export function useCreateApprovalComment() {
 export function useBudgetVersions(planId: string | null) {
   const orgId = useOrgId()
   return useQuery({
-    queryKey: ["budgeting", "versions", planId],
+    queryKey: ["budgeting", "versions", planId, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/budgeting/plans/${planId}/versions`, {
         headers: { "Content-Type": "application/json", "x-organization-id": orgId },
@@ -142,6 +142,8 @@ export function useBudgetVersions(planId: string | null) {
         version: number
         versionLabel: string | null
         amendmentOf: string | null
+        kind: "actual" | "budget"
+        _count: { lines: number }
         createdAt: string
         approvedAt: string | null
         approvedBy: string | null
@@ -174,7 +176,7 @@ export function useCreateBudgetVersion() {
 export function useBudgetDiff(planIdA: string | null, planIdB: string | null) {
   const orgId = useOrgId()
   return useQuery({
-    queryKey: ["budgeting", "diff", planIdA, planIdB],
+    queryKey: ["budgeting", "diff", planIdA, planIdB, orgId],
     queryFn: async () => {
       const res = await fetch(
         `/api/budgeting/plans/${planIdA}/diff?compareWith=${planIdB}`,

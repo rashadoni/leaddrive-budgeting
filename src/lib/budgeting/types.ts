@@ -191,6 +191,7 @@ export interface CreateBudgetPlanInput {
   month?: number
   quarter?: number
   notes?: string
+  kind: "actual" | "budget"
 }
 
 export interface UpdateBudgetPlanInput {
@@ -198,6 +199,7 @@ export interface UpdateBudgetPlanInput {
   status?: "draft" | "pending_approval" | "approved" | "rejected" | "closed"
   notes?: string
   rejectedReason?: string
+  comment?: string
 }
 
 export interface CreateBudgetLineInput {

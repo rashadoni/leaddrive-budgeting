@@ -16,6 +16,7 @@ export function CreatePlanDialog({ onClose }: { onClose: () => void }) {
   const create = useCreateBudgetPlan()
   const [name, setName] = useState("")
   const [periodType, setPeriodType] = useState<"monthly" | "quarterly" | "annual">("monthly")
+  const [kind, setKind] = useState<"budget" | "actual">("budget")
   const [year, setYear] = useState(new Date().getFullYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const [quarter, setQuarter] = useState(1)
@@ -31,6 +32,7 @@ export function CreatePlanDialog({ onClose }: { onClose: () => void }) {
         year,
         month: periodType === "monthly" ? month : undefined,
         quarter: periodType === "quarterly" ? quarter : undefined,
+        kind,
       })
       onClose()
     } catch (err: unknown) {
@@ -53,6 +55,14 @@ export function CreatePlanDialog({ onClose }: { onClose: () => void }) {
             <div>
               <label className="text-sm font-medium mb-1 block">{t("dlgName")}</label>
               <Input value={name} onChange={e => setName(e.target.value)} placeholder={t("dlgNamePlaceholder")} required />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">{t("dlgPlanKind")}</label>
+              <select value={kind} onChange={e => setKind(e.target.value as "budget" | "actual")}
+                className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background">
+                <option value="budget">{t("plansKindBudget")}</option>
+                <option value="actual">{t("plansKindActual")}</option>
+              </select>
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">{t("dlgPeriodType")}</label>

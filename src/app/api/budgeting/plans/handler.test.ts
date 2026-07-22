@@ -179,6 +179,13 @@ describe('POST /api/budgeting/plans — handler', () => {
     expect(body.success).toBe(true);
     expect(body.data.id).toBe(PLAN_ID);
     expect(body.auditStale).toBe(false);
+    expect(prismaMock.budgetPlan.findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ where: expect.objectContaining({ kind: "budget" }) }),
+    );
+    expect(prismaMock.budgetPlan.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ kind: "budget" }) }),
+    );
 
     expect(prismaMock.auditEvent.create).toHaveBeenCalledTimes(1);
     const auditCall = prismaMock.auditEvent.create.mock.calls[0][0];

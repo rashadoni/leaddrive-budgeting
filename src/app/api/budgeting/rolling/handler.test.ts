@@ -67,6 +67,18 @@ beforeEach(() => {
 })
 
 describe("POST /api/budgeting/rolling — period lock (Turn LXIX)", () => {
+  it("returns 403 below manager before creating financial state", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    const res = await POST(
+      makeRequest("/api/budgeting/rolling", {
+        method: "POST",
+        json: { name: "Rolling FY26", startYear: 2026, startMonth: 1 },
+      }),
+    )
+    expect(res.status).toBe(403)
+    expect(prismaMock.budgetPlan.create).not.toHaveBeenCalled()
+  })
+
   it("returns 423 when ANY of the 12 target months falls in a locked container", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
     // Lock 2026-Q2; rolling plan starts Jan 2026 → covers Q1+Q2+Q3+Q4 → Q2 hit
@@ -92,7 +104,9 @@ describe("POST /api/budgeting/rolling — period lock (Turn LXIX)", () => {
       }),
     )
     expect(res.status).toBe(201)
-    expect(prismaMock.budgetPlan.create).toHaveBeenCalledTimes(1)
+    expect(prismaMock.budgetPlan.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ kind: "budget" }) }),
+    )
   })
 })
 

@@ -1,12 +1,15 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useLocale, useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { MessageSquare, Send, CheckCircle2, XCircle, FileText, Lock } from "lucide-react"
 import { DataBoundary } from "@/components/ui/data-boundary"
 import { useBudgetApprovalComments } from "@/lib/budgeting/hooks"
+import { planStatusKey } from "@/lib/budgeting/plan-presentation"
+import type { LucideIcon } from "lucide-react"
 
-const STATUS_ICONS: Record<string, any> = {
+const STATUS_ICONS: Record<string, LucideIcon> = {
   submitted: Send,
   pending_approval: Send,
   review: MessageSquare,
@@ -43,32 +46,46 @@ interface Props {
   planId: string
 }
 
+const SYSTEM_COMMENT_KEYS: Record<string, "plansHistorySubmitted" | "plansHistoryApproved" | "plansHistoryRejected" | "plansHistoryClosed" | "plansHistoryDraft"> = {
+  "Plan submitted for approval": "plansHistorySubmitted",
+  "Plan approved": "plansHistoryApproved",
+  "Plan rejected": "plansHistoryRejected",
+  "Plan closed": "plansHistoryClosed",
+  "Plan reverted to draft": "plansHistoryDraft",
+}
+
 export function BudgetApprovalHistory({ planId }: Props) {
-  const { data: comments = [], isLoading } = useBudgetApprovalComments(planId)
+  const t = useTranslations("budgeting")
+  const locale = useLocale()
+  const { data: comments = [], isLoading, error } = useBudgetApprovalComments(planId)
 
   if (isLoading) {
-    return <DataBoundary loading>{null}</DataBoundary>
+    return <div data-testid="plans-approval-history-loading"><DataBoundary loading>{null}</DataBoundary></div>
+  }
+
+  if (error) {
+    return <div data-testid="plans-approval-history-error"><DataBoundary error={t("plansApprovalHistoryLoadError")}>{null}</DataBoundary></div>
   }
 
   if (comments.length === 0) {
     return (
-      <Card>
+      <Card data-testid="plans-approval-history-empty">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Approval History</CardTitle>
+          <CardTitle className="text-base">{t("plansApprovalHistoryTitle")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground text-center py-4">No approval actions yet.</p>
+          <p className="text-sm text-muted-foreground text-center py-4">{t("plansApprovalHistoryEmpty")}</p>
         </CardContent>
       </Card>
     )
   }
 
   return (
-    <Card>
+    <Card data-testid="plans-approval-history">
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <MessageSquare className="h-4 w-4" />
-          Approval History
+          {t("plansApprovalHistoryTitle")}
           <Badge variant="secondary" className="text-xs">{comments.length}</Badge>
         </CardTitle>
       </CardHeader>
@@ -91,13 +108,19 @@ export function BudgetApprovalHistory({ planId }: Props) {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium">{c.userName}</span>
                       <Badge className={`text-[10px] px-1.5 py-0 ${STATUS_COLORS[c.status] || ""}`}>
-                        {c.status}
+                        {c.status === "submitted" || c.status === "pending_approval"
+                          ? t("statusPending")
+                          : c.status === "review"
+                            ? t("plansStatusReview")
+                            : c.status === "comment"
+                              ? t("plansStatusComment")
+                              : t(planStatusKey(c.status))}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {new Date(c.createdAt).toLocaleString()}
+                        {new Date(c.createdAt).toLocaleString(locale)}
                       </span>
                     </div>
-                    <p className="text-sm text-muted-foreground">{c.comment}</p>
+                    <p className="text-sm text-muted-foreground">{SYSTEM_COMMENT_KEYS[c.comment] ? t(SYSTEM_COMMENT_KEYS[c.comment]) : c.comment}</p>
                   </div>
                 </div>
               )

@@ -1,9 +1,11 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useLocale, useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { GitBranch, Plus, ArrowRight, Loader2 } from "lucide-react"
+import { planKindKey, planLineEvidence, planStatusKey } from "@/lib/budgeting/plan-presentation"
 
 interface Version {
   id: string
@@ -12,6 +14,8 @@ interface Version {
   version: number
   versionLabel: string | null
   amendmentOf: string | null
+  kind: "actual" | "budget"
+  _count: { lines: number }
   createdAt: string
   approvedAt: string | null
   approvedBy: string | null
@@ -24,6 +28,8 @@ interface Props {
   onCreateVersion: () => void
   onCompare: (planIdA: string, planIdB: string) => void
   isCreating?: boolean
+  canCompare?: boolean
+  canCreate?: boolean
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -41,27 +47,29 @@ export function BudgetVersionHistory({
   onCreateVersion,
   onCompare,
   isCreating,
+  canCompare = false,
+  canCreate = false,
 }: Props) {
+  const t = useTranslations("budgeting")
+  const locale = useLocale()
   if (!versions.length) return null
 
-  const currentIdx = versions.findIndex((v) => v.id === currentPlanId)
-
   return (
-    <Card>
+    <Card data-testid="plans-version-history">
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center justify-between">
           <span className="flex items-center gap-2">
             <GitBranch className="h-4 w-4" />
-            Version History
+            {t("plansVersionHistoryTitle")}
           </span>
-          <Button size="sm" variant="outline" onClick={onCreateVersion} disabled={isCreating}>
+          {canCreate && <Button size="sm" variant="outline" data-write-control="create-version" onClick={onCreateVersion} disabled={isCreating}>
             {isCreating ? (
               <Loader2 className="h-4 w-4 animate-spin mr-1" />
             ) : (
               <Plus className="h-4 w-4 mr-1" />
             )}
-            New Version
-          </Button>
+            {t("plansNewVersionButton")}
+          </Button>}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -71,6 +79,7 @@ export function BudgetVersionHistory({
             return (
               <div
                 key={v.id}
+                data-testid={`plans-version-${v.id}`}
                 className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-colors
                   ${isCurrent ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}`}
                 onClick={() => onSelectVersion(v.id)}
@@ -83,19 +92,27 @@ export function BudgetVersionHistory({
                   <div>
                     <div className="text-sm font-medium">
                       {v.name}
-                      {isCurrent && <span className="text-xs text-muted-foreground ml-1">(current)</span>}
+                      {isCurrent && <span className="text-xs text-muted-foreground ml-1">({t("plansVersionCurrent")})</span>}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {new Date(v.createdAt).toLocaleDateString()}
-                      {v.approvedAt && ` · Approved ${new Date(v.approvedAt).toLocaleDateString()}`}
+                      {new Date(v.createdAt).toLocaleDateString(locale)}
+                      {v.approvedAt && ` · ${t("plansVersionApproved", { date: new Date(v.approvedAt).toLocaleDateString(locale) })}`}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {t(planKindKey(v.kind))} · {(() => {
+                        const evidence = planLineEvidence(v)
+                        if (evidence.state === "empty") return t("plansLinesEmpty")
+                        if (evidence.state === "unknown") return t("plansLinesUnknown")
+                        return t("plansLinesCount", { count: evidence.count })
+                      })()}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge className={`text-[10px] ${STATUS_COLORS[v.status] || "bg-muted"}`}>
-                    {v.status}
+                    {t(planStatusKey(v.status))}
                   </Badge>
-                  {i > 0 && (
+                  {i > 0 && canCompare && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -106,7 +123,7 @@ export function BudgetVersionHistory({
                       }}
                     >
                       <ArrowRight className="h-3 w-3 mr-1" />
-                      Diff
+                      {t("plansVersionDiffButton")}
                     </Button>
                   )}
                 </div>

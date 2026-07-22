@@ -15,16 +15,17 @@ export async function GET(
   const versions = await withOrgScope(orgId, async (tx) => {
     // Find the plan to get the root
     const plan = await tx.budgetPlan.findFirst({
-      where: { id: planId, organizationId: orgId },
+      where: { id: planId, organizationId: orgId, deletedAt: null },
     })
     if (!plan) return null
 
-    const rootId = (plan as any).amendmentOf || plan.id
+    const rootId = plan.amendmentOf || plan.id
 
     // Find all plans in the version chain
     return tx.budgetPlan.findMany({
       where: {
         organizationId: orgId,
+        deletedAt: null,
         OR: [{ id: rootId }, { amendmentOf: rootId }],
       },
       select: {
@@ -34,6 +35,8 @@ export async function GET(
         version: true,
         versionLabel: true,
         amendmentOf: true,
+        kind: true,
+        _count: { select: { lines: { where: { deletedAt: null } } } },
         createdAt: true,
         approvedAt: true,
         approvedBy: true,

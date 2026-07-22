@@ -54,8 +54,8 @@ const SVC_REVENUE_MAP: Record<string, string> = {
 
 // POST — create a rolling forecast plan with 12 months + auto-populate from cost model
 export async function POST(req: NextRequest) {
-  const session = await getSession(req)
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await requireRole(req, "manager")
+  if (isAuthError(session)) return session
   const { orgId, userId } = session
 
   let body
@@ -109,6 +109,7 @@ export async function POST(req: NextRequest) {
       isRolling: true,
       rollingMonths,
       status: "draft",
+      kind: "budget",
     },
   })
 

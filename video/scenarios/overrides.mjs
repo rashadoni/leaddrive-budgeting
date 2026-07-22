@@ -191,6 +191,28 @@ const CMP_ABSENCE = [
 ];
 const CMP_TABLE = '[data-testid="comparison-table"]';
 
+const PLANS_ROOT = '[data-testid="plans-guide-root"]';
+const PLANS_PROVENANCE = '[data-testid="plans-provenance"]';
+const PLANS_COUNT = '[data-testid="plans-count"]';
+const PLANS_CARD = '[data-testid^="plans-card-"]';
+const PLANS_EVIDENCE = '[data-testid^="plans-evidence-"]';
+const PLANS_STATUS = '[data-testid^="plans-status-"]';
+const PLANS_CURRENCY = '[data-testid="plans-currency-scope"]';
+const PLANS_APPROVAL = '[data-testid="plans-approval-workflow"]';
+const PLANS_APPROVAL_HISTORY = [
+  '[data-testid="plans-approval-history"]',
+  '[data-testid="plans-approval-history-empty"]',
+  '[data-testid="plans-approval-history-error"]',
+  '[data-testid="plans-approval-history-loading"]',
+];
+const PLANS_VERSION = [
+  '[data-testid="plans-version-history"]',
+  '[data-testid="plans-version-error"]',
+  '[data-testid="plans-version-loading"]',
+  '[data-testid="plans-version-empty"]',
+];
+const PLANS_MUTATIONS = '[data-testid="plans-readonly-disclosure"]';
+
 // Select AZSEKER (code AZSF) from the company <select>. READONLY-safe: selecting
 // an option only changes local React state; the fetch is a GET. Find the option
 // whose text names AZSEKER/AZSF (label is "<code> · <name>"), else the first real
@@ -770,6 +792,117 @@ export default {
           await h.moveTo(FC_PROVENANCE);
           await h.hover(FC_KPIS);
           await h.moveTo(FC_MATRIX);
+        },
+      },
+    ],
+  },
+  "plans": {
+    route: "/budgeting?tab=plans",
+    title: {
+      az: "Planlar — təşkilat üzrə nəzarət reyestri",
+      en: "Plans — organization-wide control registry",
+      ru: "Планы — реестр контроля организации",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "Bu, Büdcələşdirmə bölməsinin Planlar reyestridir. Görünüş bütün təşkilat üzrə canlı planları, təsdiq vəziyyətini və versiyaları göstərir; ayrıca şirkət filtri tətbiq etmir. Yumşaq silinmiş planlar siyahıya daxil deyil. Yuxarıdakı mənşə qeydi bu scope-u açıq saxlayır ki, kartı ayrıca hüquqi şəxsin məlumatı kimi səhv oxumayasınız.",
+          en: "This is the Plans registry inside Budgeting. It shows live plans, approval state, and versions across the organization and does not apply an individual-company filter. Soft-deleted plans are excluded. The provenance disclosure keeps that scope explicit, so a card is never mistaken for evidence belonging to one legal entity.",
+          ru: "Это реестр Планов в разделе Бюджетирования. Он показывает активные планы, согласование и версии всей организации и не применяет фильтр отдельной компании. Мягко удалённые планы исключены. Пояснение об источнике явно закрепляет этот scope, чтобы карточку не приняли за данные одного юридического лица.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(PLANS_ROOT, { timeout: 12000 });
+          await h.moveTo(PLANS_PROVENANCE);
+          await h.hover(PLANS_ROOT);
+        },
+      },
+      {
+        voice: {
+          az: "Başlıqdakı plan sayı reyestrdəki kartları sayır, maliyyə sətirlərini deyil. Hər kart ayrıca canlı sətir sübutunu göstərir. Sıfır sətir açıq şəkildə boş plan deməkdir; say metadata-sı gəlməyibsə, vəziyyət naməlum qalır. Naməlum dəyəri sıfıra çevirmək və boş planı doldurulmuş kimi şərh etmək olmaz.",
+          en: "The count in the heading measures registry cards, not financial lines. Each card separately reports its live-line evidence. An explicit zero means the plan is empty; when count metadata is unavailable, the state remains unknown. Unknown must never be converted to zero, and an empty plan must not be interpreted as populated evidence.",
+          ru: "Счётчик в заголовке считает карточки реестра, а не финансовые строки. Каждая карточка отдельно показывает число активных строк. Явный ноль означает пустой план; если метаданные количества не пришли, состояние остаётся неизвестным. Неизвестное нельзя превращать в ноль, а пустой план — считать заполненным доказательством.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(PLANS_COUNT);
+          await h.hover(PLANS_EVIDENCE);
+        },
+      },
+      {
+        voice: {
+          az: "Kartın adı yalnız istifadəçi etiketidir və maliyyə mənasını sübut etmir. Növ sahəsi büdcə-planı faktiki nəticədən açıq ayırır; dövr sahəsi illik, rüblük və ya aylıq yuvanı göstərir. Müqayisə və qərar verməzdən əvvəl növü, ili və dövr detalını birlikdə yoxlayın, heç vaxt addan təxmin etməyin.",
+          en: "A card name is only a user label and does not prove financial meaning. The kind field explicitly separates a budget plan from realized actuals, while the period identifies the annual, quarterly, or monthly slot. Before comparing or deciding, verify kind, year, and period granularity together; never infer them from the name.",
+          ru: "Название карточки — лишь пользовательская метка и не доказывает финансовый смысл. Вид явно отделяет бюджетный план от реализованного факта, а период задаёт годовой, квартальный или месячный слот. Перед сравнением и выводами проверяйте вместе вид, год и детализацию периода; никогда не угадывайте их по названию.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(PLANS_CARD);
+          await h.hover(PLANS_EVIDENCE);
+        },
+      },
+      {
+        voice: {
+          az: "Rəngli nöqtə və mətn maliyyə keyfiyyətini deyil, iş axınının vəziyyətini göstərir: qaralama, təsdiq gözləyən, təsdiqlənmiş, rədd edilmiş və ya bağlanmış. Göndərilmə və təsdiq tarixləri proses izidir. Təsdiqlənmiş status məlumatın tam, düzgün və qərar üçün hazır olduğunu avtomatik sübut etmir; sətir və mənbə sübutu ayrıca yoxlanmalıdır.",
+          en: "The colored dot and label describe workflow state, not financial quality: draft, pending approval, approved, rejected, or closed. Submission and approval timestamps are process evidence. An approved status does not automatically prove that data is complete, correct, or decision-ready; line counts and source evidence still require a separate review.",
+          ru: "Цветная точка и подпись описывают состояние процесса, а не качество финансов: черновик, ожидание, одобрение, отклонение или закрытие. Даты отправки и одобрения — след процесса. Статус «одобрен» сам по себе не доказывает полноту, корректность или готовность к решению; строки и источники проверяются отдельно.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(PLANS_STATUS);
+          await h.hover(PLANS_CARD);
+        },
+      },
+      {
+        voice: {
+          az: "İş sahəsi üçün başlanğıc seçim ən yeni doldurulmuş büdcəyə üstünlük verir; beləliklə icra göstəricisi planı faktla düzgün müqayisə edə bilir. Boş kart reyestrdə görünməyə davam edir, lakin qərar mənbəyi sayılmır. Bu təlim heç bir Select və ya Active idarəsinə basmır, çünki seçim başqa iş görünüşünə keçir.",
+          en: "The Workspace default prefers the newest populated budget, allowing execution to compare a plan with actuals on the correct basis. An empty card remains visible in the registry but is not decision evidence. This guide never presses Select or Active, because selection changes the active plan and navigates into another working view.",
+          ru: "Стартовый выбор Рабочей области предпочитает новейший заполненный бюджет, чтобы исполнение корректно сопоставляло план с фактом. Пустая карточка остаётся видимой в реестре, но не является доказательством для решения. Гайд не нажимает Select или Active: выбор меняет активный план и переводит в другой рабочий экран.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(PLANS_EVIDENCE);
+          await h.hover(PLANS_CARD);
+        },
+      },
+      {
+        voice: {
+          az: "Plan kartları pul məbləği göstərmir, buna görə onlarda valyuta tətbiq edilmir və manat, dollar və ya başqa vahid təxmin olunmur. Versiya fərqi yalnız təşkilatın təsdiqlənmiş baza valyutası olduqda əlçatan olur. Valyuta məlum deyilsə, müqayisə idarəsi gizli qalır; vahidsiz rəqəmlər təqdim edilmir.",
+          en: "Plan cards contain no monetary amounts, so currency is not applicable there and the screen does not guess manat, dollars, or another unit. Version difference becomes available only when the organization has a confirmed base currency. If currency is unknown, the comparison control stays unavailable rather than presenting unitless financial numbers.",
+          ru: "Карточки планов не содержат денежных сумм, поэтому валюта к ним неприменима и экран не угадывает манаты, доллары или другую единицу. Разница версий доступна только при подтверждённой базовой валюте организации. Если валюта неизвестна, сравнение остаётся недоступным и не показывает финансовые числа без единицы.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(PLANS_CURRENCY);
+          await h.hover(PLANS_PROVENANCE);
+        },
+      },
+      {
+        voice: {
+          az: "Təsdiq paneli cari planın proses pilləsini, icazə verilən idarəetmələri və tarixçəni göstərir. Tarixçənin yükləmə xətası boş tarix kimi təqdim edilmir. Şərh sahəsi və göndər, təsdiqlə, rədd et, bağla və yenidən aç düymələri production-a yazır. Təlim yalnız panellərə işarə edir və heç bir idarəyə fokus vermir.",
+          en: "The approval area shows the current workflow step, permitted controls, and recorded history. A history-loading error is never presented as an empty history. The comment field and submit, approve, reject, close, and reopen buttons write to production. This guide only points to the panels and never focuses or activates any control.",
+          ru: "Область согласования показывает текущий шаг процесса, доступные действия и записанную историю. Ошибка загрузки истории не выдаётся за пустую историю. Поле комментария и кнопки отправки, одобрения, отклонения, закрытия и открытия записывают в production. Гайд только указывает на панели и не фокусирует и не активирует элементы.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(PLANS_APPROVAL);
+          await h.hover(PLANS_APPROVAL_HISTORY);
+        },
+      },
+      {
+        voice: {
+          az: "Versiya tarixçəsində hər qeyd ayrıca snapshot zənciridir, yeni faktiki dövr deyil. Yeni versiya mənbə planın büdcə və ya faktiki növünü saxlayır, nömrəni bütün canlı zəncir üzrə artırır və yumşaq silinmiş versiyaları göstərmir. Təlim New Version, versiya sətri və Diff idarəsinə basmır; bunlar ayrıca yoxlama tələb edir.",
+          en: "In version history, each entry is a snapshot in one chain, not a new actual period. A new version preserves the source plan's budget-or-actual kind, increments the number across the complete live chain, and excludes soft-deleted versions. The guide never presses New Version, a version row, or Diff; those actions require separate review.",
+          ru: "В истории каждая запись — снимок одной цепочки, а не новый фактический период. Новая версия сохраняет бюджетный или фактический вид источника, увеличивает номер по всей активной цепочке и исключает мягко удалённые версии. Гайд не нажимает «Новая версия», строку версии или Diff: эти действия требуют отдельной проверки.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(PLANS_VERSION);
+          await h.hover(PLANS_VERSION);
+        },
+      },
+      {
+        voice: {
+          az: "Sonda təhlükəsiz baxış ardıcıllığı belədir: təşkilat scope-unu təsdiqləyin, plan sayını sətir sayından ayırın, növ və dövrü yoxlayın, sonra status, tarixçə və versiyaları oxuyun. Ad dəyişmə, yeni və sürüşkən plan, silmə, sıfırlama və proses düymələrinin hamısı yazma əməliyyatıdır. Bu READONLY təlimdə şəbəkə mutasiyası sıfır qalmalıdır.",
+          en: "The safe review sequence is: confirm organization scope, separate the plan count from line counts, verify kind and period, then read status, approval history, and versions. Rename, new plan, rolling plan, delete, reset, and every workflow button are write operations. In this READONLY guide, the production mutation count must remain exactly zero.",
+          ru: "Безопасный порядок таков: подтвердить scope организации, отделить число планов от числа строк, проверить вид и период, затем прочитать статус, историю и версии. Переименование, новый и скользящий план, удаление, сброс и все кнопки процесса являются записью. В этом READONLY-гайде число production-мутаций обязано остаться ровно нулевым.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(PLANS_MUTATIONS);
+          await h.hover(PLANS_COUNT);
+          await h.moveTo(PLANS_PROVENANCE);
         },
       },
     ],
