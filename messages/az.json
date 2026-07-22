@@ -3193,14 +3193,16 @@
     "page": {
       "pill": "VAHID GİRİŞ NÖQTƏSİ",
       "title": "Data İmportu",
-      "description": "İstənilən xlsx-i yükləyin — AI avtomatik olaraq data tipini (P&L, Balance Sheet, Cash Flow, əməliyyat KPI-ları, CAPEX, satış, torpaq, şirkət təsvirləri, holdinq strukturu, büdcə faktiki məlumatları, satış proqnozu) müəyyən edir və düzgün adapter-ə yönləndirir. Hər data tipi üçün ayrı forma yoxdur — hər şey bir ekrandadır.",
-      "stackLine": "Stack: AI Classifier (Anthropic) → Adapter Router → 5-Phase Import → Mandatory Reconciliation. 🟢 GREEN reconciliation verdict olmadan DB-də heç bir dəyişiklik olmur."
+      "description": "Dəstəklənən xlsx faylını təsnifat və yoxlama üçün yükləyin. Sistem P&L, balans, pul axını, əməliyyat KPI-ları, CAPEX, satış, torpaq, şirkət təsvirləri, holdinq strukturu, büdcə faktları və ya satış proqnozu üçün data tipi və adapter təklif edir. Təklif ixtiyari workbook-un düzgün uyğunlaşdırıldığını sübut etmir: tətbiqdən əvvəl yönləndirmə, hesablar, konfliktlər, məlumat sahəsi və reconciliation yoxlanmalıdır.",
+      "stackLine": "Axın: açıq upload və Analyze → saxlanmış şablon və ya AI klassifikatoru → adapter preview-u → yoxlama və reconciliation → açıq Apply. Saxlanmış şablon pullu klassifikatoru keçə bilər; əks halda analiz Anthropic-i çağıra və əməliyyat preview metadata-sı saxlaya bilər.",
+      "safetyTitle": "Bu səhifəyə baxış read-only-dir, workflow əməliyyatları isə deyil.",
+      "safetyBody": "Fayl seçimi lokal baş verir, lakin Analyze onun məzmununu göndərə, pullu AI provider çağıra və preview və ya staging qeydləri yarada bilər. Apply import olunan maliyyə datasını yazır. Təmizləmə seçilmiş sahədə datanı arxivləyə və ya silə bilən ayrıca dağıdıcı workflow-dur. Hər əməliyyatı yalnız düzgün fayl, səlahiyyət və açıq niyyətlə istifadə edin."
     },
     "reset": {
       "title": "Təkrar yükləmədən əvvəl import təmizliyi",
       "description": "Təkrar importdan əvvəl şirkət/ili təhlükəsiz təmizləyin. Əvvəlcə say preview-u göstərilir; yazı eyni audited Data Archive reset yolundan keçir və commit-dən sonra recompute edir.",
       "openFullArchive": "Tam arxiv",
-      "defaultReason": "Clean slate before AI re-import",
+      "defaultReason": "Təkrar AI importundan əvvəl seçilmiş məlumatları təmizləmək",
       "scopeLabel": "Şirkət / holding",
       "scopePlaceholder": "Şirkət və ya holding seçin",
       "holdingGroupLabel": "Holdinglər",
@@ -3482,7 +3484,7 @@
     "single": {
       "dropZone": {
         "empty": "xlsx faylı buraya çəkin və ya seçmək üçün klikləyin",
-        "hint": "AI strukturu müəyyən edib idxal planı təklif edəcək (hər hansı müştərinin hər hansı workbook-u)",
+        "hint": "AI dəstəklənən workbook üçün struktur və import planı təklif edəcək; manual yoxlama yenə məcburidir",
         "replaceHint": "əvəz etmək üçün başqasını çəkin"
       },
       "step1": {

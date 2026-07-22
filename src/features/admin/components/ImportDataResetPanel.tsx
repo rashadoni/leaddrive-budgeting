@@ -155,6 +155,7 @@ export function ImportDataResetPanel({
   return (
     <section
       id="import-cleanup"
+      data-testid="ai-import-guide-reset"
       className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 text-sm dark:border-amber-500/30 dark:bg-amber-500/10"
     >
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">

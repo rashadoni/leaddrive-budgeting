@@ -23,6 +23,7 @@ export function AIImportTabs({ initialYear }: { initialYear?: number }) {
         role="tablist"
         aria-label={t("tabs.ariaLabel")}
         className="inline-flex rounded border border-slate-200 bg-slate-50 p-1"
+        data-testid="ai-import-guide-tabs"
       >
         <button
           type="button"
@@ -88,9 +89,9 @@ export function AIImportTabs({ initialYear }: { initialYear?: number }) {
         </button>
       </div>
 
-      <div role="tabpanel">
+      <div role="tabpanel" data-testid="ai-import-guide-panel">
         {mode === "single" ? (
-          <AIImportForm />
+          <AIImportForm initialYear={initialYear} />
         ) : mode === "multi" ? (
           <MultiFileForm />
         ) : mode === "universal" ? (

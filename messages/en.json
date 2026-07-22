@@ -3193,14 +3193,16 @@
     "page": {
       "pill": "SINGLE ENTRY POINT",
       "title": "Data Import",
-      "description": "Upload any xlsx — the AI automatically detects the data type (P&L, Balance Sheet, Cash Flow, operational KPI, CAPEX, sales, land, company descriptions, holding structure, budget actuals, sales forecast) and routes to the correct adapter. No separate forms per data type — one screen for everything.",
-      "stackLine": "Stack: AI Classifier (Anthropic) → Adapter Router → 5-Phase Import → Mandatory Reconciliation. No DB changes without a 🟢 GREEN reconciliation verdict."
+      "description": "Upload a supported xlsx for classification and review. The system proposes a data type and adapter for P&L, Balance Sheet, Cash Flow, operational KPI, CAPEX, sales, land, company descriptions, holding structure, budget actuals, or sales forecast. A proposal is not proof that an arbitrary workbook is mapped correctly: review routing, accounts, conflicts, scope, and reconciliation before applying.",
+      "stackLine": "Flow: explicit upload and Analyze → saved template or AI classifier → adapter preview → review and reconciliation → explicit Apply. A saved template can skip the paid classifier; analysis can otherwise invoke Anthropic and store operational preview metadata.",
+      "safetyTitle": "Viewing this page is read-only; workflow actions are not.",
+      "safetyBody": "Selecting a file is local, but Analyze can upload its contents, call a paid AI provider, and create preview or staging records. Apply writes imported financial data. Cleanup is a separate destructive workflow that can archive or delete scoped data. Use each action only with the correct file, authority, and explicit intent."
     },
     "reset": {
       "title": "Import cleanup before re-load",
       "description": "Clear a company/year safely before re-importing. Preview counts first; the write path is the same audited Data Archive reset, with recompute after commit.",
       "openFullArchive": "Full archive",
-      "defaultReason": "Clean slate before AI re-import",
+      "defaultReason": "Clear scoped import data before AI re-import",
       "scopeLabel": "Company / holding",
       "scopePlaceholder": "Pick company or holding",
       "holdingGroupLabel": "Holdings",
@@ -3482,7 +3484,7 @@
     "single": {
       "dropZone": {
         "empty": "Drop an xlsx file here or click to choose",
-        "hint": "AI will detect the structure + suggest an import plan (any workbook from any client)",
+        "hint": "AI will propose a structure and import plan for a supported workbook; human review is still required",
         "replaceHint": "drop another to replace"
       },
       "step1": {

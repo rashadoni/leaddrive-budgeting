@@ -65,7 +65,10 @@ export default async function AIImportPage({
   })
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-4xl">
+    <div
+      className="container mx-auto py-8 px-4 max-w-4xl"
+      data-testid="ai-import-guide-root"
+    >
       <div className="mb-6">
         <div className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-primary/10 text-primary text-xs font-medium mb-2">
           {t("page.pill")}
@@ -75,11 +78,22 @@ export default async function AIImportPage({
           {t("page.description")}
         </p>
       </div>
-      <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
+      <p
+        className="text-xs text-muted-foreground mb-4 leading-relaxed"
+        data-testid="ai-import-guide-pipeline"
+      >
         {t("page.stackLine")}
       </p>
 
-      <div className="mb-6">
+      <div
+        className="mb-6 rounded-lg border border-blue-200 bg-blue-50/60 p-4 text-xs leading-relaxed text-blue-950 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100"
+        data-testid="ai-import-guide-safety"
+      >
+        <p className="font-semibold">{t("page.safetyTitle")}</p>
+        <p className="mt-1">{t("page.safetyBody")}</p>
+      </div>
+
+      <div className="mb-6" data-testid="ai-import-guide-cleanup">
         <ImportDataResetPanel
           scopes={resetScopes}
           initialCompanyCode={initialCompanyCode}
@@ -87,7 +101,9 @@ export default async function AIImportPage({
         />
       </div>
 
-      <AIImportTabs initialYear={importYear} />
+      <div data-testid="ai-import-guide-workflows">
+        <AIImportTabs initialYear={importYear} />
+      </div>
     </div>
   )
 }

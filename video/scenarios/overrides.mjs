@@ -83,6 +83,25 @@ const DC_DRIFT_FRESHNESS = '[data-testid="data-control-drift-freshness"]';
 const DC_INTEL = '[data-testid="data-control-intel-health"]';
 const DC_INTEL_SUMMARY = '[data-testid="data-control-intel-health-summary"]';
 
+// ── AI Import guide readiness ───────────────────────────────────────────
+// Strictly hover-only on the initial server-rendered page. It never selects a
+// file, changes a tab, opens cleanup, runs Analyze/Doctor, saves a template or
+// alias, previews a reset, or applies data. Initial render therefore stays on
+// the legacy single-file panel and cannot invoke a provider or mutation API.
+const AI_IMPORT_ROOT = '[data-testid="ai-import-guide-root"]';
+const AI_IMPORT_PIPELINE = '[data-testid="ai-import-guide-pipeline"]';
+const AI_IMPORT_SAFETY = '[data-testid="ai-import-guide-safety"]';
+const AI_IMPORT_CLEANUP = '[data-testid="ai-import-guide-cleanup"]';
+const AI_IMPORT_RESET = '[data-testid="ai-import-guide-reset"]';
+const AI_IMPORT_WORKFLOWS = '[data-testid="ai-import-guide-workflows"]';
+const AI_IMPORT_TABS = '[data-testid="ai-import-guide-tabs"]';
+const AI_IMPORT_SINGLE = '[data-testid="tab-single"]';
+const AI_IMPORT_MULTI = '[data-testid="tab-multi"]';
+const AI_IMPORT_UNIVERSAL = '[data-testid="tab-universal"]';
+const AI_IMPORT_MULTISHEET = '[data-testid="tab-multisheet"]';
+const AI_IMPORT_DROP = '[data-testid="ai-import-guide-drop-zone"]';
+const AI_IMPORT_ANALYZE = '[data-testid="ai-import-guide-analyze"]';
+
 // ── Workspace / P&L execution view ────────────────────────────────────────
 // READONLY-safe: the only clicks toggle local list/matrix/materiality state.
 // No export, sync, create, edit, save or delete action is touched.
@@ -1069,6 +1088,122 @@ export default {
           await h.hover(TERM_AUDIT);
           await p.waitForSelector(TERM_ROOT, { timeout: 15000 });
           await h.moveTo(TERM_ROOT);
+        },
+      },
+    ],
+  },
+  "ai-import": {
+    route: "/budgeting/admin/ai-import",
+    title: {
+      az: "AI import: təhlükəsiz iş axını",
+      en: "AI Import: safe workflow",
+      ru: "AI-импорт: безопасный workflow",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "AI Import maliyyə workbook-larını bir giriş nöqtəsindən qəbul edir, lakin bu ekranın vədi kor avtomatlaşdırma deyil. Sistem dəstəklənən xlsx formasını təsnif edir və adapter təklif edir; təklif mənbənin düzgünlüyünü, tamlığını və qərar üçün yararlı olduğunu sübut etmir. Bu təlim yalnız mövcud ekranı oxuyur.",
+          en: "AI Import accepts financial workbooks through one entry point, but its promise is not blind automation. The system classifies a supported xlsx shape and proposes an adapter; that proposal does not prove the source is accurate, complete, reconciled, or decision-grade. This walkthrough only reads the initial page and triggers no workflow action.",
+          ru: "AI Import принимает финансовые книги через единую точку входа, но не обещает слепую автоматизацию. Система классифицирует поддерживаемую форму xlsx и предлагает адаптер; это предложение не доказывает точность, полноту, сверку или пригодность источника для решений. Этот обзор только читает исходную страницу и ничего не запускает.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(AI_IMPORT_ROOT, { timeout: 15000 });
+          await h.hover(AI_IMPORT_ROOT);
+        },
+      },
+      {
+        voice: {
+          az: "Yuxarıdakı axın əməliyyat sərhədlərini göstərir. Upload və Analyze açıq istifadəçi addımıdır; uyğun saxlanmış şablon varsa pullu klassifikator keçilə bilər, əks halda Anthropic çağırıla və preview metadata-sı saxlanıla bilər. Sonra adapter preview-u, manual yoxlama, reconciliation və ayrıca Apply gəlir. Səhifənin açılması bu addımların heç birini etmir.",
+          en: "The flow line names the operational boundaries. Upload and Analyze are explicit user actions; a matching saved template can skip the paid classifier, otherwise Anthropic may be called and preview metadata may be stored. Adapter preview, human review, reconciliation, and a separate Apply step follow. Merely opening this page performs none of those actions.",
+          ru: "Строка процесса показывает операционные границы. Upload и Analyze являются явными действиями пользователя; подходящий сохранённый шаблон может пропустить платный классификатор, иначе возможен вызов Anthropic и сохранение служебного preview. Затем идут preview адаптера, ручная проверка, сверка и отдельный Apply. Простое открытие страницы ничего из этого не выполняет.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(AI_IMPORT_PIPELINE, { timeout: 15000 });
+          await h.hover(AI_IMPORT_PIPELINE);
+        },
+      },
+      {
+        voice: {
+          az: "Mavi təhlükəsizlik açıqlaması üç fərqli riski ayırır. Faylı browser-də seçmək lokaldır, Analyze məzmunu serverə göndərə və provider işi başlada bilər, Apply isə təsdiqlənmiş import datalarını bazaya yazır. Bu addımlar eyni şey deyil və yalnız düzgün fayl, səlahiyyət, şirkət, period və açıq niyyət olduqda ardıcıl istifadə edilməlidir.",
+          en: "The blue safety disclosure separates three different risks. Choosing a file in the browser is local, Analyze can send its contents to the server and start provider work, and Apply writes approved import data to the database. These are not equivalent actions and should proceed only with the correct file, authority, company, period, and explicit intent.",
+          ru: "Синее раскрытие безопасности разделяет три разных риска. Выбор файла в браузере локален, Analyze может отправить содержимое на сервер и запустить провайдера, а Apply записывает одобренные данные импорта в базу. Это не равнозначные действия; для каждого нужны правильный файл, полномочия, компания, период и явное намерение.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(AI_IMPORT_SAFETY, { timeout: 15000 });
+          await h.hover(AI_IMPORT_SAFETY);
+        },
+      },
+      {
+        voice: {
+          az: "Sarı cleanup sahəsi importdan ayrı dağıdıcı workflow-dur. Preview belə server sorğusudur; təsdiqlənmiş reset seçilmiş şirkət və il üzrə bəzi sətirləri arxivləyir, bəzilərini isə silir və sonra recompute edir. Ona görə düzgün import faylı hazır olmadan və scoped backup düşünülmədən bu panelə keçmək olmaz. Təlim yalnız xəbərdarlığı göstərir.",
+          en: "The amber cleanup area is a destructive workflow separate from import. Even its preview is a server request; a confirmed reset archives some rows, deletes other scoped records, and recomputes after commit for the selected company and year. Do not enter that path without the replacement workbook, verified scope, and recovery plan. This guide only points out the warning.",
+          ru: "Жёлтая область cleanup — отдельный разрушительный workflow. Даже preview отправляет запрос на сервер; подтверждённый reset архивирует часть строк, удаляет другие записи выбранной компании и года, затем запускает recompute. Не входите в этот путь без готовой замены, проверенной области и плана восстановления. Гайд лишь показывает предупреждение.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(AI_IMPORT_CLEANUP, { timeout: 15000 });
+          await p.waitForSelector(AI_IMPORT_RESET, { timeout: 15000 });
+          await h.hover(AI_IMPORT_RESET);
+        },
+      },
+      {
+        voice: {
+          az: "Aşağıdakı dörd tab fərqli etibar səviyyələrini deyil, fərqli workflow formalarını göstərir. Bir fayl sürətli classification preview üçündür və onun köhnə commit addımı qəsdən söndürülüb. Bir neçə fayl atomik qruplar və cross-file conflict review verir. İstənilən fayl və multi-sheet isə column mapping, anomaly və control-total qapıları əlavə edir. Rejim seçimi datanın yoxlanmasını əvəz etmir.",
+          en: "The four tabs represent different workflow shapes, not different guarantees. One file provides a fast classification preview and its legacy commit step is intentionally disabled. Multiple files adds atomic groups and cross-file conflict review. Any file and Multi-sheet add column mapping, anomaly, and control-total gates. Choosing a more advanced mode never replaces validation of the actual workbook.",
+          ru: "Четыре вкладки обозначают разные формы workflow, а не разные гарантии. «1 файл» даёт быстрый classification preview, его старый commit намеренно отключён. Несколько файлов добавляют атомарные группы и межфайловую проверку конфликтов. Произвольный файл и multi-sheet добавляют mapping колонок, anomalies и control totals. Выбор режима не заменяет проверку самой книги.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(AI_IMPORT_WORKFLOWS, { timeout: 15000 });
+          await p.waitForSelector(AI_IMPORT_TABS, { timeout: 15000 });
+          await h.hover(AI_IMPORT_TABS);
+        },
+      },
+      {
+        voice: {
+          az: "Başlanğıc tab bir xlsx üçün yalnız classification preview hazırlayır. Drop zone-a fayl verməzdən əvvəl onun düzgün təşkilata aid olduğunu, şəxsi və həssas məlumat siyasətinə uyğun olduğunu, şirkət kodlarını, periodu və vahidləri yoxlayın. Bu təlim fayl seçmir: beləliklə heç bir workbook browser-dən çıxmır və provider çağırışı yaranmır.",
+          en: "The default single-file tab prepares only a classification preview. Before placing a workbook in the drop zone, verify its organization, confidentiality policy, company codes, periods, and units. This guide selects no file, so no workbook leaves the browser and no classification provider can be invoked. The empty disabled state is the safe starting point.",
+          ru: "Исходная вкладка одного файла готовит только classification preview. До помещения книги в drop zone проверьте организацию, правила конфиденциальности, коды компаний, периоды и единицы. Гайд не выбирает файл, поэтому книга не покидает браузер и классификатор не вызывается. Пустое отключённое состояние — безопасная отправная точка.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(AI_IMPORT_SINGLE, { timeout: 15000 });
+          await p.waitForSelector(AI_IMPORT_DROP, { timeout: 15000 });
+          await h.hover(AI_IMPORT_DROP);
+        },
+      },
+      {
+        voice: {
+          az: "Analyze düyməsi yalnız fayl seçildikdən sonra aktivləşir. Bu, sadə lokal preview düyməsi deyil: faylı server classifier marşrutuna upload edir və büdcə ilə rate-limit yoxlamalarından sonra Anthropic istifadə edə bilər. LLM yalnız bütün vərəqlər separator və ya boş vərəq kimi deterministik əvvəlcədən təsnif ediləndə keçilir. Confidence və reasoning yenə təklifdir; riskli nəticələr manual review tələb edir. Təlim düyməyə basmır.",
+          en: "Analyze becomes available only after a file is selected. It is not a local preview button: it uploads to the server classifier and, after budget and rate-limit checks, can invoke Anthropic. The LLM is skipped only when every sheet is deterministically preclassified, such as separator or empty sheets. Confidence and reasoning remain proposals, and risky results require human review. This guide never presses the button.",
+          ru: "Analyze становится доступным только после выбора файла. Это не локальный preview: файл отправляется серверному классификатору, который после budget и rate-limit проверок может вызвать Anthropic. LLM пропускается лишь когда каждый лист детерминированно распознан заранее, например как separator или пустой лист. Confidence и reasoning остаются предложениями, а рискованные результаты требуют ручной проверки. Гайд кнопку не нажимает.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(AI_IMPORT_ANALYZE, { timeout: 15000 });
+          await h.hover(AI_IMPORT_ANALYZE);
+        },
+      },
+      {
+        voice: {
+          az: "Bir neçə fayl rejimi shared business load üçün nəzərdə tutulub: əvvəl bütün qruplar preview olunur, cross-file konflikt və CoA qərarları həll edilir, sonra uyğun qruplar birlikdə tətbiq olunur. Oradakı Import Doctor Explain və Suggest ayrıca provider əməliyyatlarıdır; template və alias save də yazır. Bu ümumi təlim tabı açmır və həmin kontrolleri yükləmir.",
+          en: "Multiple files is designed for a shared business load: all groups are previewed first, cross-file conflicts and chart-of-accounts decisions are resolved, then eligible groups apply together. Import Doctor Explain and Suggest are separate provider actions, while saving templates or aliases also writes metadata. This overview does not open the tab or activate any of those controls.",
+          ru: "Режим нескольких файлов предназначен для связанной бизнес-загрузки: сначала preview всех групп, затем разрешение межфайловых конфликтов и решений плана счетов, после чего допустимые группы применяются вместе. Explain и Suggest в Import Doctor — отдельные provider-действия, сохранение шаблонов и aliases тоже записывает metadata. Обзор не открывает вкладку и ничего не запускает.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(AI_IMPORT_MULTI, { timeout: 15000 });
+          await h.hover(AI_IMPORT_MULTI);
+        },
+      },
+      {
+        voice: {
+          az: "İstənilən fayl və multi-sheet rejimləri manual review qapısı əlavə edir: source columns, company və account mapping, critical anomaly acknowledgement, control totals, dry-run və yalnız sonra commit. GREEN reconciliation mənbənin audit olunmuş və qərar üçün yararlı olduğunu avtomatik sübut etmir; o, müəyyən texniki yoxlamaların keçdiyini göstərir. Təhlükəsiz qayda budur: əvvəl preview-u oxuyun, sonra səlahiyyətli Apply qərarı verin.",
+          en: "Any file and Multi-sheet add an explicit human-review gate: source columns, company and account mapping, critical-anomaly acknowledgement, control totals, dry run, and only then commit. A green reconciliation does not automatically make source figures audited or decision-grade; it shows that defined technical checks passed. The safe rule is simple: inspect the preview first, then make an authorized Apply decision.",
+          ru: "«Любой файл» и Multi-sheet добавляют явный human-review gate: исходные колонки, mapping компаний и счетов, подтверждение critical anomalies, control totals, dry run и только затем commit. Зелёная сверка не делает исходные цифры автоматически аудированными или пригодными для решений; она означает прохождение заданных технических проверок. Правило: сначала изучить preview, затем уполномоченно решить об Apply.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(AI_IMPORT_UNIVERSAL, { timeout: 15000 });
+          await p.waitForSelector(AI_IMPORT_MULTISHEET, { timeout: 15000 });
+          await h.hover(AI_IMPORT_UNIVERSAL);
+          await h.moveTo(AI_IMPORT_MULTISHEET);
+          await p.waitForSelector(AI_IMPORT_SAFETY, { timeout: 15000 });
+          await h.hover(AI_IMPORT_SAFETY);
         },
       },
     ],

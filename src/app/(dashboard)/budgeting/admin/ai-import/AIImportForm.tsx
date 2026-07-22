@@ -126,12 +126,11 @@ const VERDICT_STYLE = {
   red: { bg: "bg-red-50 dark:bg-red-500/10", fg: "text-red-700 dark:text-red-300", icon: "🔴" },
 } as const
 
-export function AIImportForm() {
+export function AIImportForm({ initialYear }: { initialYear?: number }) {
   const t = useTranslations("adminAiImport.single")
   const [file, setFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isClassifying, setIsClassifying] = useState(false)
-  const [isImporting, setIsImporting] = useState(false)
   const [preview, setPreview] = useState<ClassifyResponse | null>(null)
   const [importResult, setImportResult] = useState<ImportApplyResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -166,7 +165,7 @@ export function AIImportForm() {
     try {
       const form = new FormData()
       form.append("file", file)
-      form.append("year", "2026")
+      form.append("year", String(initialYear ?? new Date().getFullYear()))
       const res = await fetch("/api/import/ai-auto", {
         method: "POST",
         body: form,
@@ -181,17 +180,6 @@ export function AIImportForm() {
     } finally {
       setIsClassifying(false)
     }
-  }
-
-  const handleConfirmImport = async () => {
-    // The legacy single-file commit endpoint (/api/admin/import-workbook) was
-    // never implemented — POSTing here used to 404. The working apply paths
-    // are the "Любой файл (AI)" tab (per-column mapping review + reconcile +
-    // commit) and the "Несколько файлов" tab (multi-file orchestrator). Guide
-    // the user there instead of hitting a dead route.
-    setIsImporting(true)
-    setError(t("writeDisabled"))
-    setIsImporting(false)
   }
 
   return (
@@ -210,6 +198,7 @@ export function AIImportForm() {
             : "border-border hover:border-muted-foreground/40"
         }`}
         onClick={() => fileInputRef.current?.click()}
+        data-testid="ai-import-guide-drop-zone"
       >
         <input
           ref={fileInputRef}
@@ -244,6 +233,7 @@ export function AIImportForm() {
           onClick={handleClassify}
           disabled={!file || isClassifying}
           className="w-full px-4 py-2 rounded bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          data-testid="ai-import-guide-analyze"
         >
           {isClassifying ? t("step1.running") : t("step1.button")}
         </button>
@@ -260,24 +250,19 @@ export function AIImportForm() {
       {preview && !importResult && <ClassificationPreview preview={preview} />}
 
       {preview && !importResult && (
-        <div className="flex gap-3">
+        <div className="space-y-3">
+          <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+            {t("writeDisabled")}
+          </div>
           <button
             type="button"
             onClick={() => {
               setPreview(null)
               setFile(null)
             }}
-            className="flex-1 px-4 py-2 rounded border border-border text-sm hover:bg-muted/50 transition-colors"
+            className="w-full px-4 py-2 rounded border border-border text-sm hover:bg-muted/50 transition-colors"
           >
             {t("step2.cancel")}
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirmImport}
-            disabled={isImporting}
-            className="flex-1 px-4 py-2 rounded bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors"
-          >
-            {isImporting ? t("step2.running") : t("step2.confirm")}
           </button>
         </div>
       )}
