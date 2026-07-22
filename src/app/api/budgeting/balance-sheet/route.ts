@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     // routing): it carries the consolidated BS; children carry standalone.
     const level1 = await tx.company.findMany({
       where: { organizationId: orgId, level: 1 },
-      select: { id: true, name: true, code: true },
+      select: { id: true, name: true, code: true, baseCurrencyCode: true },
       take: 2,
     })
     const holding = level1.length === 1 ? level1[0] : null
@@ -108,10 +108,11 @@ export async function GET(req: NextRequest) {
       consolidated,
       holding,
       viewCompanyId,
+      currencyCode: consolidated ? holding?.baseCurrencyCode ?? null : null,
     }
   })
 
-  const { lines, sourcePlanId, fellBack, sourceYear, consolidated, holding, viewCompanyId } = result
+  const { lines, sourcePlanId, fellBack, sourceYear, consolidated, holding, viewCompanyId, currencyCode } = result
   // Group by lineType
   type BSRow = (typeof lines)[number]
   const assets = lines.filter((l: BSRow) => l.lineType === "asset")
@@ -125,7 +126,7 @@ export async function GET(req: NextRequest) {
     all: lines,
     // Provenance so the client can note "showing the <year> Actuals balance
     // sheet" when a budget plan fell back. Non-breaking additive field.
-    meta: { requestedPlanId: planId, sourcePlanId, fellBack, sourceYear, consolidated, holding, viewCompanyId },
+    meta: { requestedPlanId: planId, sourcePlanId, fellBack, sourceYear, consolidated, holding, viewCompanyId, currencyCode },
   })
 }
 

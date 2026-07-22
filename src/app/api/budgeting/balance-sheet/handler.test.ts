@@ -151,7 +151,7 @@ describe("GET /api/budgeting/balance-sheet", () => {
   it("consolidated holding view: single level-1 holding with BS lines → shows ONLY the holding's lines (not the cross-company sum)", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     prismaMock.company.findMany.mockResolvedValue([
-      { id: "holding1", name: "Holding", code: "AZSEKER" },
+      { id: "holding1", name: "Holding", code: "AZSEKER", baseCurrencyCode: "AZN" },
     ])
     prismaMock.balanceSheetLine.count.mockResolvedValue(24) // holding carries its consolidated BS
     prismaMock.balanceSheetLine.findMany.mockResolvedValue([
@@ -172,6 +172,7 @@ describe("GET /api/budgeting/balance-sheet", () => {
     const body = await res.json()
     expect(body.meta.consolidated).toBe(true)
     expect(body.meta.viewCompanyId).toBe("holding1")
+    expect(body.meta.currencyCode).toBe("AZN")
   })
 
   it("?companyId drills into one entity's standalone BS (consolidated=false)", async () => {

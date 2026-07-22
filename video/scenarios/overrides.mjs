@@ -115,6 +115,34 @@ const CF_ENTRIES_EVIDENCE = [
   '[data-testid="cash-flow-entries-empty"]',
 ];
 
+// ── Balance Sheet guide readiness ────────────────────────────────────────
+// READONLY-safe: section buttons only change local expansion state. Import,
+// inline number inputs, plan selectors, AI actions and blur-save are excluded.
+const BS_ROOT = '[data-testid="balance-sheet-guide-root"]';
+const BS_SOURCE = [
+  '[data-testid="balance-sheet-provenance"]',
+  '[data-testid="balance-sheet-guide-root"]',
+];
+const BS_CONSOLIDATED = [
+  '[data-testid="balance-sheet-consolidated"]',
+  '[data-testid="balance-sheet-guide-root"]',
+];
+const BS_EDIT_WARNING = [
+  '[data-testid="balance-sheet-edit-warning"]',
+  '[data-testid="balance-sheet-guide-root"]',
+];
+const BS_KPIS = '[data-testid="balance-sheet-kpis"]';
+const BS_ASSETS = '[data-testid="balance-sheet-kpi-assets"]';
+const BS_LIABILITIES = '[data-testid="balance-sheet-kpi-liabilities"]';
+const BS_EQUITY = '[data-testid="balance-sheet-kpi-equity"]';
+const BS_DE = '[data-testid="balance-sheet-kpi-debt-equity"]';
+const BS_STRUCTURE = '[data-testid="balance-sheet-structure-chart"]';
+const BS_COMPOSITION = '[data-testid="balance-sheet-asset-composition"]';
+const BS_DETAIL = '[data-testid="balance-sheet-detail"]';
+const BS_ASSETS_TOGGLE = '[data-testid="balance-sheet-section-assets"]';
+const BS_LIABILITIES_TOGGLE = '[data-testid="balance-sheet-section-liabilities"]';
+const BS_EQUITY_TOGGLE = '[data-testid="balance-sheet-section-equity"]';
+
 // Select AZSEKER (code AZSF) from the company <select>. READONLY-safe: selecting
 // an option only changes local React state; the fetch is a GET. Find the option
 // whose text names AZSEKER/AZSF (label is "<code> · <name>"), else the first real
@@ -250,6 +278,121 @@ export default {
         do: async (p, l, h) => {
           await h.moveTo(WS_KPIS);
           await h.hover(WS_PROFIT);
+        },
+      },
+    ],
+  },
+  "balance-sheet": {
+    route: "/budgeting?tab=balance-sheet",
+    title: {
+      az: "Balans — sübut, struktur və detallar",
+      en: "Balance Sheet — evidence, structure and detail",
+      ru: "Баланс — источник, структура и детализация",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "Bu, Büdcələşdirmə bölməsinin Balans görünüşüdür. Əvvəl yuxarıdakı mənbə qeydini oxuyun: seçilmiş büdcə planında ayrıca balans olmadıqda ekran eyni ilin uyğun Fakt planına keçir. Beləliklə, göstərilən aktiv, öhdəlik və kapital rəqəmlərinin hansı plan və dövrə aid olduğunu qərardan əvvəl dəqiq bilirsiniz.",
+          en: "This is the Balance Sheet view inside Budgeting. Begin with the source note at the top: when the selected budget plan has no balance sheet of its own, the screen uses the matching Actuals plan for the same year. You therefore know exactly which plan and period support the displayed assets, liabilities and equity before interpreting them.",
+          ru: "Это экран Баланса внутри Бюджетирования. Начните с примечания об источнике наверху: если у выбранного бюджетного плана нет собственного баланса, экран использует соответствующий план «Факт» того же года. Поэтому до интерпретации активов, обязательств и капитала вы точно знаете, какой план и период подтверждают эти цифры.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(BS_ROOT, { timeout: 12000 });
+          await h.moveTo(BS_ROOT);
+          await h.hover(BS_SOURCE);
+        },
+      },
+      {
+        voice: {
+          az: "Yaşıl məlumat sətri konsolidasiya sərhədini izah edir. Bu görünüş şirkətlərin sadə cəmi deyil: Reporting mənbəsində hazırlanmış rəsmi qrup balansıdır və qrupdaxili paylar eliminasiya olunub. Şirkət səviyyəli araşdırma lazım olduqda ayrıca drill-down istifadə edilməlidir; konsolidə edilmiş məbləği törəmə şirkətlərin kor-koranə cəmi ilə müqayisə etməyin.",
+          en: "The green disclosure defines the consolidation boundary. This is not a simple addition of companies: it is the official group balance sheet prepared in Reporting, with intercompany interests eliminated. When entity-level analysis is required, use the separate drill-down; do not compare the consolidated amount with a blind sum of subsidiaries and call the difference an error.",
+          ru: "Зелёное пояснение задаёт границу консолидации. Это не простая сумма компаний, а официальный групповой баланс из Reporting с элиминацией внутригрупповых долей. Для анализа отдельной организации используйте специальный drill-down; не сравнивайте консолидированную сумму с механической суммой дочерних компаний и не называйте разницу ошибкой.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(BS_CONSOLIDATED);
+          await h.hover(BS_CONSOLIDATED);
+        },
+      },
+      {
+        voice: {
+          az: "Ekran son təsdiqlənmiş ayı sətir sayına görə müəyyən edir, məbləğin sıfırdan fərqli olmasına görə deyil. Buna görə mənbədə açıq sıfır varsa, o real sübut sayılır; heç bir sətir yoxdursa, xana tire və qrafik boşluğu kimi qalır. İyun məlumatının olmaması iyun balansının sıfır olması demək deyil.",
+          en: "The screen identifies the latest evidenced month from source-row presence, not from whether a total happens to be non-zero. An explicit source zero therefore remains valid evidence, while a month with no rows stays a dash or a chart gap. Missing June data never becomes a claim that the June balance was zero, and missing sections cannot manufacture a ratio.",
+          ru: "Последний подтверждённый месяц определяется по наличию исходных строк, а не по тому, отличается ли итог от нуля. Поэтому явный ноль в источнике остаётся доказательством, а месяц без строк показывается тире или разрывом графика. Отсутствие данных за июнь не превращается в утверждение, что июньский баланс равен нулю.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(BS_KPIS);
+          await h.hover(BS_SOURCE);
+        },
+      },
+      {
+        voice: {
+          az: "Dörd kart son sübutlu ay üçün ümumi aktivləri, öhdəlikləri, kapitalı və borcun kapitala nisbətini göstərir. İşarə konvensiyası aktiv, öhdəlik və kapital birlikdə olduqda balans qalığı ilə müəyyən edilir. Kapital yoxdursa, sıfır və ya mənfidirsə, D/E yaşıl sağlam göstərici kimi görünmür; nəticə naməlum olaraq tire ilə qalır.",
+          en: "The four cards summarize total assets, liabilities, equity and debt to equity for the latest evidenced month. The sign convention is inferred only when assets, liabilities and equity are all present and their balance residual can be compared. If equity is missing, zero or negative, D/E does not appear as a healthy green ratio; it remains unavailable as a dash.",
+          ru: "Четыре карточки показывают активы, обязательства, капитал и отношение долга к капиталу за последний подтверждённый месяц. Соглашение о знаках определяется только при наличии всех трёх разделов через сравнение остатков баланса. Если капитал отсутствует, равен нулю или отрицателен, D/E не становится зелёным здоровым коэффициентом, а остаётся недоступным и показывается тире.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(BS_ASSETS);
+          await h.hover(BS_LIABILITIES);
+          await h.hover(BS_EQUITY);
+          await h.moveTo(BS_DE);
+        },
+      },
+      {
+        voice: {
+          az: "Aylıq struktur qrafiki üç bölməni eyni zaman oxunda müqayisə edir. Xətt yalnız həmin ay üzrə mənbə sübutu olduqda çəkilir; gələcək və ya yüklənməmiş aylar avtomatik sıfırla doldurulmur. Qrafiki oxuyarkən əvvəl son görünən ayı, sonra aktivlərlə öhdəlik və kapital arasındakı istiqaməti, sonda isə boşluqları yoxlayın.",
+          en: "The monthly structure chart compares all three sections on one time axis. A series is drawn only where that month has source evidence; future or unimported months are not automatically filled with zeros. Read it by checking the last visible month first, then the direction of assets versus liabilities and equity, and finally any gaps that require source-data follow-up.",
+          ru: "Помесячный график структуры сравнивает три раздела на одной временной оси. Серия рисуется только там, где за месяц есть исходные данные; будущие или неимпортированные месяцы не заполняются автоматическими нулями. Сначала проверьте последний видимый месяц, затем направление активов относительно обязательств и капитала, а после этого исследуйте разрывы в источнике.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(BS_STRUCTURE);
+          await h.hover(BS_STRUCTURE);
+        },
+      },
+      {
+        voice: {
+          az: "Aktivlərin tərkibi diaqramı son sübutlu ayda ən böyük hesabların payını göstərir. O, əsas konsentrasiyanı tez görmək üçün faydalıdır, lakin qiymətləndirmə və ya likvidlik hökmü deyil. Böyük pay gördükdə hesabın adını qeyd edin, sonra aşağıdakı detallı cədvəldə aylıq hərəkəti və mənbə sətirlərini ayrıca araşdırın.",
+          en: "Asset composition shows the largest account shares in the latest evidenced month. It is useful for spotting concentration quickly, but it is not a valuation or liquidity verdict. When one slice dominates, note the account name and continue into the detail table below to inspect its monthly movement and underlying rows before drawing a conclusion.",
+          ru: "Состав активов показывает крупнейшие доли счетов в последнем подтверждённом месяце. Диаграмма быстро выявляет концентрацию, но не является выводом о стоимости или ликвидности. Если один сегмент доминирует, запомните название счёта и перейдите в детальную таблицу, чтобы проверить его помесячное движение и исходные строки до вывода.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(BS_COMPOSITION);
+          await h.hover(BS_COMPOSITION);
+        },
+      },
+      {
+        voice: {
+          az: "Detallı cədvəl rəhbər xülasəsinin audit yoludur. Aktivlər, öhdəliklər və kapital ayrıca bölmələrdə, aylar isə sütunlarda verilir. Nişandakı say aylıq baza sətirlərinin deyil, unikal hesabların sayıdır. Manager və admin üçün rəqəm xanaları redaktə oluna bilər, lakin bu təlim heç bir inputa fokus vermir və blur saxlamasını işə salmır.",
+          en: "The detail table is the audit trail behind the management summary. Assets, liabilities and equity remain separate sections, with months across the columns. The badge counts unique accounts rather than repeated monthly database rows. Managers and administrators may see editable number fields, but this guide never focuses an input, changes a value, or triggers the save-on-blur behavior.",
+          ru: "Детальная таблица — это дорожка проверки управленческой сводки. Активы, обязательства и капитал разделены, а месяцы расположены по столбцам. Нишан считает уникальные счета, а не повторяющиеся месячные строки базы. Менеджеры и администраторы могут видеть редактируемые поля, но гайд не фокусирует input, не меняет значение и не запускает сохранение по blur.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(BS_DETAIL);
+          await h.hover(BS_EDIT_WARNING);
+        },
+      },
+      {
+        voice: {
+          az: "Bölmə başlıqları yalnız lokal görünüşü idarə edən əlçatan düymələrdir. Aktivlər və Öhdəlikləri indi yığıb yenidən açıram ki, uzun cədvəldə naviqasiyanı göstərim. Bu kliklər serverə yazmır, seçilmiş planı dəyişmir və maliyyə sətrinə toxunmur; onlar sadəcə uyğun hesab sətirlərini ekranda gizlədir və qaytarır.",
+          en: "Section headers are accessible buttons that control only the local presentation. I now collapse and reopen Assets and Liabilities to demonstrate navigation through a long table. These clicks write nothing to the server, do not change the selected plan, and do not touch a financial row; they only hide and restore the matching account lines on screen.",
+          ru: "Заголовки разделов — доступные кнопки, управляющие только локальным представлением. Сейчас я сворачиваю и снова раскрываю Активы и Обязательства, показывая навигацию по длинной таблице. Эти клики ничего не записывают на сервер, не меняют выбранный план и финансовые строки, а лишь скрывают и возвращают соответствующие счета на экране.",
+        },
+        do: async (p, l, h) => {
+          await h.safeClick(BS_ASSETS_TOGGLE);
+          await h.safeClick(BS_ASSETS_TOGGLE);
+          await h.safeClick(BS_LIABILITIES_TOGGLE);
+          await h.safeClick(BS_LIABILITIES_TOGGLE);
+        },
+      },
+      {
+        voice: {
+          az: "Kapital bölməsini də yığıb yenidən açaraq təhlükəsiz iş ardıcıllığını yekunlaşdırıram. Əvvəl planı, Fakt mənbəyini, konsolidasiya sərhədini və son sübutlu ayı təsdiqləyin; sonra KPI, struktur və hesab detallarını oxuyun. Sübut çatmırsa sıfır uydurmayın, inputu dəyişməyin və idxalı kor-koranə başlatmayın; təsdiqlənmiş mənbə faylını əvvəlcə preview edin.",
+          en: "I finish by collapsing and reopening Equity, then restate the safe operating sequence: confirm the plan, Actuals source, consolidation boundary and latest evidenced month before reading KPIs, structure and account detail. When evidence is missing, do not invent a zero, edit an input, or launch an import blindly; preview the approved source workbook and resolve the gap first.",
+          ru: "В завершение я сворачиваю и снова раскрываю Капитал. Безопасная последовательность такова: подтвердите план, источник «Факт», границу консолидации и последний доказанный месяц, затем читайте KPI, структуру и счета. Если данных не хватает, не придумывайте ноль, не меняйте input и не запускайте импорт вслепую; сначала проверьте утверждённый исходный файл в preview.",
+        },
+        do: async (p, l, h) => {
+          await h.safeClick(BS_EQUITY_TOGGLE);
+          await h.safeClick(BS_EQUITY_TOGGLE);
+          await h.moveTo(BS_KPIS);
         },
       },
     ],
