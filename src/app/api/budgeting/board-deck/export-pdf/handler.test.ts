@@ -183,6 +183,11 @@ describe("GET /api/budgeting/board-deck/export-pdf", () => {
         value: "secret-session",
         url: "http://trusted-budgetpro.test:3000",
       }),
+      {
+        name: "NEXT_LOCALE",
+        value: "ru",
+        url: "http://trusted-budgetpro.test:3000",
+      },
     ]);
   });
 
@@ -233,10 +238,11 @@ describe("GET /api/budgeting/board-deck/export-pdf", () => {
     expect(cookies.find((c) => c.name === "authjs.csrf-token")).toBeUndefined();
     expect(cookies.find((c) => c.name === "analytics")).toBeUndefined();
     expect(cookies.find((c) => c.name === "another")).toBeUndefined();
-    expect(cookies).toHaveLength(2);
+    expect(cookies.find((c) => c.name === "NEXT_LOCALE")?.value).toBe("en");
+    expect(cookies).toHaveLength(3);
   });
 
-  it("does not call addCookies when caller has no next-auth cookies (filtered to empty)", async () => {
+  it("sets only the trusted locale when caller has no session cookies", async () => {
     await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
     // Caller has cookies but NONE are next-auth.* — addCookies must skip.
     const req = makeRequest("/api/budgeting/board-deck/export-pdf?period=2025", {
@@ -245,7 +251,13 @@ describe("GET /api/budgeting/board-deck/export-pdf", () => {
       },
     });
     await GET(req);
-    expect(contextMock.addCookies).not.toHaveBeenCalled();
+    expect(contextMock.addCookies).toHaveBeenCalledWith([
+      {
+        name: "NEXT_LOCALE",
+        value: "en",
+        url: "http://trusted-budgetpro.test:3000",
+      },
+    ]);
   });
 
   it("fails closed instead of exporting a redirected login page", async () => {
@@ -269,12 +281,18 @@ describe("GET /api/budgeting/board-deck/export-pdf", () => {
     expect(pageMock.pdf).not.toHaveBeenCalled();
   });
 
-  it("does not call addCookies when caller has no cookies at all", async () => {
+  it("sets the trusted locale when caller has no cookies at all", async () => {
     await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
     await GET(
       makeRequest("/api/budgeting/board-deck/export-pdf?period=2025"),
     );
-    expect(contextMock.addCookies).not.toHaveBeenCalled();
+    expect(contextMock.addCookies).toHaveBeenCalledWith([
+      {
+        name: "NEXT_LOCALE",
+        value: "en",
+        url: "http://trusted-budgetpro.test:3000",
+      },
+    ]);
   });
 
   it("503 when chromium.launch throws (binary missing)", async () => {

@@ -23,34 +23,42 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // requires a context provider — not worth the indirection for one route.
   const pathname = usePathname()
   const isFullBleed = pathname?.startsWith("/budgeting/terminal") ?? false
+  const isBoardDeck = pathname?.startsWith("/budgeting/board-deck") ?? false
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="flex h-screen">
+      <div className={`flex h-screen ${isBoardDeck ? "print:block print:h-auto" : ""}`}>
         <div
           data-testid="dashboard-sidebar-slot"
-          className={isFullBleed ? "hidden md:contents" : "contents"}
+          className={`${isFullBleed ? "hidden md:contents" : "contents"} ${isBoardDeck ? "print:hidden" : ""}`.trim()}
         >
           <Sidebar />
         </div>
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <Header
-            orgName={user?.organizationName || "BudgetPro"}
-            userName={user?.name || "User"}
-            compact={isFullBleed}
-          />
+        <div className={`flex flex-1 flex-col overflow-hidden ${isBoardDeck ? "print:block print:overflow-visible" : ""}`}>
+          <div data-testid="dashboard-header-slot" className={isBoardDeck ? "print:hidden" : ""}>
+            <Header
+              orgName={user?.organizationName || "BudgetPro"}
+              userName={user?.name || "User"}
+              compact={isFullBleed}
+            />
+          </div>
           <main
-            className={
+            className={`${
               isFullBleed
                 ? "flex-1 min-h-0 bg-background relative overflow-hidden"
                 : "flex-1 overflow-y-auto bg-background p-8 relative"
-            }
+            } ${isBoardDeck ? "print:overflow-visible print:bg-white print:p-0" : ""}`.trim()}
           >
             {/* Section help video — an in-flow card at the top of the content
                 (never a floating overlay), so it doesn't cover the work area.
                 Expands into a modal on click. Renders null on routes with no
                 mapped video (e.g. the full-bleed terminal). */}
-            <HelpVideoLauncher />
+            <div
+              data-testid="dashboard-help-video-slot"
+              className={isBoardDeck ? "print:hidden" : ""}
+            >
+              <HelpVideoLauncher />
+            </div>
             {children}
           </main>
         </div>

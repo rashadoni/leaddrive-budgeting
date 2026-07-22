@@ -90,6 +90,21 @@ describe("DashboardLayout — route-conditional <main> className (sub-37)", () =
     expect(main.className).toMatch(/\bp-8\b/);
   });
 
+  it("Board Deck hides application chrome and removes fixed-height clipping in print", () => {
+    mockPathname = "/budgeting/board-deck";
+    render(
+      <DashboardLayout>
+        <div data-testid="child">deck</div>
+      </DashboardLayout>,
+    );
+    expect(screen.getByTestId("dashboard-sidebar-slot").className).toContain("print:hidden");
+    expect(screen.getByTestId("dashboard-header-slot").className).toContain("print:hidden");
+    expect(screen.getByTestId("dashboard-help-video-slot").className).toContain("print:hidden");
+    const main = screen.getByRole("main");
+    expect(main.className).toContain("print:p-0");
+    expect(main.className).toContain("print:overflow-visible");
+  });
+
   it("audit log: standard padded main", () => {
     mockPathname = "/audit-log";
     render(

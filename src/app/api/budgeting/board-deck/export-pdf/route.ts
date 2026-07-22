@@ -176,6 +176,10 @@ export async function GET(req: NextRequest) {
       value: c.value,
       url: appOrigin,
     }));
+  // The page's UI locale is cookie-driven by next-intl. Set it from the
+  // already allow-listed query language instead of replaying an arbitrary
+  // caller cookie; otherwise a `lang=ru` export silently renders in English.
+  callerCookies.push({ name: "NEXT_LOCALE", value: language, url: appOrigin });
 
   let browser;
   try {
@@ -201,7 +205,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const context = await browser.newContext();
-    if (callerCookies.length > 0) await context.addCookies(callerCookies);
+    await context.addCookies(callerCookies);
     const page = await context.newPage();
     const renderResponse = await page.goto(targetUrl, {
       waitUntil: "networkidle",
