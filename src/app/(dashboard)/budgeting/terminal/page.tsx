@@ -28,7 +28,7 @@ export default function TerminalPage() {
 
       <ExpertViewportGate>
       {/* Phase 7.G Turn LXXXXIX (Phase 7.E #2 v2 E.1d) — deep-link handler.
-          Reads `?company=X&indicator=Y&period=Z&from=alert` query params,
+          Reads `?companyId=X&indicator=Y&period=Z&from=alert` query params,
           resolves to IndicatorValue.id via /api/indicators/values/resolve,
           dispatches setActiveIndicatorValue + setActivePanel(4) to auto-open
           VarianceExplainerPanel. Renders banner when arrived from alert.

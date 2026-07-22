@@ -1,13 +1,14 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-const { prismaMock } = vi.hoisted(() => ({
+const { prismaMock, scopeMock } = vi.hoisted(() => ({
   prismaMock: {
     company: { findFirst: vi.fn() },
     indicatorDefinition: { findFirst: vi.fn() },
     indicatorValue: { findUnique: vi.fn() },
     user: { findFirst: vi.fn().mockResolvedValue({ allowedSubGroupIds: [] }) },
   },
+  scopeMock: vi.fn(),
 }))
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
@@ -17,6 +18,7 @@ vi.mock("@/lib/db/with-org-scope", () => ({
   withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
     fn(prismaMock),
 }))
+vi.mock("@/lib/rbac/company-scope", () => ({ getCompanyScope: scopeMock }))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET } from "./route"
@@ -27,10 +29,16 @@ beforeEach(() => {
   prismaMock.company.findFirst.mockReset().mockResolvedValue({ id: "comp_aac" })
   prismaMock.indicatorDefinition.findFirst.mockReset().mockResolvedValue({ id: "ind_rev_growth" })
   prismaMock.indicatorValue.findUnique.mockReset().mockResolvedValue({ id: "iv_xyz" })
+  scopeMock.mockReset().mockResolvedValue({ ids: null, bypassed: false })
 })
 
 const url = (q: Record<string, string> = {}) => {
   const sp = new URLSearchParams({ company: "AAC", indicator: "REV_GROWTH", period: "2026", ...q })
+  return `/api/indicators/values/resolve?${sp}`
+}
+
+const companyIdUrl = (companyId = "comp_aac") => {
+  const sp = new URLSearchParams({ companyId, indicator: "REV_GROWTH", period: "2026" })
   return `/api/indicators/values/resolve?${sp}`
 }
 
@@ -61,6 +69,11 @@ describe("GET — Zod validation", () => {
 
   it("400 missing indicator", async () => {
     const res = await GET(makeRequest(url({ indicator: "" })))
+    expect(res.status).toBe(400)
+  })
+
+  it("400 when both company code and companyId are supplied", async () => {
+    const res = await GET(makeRequest(url({ companyId: "comp_aac" })))
     expect(res.status).toBe(400)
   })
 
@@ -102,9 +115,44 @@ describe("GET — resolution path", () => {
     // Cross-tenant guard: company query scoped to session.orgId
     expect(prismaMock.company.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { organizationId: ORG, code: "AAC" },
+        where: {
+          organizationId: ORG,
+          code: "AAC",
+        },
       }),
     )
+  })
+
+  it("accepts a stable company id from an AlertEvent deep link", async () => {
+    const res = await GET(makeRequest(companyIdUrl()))
+    expect(res.status).toBe(200)
+    expect(prismaMock.company.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organizationId: ORG,
+          id: "comp_aac",
+        },
+      }),
+    )
+  })
+
+  it("companyId is deterministic even when another company code collides", async () => {
+    prismaMock.company.findFirst.mockImplementation(({ where }: { where: { id?: string; code?: string } }) =>
+      Promise.resolve(where.id ? { id: "comp_aac" } : { id: "wrong_company" }),
+    )
+    const res = await GET(makeRequest(companyIdUrl("comp_aac")))
+    expect(res.status).toBe(200)
+    expect((await res.json()).companyId).toBe("comp_aac")
+    expect(prismaMock.company.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { organizationId: ORG, id: "comp_aac" } }),
+    )
+  })
+
+  it("404 when a stable company id is outside subgroup scope", async () => {
+    scopeMock.mockResolvedValue({ ids: new Set(["different_company"]), bypassed: false })
+    const res = await GET(makeRequest(companyIdUrl()))
+    expect(res.status).toBe(404)
+    expect(prismaMock.indicatorDefinition.findFirst).not.toHaveBeenCalled()
   })
 
   it("404 when company code not in org", async () => {

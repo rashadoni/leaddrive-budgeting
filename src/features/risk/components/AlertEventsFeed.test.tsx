@@ -103,14 +103,69 @@ describe("AlertEventsFeed (Phase 7.G C6 v3.3)", () => {
     });
     expect(screen.getByText("event ae1 message")).toBeTruthy();
     expect(screen.getByText("event ae2 message")).toBeTruthy();
-    // Severity rendered lowercase in DOM (Tailwind `uppercase` is CSS-
-    // only and doesn't affect `textContent`). Pin lowercase here.
+    // The global next-intl test translator uppercases fallback labels.
+    // Pin the semantic label, independently of CSS casing.
     expect(screen.getAllByTestId("alert-event-row")[0].textContent).toContain(
-      "critical",
+      "CRITICAL",
     );
     expect(screen.getAllByTestId("alert-event-row")[2].textContent).toContain(
-      "info",
+      "INFO",
     );
+  });
+
+  it("renders unknown severity distinctly instead of masking it as information", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      mockFetchResponse({
+        events: [makeEvent("unknown", "future-severity")],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    );
+    Object.defineProperty(window, "fetch", {
+      value: fetchSpy,
+      writable: true,
+      configurable: true,
+    });
+
+    render(<AlertEventsFeed period="2025" />);
+    const row = await screen.findByTestId("alert-event-row");
+    expect(row.textContent).toContain("◆UNKNOWN");
+    expect(row.textContent).not.toContain("INFORMATION");
+  });
+
+  it("links only an unambiguous singleton pair and uses explicit companyId", async () => {
+    const singleton = {
+      ...makeEvent("single"),
+      affectedIndicatorCodes: ["IND_MARGIN"],
+    };
+    const multiIndicator = {
+      ...makeEvent("multi-indicator"),
+      affectedIndicatorCodes: ["IND_A", "IND_B"],
+    };
+    const multiCompany = {
+      ...makeEvent("multi-company"),
+      affectedCompanyIds: ["co_a", "co_b"],
+      affectedIndicatorCodes: ["IND_MARGIN"],
+    };
+    const fetchSpy = vi.fn().mockResolvedValue(
+      mockFetchResponse({
+        events: [singleton, multiIndicator, multiCompany],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    );
+    Object.defineProperty(window, "fetch", {
+      value: fetchSpy,
+      writable: true,
+      configurable: true,
+    });
+
+    render(<AlertEventsFeed period="2025" />);
+    await waitFor(() => expect(screen.getAllByTestId("alert-event-row")).toHaveLength(3));
+    const links = screen.getAllByTestId("alert-explain-link") as HTMLAnchorElement[];
+    expect(links).toHaveLength(1);
+    expect(links[0].getAttribute("href")).toContain("companyId=co_a");
+    expect(links[0].getAttribute("href")).not.toContain("?company=");
   });
 
   it("Apply with ruleId adds &ruleId=… to next fetch", async () => {
@@ -131,9 +186,9 @@ describe("AlertEventsFeed (Phase 7.G C6 v3.3)", () => {
     render(<AlertEventsFeed period="2025" />);
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
 
-    const input = screen.getByPlaceholderText(/RULE_CRITICAL_INDICATOR/i);
+    const input = screen.getByTestId("alerts-guide-rule-input");
     fireEvent.change(input, { target: { value: "RULE_MOSTLY_RED" } });
-    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    fireEvent.click(screen.getByTestId("alerts-guide-apply").closest("button")!);
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
     const url = fetchSpy.mock.calls[1][0] as string;
@@ -167,12 +222,12 @@ describe("AlertEventsFeed (Phase 7.G C6 v3.3)", () => {
     render(<AlertEventsFeed period="2025" />);
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1), { timeout: 3000 });
 
-    const input = screen.getByPlaceholderText(/RULE_CRITICAL_INDICATOR/i);
+    const input = screen.getByTestId("alerts-guide-rule-input");
     fireEvent.change(input, { target: { value: "RULE_MOSTLY_RED" } });
-    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    fireEvent.click(screen.getByTestId("alerts-guide-apply").closest("button")!);
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2), { timeout: 3000 });
 
-    fireEvent.click(screen.getByRole("button", { name: /reset/i }));
+    fireEvent.click(screen.getByTestId("alerts-guide-reset").closest("button")!);
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(3), { timeout: 3000 });
     const url = fetchSpy.mock.calls[2][0] as string;
     expect(url).not.toContain("ruleId=");
@@ -208,7 +263,7 @@ describe("AlertEventsFeed (Phase 7.G C6 v3.3)", () => {
       expect(screen.getAllByTestId("alert-event-row")).toHaveLength(1);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
+    fireEvent.click(screen.getByTestId("alerts-guide-load-more").closest("button")!);
 
     await waitFor(() => {
       expect(screen.getAllByTestId("alert-event-row")).toHaveLength(2);
@@ -231,10 +286,10 @@ describe("AlertEventsFeed (Phase 7.G C6 v3.3)", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeTruthy();
     });
-    expect(screen.getByRole("alert").textContent).toContain("HTTP 500");
+    expect(screen.getByRole("alert").textContent).toContain("LOAD FAILED");
   });
 
-  it("empty state: 'No alerts on record' message when no events", async () => {
+  it("empty state is explicit and does not render event rows", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(
       mockFetchResponse({ events: [], nextCursor: null, hasMore: false }),
     );
@@ -246,9 +301,27 @@ describe("AlertEventsFeed (Phase 7.G C6 v3.3)", () => {
 
     render(<AlertEventsFeed period="2025" />);
 
-    await waitFor(() => {
-      expect(screen.getByText(/No alerts on record/i)).toBeTruthy();
-    });
+    await waitFor(() => expect(screen.getByTestId("alerts-guide-empty")).toBeTruthy());
     expect(screen.queryByTestId("alert-event-row")).toBeNull();
+  });
+
+  it("does not claim definitive empty when a scoped scan has a continuation", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      mockFetchResponse({
+        events: [],
+        nextCursor: "2026-05-05T09:00:00.000Z|stale-row",
+        hasMore: true,
+      }),
+    );
+    Object.defineProperty(window, "fetch", {
+      value: fetchSpy,
+      writable: true,
+      configurable: true,
+    });
+
+    render(<AlertEventsFeed period="2025" />);
+    await waitFor(() => expect(screen.getByTestId("alerts-guide-scan-continuation")).toBeTruthy());
+    expect(screen.queryByTestId("alerts-guide-empty")).toBeNull();
+    expect(screen.getByTestId("alerts-guide-load-more")).toBeTruthy();
   });
 });

@@ -10,10 +10,12 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const { prismaMock } = vi.hoisted(() => ({
+const { prismaMock, scopeMock } = vi.hoisted(() => ({
   prismaMock: {
     alertEvent: { findMany: vi.fn() },
+    company: { findMany: vi.fn() },
   },
+  scopeMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
@@ -23,6 +25,9 @@ vi.mock('@/lib/db/with-org-scope', () => ({
   withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
     fn(prismaMock),
 }));
+vi.mock('@/lib/rbac/company-scope', () => ({
+  getCompanyScope: scopeMock,
+}));
 
 import { mockSession, makeRequest } from '@/test/api-harness';
 import { GET } from './route';
@@ -31,6 +36,8 @@ const ORG_ID = 'org_demo';
 
 beforeEach(() => {
   prismaMock.alertEvent.findMany.mockReset().mockResolvedValue([]);
+  prismaMock.company.findMany.mockReset().mockResolvedValue([]);
+  scopeMock.mockReset().mockResolvedValue({ ids: null, bypassed: false });
 });
 
 describe('GET /api/indicators/alerts/events', () => {
@@ -179,6 +186,122 @@ describe('GET /api/indicators/alerts/events', () => {
         id: { lt: cursorId },
       },
     ]);
+  });
+
+  it('restricted users receive only events wholly inside their company scope', async () => {
+    scopeMock.mockResolvedValue({
+      ids: new Set(['co_a', 'co_b']),
+      bypassed: false,
+    });
+    prismaMock.company.findMany.mockResolvedValue([
+      { id: 'co_a' },
+      { id: 'co_b' },
+      { id: 'co_c' },
+    ]);
+    prismaMock.alertEvent.findMany.mockResolvedValue([
+      { ...mkRow('inside', new Date('2026-05-05T10:00:00.000Z'), 'RULE_X'), affectedCompanyIds: ['co_a', 'co_b'] },
+      { ...mkRow('stale', new Date('2026-05-05T09:00:00.000Z'), 'RULE_X'), affectedCompanyIds: ['co_a', 'deleted_co'] },
+    ]);
+
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'viewer' });
+    const res = await GET(
+      makeRequest('/api/indicators/alerts/events?period=2025'),
+    );
+    expect(res.status).toBe(200);
+    expect(prismaMock.company.findMany).toHaveBeenCalledWith({
+      where: { organizationId: ORG_ID },
+      select: { id: true },
+    });
+    const whereArg = prismaMock.alertEvent.findMany.mock.calls[0]?.[0].where;
+    expect(whereArg.affectedCompanyIds).toEqual({ hasSome: ['co_a', 'co_b'] });
+    expect(whereArg.NOT).toEqual({
+      affectedCompanyIds: { hasSome: ['co_c'] },
+    });
+    const body = await res.json();
+    expect(body.events.map((event: { id: string }) => event.id)).toEqual(['inside']);
+  });
+
+  it('restricted pagination scans past stale rows without hiding later allowed events', async () => {
+    scopeMock.mockResolvedValue({ ids: new Set(['co_a']), bypassed: false });
+    prismaMock.company.findMany.mockResolvedValue([{ id: 'co_a' }]);
+    const t1 = new Date('2026-05-05T10:00:00.000Z');
+    const t2 = new Date('2026-05-05T09:00:00.000Z');
+    const t3 = new Date('2026-05-05T08:00:00.000Z');
+    const t4 = new Date('2026-05-05T07:00:00.000Z');
+    prismaMock.alertEvent.findMany
+      .mockResolvedValueOnce([
+        { ...mkRow('allowed-1', t1, 'RULE_X'), affectedCompanyIds: ['co_a'] },
+        { ...mkRow('stale', t2, 'RULE_X'), affectedCompanyIds: ['co_a', 'deleted_co'] },
+        { ...mkRow('allowed-2', t3, 'RULE_X'), affectedCompanyIds: ['co_a'] },
+      ])
+      .mockResolvedValueOnce([
+        { ...mkRow('allowed-3', t4, 'RULE_X'), affectedCompanyIds: ['co_a'] },
+      ]);
+
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'viewer' });
+    const res = await GET(
+      makeRequest('/api/indicators/alerts/events?period=2025&limit=2'),
+    );
+    const body = await res.json();
+    expect(body.events.map((event: { id: string }) => event.id)).toEqual([
+      'allowed-1',
+      'allowed-2',
+    ]);
+    expect(body.hasMore).toBe(true);
+    expect(body.nextCursor).toBe(`${t3.toISOString()}|allowed-2`);
+    expect(prismaMock.alertEvent.findMany).toHaveBeenCalledTimes(2);
+    expect(prismaMock.alertEvent.findMany.mock.calls[1][0].where.OR).toEqual([
+      { emittedAt: { lt: t3 } },
+      { emittedAt: { equals: t3 }, id: { lt: 'allowed-2' } },
+    ]);
+  });
+
+  it('returns a continuation cursor after the bounded restricted scan cap', async () => {
+    scopeMock.mockResolvedValue({ ids: new Set(['co_a']), bypassed: false });
+    prismaMock.company.findMany.mockResolvedValue([{ id: 'co_a' }]);
+    let batch = 0;
+    prismaMock.alertEvent.findMany.mockImplementation(() => {
+      const currentBatch = batch;
+      batch += 1;
+      return Promise.resolve([0, 1].map((offset) => ({
+        ...mkRow(
+          `stale-${currentBatch}-${offset}`,
+          new Date(Date.UTC(2026, 4, 5, 10, 0, -(currentBatch * 2 + offset))),
+          'RULE_X',
+        ),
+        affectedCompanyIds: ['co_a', `deleted-${currentBatch}-${offset}`],
+      })));
+    });
+
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'viewer' });
+    const res = await GET(
+      makeRequest('/api/indicators/alerts/events?period=2025&limit=1'),
+    );
+    const body = await res.json();
+    expect(body.events).toEqual([]);
+    expect(body.hasMore).toBe(true);
+    expect(body.nextCursor).toMatch(/\|stale-19-1$/);
+    expect(prismaMock.alertEvent.findMany).toHaveBeenCalledTimes(20);
+  });
+
+  it('restricted empty scope returns no rows without querying alert events', async () => {
+    scopeMock.mockResolvedValue({ ids: new Set(), bypassed: false });
+    prismaMock.company.findMany.mockResolvedValue([
+      { id: 'co_a' },
+      { id: 'co_b' },
+    ]);
+
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'viewer' });
+    const res = await GET(
+      makeRequest('/api/indicators/alerts/events?period=2025'),
+    );
+    expect(res.status).toBe(200);
+    expect(prismaMock.alertEvent.findMany).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({
+      events: [],
+      nextCursor: null,
+      hasMore: false,
+    });
   });
 });
 

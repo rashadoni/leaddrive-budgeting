@@ -1545,14 +1545,16 @@ model Alert {
   @@map("alerts")
 }
 
-// AlertEvent — Phase 7.E C6 v3 (Turn III) historical record of `evaluateAlertRules`
-// matches. The `Alert` model above is user-acknowledgeable inbox-style; AlertEvent
-// is an immutable per-recompute log for replay / digest emails / audit trail.
+// AlertEvent — Phase 7.E C6 v3 (Turn III) latest stored `evaluateAlertRules`
+// match snapshot for one organization + period. The `Alert` model above is
+// user-acknowledgeable inbox-style; AlertEvent is a replace-on-success snapshot
+// for the feed / digest emails, not an immutable history of recompute runs.
 //
 // Persistence semantics: write path is "delete-by-(orgId, period) then insertMany"
 // — current state for a given period is the latest evaluator output. Historical
-// drift is captured via `emittedAt` ordering; same (orgId, period) replayed twice
-// after re-recompute produces a fresh row set with newer emittedAt.
+// Re-evaluating the same (orgId, period) and successfully persisting it produces
+// a replacement row set with newer emittedAt. A persistence failure can leave
+// the prior snapshot in place.
 //
 // `affectedCompanyIds` stored as a `String[]` Postgres array (native Prisma),
 // keeping single-row reads cheap. `messageParams` stored as Json blob to keep

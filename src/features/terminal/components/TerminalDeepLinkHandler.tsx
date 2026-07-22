@@ -3,7 +3,8 @@
 /**
  * Phase 7.G Turn LXXXXIX (Phase 7.E #2 v2 E.1d terminal-side, client half).
  *
- * Reads `?company=X&indicator=Y&period=Z&from=alert&alertId=Z` from URL,
+ * Reads either `?company=X` (code) or `?companyId=X` (stable DB id), plus
+ * `indicator=Y&period=Z&from=alert&alertId=Z`, from the URL,
  * resolves to IndicatorValue.id via NEW `GET /api/indicators/values/resolve`,
  * then dispatches `setActiveIndicatorValue(id)` + `setActivePanel(4)` to
  * auto-open VarianceExplainerPanel. Closes the deep-link from
@@ -20,6 +21,7 @@
 
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { useTerminalStore } from "../store/terminalStore"
 import { getLogger } from "@/lib/log"
 
@@ -31,6 +33,7 @@ const log = getLogger("terminal:deep-link")
 const VARIANCE_EXPLAINER_PANEL_ID = 4
 
 export function TerminalDeepLinkHandler(): React.ReactElement | null {
+  const t = useTranslations("terminal.alerts")
   const searchParams = useSearchParams()
   const setActiveIndicatorValue = useTerminalStore((s) => s.setActiveIndicatorValue)
   const setActivePanel = useTerminalStore((s) => s.setActivePanel)
@@ -38,22 +41,26 @@ export function TerminalDeepLinkHandler(): React.ReactElement | null {
 
   useEffect(() => {
     const company = searchParams.get("company")
+    const companyId = searchParams.get("companyId")
     const indicator = searchParams.get("indicator")
     const period = searchParams.get("period")
     const from = searchParams.get("from") ?? undefined
 
     // Required-param triplet — bail silently if any missing
-    if (!company || !indicator || !period) return
+    if ((!company && !companyId) || (company && companyId) || !indicator || !period) return
 
     let cancelled = false
-    const sp = new URLSearchParams({ company, indicator, period })
+    const sp = new URLSearchParams({ indicator, period })
+    if (companyId) sp.set("companyId", companyId)
+    else sp.set("company", company!)
     fetch(`/api/indicators/values/resolve?${sp}`)
       .then((res) => {
         if (!res.ok) {
           // 404 / 400 / 500 — graceful no-op
           log.warn("resolve returned non-OK status", {
             status: res.status,
-            company,
+            company: company ?? undefined,
+            companyId: companyId ?? undefined,
             indicator,
             period,
           })
@@ -71,7 +78,8 @@ export function TerminalDeepLinkHandler(): React.ReactElement | null {
       .catch((e) => {
         log.warn("resolve failed", {
           err: e instanceof Error ? e.message : String(e),
-          company,
+          company: company ?? undefined,
+          companyId: companyId ?? undefined,
           indicator,
           period,
         })
@@ -91,7 +99,7 @@ export function TerminalDeepLinkHandler(): React.ReactElement | null {
         className="bg-cyan-500/10 border-b border-cyan-500/30 px-4 py-1.5 text-xs font-mono text-cyan-300"
         data-testid="terminal-deeplink-banner"
       >
-        ↗ Opened from alert — VarianceExplainer panel auto-loaded for selected cell
+        {t("deepLinkOpened")}
       </div>
     )
   }
@@ -102,7 +110,7 @@ export function TerminalDeepLinkHandler(): React.ReactElement | null {
         className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-1.5 text-xs font-mono text-amber-300"
         data-testid="terminal-deeplink-banner-warn"
       >
-        ⚠ Could not auto-open the cell from alert link — pick the company + indicator manually
+        {t("deepLinkUnavailable")}
       </div>
     )
   }

@@ -2,10 +2,11 @@
  * Phase 7.G Turn LXXXXIX (Phase 7.E #2 v2 E.1d terminal-side, server half).
  *
  * GET /api/indicators/values/resolve?company=X&indicator=Y&period=Z
+ * GET /api/indicators/values/resolve?companyId=X&indicator=Y&period=Z
  *
- * Resolves a `(companyCode, indicatorCode, period)` triplet to its
- * `IndicatorValue.id`. Used by Risk Terminal page to deep-link from
- * `AlertEventsFeed` "? Why?" button → auto-open VarianceExplainerPanel.
+ * Resolves either a `(companyCode, indicatorCode, period)` triplet or an
+ * explicit `(companyId, indicatorCode, period)` triplet to IndicatorValue.id.
+ * AlertEvent links use companyId; ordinary human-readable links use company.
  *
  * Auth: any authenticated org member (read endpoint; same exposure as
  * `/api/indicators` list).
@@ -28,9 +29,13 @@ import { withOrgScope } from "@/lib/db/with-org-scope"
 const PERIOD_REGEX = /^\d{4}(-Q[1-4]|-(0[1-9]|1[0-2]))?$/
 
 const querySchema = z.object({
-  company: z.string().min(1),
+  company: z.string().min(1).optional(),
+  companyId: z.string().min(1).optional(),
   indicator: z.string().min(1),
   period: z.string().regex(PERIOD_REGEX),
+}).refine((value) => Boolean(value.company) !== Boolean(value.companyId), {
+  message: "Supply exactly one of company or companyId",
+  path: ["company"],
 })
 
 export async function GET(req: NextRequest) {
@@ -42,7 +47,8 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url)
   const params = {
-    company: url.searchParams.get("company") ?? "",
+    company: url.searchParams.get("company") ?? undefined,
+    companyId: url.searchParams.get("companyId") ?? undefined,
     indicator: url.searchParams.get("indicator") ?? "",
     period: url.searchParams.get("period") ?? "",
   }
@@ -62,10 +68,14 @@ export async function GET(req: NextRequest) {
 
   const orgId = session.orgId
 
-  // Step 1: Resolve company by code (org-scoped). Stage 3 RLS — scope tx.
+  // Step 1: Resolve the explicit identifier kind under organization scope.
+  // Keeping code and id in separate parameters prevents a code/id collision
+  // from making findFirst select an arbitrary company.
   const company = await withOrgScope(orgId, (tx) =>
     tx.company.findFirst({
-      where: { organizationId: orgId, code: parsed.company },
+      where: parsed.companyId
+        ? { organizationId: orgId, id: parsed.companyId }
+        : { organizationId: orgId, code: parsed.company! },
       select: { id: true },
     }),
   )

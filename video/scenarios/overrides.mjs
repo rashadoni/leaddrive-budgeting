@@ -102,6 +102,25 @@ const AI_IMPORT_MULTISHEET = '[data-testid="tab-multisheet"]';
 const AI_IMPORT_DROP = '[data-testid="ai-import-guide-drop-zone"]';
 const AI_IMPORT_ANALYZE = '[data-testid="ai-import-guide-analyze"]';
 
+// ── Alert evaluation snapshot guide ────────────────────────────────────
+// Strictly hover-only. Opening the route and the feed's initial load issue
+// GET requests only. The scenario never submits a rule filter, resets it,
+// loads another page, follows a terminal link, recomputes, acknowledges, or
+// invokes an AI provider. Every selector below is rendered even with no rows.
+const ALERTS_ROOT = '[data-testid="alerts-guide-root"]';
+const ALERTS_HEADER = '[data-testid="alerts-guide-header"]';
+const ALERTS_SCOPE = '[data-testid="alerts-guide-scope"]';
+const ALERTS_FILTER = '[data-testid="alerts-guide-filter"]';
+const ALERTS_RULE_INPUT = '[data-testid="alerts-guide-rule-input"]';
+const ALERTS_APPLY = '[data-testid="alerts-guide-apply"]';
+const ALERTS_RESET = '[data-testid="alerts-guide-reset"]';
+const ALERTS_FILTER_DISCLOSURE = '[data-testid="alerts-guide-filter-disclosure"]';
+const ALERTS_READING = '[data-testid="alerts-guide-reading"]';
+const ALERTS_READ_SEVERITY = '[data-testid="alerts-guide-read-severity"]';
+const ALERTS_READ_MESSAGE = '[data-testid="alerts-guide-read-message"]';
+const ALERTS_READ_PAGINATION = '[data-testid="alerts-guide-read-pagination"]';
+const ALERTS_READ_DEEPLINK = '[data-testid="alerts-guide-read-deeplink"]';
+
 // ── Workspace / P&L execution view ────────────────────────────────────────
 // READONLY-safe: the only clicks toggle local list/matrix/materiality state.
 // No export, sync, create, edit, save or delete action is touched.
@@ -1088,6 +1107,132 @@ export default {
           await h.hover(TERM_AUDIT);
           await p.waitForSelector(TERM_ROOT, { timeout: 15000 });
           await h.moveTo(TERM_ROOT);
+        },
+      },
+    ],
+  },
+  alerts: {
+    route: "/budgeting/alerts/history",
+    title: {
+      az: "Alert qiymətləndirmə snapshot-u",
+      en: "Alert evaluation snapshot",
+      ru: "Снимок оценки алертов",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "Bu ekran tam alert tarixçəsi və real vaxt monitorinqi deyil. O, seçilmiş dövr üçün uğurla yadda saxlanmış son qiymətləndirmə görüntüsünü göstərir. Sonrakı görüntü yalnız uğurla yadda saxlananda eyni təşkilat və dövr üzrə əvvəlki dəsti atomik əvəz edir; saxlama xətası köhnə görüntünü saxlaya bilər. Təlim səhifəni yalnız oxuyur.",
+          en: "This screen is not a complete alert history or a live monitor. It shows the latest successfully persisted evaluation snapshot for the selected period. A later snapshot atomically replaces the prior set for the same organization and period only when persistence succeeds; a persistence failure can leave the older snapshot in place. This walkthrough only reads the page.",
+          ru: "Этот экран не является полной историей алертов или live-мониторингом. Он показывает последний успешно сохранённый снимок оценки выбранного периода. Следующий снимок атомарно заменяет прежний набор той же организации и периода только при успешном сохранении; ошибка сохранения может оставить старый снимок. Обзор только читает страницу.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(ALERTS_ROOT, { timeout: 15000 });
+          await p.waitForSelector(ALERTS_HEADER, { timeout: 15000 });
+          await h.hover(ALERTS_HEADER);
+        },
+      },
+      {
+        voice: {
+          az: "Mavi evidence boundary hər sətrin nəyi sübut etdiyini məhdudlaşdırır. Sətr yalnız snapshot saxlananda qaydanın uyğun gəldiyini göstərir; şərtin indi də aktual, təsdiqlənmiş, həll edilmiş və ya qərar üçün yararlı olduğunu göstərmir. Heç bir sətr olmadıqda qiymətləndiricinin həmin period üçün işlədiyi də sübut olunmur.",
+          en: "The blue evidence boundary limits what each row can prove. A row shows only that a rule matched when this snapshot was stored; it does not prove the condition is current, acknowledged, resolved, financially material, or decision-grade. If no row exists, that absence also does not prove the evaluator ran for the period.",
+          ru: "Синий блок границ доказательств ограничивает смысл каждой строки. Строка доказывает лишь совпадение правила в момент сохранения снимка; она не подтверждает актуальность, признание, устранение, финансовую существенность или пригодность для решения. Отсутствие строк также не доказывает, что оценка за период вообще выполнялась.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(ALERTS_SCOPE, { timeout: 15000 });
+          await h.hover(ALERTS_SCOPE);
+        },
+      },
+      {
+        voice: {
+          az: "Filtr sahəsi mövcud saxlanmış görüntünü dəqiq texniki Rule ID üzrə daraldır. Bu, sərbəst mətn axtarışı, status dəyişməsi və ya riskin yenidən hesablanması deyil. Dəqiq illik, rüblük və ya aylıq dövr URL-dən gəlir, ilkin siyahı isə təşkilat və istifadəçinin şirkət icazələri daxilində serverdən oxunur. Bu səhnə formanı göndərmir.",
+          en: "The filter area narrows the current stored snapshot by an exact technical Rule ID. It is not free-text search, a status change, or a risk recomputation. The exact annual, quarterly, or monthly period comes from the URL, while the initial feed is read from the server within organization and company scope. This scene does not submit the form.",
+          ru: "Область фильтра сужает текущий сохранённый снимок по точному техническому Rule ID. Это не полнотекстовый поиск, не изменение статуса и не пересчёт риска. Точный годовой, квартальный или месячный период берётся из URL, а исходная лента читается с сервера в пределах организации и доступных компаний. Сцена не отправляет форму.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(ALERTS_FILTER, { timeout: 15000 });
+          await h.hover(ALERTS_FILTER);
+        },
+      },
+      {
+        voice: {
+          az: "Rule ID input-u yalnız dəqiq identifikator qəbul edir, məsələn company-mostly-red. Dəyəri bilmirsinizsə, nəticəni təxmin etməyin: əvvəl qayda kataloqundan və ya saxlanmış sətirdən ID-ni yoxlayın. Təlim input-u doldurmur; buna görə browser state-i dəyişmir, əlavə sorğu göndərmir və nəticələri gizlətmir.",
+          en: "The Rule ID input expects an exact identifier such as company-mostly-red. If the value is unknown, do not guess it: confirm the identifier from the rule catalog or a stored row first. The guide does not fill this input, so it changes no browser state, sends no additional request, and hides no results.",
+          ru: "Поле Rule ID ожидает точный идентификатор, например company-mostly-red. Если значение неизвестно, не угадывайте: сначала подтвердите ID по каталогу правил или сохранённой строке. Гайд не заполняет поле, поэтому не меняет состояние браузера, не отправляет дополнительных запросов и не скрывает результаты.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(ALERTS_RULE_INPUT, { timeout: 15000 });
+          await h.hover(ALERTS_RULE_INPUT);
+        },
+      },
+      {
+        voice: {
+          az: "Apply filter düyməsi yalnız daxil edilmiş Rule ID ilə yeni read-only GET sorğusu göndərir və ilk səhifəni əvəz edir. O, indikatorları recompute etmir, alert-i acknowledged etmir, məlumat yazmır və AI provider çağırmır. Təhlükəsiz guide düymənin mənasını göstərir, lakin onu basmır və serverə yeni sorğu göndərmir.",
+          en: "Apply filter sends only a new read-only GET using the entered Rule ID and replaces the first result page. It does not recompute indicators, acknowledge an alert, write data, or invoke an AI provider. This safe guide points to the control without pressing it, so it sends no new filter request to the server.",
+          ru: "Кнопка Apply filter отправляет только новый read-only GET с введённым Rule ID и заменяет первую страницу результатов. Она не пересчитывает индикаторы, не подтверждает алерт, не записывает данные и не вызывает AI-провайдера. Безопасный гайд лишь показывает кнопку, но не нажимает её и не отправляет запрос.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(ALERTS_APPLY, { timeout: 15000 });
+          await h.hover(ALERTS_APPLY);
+          await p.waitForSelector(ALERTS_FILTER_DISCLOSURE, { timeout: 15000 });
+          await h.moveTo(ALERTS_FILTER_DISCLOSURE);
+        },
+      },
+      {
+        voice: {
+          az: "Reset filter input-u təmizləyir və həmin periodun filtrsiz ilk səhifəsini yenidən GET ilə oxuyur. Bu reset məlumatları silən admin reset deyil və alert vəziyyətini dəyişmir. Bununla belə, guide reproduktiv qalmaq üçün düyməni basmır; sadəcə onun read-only sərhədini aşağıdakı açıqlama ilə birlikdə göstərir.",
+          en: "Reset filter clears the input and reads the unfiltered first page for the same period with another GET. This is not an administrative reset that deletes data, and it does not change alert state. Even so, the guide avoids pressing it to remain reproducible and only highlights its read-only boundary beside the disclosure.",
+          ru: "Reset filter очищает поле и новым GET читает первую нефильтрованную страницу того же периода. Это не административный reset с удалением данных и он не меняет состояние алерта. Тем не менее гайд не нажимает кнопку ради воспроизводимости, а только показывает её read-only границу рядом с пояснением.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(ALERTS_RESET, { timeout: 15000 });
+          await h.hover(ALERTS_RESET);
+          await h.moveTo(ALERTS_FILTER_DISCLOSURE);
+        },
+      },
+      {
+        voice: {
+          az: "Severity badge qayda konfiqurasiyasındakı prioritetdir. Critical, warning və information formaları rənglə yanaşı fərqli simvollardan istifadə edir; tanınmayan dəyər ayrıca unknown kimi göstərilir və info kimi maskalanmır. Bu etiket ehtimal hesabı, audit rəyi və ya maliyyə materiality ölçüsü deyil, ona görə ayrıca sübutla yoxlanmalıdır.",
+          en: "A severity badge represents configured rule priority. Critical, warning, and information use distinct shapes as well as color, while an unrecognized value is shown separately as unknown rather than disguised as information. This label is not a probability estimate, audit opinion, or financial-materiality measure, so the underlying evidence still requires separate review.",
+          ru: "Значок severity отражает настроенный приоритет правила. Critical, warning и information различаются не только цветом, но и формой; неизвестное значение показывается отдельно как unknown, а не маскируется под info. Эта метка не является вероятностью, аудиторским мнением или оценкой финансовой существенности, поэтому доказательства проверяются отдельно.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(ALERTS_READING, { timeout: 15000 });
+          await p.waitForSelector(ALERTS_READ_SEVERITY, { timeout: 15000 });
+          await h.hover(ALERTS_READ_SEVERITY);
+        },
+      },
+      {
+        voice: {
+          az: "Built-in qaydalar saxlanmış message key və parametrlərdən istifadə edərək seçilmiş dildə yenidən göstərilir; buna görə standart mesajlar İngiliscə donub qalmır. Custom qaydalarda uyğun translation olmadıqda saxlanmış mənbə dilində mətn fallback ola bilər. Mesaj interpretasiyadır, rəqəmlərin provenance və freshness yoxlamasını əvəz etmir.",
+          en: "Built-in rules are rendered in the selected language from stored message keys and parameters, so standard messages are not frozen in English. A custom rule can fall back to its stored source-language text when no translation contract exists. The message remains an interpretation and does not replace provenance, freshness, or reconciliation checks on the underlying figures.",
+          ru: "Встроенные правила отображаются на выбранном языке из сохранённых ключей и параметров, поэтому стандартные сообщения не застывают на английском. Для пользовательского правила без контракта перевода возможен fallback к сохранённому исходному тексту. Сообщение остаётся интерпретацией и не заменяет проверку происхождения, свежести и сверки исходных цифр.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(ALERTS_READ_MESSAGE, { timeout: 15000 });
+          await h.hover(ALERTS_READ_MESSAGE);
+        },
+      },
+      {
+        voice: {
+          az: "Əgər snapshot əlli sətirdən böyükdürsə, Load more növbəti səhifəni cursor ilə oxuyur və mövcud siyahıya əlavə edir. O, əvvəlki recompute run-unu açmır və immutable tarix yaratmır. Ekrandakı ən son saxlanma vaxtını data freshness ilə qarışdırmayın; source period və lineage ayrıca yoxlanmalıdır.",
+          en: "When a stored snapshot exceeds fifty rows, Load more reads the next cursor page and appends it to the current list. It does not open an older recompute run and does not create immutable history. Do not confuse the displayed storage time with source-data freshness; the source period, lineage, and current condition must still be checked separately.",
+          ru: "Если сохранённый снимок превышает пятьдесят строк, Load more читает следующую cursor-страницу и добавляет её к текущему списку. Он не открывает прежний запуск recompute и не создаёт неизменяемую историю. Не путайте время сохранения со свежестью источника: период, происхождение и текущее состояние проверяются отдельно.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(ALERTS_READ_PAGINATION, { timeout: 15000 });
+          await h.hover(ALERTS_READ_PAGINATION);
+        },
+      },
+      {
+        voice: {
+          az: "Risk Terminal keçidi yalnız alert dəqiq bir şirkət və bir indikator göstərdikdə görünür. Keçid həmin şirkət, indikator və dövr xanasını həll edir; server icazəni və xananın mövcudluğunu yenidən yoxlayır. Naviqasiya özü AI izahı yaratmır. Çoxşirkətli və ya çoxindikatorlu alert-də qeyri-dəqiq cütü təxmin etmək əvəzinə keçid gizlədilir.",
+          en: "A Risk Terminal link appears only when an alert identifies exactly one company and exactly one affected indicator. The resolver rechecks authorization and cell existence for that company, indicator, and period. Navigation itself does not generate an AI explanation. Multi-company or multi-indicator alerts withhold the link instead of guessing an invalid pair.",
+          ru: "Ссылка в Risk Terminal появляется только когда алерт относится ровно к одной компании и одному индикатору. Resolver повторно проверяет доступ и наличие ячейки компании, индикатора и периода. Сама навигация не создаёт AI-объяснение. Для алертов с несколькими компаниями или индикаторами ссылка скрывается, чтобы не угадывать неверную пару.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(ALERTS_READ_DEEPLINK, { timeout: 15000 });
+          await h.hover(ALERTS_READ_DEEPLINK);
+          await h.moveTo(ALERTS_SCOPE);
         },
       },
     ],
