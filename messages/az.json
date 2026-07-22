@@ -1992,6 +1992,9 @@
     "morningBrief": {
       "header": "AI səhər icmalı",
       "loading": "AI gün üçün icmal hazırlayır…",
+      "generate": "İcmal yarat",
+      "generateHint": "Cari risk məlumatlarından tələb üzrə icmal yaradın.",
+      "waitForData": "Risk məlumatları hələ yüklənir. Yaratma funksiyası bir azdan əlçatan olacaq.",
       "refresh": "İcmalı yenilə",
       "calmMorning": "Sakit səhər — qırmızı indikator və aktiv xəbərdarlıq yoxdur.",
       "cached": "keşdən",

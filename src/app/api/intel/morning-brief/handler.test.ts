@@ -53,6 +53,7 @@ import { POST } from "./route"
 const ORG_ID = "org_demo"
 
 const NON_EMPTY_PAYLOAD = {
+  userInitiated: true,
   worstCells: [{ companyCode: "AAC", indicatorCode: "IND_DSO", value: 90, unit: "days" }],
   topMovers: [{ companyCode: "AAC", indicatorCode: "IND_DSO", deltaPct: 15 }],
   activeAlerts: [{ severity: "warning", message: "DSO high" }],
@@ -80,6 +81,20 @@ describe("POST /api/intel/morning-brief", () => {
       makeRequest("/api/intel/morning-brief", { method: "POST", json: NON_EMPTY_PAYLOAD }),
     )
     expect(res.status).toBe(503)
+  })
+
+  it("428 without explicit user action and never reaches paid AI plumbing", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    const res = await POST(
+      makeRequest("/api/intel/morning-brief", {
+        method: "POST",
+        json: { ...NON_EMPTY_PAYLOAD, userInitiated: undefined },
+      }),
+    )
+    expect(res.status).toBe(428)
+    expect(hasAnthropicKeyMock).not.toHaveBeenCalled()
+    expect(enforceRateLimitMock).not.toHaveBeenCalled()
+    expect(runMorningBriefMock).not.toHaveBeenCalled()
   })
 
   it("401 unauthenticated", async () => {
@@ -115,7 +130,7 @@ describe("POST /api/intel/morning-brief", () => {
     const res = await POST(
       makeRequest("/api/intel/morning-brief", {
         method: "POST",
-        json: { worstCells: [], topMovers: [], activeAlerts: [], newsBullets: [] },
+        json: { userInitiated: true, worstCells: [], topMovers: [], activeAlerts: [], newsBullets: [] },
       }),
     )
     expect(res.status).toBe(200)

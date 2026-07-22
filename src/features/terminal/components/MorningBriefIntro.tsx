@@ -3,8 +3,9 @@
 /**
  * Phase 7.E AI Morning Brief — narrative intro for Today's Brief panel.
  *
- * POSTs the already-derived worst/movers/alerts + last news bullets to
- * /api/intel/morning-brief and renders the LLM-composed:
+ * On an explicit user click, POSTs the already-derived
+ * worst/movers/alerts + last news bullets to /api/intel/morning-brief and
+ * renders the LLM-composed:
  *   - headline (one-line "what matters most today")
  *   - narrative (2 short paragraphs)
  *   - priorityAction (single actionable next step)
@@ -12,7 +13,7 @@
  * Sits at the top of TodayBrief, above the existing 4 derived sections.
  */
 
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { localizeFactCheckFlag } from "../lib/localize-fact-check"
 import { Sparkles, RefreshCw } from "lucide-react"
@@ -70,12 +71,9 @@ type State =
 
 interface Props {
   inputs: BriefInputs
-  /** True once the matrix has loaded — gates the LLM call so we never
-   *  fire the morning brief with empty worst/movers/alerts just because
-   *  the matrix is still fetching. Without this guard the brief fires on
-   *  first render (empty arrays), gets a "calm morning" from the LLM,
-   *  then re-fires when real data arrives — two LLM calls, first one
-   *  always wrong. */
+  /** True once the matrix has loaded. The Generate action stays disabled
+   *  while inputs are incomplete, so an explicit click can never submit a
+   *  false "calm morning" based on pre-load empty arrays. */
   matrixReady?: boolean
 }
 
@@ -83,9 +81,9 @@ export function MorningBriefIntro({ inputs, matrixReady = true }: Props) {
   const locale = useLocale() as "en" | "ru" | "az"
   const t = useTranslations("terminal")
   const [state, setState] = useState<State>({ kind: "idle" })
-  const lastSigRef = useRef<string>("")
 
   const fetchBrief = async () => {
+    if (!matrixReady || state.kind === "loading") return
     setState({ kind: "loading" })
     try {
       // Pull latest news bullets from the news-summary endpoint —
@@ -108,6 +106,7 @@ export function MorningBriefIntro({ inputs, matrixReady = true }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          userInitiated: true,
           language: locale,
           worstCells: inputs.worstCells,
           topMovers: inputs.topMovers,
@@ -134,25 +133,10 @@ export function MorningBriefIntro({ inputs, matrixReady = true }: Props) {
     }
   }
 
-  useEffect(() => {
-    // Don't fire until the matrix has loaded — prevents "calm morning"
-    // false-positive when worst/movers are still empty because the matrix
-    // fetch hasn't returned yet.
-    if (!matrixReady) return
-    // Re-fetch only when the input signature actually changes — avoids
-    // useEffect loops on every parent re-render.
-    const sig = JSON.stringify({
-      w: inputs.worstCells.length,
-      m: inputs.topMovers.length,
-      a: inputs.activeAlerts.length,
-      l: locale,
-    })
-    if (sig !== lastSigRef.current) {
-      lastSigRef.current = sig
-      void fetchBrief()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matrixReady, inputs.worstCells.length, inputs.topMovers.length, inputs.activeAlerts.length, locale])
+  const actionLabel =
+    state.kind === "loaded" || state.kind === "empty" || state.kind === "error"
+      ? t("morningBrief.refresh")
+      : t("morningBrief.generate")
 
   return (
     <section
@@ -166,18 +150,26 @@ export function MorningBriefIntro({ inputs, matrixReady = true }: Props) {
         </div>
         <button
           type="button"
-          onClick={fetchBrief}
-          disabled={state.kind === "loading"}
-          className="text-gray-600 hover:text-cyan-300 disabled:opacity-30 transition-colors"
-          title={t("morningBrief.refresh")}
+          onClick={() => void fetchBrief()}
+          disabled={!matrixReady || state.kind === "loading"}
+          className="inline-flex min-h-7 items-center gap-1 rounded border border-cyan-500/25 px-2 text-[11px] font-medium normal-case tracking-normal text-cyan-300 transition-colors hover:border-cyan-400/60 hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+          title={actionLabel}
         >
           <RefreshCw
-            size={10}
+            size={11}
             className={state.kind === "loading" ? "animate-spin" : ""}
           />
+          <span>{actionLabel}</span>
         </button>
       </div>
 
+      {state.kind === "idle" && (
+        <p className="text-gray-500 text-[11px] leading-snug">
+          {matrixReady
+            ? t("morningBrief.generateHint")
+            : t("morningBrief.waitForData")}
+        </p>
+      )}
       {state.kind === "loading" && (
         <p className="text-gray-700 text-[10px]">{t("morningBrief.loading")}</p>
       )}

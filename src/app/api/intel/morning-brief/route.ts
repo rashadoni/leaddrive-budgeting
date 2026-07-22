@@ -59,6 +59,7 @@ function isLanguage(s: unknown): s is MorningBriefLanguage {
 }
 
 interface BodyShape {
+  userInitiated?: unknown
   language?: unknown
   worstCells?: unknown
   topMovers?: unknown
@@ -132,13 +133,6 @@ function payloadHash(input: MorningBriefInput): string {
 }
 
 export async function POST(request: NextRequest) {
-  if (!hasAnthropicKey()) {
-    return NextResponse.json(
-      { error: "AI Morning Brief unavailable: ANTHROPIC_API_KEY not configured." },
-      { status: 503 },
-    )
-  }
-
   const session = await requireRole(request, "viewer")
   if (isAuthError(session)) return session
   if (!session.orgId) {
@@ -149,18 +143,36 @@ export async function POST(request: NextRequest) {
   }
   const orgId = session.orgId
 
-  const rateLimitError = enforceRateLimit(
-    `${RATE_LIMIT.name}:${orgId}:${session.userId}:${getClientIp(request)}`,
-    RATE_LIMIT,
-  )
-  if (rateLimitError) return rateLimitError
-
   let body: BodyShape
   try {
     body = (await request.json()) as BodyShape
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
+  // Cost-safety gate: opening or re-rendering the terminal must never spend
+  // paid LLM budget. The UI sets this flag only inside the explicit Generate /
+  // Refresh click handler. This also makes stale auto-fetching clients fail
+  // closed before key lookup, rate-limit consumption, DB reads or provider use.
+  if (body.userInitiated !== true) {
+    return NextResponse.json(
+      { error: "Explicit user action required to generate an AI Morning Brief." },
+      { status: 428 },
+    )
+  }
+
+  if (!hasAnthropicKey()) {
+    return NextResponse.json(
+      { error: "AI Morning Brief unavailable: ANTHROPIC_API_KEY not configured." },
+      { status: 503 },
+    )
+  }
+
+  const rateLimitError = enforceRateLimit(
+    `${RATE_LIMIT.name}:${orgId}:${session.userId}:${getClientIp(request)}`,
+    RATE_LIMIT,
+  )
+  if (rateLimitError) return rateLimitError
+
   const shaped = shapeInput(body)
   if ("error" in shaped) {
     return NextResponse.json({ error: shaped.error }, { status: 400 })

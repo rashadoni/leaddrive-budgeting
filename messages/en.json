@@ -1992,6 +1992,9 @@
     "morningBrief": {
       "header": "AI Morning Brief",
       "loading": "AI composing today's brief…",
+      "generate": "Generate brief",
+      "generateHint": "Generate on demand from the current risk data.",
+      "waitForData": "Risk data is still loading. Generation will be available shortly.",
       "refresh": "Refresh brief",
       "calmMorning": "Calm morning — no red indicators or active alerts.",
       "cached": "from cache",
