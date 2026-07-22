@@ -3,12 +3,11 @@
 /**
  * Phase 7.H Feature 1 — AI News Summary section inside Today's Brief.
  *
- * Polls /api/intel/news-summary on mount + when locale changes. Shows
- * 5 LLM-generated bullets summarizing the holding's news in the user's
- * language. Click bullet → opens /budgeting/intel for the full feed.
+ * Generates up to 5 LLM-written bullets only after an explicit user click.
+ * Click bullet → opens /budgeting/intel for the full feed.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Newspaper, RefreshCw } from "lucide-react";
 
@@ -23,6 +22,7 @@ interface NewsSummary {
 }
 
 type State =
+  | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "loaded"; data: NewsSummary }
   | { kind: "error"; message: string }
@@ -31,13 +31,13 @@ type State =
 export function NewsSummarySection() {
   const locale = useLocale() as "en" | "ru" | "az";
   const t = useTranslations("terminal");
-  const [state, setState] = useState<State>({ kind: "loading" });
+  const [state, setState] = useState<State>({ kind: "idle" });
 
   const fetchSummary = async () => {
     setState({ kind: "loading" });
     try {
       const res = await fetch(
-        `/api/intel/news-summary?language=${locale}`,
+        `/api/intel/news-summary?language=${locale}&userInitiated=1`,
         { cache: "no-store" },
       );
       if (!res.ok) {
@@ -56,10 +56,9 @@ export function NewsSummarySection() {
     }
   };
 
-  useEffect(() => {
-    void fetchSummary();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locale]);
+  const actionLabel = state.kind === "idle"
+    ? t("todayBrief.newsGenerate")
+    : t("todayBrief.newsRefresh");
 
   return (
     <section className="border-t border-gray-800/40 pt-2 mt-2" data-testid="today-brief-news">
@@ -71,12 +70,13 @@ export function NewsSummarySection() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={fetchSummary}
+            onClick={() => void fetchSummary()}
             disabled={state.kind === "loading"}
-            className="text-gray-600 hover:text-cyan-300 disabled:opacity-30 transition-colors"
-            title={t("todayBrief.newsRefresh")}
+            className="inline-flex min-h-7 items-center gap-1 rounded border border-amber-500/25 px-2 text-[11px] font-medium normal-case tracking-normal text-amber-300 transition-colors hover:border-amber-400/60 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+            title={actionLabel}
           >
-            <RefreshCw size={10} className={state.kind === "loading" ? "animate-spin" : ""} />
+            <RefreshCw size={11} className={state.kind === "loading" ? "animate-spin" : ""} />
+            <span>{actionLabel}</span>
           </button>
           <button
             type="button"
@@ -110,6 +110,11 @@ export function NewsSummarySection() {
           </button>
         </div>
       </div>
+      {state.kind === "idle" && (
+        <p className="text-gray-500 text-[11px] leading-snug">
+          {t("todayBrief.newsGenerateHint")}
+        </p>
+      )}
       {state.kind === "loading" && (
         <p className="text-gray-700 text-[10px]">{t("todayBrief.newsLoading")}</p>
       )}

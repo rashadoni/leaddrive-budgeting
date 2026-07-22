@@ -1982,6 +1982,8 @@
       "newsHeader": "Holdinq xəbərləri",
       "newsLoading": "AI icmal hazırlayır…",
       "newsEmpty": "Təzə xəbər yoxdur — admin panelindən AI Crawler işə salın.",
+      "newsGenerate": "İcmal yarat",
+      "newsGenerateHint": "Holdinqin son xəbərlərindən tələb üzrə AI icmalı yaradın.",
       "newsRefresh": "İcmalı yenilə",
       "newsPopOut": "Xəbərləri ayrı pəncərədə aç",
       "newsCached": "keş",

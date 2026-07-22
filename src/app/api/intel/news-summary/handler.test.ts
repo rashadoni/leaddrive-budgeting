@@ -71,20 +71,20 @@ describe("GET /api/intel/news-summary", () => {
   it("503 when ANTHROPIC_API_KEY missing", async () => {
     hasAnthropicKeyMock.mockReturnValue(false)
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
-    const res = await GET(makeRequest("/api/intel/news-summary"))
+    const res = await GET(makeRequest("/api/intel/news-summary?userInitiated=1"))
     expect(res.status).toBe(503)
   })
 
   it("401 unauthenticated", async () => {
     await mockSession(null)
-    const res = await GET(makeRequest("/api/intel/news-summary"))
+    const res = await GET(makeRequest("/api/intel/news-summary?userInitiated=1"))
     expect(res.status).toBe(401)
   })
 
   it("429 on rate-limit", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     enforceRateLimitMock.mockReturnValue(new Response("rate limited", { status: 429 }))
-    const res = await GET(makeRequest("/api/intel/news-summary"))
+    const res = await GET(makeRequest("/api/intel/news-summary?userInitiated=1"))
     expect(res.status).toBe(429)
   })
 
@@ -97,7 +97,7 @@ describe("GET /api/intel/news-summary", () => {
         industryTags: ["agro_crops"], companyTags: [], publishedAt: new Date(),
       },
     ])
-    const res = await GET(makeRequest("/api/intel/news-summary?language=ru"))
+    const res = await GET(makeRequest("/api/intel/news-summary?language=ru&userInitiated=1"))
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.bullets).toEqual(["Bullet 1", "Bullet 2"])
@@ -119,7 +119,7 @@ describe("GET /api/intel/news-summary", () => {
       { id: "i2", title: "Other-co item", summary: "", url: "", sourceLabel: "", relevanceScore: 0.8, industryTags: [], companyTags: ["OTHER"], publishedAt: null },
       { id: "i3", title: "Macro item",   summary: "", url: "", sourceLabel: "", relevanceScore: 0.8, industryTags: [], companyTags: [], publishedAt: null },
     ])
-    await GET(makeRequest("/api/intel/news-summary"))
+    await GET(makeRequest("/api/intel/news-summary?userInitiated=1"))
     // runNewsSummary should be called with i1 (AAC tag) + i3 (no tags) only
     const items = runNewsSummaryMock.mock.calls[0][0].items
     expect(items).toHaveLength(2)
@@ -130,9 +130,19 @@ describe("GET /api/intel/news-summary", () => {
 
   it("english default when language param missing", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
-    await GET(makeRequest("/api/intel/news-summary"))
+    await GET(makeRequest("/api/intel/news-summary?userInitiated=1"))
     expect(runNewsSummaryMock).toHaveBeenCalledWith(
       expect.objectContaining({ language: "en" }),
     )
+  })
+
+  it("428 without explicit user action and never reaches paid AI plumbing", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    const res = await GET(makeRequest("/api/intel/news-summary?language=en"))
+    expect(res.status).toBe(428)
+    expect(hasAnthropicKeyMock).not.toHaveBeenCalled()
+    expect(enforceRateLimitMock).not.toHaveBeenCalled()
+    expect(prismaMock.intelItem.findMany).not.toHaveBeenCalled()
+    expect(runNewsSummaryMock).not.toHaveBeenCalled()
   })
 })

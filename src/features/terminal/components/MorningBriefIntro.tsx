@@ -91,7 +91,7 @@ export function MorningBriefIntro({ inputs, matrixReady = true }: Props) {
       let newsBullets: string[] = []
       try {
         const newsRes = await fetch(
-          `/api/intel/news-summary?language=${locale}`,
+          `/api/intel/news-summary?language=${locale}&userInitiated=1`,
           { cache: "no-store" },
         )
         if (newsRes.ok) {

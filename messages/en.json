@@ -1982,6 +1982,8 @@
       "newsHeader": "Holding news",
       "newsLoading": "AI preparing summary…",
       "newsEmpty": "No fresh news — run the AI Crawler from admin.",
+      "newsGenerate": "Generate summary",
+      "newsGenerateHint": "Generate an AI summary on demand from the latest holding news.",
       "newsRefresh": "Refresh summary",
       "newsPopOut": "Open news in a separate window",
       "newsCached": "from cache",

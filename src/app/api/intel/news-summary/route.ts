@@ -52,16 +52,6 @@ function isLanguage(s: string | null): s is NewsSummaryLanguage {
 }
 
 export async function GET(request: NextRequest) {
-  if (!hasAnthropicKey()) {
-    return NextResponse.json(
-      {
-        error:
-          "AI News Summary unavailable: ANTHROPIC_API_KEY not configured.",
-      },
-      { status: 503 },
-    )
-  }
-
   const session = await requireRole(request, "viewer")
   if (isAuthError(session)) return session
   if (!session.orgId) {
@@ -72,13 +62,34 @@ export async function GET(request: NextRequest) {
   }
   const orgId = session.orgId
 
+  const url = new URL(request.url)
+  // Cost-safety gate: a terminal render, locale change or pop-out must never
+  // spend paid LLM budget. Only explicit Generate / Refresh handlers add this
+  // query flag. Stale auto-fetching clients fail before key lookup,
+  // rate-limit consumption, DB reads or provider use.
+  if (url.searchParams.get("userInitiated") !== "1") {
+    return NextResponse.json(
+      { error: "Explicit user action required to generate an AI News Summary." },
+      { status: 428 },
+    )
+  }
+
+  if (!hasAnthropicKey()) {
+    return NextResponse.json(
+      {
+        error:
+          "AI News Summary unavailable: ANTHROPIC_API_KEY not configured.",
+      },
+      { status: 503 },
+    )
+  }
+
   const rateLimitError = enforceRateLimit(
     `${RATE_LIMIT.name}:${orgId}:${session.userId}:${getClientIp(request)}`,
     RATE_LIMIT,
   )
   if (rateLimitError) return rateLimitError
 
-  const url = new URL(request.url)
   const language: NewsSummaryLanguage = isLanguage(url.searchParams.get("language"))
     ? (url.searchParams.get("language") as NewsSummaryLanguage)
     : "en"
