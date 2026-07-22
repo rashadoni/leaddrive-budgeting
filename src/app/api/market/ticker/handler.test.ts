@@ -6,7 +6,7 @@
  * - Auth: requireRole(viewer) — basic readers OK, but auth required
  * - FX rates fetched from Currency (current) + CurrencyRateHistory (prev)
  * - Commodity series from IntelDataPoint (table-missing → graceful skip)
- * - Org-scoped + isActive + isBase=false filter on currencies
+ * - FX fails closed unless exactly one active base currency is confirmed
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
@@ -52,21 +52,34 @@ describe("GET /api/market/ticker", () => {
     expect(typeof body.generatedAt).toBe("string") // ISO timestamp
   })
 
-  it("currencies filtered to org + isActive + isBase=false", async () => {
+  it("currencies are filtered to the active organization scope", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     await GET(makeRequest("/api/market/ticker"))
     expect(prismaMock.currency.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { organizationId: ORG_ID, isActive: true, isBase: false },
+        where: { organizationId: ORG_ID, isActive: true },
       }),
     )
   })
 
-  it("emits one FX entry per non-base active currency", async () => {
+  it("fails closed when no confirmed base currency exists", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     prismaMock.currency.findMany.mockResolvedValue([
-      { code: "USD", exchangeRate: 1.7, symbol: "$" },
-      { code: "EUR", exchangeRate: 1.85, symbol: "€" },
+      { code: "USD", exchangeRate: 1.7, symbol: "$", isBase: false },
+    ])
+    const res = await GET(makeRequest("/api/market/ticker"))
+    const body = await res.json()
+    expect(body.entries).toEqual([])
+    expect(body.fxBasis).toEqual({ status: "missing", code: null })
+    expect(prismaMock.$queryRaw).not.toHaveBeenCalled()
+  })
+
+  it("emits one FX entry per non-base currency against the confirmed base", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.currency.findMany.mockResolvedValue([
+      { code: "USD", exchangeRate: 1.7, symbol: "$", isBase: false },
+      { code: "EUR", exchangeRate: 1.85, symbol: "€", isBase: false },
+      { code: "AZN", exchangeRate: 1, symbol: "₼", isBase: true },
     ])
     const res = await GET(makeRequest("/api/market/ticker"))
     const body = await res.json()
@@ -78,23 +91,59 @@ describe("GET /api/market/ticker", () => {
       source: "fx",
       unit: "₼",
     })
+    expect(body.fxBasis).toEqual({ status: "confirmed", code: "AZN" })
+  })
+
+  it("fails closed on conflicting bases and never queries FX history", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.currency.findMany.mockResolvedValue([
+      { code: "AZN", exchangeRate: 1, symbol: "₼", isBase: true },
+      { code: "USD", exchangeRate: 1, symbol: "$", isBase: true },
+      { code: "EUR", exchangeRate: 1.85, symbol: "€", isBase: false },
+    ])
+    const res = await GET(makeRequest("/api/market/ticker"))
+    const body = await res.json()
+    expect(body.entries).toEqual([])
+    expect(body.fxBasis).toEqual({ status: "conflicting", code: null })
+    expect(prismaMock.$queryRaw).not.toHaveBeenCalled()
+  })
+
+  it("suppresses non-finite, zero and negative exchange rates", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.currency.findMany.mockResolvedValue([
+      { code: "AZN", exchangeRate: 1, symbol: "₼", isBase: true },
+      { code: "USD", exchangeRate: 1.7, symbol: "$", isBase: false },
+      { code: "EUR", exchangeRate: 0, symbol: "€", isBase: false },
+      { code: "GBP", exchangeRate: -2, symbol: "£", isBase: false },
+      { code: "JPY", exchangeRate: Number.NaN, symbol: "¥", isBase: false },
+    ])
+    const res = await GET(makeRequest("/api/market/ticker"))
+    const body = await res.json()
+    expect(body.entries.map((entry: { metric: string }) => entry.metric)).toEqual(["USD_AZN"])
   })
 
   it("FX entry's previous = penultimate rate from history (when available)", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     prismaMock.currency.findMany.mockResolvedValue([
-      { code: "USD", exchangeRate: 1.7, symbol: "$" },
+      { code: "USD", exchangeRate: 1.7, symbol: "$", isBase: false },
+      { code: "AZN", exchangeRate: 1, symbol: "₼", isBase: true },
     ])
     prismaMock.$queryRaw.mockResolvedValue([{ currencyCode: "USD", rate: 1.68 }])
     const res = await GET(makeRequest("/api/market/ticker"))
     const body = await res.json()
     expect(body.entries[0].previous).toBe(1.68)
+    const sql = prismaMock.$queryRaw.mock.calls[0][0].join(" ")
+    expect(sql).toContain('ROW_NUMBER() OVER')
+    expect(sql).toContain('PARTITION BY "currencyCode"')
+    expect(sql).toContain('ORDER BY "rateDate" DESC, "createdAt" DESC, "id" DESC')
+    expect(sql).toContain('WHERE ranked.position = 2')
   })
 
   it("FX entry's previous = null when no history row exists", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     prismaMock.currency.findMany.mockResolvedValue([
-      { code: "USD", exchangeRate: 1.7, symbol: "$" },
+      { code: "USD", exchangeRate: 1.7, symbol: "$", isBase: false },
+      { code: "AZN", exchangeRate: 1, symbol: "₼", isBase: true },
     ])
     prismaMock.$queryRaw.mockResolvedValue([]) // no prev
     const res = await GET(makeRequest("/api/market/ticker"))
@@ -124,7 +173,8 @@ describe("GET /api/market/ticker", () => {
   it("graceful degradation: intelDataPoint throws → FX entries still returned", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     prismaMock.currency.findMany.mockResolvedValue([
-      { code: "USD", exchangeRate: 1.7, symbol: "$" },
+      { code: "USD", exchangeRate: 1.7, symbol: "$", isBase: false },
+      { code: "AZN", exchangeRate: 1, symbol: "₼", isBase: true },
     ])
     prismaMock.intelDataPoint.findMany.mockRejectedValue(
       new Error('relation "intel_data_points" does not exist'),

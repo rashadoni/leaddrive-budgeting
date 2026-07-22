@@ -191,6 +191,8 @@ describe('Cash Flow help-video scenario', () => {
       'FC_COGS',
       'FC_EXPENSE',
       'FC_EXPENSE',
+      'TERM_COMPANY',
+      'TERM_CELL',
       'RUN_BTN',
     ]);
   });

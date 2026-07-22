@@ -18,7 +18,10 @@ const jetbrainsMono = JetBrains_Mono({
 
 export default function TerminalPage() {
   return (
-    <div className={`flex flex-col h-full w-full bg-[#050814] overflow-hidden ${jetbrainsMono.className}`}>
+    <div
+      data-testid="terminal-guide-root"
+      className={`flex flex-col h-full w-full bg-[#050814] overflow-hidden ${jetbrainsMono.className}`}
+    >
       {/* Route-owned listeners and overlays stay mounted independently of the
           active terminal workspace and its mobile viewport guard. */}
       <TerminalOverlayHost />

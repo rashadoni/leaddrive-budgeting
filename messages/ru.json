@@ -1984,7 +1984,8 @@
       "snapshot": "Снимок компании",
       "snapshotShort": "СНИМОК",
       "popOutTitle": "Открыть в отдельном окне (Bloomberg multi-monitor)",
-      "popOutAria": "Открыть панель в отдельном окне"
+      "popOutAria": "Открыть панель в отдельном окне",
+      "shortcutTitle": "Нажмите F{id}, чтобы сфокусировать эту панель"
     },
     "status": {
       "green": "В норме",
@@ -2061,7 +2062,11 @@
       "snapshot": "Наведите на спарклайн для месячных значений · Клик для сравнения"
     },
     "panelGrid": {
-      "panel": "ПАНЕЛЬ"
+      "panel": "ПАНЕЛЬ",
+      "compactOnLabel": "Компактно",
+      "compactOffLabel": "Обычно",
+      "compactOnTitle": "Компактный режим включён — Ctrl+/ для расширения",
+      "compactOffTitle": "Компактный режим выключен — Ctrl+/ для уплотнения"
     },
     "hotkeys": {
       "label": "ХОТКЕИ",
@@ -2146,7 +2151,29 @@
       "dataResetLabel": "ДАННЫЕ",
       "dataResetTitle": "Открыть очистку импорта для {company}",
       "showPendingAriaLabel": "Переключить видимость компаний в процессе онбординга",
-      "showPendingTitle": "Показать / скрыть компании в процессе онбординга (admin)"
+      "showPendingTitle": "Показать / скрыть компании в процессе онбординга (admin)",
+      "expand": "Развернуть",
+      "collapse": "Свернуть",
+      "childCompanies": "Компаний: {count}",
+      "awaitingData": "ожидаются данные",
+      "readinessTitle": "Готовность данных {score}% — {tier}",
+      "readinessAria": "Готовность данных {score} процентов, {tier}",
+      "readinessTier": { "complete": "Полная — присутствуют все области данных", "good": "Хорошая — покрыто большинство областей, есть небольшие пробелы", "partial": "Частичная — пробелы в нескольких областях", "thin": "Слабая — мало данных, AI может ошибаться", "empty": "Пусто — реальных данных нет, демонстрация небезопасна" },
+      "compositeTitle": "Композитный риск {score}/100",
+      "compositeAria": "Композитный балл риска {score} из 100",
+      "trustStatusAria": "Статус доверия: {status}",
+      "trustStatus": { "verified": "Проверено", "partial": "Проверено частично", "suspicious": "Подозрительно", "pending": "Ожидает проверки" },
+      "riskTag": { "subsidy_dependency": "Зависимость от субсидий", "non_transparent_structure": "Непрозрачная структура", "data_absence": "Отсутствие данных" },
+      "riskTagShort": { "subsidy_dependency": "Суб", "non_transparent_structure": "Непр", "data_absence": "НетД" },
+      "unstarAria": "Убрать {code} из избранных компаний",
+      "starAria": "Добавить {code} в избранные компании",
+      "starredTitle": "В избранном",
+      "starTitle": "Добавить компанию в избранное",
+      "lastRecompute": "Последний пересчёт: {date}",
+      "freshnessNow": "сейчас",
+      "freshnessMinutes": "{count}м",
+      "freshnessHours": "{count}ч",
+      "freshnessDays": "{count}д"
     },
     "peer": {
       "title": "Сравнение peer ({count} компаний)",
@@ -2204,6 +2231,22 @@
       "showAllIndicatorsCollapsedHint": "Показаны только индикаторы, относящиеся к текущему профилю деятельности. Применимые индикаторы без данных остаются видимыми.",
       "showAllIndicatorsExpandedHint": "Показан полный каталог индикаторов; активный поиск по индикаторам продолжает сужать таблицу.",
       "loadingHeatmap": "Загрузка карты рисков…",
+      "lockedLabel": "ЗАКРЫТО",
+      "lockedTitle": "Период закрыт. Причина: {reason}. Подписан: {date}.",
+      "readinessScore": "Готовность данных {score}%.",
+      "readinessEmpty": "У этой организации нет реальных данных: ячейки ниже являются заглушками или модельными оценками. Не основывайте анализ на этих числах.",
+      "readinessThin": "Данных мало — AI Variance Explainer может ошибаться. Считайте красные и жёлтые ячейки направляющими, а не авторитетными.",
+      "readinessPartial": "В нескольких областях данных есть пробелы — откройте показатель готовности, чтобы увидеть отсутствующее.",
+      "readinessMissing": "Отсутствует: {areas}",
+      "readinessArea": { "pnl": "строки бюджета P&L", "bs": "баланс", "counterparties": "контрагенты", "opKpis": "операционные KPI", "narrative": "стратегическое описание", "indicators": "рассчитанные индикаторы", "fxTags": "валютные метки FX" },
+      "lastRecompute": "Последний пересчёт: {date}",
+      "updatedFreshness": "обновлено {age}",
+      "freshnessNow": "только что",
+      "freshnessMinutes": "{count} мин назад",
+      "freshnessHours": "{count} ч назад",
+      "freshnessDays": "{count} дн назад",
+      "partialYearTitle": "{period} — неполный год (с начала года).",
+      "partialYearBody": "Показаны только уже проведённые месяцы, поэтому маржа и цветовые диапазоны предварительные и не отражают полный цикл. По умолчанию открыт последний завершённый год.",
       "noCompaniesYet": "Компаний или индикаторов ещё нет. Импортируйте через /budgeting/onboarding и запустите seed индикаторов (scripts/seed-indicators.ts).",
       "companyColumn": "Компания",
       "noCompaniesMatch": "Нет совпадений для",

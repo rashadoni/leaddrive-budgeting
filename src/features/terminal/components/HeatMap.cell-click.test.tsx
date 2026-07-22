@@ -216,6 +216,24 @@ function findCellButton(
 }
 
 describe("HeatMap cell-click → store contract (Phase 7.D regression)", () => {
+  it("hovering a risk cell never calls the paid explainer endpoint", async () => {
+    render(<HeatMap />);
+    await waitFor(() => {
+      expect(screen.getByText("AAC-MAIN")).toBeTruthy();
+    });
+
+    const cell = findCellButton("AAC-MAIN", "IND_NET_MARGIN");
+    expect(cell, "expected to find AAC-MAIN × IND_NET_MARGIN cell").toBeTruthy();
+
+    fireEvent.pointerEnter(cell!);
+    await new Promise((resolve) => setTimeout(resolve, 650));
+
+    const requestedUrls = vi
+      .mocked(global.fetch)
+      .mock.calls.map(([url]) => String(url));
+    expect(requestedUrls.some((url) => url.includes("/explain"))).toBe(false);
+  });
+
   it("click on cell WITH indicatorValueId fires setCompany + setActivePanel(3) + setActiveIv (no pending)", async () => {
     render(<HeatMap />);
     await waitFor(() => {

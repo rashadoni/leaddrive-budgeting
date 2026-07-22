@@ -499,7 +499,10 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
   }
 
   return (
-    <div className="font-mono text-xs text-gray-300 w-full h-full flex flex-col gap-1">
+    <div
+      data-testid="terminal-company-tree"
+      className="font-mono text-xs text-gray-300 w-full h-full flex flex-col gap-1"
+    >
       {/* Phase B4 — watchlist tabs. Sits above the search input so the
           tab choice scopes the search results, not the other way round.
           'Alerted' badge shows count when alertedCompanyCodes is non-empty. */}
@@ -638,7 +641,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           {hasChildren ? (
             <button
               type="button"
-              aria-label={isCollapsed ? 'Expand' : 'Collapse'}
+              aria-label={t(isCollapsed ? 'companyTree.expand' : 'companyTree.collapse')}
               onClick={(e) => {
                 e.stopPropagation();
                 toggle(root.id);
@@ -692,7 +695,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           {hasChildren && (
             <span
               className="text-gray-600 tabular-nums"
-              aria-label={`${children.length} companies`}
+              aria-label={t('companyTree.childCompanies', { count: children.length })}
             >
               {children.length}
             </span>
@@ -764,7 +767,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                       className="text-amber-400/80 text-[10px] italic px-1.5 py-0.5 rounded bg-amber-900/20 border border-amber-700/30"
                       title={child.dataPendingBanner}
                     >
-                      ⏳ awaiting data
+                      ⏳ {t('companyTree.awaitingData')}
                     </span>
                   )}
                   {child.industry && (

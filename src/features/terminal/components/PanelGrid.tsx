@@ -24,7 +24,10 @@ import {
 import { CompanyTree, type CompanyNode } from './CompanyTree';
 import { HeatMap } from './HeatMap';
 import { IndicatorDetail } from './IndicatorDetail';
-import { VarianceExplainerPanel } from './VarianceExplainerPanel';
+import {
+  VarianceExplainerPanel,
+  type VarianceExplainerHandle,
+} from './VarianceExplainerPanel';
 import { LayoutMenu } from './LayoutMenu';
 import { AuditTicker } from './AuditTicker';
 import { MarketTicker } from './MarketTicker';
@@ -141,6 +144,7 @@ export function ExpertWorkspace() {
   const outerRef = useGroupRef();
   const topRef = useGroupRef();
   const bottomRef = useGroupRef();
+  const explainerRef = React.useRef<VarianceExplainerHandle>(null);
 
   // Phase 7.D hydration fix (Turn 12 follow-up): `react-resizable-panels`
   // v4 Panel+Group components inject `minHeight: 0; maxHeight: 100%`
@@ -237,7 +241,10 @@ export function ExpertWorkspace() {
   }
 
   return (
-    <div className="flex-1 bg-gray-800 relative flex flex-col">
+    <div
+      data-testid="terminal-expert-workspace"
+      className="flex-1 bg-gray-800 relative flex flex-col"
+    >
       {/* Round-7 M2 — first-run welcome hint. Renders only on first
           terminal visit (localStorage-flagged). Locale-aware copy via
           next-intl. Auto-dismiss 12s OR explicit close. */}
@@ -314,7 +321,11 @@ export function ExpertWorkspace() {
                 panelTitle={PANEL_TITLES_T[3]}
                 panelKind="detail"
               >
-                <IndicatorDetail />
+                <IndicatorDetail
+                  onExplain={(id) =>
+                    explainerRef.current?.runFromExplicitAction(id)
+                  }
+                />
               </PanelShell>
             </Panel>
             <Separator className="w-[6px] bg-gray-800 hover:bg-[#00D4AA]/50 active:bg-[#00D4AA]/70 transition-colors cursor-col-resize" />
@@ -327,7 +338,7 @@ export function ExpertWorkspace() {
                 panelTitle={PANEL_TITLES_T[4]}
                 panelKind="variance"
               >
-                <VarianceExplainerPanel />
+                <VarianceExplainerPanel ref={explainerRef} />
               </PanelShell>
             </Panel>
           </Group>
@@ -354,6 +365,7 @@ export const PanelGrid = ExpertWorkspace;
  * discoverable to users who didn't read the help.
  */
 function CompactModeToggle({ inline = false }: { inline?: boolean }) {
+  const t = useTranslations('terminal');
   const compactMode = useTerminalStore((s) => s.compactMode);
   const toggle = useTerminalStore((s) => s.toggleCompactMode);
   const button = (
@@ -370,12 +382,13 @@ function CompactModeToggle({ inline = false }: { inline?: boolean }) {
       }`}
       title={
         compactMode
-          ? 'Compact mode ON — Ctrl+/ to expand'
-          : 'Compact mode OFF — Ctrl+/ to densify'
+          ? t('panelGrid.compactOnTitle')
+          : t('panelGrid.compactOffTitle')
       }
       aria-pressed={compactMode}
+      data-testid="terminal-toolbar-compact-toggle"
     >
-      ▦ {compactMode ? 'Compact' : 'Normal'}
+      ▦ {compactMode ? t('panelGrid.compactOnLabel') : t('panelGrid.compactOffLabel')}
     </button>
   );
   if (inline) return <span className="font-mono text-[10px]">{button}</span>;
@@ -453,6 +466,8 @@ function PanelShell(props: {
   };
   return (
     <div
+      data-testid={`terminal-panel-${id}`}
+      data-panel-kind={panelKind}
       onClick={() => onActivate(id)}
       className={`bg-[#0A0E27] p-3 flex flex-col h-full overflow-hidden transition-all duration-200 ${
         isActive ? 'ring-1 ring-inset ring-[#00D4AA]' : ''
@@ -469,7 +484,7 @@ function PanelShell(props: {
                 ? 'border-[#00D4AA]/60 bg-[#00D4AA]/10 text-[#00D4AA]'
                 : 'border-gray-700 bg-gray-800/40 text-gray-500'
             }`}
-            title={`Press F${id} to focus this panel`}
+            title={tPanels('shortcutTitle', { id })}
           >
             F{id}
           </kbd>

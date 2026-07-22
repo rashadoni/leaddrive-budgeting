@@ -8,12 +8,17 @@
  * language picker per `project_ai_output_language.md` — UI strings
  * stay English, only the LLM narrative + recommendations switch.
  *
- * Auto-runs on first load when an `activeIndicatorValueId` lands;
- * subsequent IV id changes also re-run. Re-running for the same IV is
- * a manual action (the Re-run button) so the user controls cost.
+ * Runs only after an explicit Explain/Re-run action. Selecting or hovering
+ * a cell never spends provider tokens, so the user controls cost.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import { useTranslations } from "next-intl";
 import { useTerminalStore } from "../store/terminalStore";
 import { CompanySnapshot } from "./CompanySnapshot";
@@ -53,20 +58,17 @@ const LANGUAGE_OPTIONS: Array<{ value: Language; label: string }> = [
   { value: "az", label: "AZ" },
 ];
 
-export function VarianceExplainerPanel() {
+export interface VarianceExplainerHandle {
+  runFromExplicitAction: (id: string) => void;
+}
+
+export const VarianceExplainerPanel = forwardRef<VarianceExplainerHandle>(
+function VarianceExplainerPanel(_props, ref) {
   const t = useTranslations("terminal");
   const ivId = useTerminalStore((s) => s.activeIndicatorValueId);
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
 
   const [language, setLanguage] = useState<Language>("en");
-  /** Mirrors `language` so the global Explain-trigger handler reads the
-   *  current value at event time, not the value at subscription time
-   *  (the handler closes over component state via deps; pinning to a ref
-   *  avoids re-subscribing every keystroke). */
-  const languageRef = React.useRef(language);
-  React.useEffect(() => {
-    languageRef.current = language;
-  }, [language]);
   const [data, setData] = useState<ExplainResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +114,7 @@ export function VarianceExplainerPanel() {
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ language: lang }),
+            body: JSON.stringify({ language: lang, userInitiated: true }),
             signal: controller.signal,
           },
         );
@@ -144,10 +146,9 @@ export function VarianceExplainerPanel() {
   );
 
   // Cell-click navigation alone does NOT trigger an LLM call. The user
-  // must explicitly click "Explain →" in Panel 3, which dispatches a
-  // `terminal:run-explainer` event. This avoids unbounded spend when the
-  // CFO browses the HeatMap. If the IV-id changes without an explicit
-  // trigger, we just clear stale state.
+  // must explicitly click "Explain →" in Panel 3. This avoids unbounded
+  // spend when the CFO browses the HeatMap. If the IV-id changes without
+  // an explicit trigger, we just clear stale state.
   useEffect(() => {
     if (!ivId) {
       abortRef.current?.abort();
@@ -179,20 +180,19 @@ export function VarianceExplainerPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ivId]);
 
-  // Listen for the explicit Explain trigger from Panel 3.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ id: string; language?: Language }>).detail;
-      if (!detail?.id) return;
-      void run(detail.id, detail.language ?? languageRef.current);
-    };
-    window.addEventListener("terminal:run-explainer", handler as EventListener);
-    return () =>
-      window.removeEventListener(
-        "terminal:run-explainer",
-        handler as EventListener,
-      );
-  }, [run]);
+  // Panel 3 reaches this method through a React ref owned by PanelGrid.
+  // There is deliberately no global CustomEvent bridge: arbitrary scripts
+  // must not be able to forge an event that spends paid-provider tokens.
+  useImperativeHandle(
+    ref,
+    () => ({
+      runFromExplicitAction(id: string) {
+        if (id !== ivId) return;
+        void run(id, language);
+      },
+    }),
+    [ivId, language, run],
+  );
 
   if (!ivId) {
     // Phase B7 — when an active company IS set but no IV drilled down,
@@ -497,4 +497,6 @@ export function VarianceExplainerPanel() {
       )}
     </div>
   );
-}
+});
+
+VarianceExplainerPanel.displayName = "VarianceExplainerPanel";

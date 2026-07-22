@@ -8,12 +8,12 @@
  *    hint with "Run for EN" CTA button. NO LLM call fired automatically
  *    (cost guard).
  *  - Clicking "Run for EN" → POSTs /api/indicators/values/[id]/explain
- *    with { language: "en" } body.
+ *    with { language: "en", userInitiated: true } body.
  *  - Successful response → narrative + recommendations + topDrivers
  *    rendered in their respective sections.
  *  - Error response → error block rendered.
  *  - Re-run button forces a fresh fetch (bypasses in-memory cache).
- *  - `terminal:run-explainer` event fires `run()` with detail.id.
+ *  - Synthetic global events can never fire a paid request.
  *  - Language switcher (EN/RU/AZ) is interactive but does NOT trigger
  *    a fetch on its own — re-run is required.
  */
@@ -152,6 +152,7 @@ describe("VarianceExplainerPanel (Phase 7.D)", () => {
     expect(url).toContain("/api/indicators/values/iv1/explain");
     expect(init.method).toBe("POST");
     expect(init.body).toContain('"language":"en"');
+    expect(init.body).toContain('"userInitiated":true');
   });
 
   it("renders narrative + recommendations + topDrivers after successful run", async () => {
@@ -234,32 +235,25 @@ describe("VarianceExplainerPanel (Phase 7.D)", () => {
     expect(fetchMock.mock.calls.length).toBe(2);
   });
 
-  it("`terminal:run-explainer` event triggers run with detail.id", async () => {
+  it("ignores every synthetic explainer event, including a forged intent marker", async () => {
     mockExplainResponse();
-    mockState = {
-      activeIndicatorValueId: "iv1",
-      activeCompanyCode: null,
-    };
+    mockState = { activeIndicatorValueId: "iv1", activeCompanyCode: null };
     render(<VarianceExplainerPanel />);
     act(() => {
       window.dispatchEvent(
+        new CustomEvent("terminal:run-explainer", { detail: { id: "iv1" } }),
+      );
+      window.dispatchEvent(
         new CustomEvent("terminal:run-explainer", {
-          detail: { id: "iv1", language: "ru" },
+          detail: { id: "iv1", language: "ru", userInitiated: true },
         }),
       );
     });
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
-      await Promise.resolve();
     });
-    const fetchMock = global.fetch as unknown as {
-      mock: { calls: Array<[string, RequestInit]> };
-    };
-    expect(fetchMock.mock.calls.length).toBe(1);
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toContain("/api/indicators/values/iv1/explain");
-    expect(init.body).toContain('"language":"ru"');
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("language switcher is interactive but does NOT fire fetch on its own", async () => {
@@ -294,15 +288,12 @@ describe("VarianceExplainerPanel (Phase 7.D)", () => {
     expect(fetchMock.mock.calls.length).toBe(1);
   });
 
-  it("removes terminal:run-explainer listener on unmount", () => {
-    const removeSpy = vi.spyOn(window, "removeEventListener");
-    const { unmount } = render(<VarianceExplainerPanel />);
-    unmount();
-    const removed = removeSpy.mock.calls.some(
-      (c) => c[0] === "terminal:run-explainer",
-    );
-    expect(removed).toBe(true);
-    removeSpy.mockRestore();
+  it("does not register a global paid-explainer listener", () => {
+    const addSpy = vi.spyOn(window, "addEventListener");
+    render(<VarianceExplainerPanel />);
+    expect(
+      addSpy.mock.calls.some((c) => c[0] === "terminal:run-explainer"),
+    ).toBe(false);
   });
 
   // ─── Sub-44 cont'd architectural-debt closure (Round-33 architect ⚠️) ──

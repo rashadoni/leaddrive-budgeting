@@ -213,6 +213,24 @@ const PLANS_VERSION = [
 ];
 const PLANS_MUTATIONS = '[data-testid="plans-readonly-disclosure"]';
 
+// ── Risk Terminal overview guide readiness ───────────────────────────────
+// READONLY-safe: exactly two clicks change client-side selection and issue
+// GET-only detail reads. The scenario never activates Explain, Recompute,
+// scenario simulation, alerts, exports, layouts or any provider-backed action.
+const TERM_ROOT = '[data-testid="terminal-guide-root"]';
+const TERM_TOOLBAR = '[role="toolbar"]';
+const TERM_COMMAND = '[data-cmd-bar="true"]';
+const TERM_TREE = '[role="tree"]';
+const TERM_COMPANY = '[data-testid="company-tree-row"][data-company-code="AZSEKER-AZSF"]';
+const TERM_SNAPSHOT = '[data-testid="snapshot-card"]';
+const TERM_TRUST = '[data-testid="heatmap-provisional-badge"]';
+const TERM_MATRIX = '#risk-heatmap-table';
+const TERM_CELL = '[data-company-code="AZSEKER-AZSF"][data-indicator-code="FP_GROSS_MARGIN"]';
+const TERM_DETAIL = '[data-testid="terminal-panel-3"]';
+const TERM_VARIANCE = '[data-testid="terminal-panel-4"]';
+const TERM_PERIODS = '[data-testid="period-chips"]';
+const TERM_AUDIT = '[data-testid="audit-ticker"]';
+
 // Select AZSEKER (code AZSF) from the company <select>. READONLY-safe: selecting
 // an option only changes local React state; the fetch is a GET. Find the option
 // whose text names AZSEKER/AZSF (label is "<code> · <name>"), else the first real
@@ -903,6 +921,134 @@ export default {
           await h.moveTo(PLANS_MUTATIONS);
           await h.hover(PLANS_COUNT);
           await h.moveTo(PLANS_PROVENANCE);
+        },
+      },
+    ],
+  },
+  "risk-terminal": {
+    route: "/budgeting/terminal",
+    title: {
+      az: "Risk Terminal — ekspert baxışı",
+      en: "Risk Terminal — expert overview",
+      ru: "Risk Terminal — обзор экспертного режима",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "Bu, Risk Terminalın ekspert rejimidir: holdinq şirkətlərini, göstərici matrisini, seçilmiş göstəricinin izahını və şirkət snapshot-ını eyni ekranda birləşdirən dörd panelli iş sahəsi. Bu səth sürətli araşdırma üçündür, lakin rəngli xanalar hələ ilkin və decision-grade deyil; daimi etibar xəbərdarlığını nəticə kimi yox, məhdudiyyət kimi oxumaq lazımdır.",
+          en: "This is Risk Terminal in Expert mode: a four-panel workspace combining the holding company tree, indicator matrix, selected-indicator detail, and company snapshot on one screen. It is designed for rapid investigation, but the coloured cells are still provisional rather than decision-grade; the permanent trust warning is a limitation to respect, not a certification result.",
+          ru: "Это экспертный режим Risk Terminal: четырёхпанельная рабочая область, где на одном экране объединены дерево компаний холдинга, матрица индикаторов, детали выбранного показателя и снимок компании. Экран предназначен для быстрого исследования, но цветные ячейки пока предварительные, не decision-grade; постоянное предупреждение о доверии нужно считать ограничением, а не сертификатом результата.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(TERM_ROOT, { timeout: 15000 });
+          await p.waitForSelector(TERM_TOOLBAR, { timeout: 15000 });
+          await h.moveTo(TERM_ROOT);
+          await h.hover(TERM_TOOLBAR);
+        },
+      },
+      {
+        voice: {
+          az: "Yuxarıdakı hotkey paneli ən çox istifadə olunan funksiyalara yol göstərir, command sətri isə şirkət, göstərici və əmrləri klaviatura ilə tapmağa imkan verir. Recompute, yeni plan, import və digər fəaliyyətlər production-a yaza bilər. Bu təlim yalnız idarəetmələrin yerini göstərir, heç bir əmri daxil etmir və heç bir yazma düyməsini basmır.",
+          en: "The hotkey bar points to frequently used functions, while the command line can find companies, indicators, and commands from the keyboard. Recompute, new plan, import, and several other actions can write to production. This walkthrough only identifies the controls; it enters no command and activates none of the write-capable buttons.",
+          ru: "Верхняя панель горячих действий показывает часто используемые функции, а командная строка позволяет искать компании, индикаторы и команды с клавиатуры. Recompute, новый план, импорт и ряд других действий могут записывать в production. Этот обзор только показывает расположение элементов, не вводит команд и не нажимает кнопки, способные изменить данные.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(TERM_TOOLBAR, { timeout: 15000 });
+          await p.waitForSelector(TERM_COMMAND, { timeout: 15000 });
+          await h.moveTo(TERM_TOOLBAR);
+          await h.hover(TERM_COMMAND);
+        },
+      },
+      {
+        voice: {
+          az: "Birinci panel holdinq iyerarxiyasını göstərir. Burada AZSEKER daxilində AZSF əməliyyat şirkətini seçirəm. Seçim yalnız brauzer vəziyyətini dəyişir: matris həmin şirkətə daralır və snapshot eyni konteksti götürür. Arxiv, data reset və ulduz idarələrinə toxunmuram; onlar ayrıca məqsəd və səlahiyyət tələb edir.",
+          en: "Panel one is the holding hierarchy. I select the AZSF operating company inside AZSEKER. This selection changes browser state only: the matrix narrows to that company and the snapshot follows the same context. I do not touch archive, data-reset, or star controls, because those have separate intent and authorization requirements.",
+          ru: "Первая панель показывает иерархию холдинга. Я выбираю операционную компанию AZSF внутри AZSEKER. Выбор меняет только состояние браузера: матрица сужается до этой компании, а снимок принимает тот же контекст. Я не трогаю архив, сброс данных и звёздочку, потому что у этих действий отдельные назначение и требования к полномочиям.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(TERM_TREE, { timeout: 15000 });
+          await h.moveTo(TERM_TREE);
+          await p.waitForSelector(TERM_COMPANY, { timeout: 15000 });
+          await h.safeClick(TERM_COMPANY);
+          await h.sleep(500);
+        },
+      },
+      {
+        voice: {
+          az: "Dördüncü panel indi seçilmiş şirkətin snapshot-ını göstərir. Kompozit bal, marja göstəriciləri və əsas xəbərdarlıqlar eyni matris kontekstindən gəlir; ayrıca təsdiqlənmiş maliyyə hesabatı kimi təqdim edilmir. Dəyər yoxdursa tire və ya açıq empty state qalmalıdır. Risk etiketi və provenance işarəsi rəqəmin mənasını və etibar səviyyəsini məhdudlaşdırır.",
+          en: "Panel four now shows the selected company's snapshot. Its composite score, margin indicators, and leading alerts come from the same matrix context; they are not presented as a separately certified financial statement. Missing evidence must remain a dash or an explicit empty state. Risk tags and provenance markers constrain how each figure may be interpreted.",
+          ru: "Четвёртая панель теперь показывает снимок выбранной компании. Композитный балл, показатели маржи и главные предупреждения берутся из того же контекста матрицы, а не выдаются за отдельно подтверждённую отчётность. При отсутствии доказательства должны оставаться тире или явное пустое состояние. Метки риска и происхождения ограничивают интерпретацию каждого числа.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(TERM_SNAPSHOT, { timeout: 15000 });
+          await h.moveTo(TERM_SNAPSHOT);
+          await h.hover(TERM_SNAPSHOT);
+        },
+      },
+      {
+        voice: {
+          az: "İkinci panel risk matrisidir. Sətirlər şirkətləri, sütunlar kanonik göstəriciləri göstərir; dairə, üçbucaq və kvadrat formaları statusu təkrar kodlayır, yəni rəng yeganə işarə deyil. N-A tətbiq olunmayan cütdür, tire sübutun olmadığını göstərir, sübut edilmiş sıfır isə real sıfır olaraq qalır. LEGACY və NOT DECISION-GRADE banneri görünərkən rəng yoxlama siqnalıdır, qərarın özü deyil.",
+          en: "Panel two is the risk matrix. Rows are companies and columns are canonical indicators; circles, triangles, and squares repeat the status so colour is not the only encoding. N-A is not applicable, a dash is absent or unsupported, and an evidenced zero remains a real zero rather than either state. With the LEGACY and NOT DECISION-GRADE banner visible, colour supports review but is not a decision.",
+          ru: "Вторая панель — матрица рисков. Строки соответствуют компаниям, столбцы — каноническим индикаторам; круги, треугольники и квадраты дублируют статус, чтобы цвет не был единственным кодом. N-A означает неприменимость, тире — отсутствие доказательства, а подтверждённый ноль остаётся реальным нулём. Пока виден баннер LEGACY и NOT DECISION-GRADE, цвет помогает проверке, но не является решением.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(TERM_TRUST, { timeout: 15000 });
+          await p.waitForSelector(TERM_MATRIX, { timeout: 15000 });
+          await h.moveTo(TERM_TRUST);
+          await h.hover(TERM_MATRIX);
+        },
+      },
+      {
+        voice: {
+          az: "AZSF üçün Food Processing Gross Margin xanasını açıram. Bu klik yeni hesablamanı işə salmır və məlumat saxlamır; mövcud IndicatorValue identifikatorunu üçüncü panelə ötürür və detail API-dən hazır sübutu GET ilə oxuyur. Xana mövcud olmasaydı, terminal sıfır uydurmaq əvəzinə şirkət və göstərici kodları ilə no-data vəziyyəti göstərməli idi.",
+          en: "I open the Food Processing Gross Margin cell for AZSF. The click does not recompute or save anything; it passes the existing IndicatorValue identifier to panel three and reads the prepared evidence through a GET detail request. If the cell did not exist, the terminal would show a no-data state with company and indicator codes instead of inventing zero.",
+          ru: "Я открываю ячейку Food Processing Gross Margin для AZSF. Клик ничего не пересчитывает и не сохраняет: он передаёт существующий идентификатор IndicatorValue в третью панель и читает подготовленное доказательство через GET detail. Если бы ячейки не было, терминал показал бы no-data с кодами компании и индикатора, а не выдуманный ноль.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(TERM_CELL, { timeout: 15000 });
+          await h.safeClick(TERM_CELL);
+          await h.sleep(600);
+          await p.waitForSelector('[data-testid="indicator-detail-result"]', { timeout: 15000 });
+          await p.waitForSelector(TERM_DETAIL, { timeout: 15000 });
+          await h.moveTo(TERM_DETAIL);
+        },
+      },
+      {
+        voice: {
+          az: "Üçüncü panel seçilmiş göstəricinin dövrünü, vahidini, istiqamətini, hədlərini, provenance və audit vəziyyətini açır. Dördüncü paneldə AI Variance Explainer üçün yalnız təlimat görünür. Explain və Re-run pullu provider çağırışlarıdır və yalnız istifadəçinin açıq hərəkətindən sonra işləməlidir; xana seçimi və hover artıq avtomatik token sərf etmir, bu təlim də onları basmır.",
+          en: "Panel three exposes the selected indicator's period, unit, direction, thresholds, provenance, and audit posture. Panel four shows only the instruction for AI Variance Explainer. Explain and Re-run are paid-provider calls and must run only after explicit user action; selecting or hovering a cell no longer spends tokens automatically, and this guide activates neither control.",
+          ru: "Третья панель раскрывает период, единицу, направление, пороги, происхождение и состояние аудита выбранного индикатора. В четвёртой видна только инструкция для AI Variance Explainer. Explain и Re-run вызывают платного провайдера и должны работать лишь после явного действия пользователя; выбор или наведение на ячейку больше не расходуют токены автоматически, и гайд не запускает эти элементы.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(TERM_DETAIL, { timeout: 15000 });
+          await p.waitForSelector(TERM_VARIANCE, { timeout: 15000 });
+          await h.hover(TERM_DETAIL);
+          await h.moveTo(TERM_VARIANCE);
+        },
+      },
+      {
+        voice: {
+          az: "Dövr çipləri illik, rüblük və aylıq görünüşləri eyni seçilmiş period üzərindən dəyişir; time machine də həmin ümumi kontekstdən istifadə edir. Bu baxış heç bir periodu dəyişmir və ssenarini işə salmır. Mümkün şoku şərh etməzdən əvvəl periodu, mənbə təzəliyini və məlumat əhatəsini ayrıca yoxlamaq lazımdır.",
+          en: "The period chips switch annual, quarterly, and monthly views through one shared selected-period context, and the time machine follows that same state. This overview changes no period and runs no simulation. Before interpreting any possible shock, verify the period, source freshness, and evidence coverage separately.",
+          ru: "Чипы периода переключают годовой, квартальный и месячный виды через единый выбранный период, а time machine следует тому же состоянию. Этот обзор не меняет период и не запускает симуляцию. До толкования возможного шока нужно отдельно проверить период, свежесть источника и полноту доказательств.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(TERM_PERIODS, { timeout: 15000 });
+          await h.moveTo(TERM_PERIODS);
+          await h.hover(TERM_PERIODS);
+        },
+      },
+      {
+        voice: {
+          az: "Aşağıdakı audit ticker son qeydə alınmış hadisələri sadalayır, lakin onların əsas rəqəmlərini təsdiqləmir. Təhlükəsiz ardıcıllıq belədir: şirkəti seçin, periodu və etibar bannerini yoxlayın, detail və provenance-ni oxuyun, sonra yalnız səlahiyyət və məqsəd açıq təsdiqlənəndə yazma və ya pullu AI əməliyyatına keçin.",
+          en: "At the bottom, the audit ticker lists recent recorded events but does not certify their underlying numbers. The safe sequence is: choose a company, verify period and trust banner, inspect detail and provenance, then use writes or paid AI only when authority and intent are explicitly confirmed.",
+          ru: "Внизу audit ticker перечисляет недавние зарегистрированные события, но не сертифицирует лежащие в их основе цифры. Безопасный порядок: выбрать компанию, проверить период и баннер доверия, изучить детали и происхождение, затем применять запись или платный AI только при явно подтверждённых полномочиях и цели.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(TERM_AUDIT, { timeout: 10000 });
+          await h.hover(TERM_AUDIT);
+          await p.waitForSelector(TERM_ROOT, { timeout: 15000 });
+          await h.moveTo(TERM_ROOT);
         },
       },
     ],

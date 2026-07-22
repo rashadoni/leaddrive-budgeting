@@ -110,6 +110,7 @@ const explainerOutput = {
 
 beforeEach(() => {
   prismaMock.indicatorValue.findFirst.mockReset();
+  prismaMock.organization.findUnique.mockReset().mockResolvedValue(null);
   prismaMock.auditEvent.create.mockReset().mockResolvedValue({ id: "audit_1" });
   runExplainerMock.mockReset();
   aiClientMock.hasAnthropicKey.mockReturnValue(true);
@@ -121,6 +122,22 @@ beforeEach(() => {
 });
 
 describe("POST /api/indicators/values/[id]/explain — handler", () => {
+  it("returns 428 without explicit user action before paid AI plumbing", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    const req = makeRequest(`/api/indicators/values/${IV_ID}/explain`, {
+      method: "POST",
+      json: { language: "en" },
+    });
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(428);
+    expect(aiClientMock.hasAnthropicKey).not.toHaveBeenCalled();
+    expect(aiClientMock.hasAnthropicKeyForOrg).not.toHaveBeenCalled();
+    expect(rateLimitMock.enforceRateLimit).not.toHaveBeenCalled();
+    expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.indicatorValue.findFirst).not.toHaveBeenCalled();
+    expect(runExplainerMock).not.toHaveBeenCalled();
+  });
+
   it("returns 503 when no Anthropic key (env + per-org both unset) — short-circuit before DB read", async () => {
     // Phase 8 C4 (2026-05-28) — key check now considers both env and
     // per-org. Auth happens FIRST (so an unauthenticated request
@@ -131,7 +148,7 @@ describe("POST /api/indicators/values/[id]/explain — handler", () => {
     aiClientMock.hasAnthropicKeyForOrg.mockResolvedValue(false);
     const req = makeRequest(`/api/indicators/values/${IV_ID}/explain`, {
       method: "POST",
-      json: {},
+      json: { userInitiated: true },
     });
     const res = await POST(req, paramsFor(IV_ID));
     expect(res.status).toBe(503);
@@ -142,7 +159,7 @@ describe("POST /api/indicators/values/[id]/explain — handler", () => {
     await mockSession(null);
     const req = makeRequest(`/api/indicators/values/${IV_ID}/explain`, {
       method: "POST",
-      json: {},
+      json: { userInitiated: true },
     });
     const res = await POST(req, paramsFor(IV_ID));
     expect(res.status).toBe(401);
@@ -154,7 +171,7 @@ describe("POST /api/indicators/values/[id]/explain — handler", () => {
     prismaMock.indicatorValue.findFirst.mockResolvedValue(null);
     const req = makeRequest(`/api/indicators/values/${IV_ID}/explain`, {
       method: "POST",
-      json: {},
+      json: { userInitiated: true },
     });
     const res = await POST(req, paramsFor(IV_ID));
     expect(res.status).toBe(404);
@@ -170,7 +187,7 @@ describe("POST /api/indicators/values/[id]/explain — handler", () => {
     });
     const req = makeRequest(`/api/indicators/values/${IV_ID}/explain`, {
       method: "POST",
-      json: {},
+      json: { userInitiated: true },
     });
     const res = await POST(req, paramsFor(IV_ID));
     expect(res.status).toBe(400);
@@ -184,7 +201,7 @@ describe("POST /api/indicators/values/[id]/explain — handler", () => {
 
     const req = makeRequest(`/api/indicators/values/${IV_ID}/explain`, {
       method: "POST",
-      json: { language: "ru" },
+      json: { language: "ru", userInitiated: true },
       headers: { "user-agent": "TestRunner/1.0" },
     });
     const res = await POST(req, paramsFor(IV_ID));
@@ -250,7 +267,7 @@ describe("POST /api/indicators/values/[id]/explain — handler", () => {
 
     const req = makeRequest(`/api/indicators/values/${IV_ID}/explain`, {
       method: "POST",
-      json: { language: "ru" },
+      json: { language: "ru", userInitiated: true },
     });
     const res = await POST(req, paramsFor(IV_ID));
     expect(res.status).toBe(200);
@@ -276,7 +293,7 @@ describe("POST /api/indicators/values/[id]/explain — handler", () => {
 
     const req = makeRequest(`/api/indicators/values/${IV_ID}/explain`, {
       method: "POST",
-      json: {},
+      json: { userInitiated: true },
     });
     const res = await POST(req, paramsFor(IV_ID));
     expect(res.status).toBe(200);
@@ -291,7 +308,7 @@ describe("POST /api/indicators/values/[id]/explain — handler", () => {
 
     const req = makeRequest(`/api/indicators/values/${IV_ID}/explain`, {
       method: "POST",
-      json: {},
+      json: { userInitiated: true },
     });
     const res = await POST(req, paramsFor(IV_ID));
     expect(res.status).toBe(200);

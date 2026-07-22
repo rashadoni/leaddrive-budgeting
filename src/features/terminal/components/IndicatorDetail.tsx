@@ -42,7 +42,11 @@ import { ProvenanceBadge, MaterialityBadge, TrustAuditStrip } from "./indicator-
 import { AggregateBlock, formatAggValue, hintForKey, unitToHint } from "./indicator-detail/AggregateBlock";
 import { BenchmarkBand } from "./indicator-detail/BenchmarkBand";
 
-export function IndicatorDetail() {
+export function IndicatorDetail({
+  onExplain,
+}: {
+  onExplain?: (indicatorValueId: string) => void;
+} = {}) {
   const t = useTranslations('terminal');
   const tStatus = useTranslations('terminal.status');
   const tIndustries = useTranslations('industries');
@@ -312,7 +316,10 @@ export function IndicatorDetail() {
     : null;
 
   return (
-    <div className="font-mono text-[11px] text-muted-foreground w-full h-full flex flex-col gap-2 overflow-auto">
+    <div
+      data-testid="indicator-detail-result"
+      className="font-mono text-[11px] text-muted-foreground w-full h-full flex flex-col gap-2 overflow-auto"
+    >
       <header className="shrink-0 flex items-start justify-between gap-2 pb-1.5 border-b border-border/60">
         <div>
           <div className="text-muted-foreground uppercase tracking-wider text-[9px]">
@@ -750,16 +757,10 @@ export function IndicatorDetail() {
           variant="default"
           size="sm"
           onClick={() => {
-            // Switch focus to Panel 4 AND dispatch the explainer trigger.
-            // Panel 4's listener is what actually fires the LLM call —
-            // keeping that boundary explicit means a user navigating the
-            // HeatMap doesn't accidentally rack up token spend.
+            // The paid request stays on a direct React click-owned callback.
+            // There is no forgeable global event bridge.
             setActivePanel(4);
-            window.dispatchEvent(
-              new CustomEvent("terminal:run-explainer", {
-                detail: { id: detail.id },
-              }),
-            );
+            onExplain?.(detail.id);
           }}
           disabled={status === "green"}
           className="h-7 text-[11px]"

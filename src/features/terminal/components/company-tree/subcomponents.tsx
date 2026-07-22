@@ -14,7 +14,7 @@ import React, { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Bell, Star } from "lucide-react";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
-import { TRUST_COLOR, TRUST_LABEL, type TrustStatus } from "@/lib/risk/trust-status";
+import { TRUST_COLOR, type TrustStatus } from "@/lib/risk/trust-status";
 import { formatFreshness } from "../../lib/relative-time";
 
 /**
@@ -149,6 +149,7 @@ export function ReadinessChip({
 }: {
   data: { score: number; tier: 'complete' | 'good' | 'partial' | 'thin' | 'empty' } | null;
 }) {
+  const t = useTranslations('terminal');
   if (!data) return null;
   const palette = {
     complete: { color: '#00D4AA', glyph: '●' },
@@ -157,13 +158,7 @@ export function ReadinessChip({
     thin: { color: '#FF8C42', glyph: '◐' },
     empty: { color: '#FF4757', glyph: '○' },
   } as const;
-  const tierLabel = {
-    complete: 'Complete — all data areas present',
-    good: 'Good — most areas covered, minor gaps',
-    partial: 'Partial — multiple areas have gaps',
-    thin: 'Thin — sparse data, AI may hallucinate',
-    empty: 'Empty — no real data, demo unsafe',
-  } as const;
+  const tierLabel = t(`companyTree.readinessTier.${data.tier}` as never);
   const { color, glyph } = palette[data.tier];
   return (
     <span
@@ -173,8 +168,8 @@ export function ReadinessChip({
         backgroundColor: `${color}1A`,
         border: `1px solid ${color}33`,
       }}
-      title={`Data readiness ${data.score}% — ${tierLabel[data.tier]}`}
-      aria-label={`Data readiness ${data.score} percent, tier ${data.tier}`}
+      title={t('companyTree.readinessTitle', { score: data.score, tier: tierLabel })}
+      aria-label={t('companyTree.readinessAria', { score: data.score, tier: tierLabel })}
     >
       <span aria-hidden="true" className="mr-0.5 opacity-80">
         {glyph}
@@ -185,6 +180,7 @@ export function ReadinessChip({
 }
 
 export function CompositeMini({ score }: { score: number | null }) {
+  const t = useTranslations('terminal');
   if (score === null) {
     return null;
   }
@@ -203,8 +199,8 @@ export function CompositeMini({ score }: { score: number | null }) {
         backgroundColor: `${tone}1A`,
         border: `1px solid ${tone}33`,
       }}
-      title={`Composite Risk ${score}/100`}
-      aria-label={`Composite risk score ${score} of 100`}
+      title={t('companyTree.compositeTitle', { score })}
+      aria-label={t('companyTree.compositeAria', { score })}
     >
       <span aria-hidden="true" className="mr-0.5 opacity-70">
         {shape}
@@ -270,11 +266,13 @@ export function AllRow({ active, onSelect }: { active: boolean; onSelect: () => 
  * and the company code, both at root + child levels.
  */
 export function TrustBadge({ status }: { status: TrustStatus }) {
+  const t = useTranslations('terminal');
+  const label = t(`companyTree.trustStatus.${status}` as never);
   return (
     <span
       role="img"
-      aria-label={`Trust status: ${status}`}
-      title={TRUST_LABEL[status]}
+      aria-label={t('companyTree.trustStatusAria', { status: label })}
+      title={label}
       className="inline-block shrink-0 rounded-full"
       style={{
         width: 6,
@@ -295,26 +293,21 @@ export function TrustBadge({ status }: { status: TrustStatus }) {
  */
 const RISK_TAG_CONFIG: Record<
   string,
-  { label: string; color: string; title: string }
+  { color: string }
 > = {
   subsidy_dependency: {
-    label: "Sub",
     color: "bg-orange-950/70 text-orange-300 border-orange-700/50",
-    title: "Subsidy dependency",
   },
   non_transparent_structure: {
-    label: "Opq",
     color: "bg-yellow-950/70 text-yellow-300 border-yellow-700/50",
-    title: "Non-transparent structure",
   },
   data_absence: {
-    label: "NoD",
     color: "bg-slate-700/60 text-slate-400 border-slate-600/50",
-    title: "Data absence",
   },
 }
 
 export function RiskTagChips({ tags }: { tags?: string[] }) {
+  const t = useTranslations('terminal');
   if (!tags || tags.length === 0) return null
   return (
     <>
@@ -324,10 +317,10 @@ export function RiskTagChips({ tags }: { tags?: string[] }) {
         return (
           <span
             key={tag}
-            title={cfg.title}
+            title={t(`companyTree.riskTag.${tag}` as never)}
             className={`shrink-0 text-[8px] font-mono px-1 py-0 border rounded leading-[13px] ${cfg.color}`}
           >
-            {cfg.label}
+            {t(`companyTree.riskTagShort.${tag}` as never)}
           </span>
         )
       })}
@@ -358,6 +351,7 @@ export function StarToggle(props: {
   starred: boolean;
   onToggle: (code: string) => void;
 }) {
+  const t = useTranslations('terminal');
   return (
     <button
       type="button"
@@ -373,8 +367,8 @@ export function StarToggle(props: {
         }
       }}
       aria-pressed={props.starred}
-      aria-label={props.starred ? `Unstar ${props.code}` : `Star ${props.code}`}
-      title={props.starred ? 'Starred' : 'Star this company'}
+      aria-label={t(props.starred ? 'companyTree.unstarAria' : 'companyTree.starAria', { code: props.code })}
+      title={t(props.starred ? 'companyTree.starredTitle' : 'companyTree.starTitle')}
       className={`w-3 text-center text-[11px] focus:outline-none transition-colors ${
         props.starred
           ? 'text-[#FFB020] hover:text-[#FFA502]'
@@ -401,6 +395,7 @@ export function StarToggle(props: {
  * the entity has no computed cells, keeping the row clean.
  */
 export function RowFreshness({ iso }: { iso: string | null }) {
+  const t = useTranslations('terminal');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 30_000);
@@ -408,10 +403,19 @@ export function RowFreshness({ iso }: { iso: string | null }) {
   }, []);
   const parts = formatFreshness(iso, now);
   if (!iso || !parts) return null;
+  const match = /^(\d+)([mhd])$/.exec(parts.short);
+  const age =
+    parts.short === 'now'
+      ? t('companyTree.freshnessNow')
+      : match?.[2] === 'm'
+        ? t('companyTree.freshnessMinutes', { count: match[1] })
+        : match?.[2] === 'h'
+          ? t('companyTree.freshnessHours', { count: match[1] })
+          : t('companyTree.freshnessDays', { count: match?.[1] ?? '0' });
   return (
     <span
       className="inline-flex items-center gap-0.5 shrink-0 w-9 justify-end text-[9px] tabular-nums text-gray-500"
-      title={`Last recompute: ${new Date(iso).toLocaleString()} (${parts.label})`}
+      title={t('companyTree.lastRecompute', { date: new Date(iso).toLocaleString() })}
       data-testid="row-freshness"
       data-volatile="true"
     >
@@ -419,7 +423,7 @@ export function RowFreshness({ iso }: { iso: string | null }) {
         aria-hidden="true"
         className={`inline-block h-1 w-1 rounded-full ${parts.isStale ? 'bg-amber-500' : 'bg-emerald-500'}`}
       />
-      <span>{parts.short}</span>
+      <span>{age}</span>
     </span>
   );
 }

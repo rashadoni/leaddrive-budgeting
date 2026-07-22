@@ -4,13 +4,13 @@
  * Per-cell <td> renderer for the Risk Terminal HeatMap — extracted from
  * HeatMap.tsx (Phase 8 D1 2026-05-29; was the file's biggest block at ~535
  * LOC). Renders one matrix cell: status colour + shape, value, sparkline,
- * and the hover Tooltip with the inline AI commentary. Includes its
+ * and the hover Tooltip. Includes its
  * CellTd-only formatters (formatValue / formatValueCompact /
  * localizeFormulaError). The main HeatMap component imports HeatMapCellTd
  * back; behaviour + rendering unchanged (verified by the visual-baseline gate).
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import {
   statusShape,
@@ -25,7 +25,6 @@ import {
 import { Sparkline, type SparklineStatus } from "../Sparkline";
 import { resolveIndicatorLabel } from "../../lib/resolve-indicator-label";
 import type { ApplicabilityReason } from "../../lib/indicator-applicability";
-import { useAISummary, fetchAISummary } from "./ai-summary";
 import type { CompanyRow, IndicatorCol } from "./types";
 
 function localizeFormulaError(
@@ -159,32 +158,9 @@ export function HeatMapCellTd({
   // is local-only; matrix payload still uses the 4 core statuses.
   const isNotApplicable = !isApplicable;
   const status = cell?.status ?? (isNotApplicable ? 'na' : 'missing');
-  // M3 — only red/amber cells trigger LLM hover-summary. Green/missing
-  // are noise; unknown often errors at LLM (no narrative to extract).
   const ivId = cell?.indicatorValueId;
-  const eligible = ivId && (status === 'red' || status === 'amber');
   const t = useTranslations('terminal');
   const locale = useLocale();
-  const aiSummary = useAISummary(eligible ? ivId : undefined, locale);
-  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handlePointerEnter = useCallback(() => {
-    if (!eligible || !ivId) return;
-    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-    hoverTimerRef.current = setTimeout(() => {
-      void fetchAISummary(ivId, locale);
-    }, 500);
-  }, [eligible, ivId, locale]);
-  const handlePointerLeave = useCallback(() => {
-    if (hoverTimerRef.current) {
-      clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = null;
-    }
-  }, []);
-  useEffect(() => {
-    return () => {
-      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-    };
-  }, []);
   // N/A stays neutral but readable when the user reveals the full catalogue.
   // Other statuses use the shared palette helper. Cast N/A to missing for the
   // shared color helper input contract; its neutral color is overridden below.
@@ -327,10 +303,11 @@ export function HeatMapCellTd({
           <button
             type="button"
             onClick={isNotApplicable ? undefined : onCellClick}
-            onPointerEnter={handlePointerEnter}
-            onPointerLeave={handlePointerLeave}
             aria-disabled={isNotApplicable || undefined}
             aria-label={cellAriaLabel}
+            data-company-code={co.code}
+            data-indicator-code={ind.code}
+            data-indicator-value-id={ivId}
             data-applicability-reason={
               isNotApplicable ? applicabilityReason : undefined
             }
@@ -705,24 +682,6 @@ export function HeatMapCellTd({
                   {t(
                     `indicatorDetail.provenance.${cell.valueSource}` as never,
                   )}
-                </div>
-              )}
-              {/* M3 inline AI commentary — pending → spinner; ok → first
-                  sentence in cyan accent; error → silent (don't pollute
-                  tooltip with infrastructure noise). Only renders for
-                  red/amber per `eligible` gate. */}
-              {eligible && aiSummary && aiSummary.kind === 'pending' && (
-                <div className="text-[10px] text-[#00D4AA]/70 mt-1.5 italic">
-                  {t('heatMap.aiSummaryGenerating')}
-                </div>
-              )}
-              {eligible && aiSummary && aiSummary.kind === 'ok' && (
-                // 2026-05-28 — replaced banned `border-l-2 border-[#00D4AA]/40`
-                // side-stripe with a full hairline border + faint cyan
-                // bg tint. Preserves the «AI insight» framing inside the
-                // tooltip without using the banned side-stripe pattern.
-                <div className="text-[11px] text-[#00D4AA] mt-1.5 leading-snug rounded border border-[#00D4AA]/30 bg-[#00D4AA]/5 px-1.5 py-1">
-                  {aiSummary.sentence}
                 </div>
               )}
               <div className="text-[10px] text-muted-foreground/70 mt-1">

@@ -120,10 +120,13 @@ export function HeatMap({ period }: Props) {
           {activeLock && (
             <span
               data-testid="period-lock-badge"
-              title={`Period locked${activeLock.reason ? `: ${activeLock.reason}` : ''} (signed ${new Date(activeLock.lockedAt).toLocaleDateString()})`}
+              title={t('heatMap.lockedTitle', {
+                reason: activeLock.reason || '—',
+                date: new Date(activeLock.lockedAt).toLocaleDateString(locale),
+              })}
               className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-500 text-[9px] uppercase tracking-wider font-semibold"
             >
-              <Lock size={9} aria-hidden="true" /> LOCKED
+              <Lock size={9} aria-hidden="true" /> {t('heatMap.lockedLabel')}
             </span>
           )}
         </span>
@@ -349,19 +352,25 @@ export function HeatMap({ period }: Props) {
           role="status"
           aria-live="polite"
         >
-          <span className="font-semibold">Data readiness {activeReadiness.score}%.</span>{' '}
+          <span className="font-semibold">
+            {t('heatMap.readinessScore', { score: activeReadiness.score })}
+          </span>{' '}
           {activeReadiness.tier === 'empty'
-            ? 'No real data for this entity — cells below are placeholder or model-derived. Do not anchor analysis on these numbers.'
+            ? t('heatMap.readinessEmpty')
             : activeReadiness.tier === 'thin'
-              ? 'Sparse data — AI Variance Explainer may hallucinate. Treat amber/red cells as directional, not authoritative.'
-              : 'Multiple data areas have gaps — review the readiness chip on this entity for what is missing.'}
+              ? t('heatMap.readinessThin')
+              : t('heatMap.readinessPartial')}
           {' '}
           <span className="text-[10px] opacity-80">
-            Missing: {activeReadiness.areas
-              .filter((a) => a.missing)
-              .slice(0, 3)
-              .map((a) => a.label.toLowerCase())
-              .join(', ') || '—'}
+            {t('heatMap.readinessMissing', {
+              areas: activeReadiness.areas
+                .filter((a) => a.missing)
+                .slice(0, 3)
+                .map((a) =>
+                  t(`heatMap.readinessArea.${a.id}` as never).toLowerCase(),
+                )
+                .join(', ') || '—',
+            })}
           </span>
         </div>
       )}
@@ -372,9 +381,10 @@ export function HeatMap({ period }: Props) {
           role="status"
           aria-live="polite"
         >
-          <span className="font-semibold">{renderedPeriod} is a partial year (year-to-date).</span>{' '}
-          Figures cover only the months booked so far, so margins and green/red bands are
-          provisional — not a full-cycle result. The default view is the last complete year.
+          <span className="font-semibold">
+            {t('heatMap.partialYearTitle', { period: renderedPeriod })}
+          </span>{' '}
+          {t('heatMap.partialYearBody')}
         </div>
       )}
       {loading && (
@@ -746,6 +756,7 @@ function CompositeBadge({ score }: { score: CompositeScore | null }) {
  *  is the typical NaN cause) with an actionable hint. Raw code+reason
  *  remain in the title attribute for technical debugging. */
 function FreshnessLabel({ iso }: { iso: string }) {
+  const t = useTranslations('terminal');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 30_000);
@@ -755,11 +766,22 @@ function FreshnessLabel({ iso }: { iso: string }) {
   // chip). Stale-after-24h flips the dot teal→amber (trust-badge convention).
   const parts = formatFreshness(iso, now);
   if (!parts) return null;
-  const { label, isStale } = parts;
+  const { short, isStale } = parts;
+  const match = /^(\d+)([mhd])$/.exec(short);
+  const age =
+    short === 'now'
+      ? t('heatMap.freshnessNow')
+      : match?.[2] === 'm'
+        ? t('heatMap.freshnessMinutes', { count: match[1] })
+        : match?.[2] === 'h'
+          ? t('heatMap.freshnessHours', { count: match[1] })
+          : t('heatMap.freshnessDays', { count: match?.[1] ?? '0' });
   return (
     <span
       className="inline-flex items-center gap-1 shrink-0 text-gray-500 text-[9px] tabular-nums"
-      title={`Last recompute: ${new Date(iso).toLocaleString()}`}
+      title={t('heatMap.lastRecompute', {
+        date: new Date(iso).toLocaleString(),
+      })}
       data-testid="heatmap-freshness"
       // 2026-05-27 — opt out of visual diff (label text rotates every
       // 30s, would cause spurious baseline drift on long test runs).
@@ -769,7 +791,7 @@ function FreshnessLabel({ iso }: { iso: string }) {
         aria-hidden="true"
         className={`inline-block h-1 w-1 rounded-full ${isStale ? 'bg-amber-500' : 'bg-emerald-500'}`}
       />
-      <span>updated {label}</span>
+      <span>{t('heatMap.updatedFreshness', { age })}</span>
     </span>
   );
 }

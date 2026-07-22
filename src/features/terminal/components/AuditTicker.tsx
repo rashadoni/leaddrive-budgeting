@@ -78,6 +78,7 @@ export function AuditTicker() {
     <Tooltip>
       <TooltipTrigger asChild>
     <div
+      data-testid="audit-ticker"
       onClick={handleClick}
       role="button"
       // data-volatile (2026-05-31): the strip's CONTENT is a live audit-event
@@ -154,4 +155,3 @@ function formatTime(iso: string): string {
     hour12: false,
   });
 }
-

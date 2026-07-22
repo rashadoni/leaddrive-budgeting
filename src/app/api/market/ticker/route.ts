@@ -53,30 +53,49 @@ export async function GET(request: NextRequest) {
   return withOrgScope(orgId, async (tx) => {
   // ---- FX rates ----
   const currencies = await tx.currency.findMany({
-    where: { organizationId: orgId, isActive: true, isBase: false },
-    select: { code: true, exchangeRate: true, symbol: true },
+    where: { organizationId: orgId, isActive: true },
+    select: { code: true, exchangeRate: true, symbol: true, isBase: true },
   })
+  const baseCurrencies = currencies.filter((currency) => currency.isBase)
+  // Exchange rates have meaning only against one confirmed base currency.
+  // Missing or conflicting base configuration fails closed: commodity/macro
+  // context remains available, but no inferred AZN (or other) FX pair leaks.
+  const baseCurrency = baseCurrencies.length === 1 ? baseCurrencies[0] : null
+  const foreignCurrencies = baseCurrency
+    ? currencies.filter(
+        (currency) =>
+          !currency.isBase &&
+          Number.isFinite(currency.exchangeRate) &&
+          currency.exchangeRate > 0,
+      )
+    : []
   // Penultimate (yesterday-ish) rate per currency for delta.
   type PrevRow = { currencyCode: string; rate: number }
   const prevByCurrency = new Map<string, number>()
-  if (currencies.length > 0) {
+  if (foreignCurrencies.length > 0) {
     const prevRows = await tx.$queryRaw<PrevRow[]>`
-      SELECT DISTINCT ON ("currencyCode") "currencyCode", "rate"
-      FROM "currency_rate_history"
-      WHERE "organizationId" = ${orgId}
-        AND "currencyCode" = ANY(${currencies.map((c: { code: string }) => c.code)})
-      ORDER BY "currencyCode", "rateDate" DESC
-      OFFSET 1
+      SELECT ranked."currencyCode", ranked."rate"
+      FROM (
+        SELECT "currencyCode", "rate",
+          ROW_NUMBER() OVER (
+            PARTITION BY "currencyCode"
+            ORDER BY "rateDate" DESC, "createdAt" DESC, "id" DESC
+          ) AS position
+        FROM "currency_rate_history"
+        WHERE "organizationId" = ${orgId}
+          AND "currencyCode" = ANY(${foreignCurrencies.map((c: { code: string }) => c.code)})
+      ) AS ranked
+      WHERE ranked.position = 2
     `
     for (const r of prevRows) prevByCurrency.set(r.currencyCode, r.rate)
   }
-  for (const c of currencies) {
+  for (const c of foreignCurrencies) {
     entries.push({
-      metric: `${c.code}_AZN`,
-      label: `${c.code}/AZN`,
+      metric: `${c.code}_${baseCurrency!.code}`,
+      label: `${c.code}/${baseCurrency!.code}`,
       current: c.exchangeRate,
       previous: prevByCurrency.get(c.code) ?? null,
-      unit: "₼",
+      unit: baseCurrency!.symbol || baseCurrency!.code,
       source: "fx",
     })
   }
@@ -115,6 +134,12 @@ export async function GET(request: NextRequest) {
     // alone still produce a useful ticker.
   }
 
-  return NextResponse.json({ entries, generatedAt: new Date().toISOString() })
+  return NextResponse.json({
+    entries,
+    generatedAt: new Date().toISOString(),
+    fxBasis: baseCurrency
+      ? { status: "confirmed", code: baseCurrency.code }
+      : { status: baseCurrencies.length === 0 ? "missing" : "conflicting", code: null },
+  })
   })
 }

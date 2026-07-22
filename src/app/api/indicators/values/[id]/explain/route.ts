@@ -1,7 +1,8 @@
 /**
  * Phase 7.E AI Variance Explainer — POST endpoint.
  *
- * Body: `{ language?: ExplainerLanguage }` (default 'en'; type defined in `src/lib/risk/variance-explainer.ts`).
+ * Body: `{ userInitiated: true, language?: ExplainerLanguage }` (default 'en';
+ * type defined in `src/lib/risk/variance-explainer.ts`).
  * URL param `:id` = `IndicatorValue.id`.
  *
  * Flow: fetch IndicatorValue + Definition + Company (org-scoped) →
@@ -81,6 +82,23 @@ export async function POST(
     )
   }
   const orgId = session.orgId
+
+  // Parse and verify explicit intent before key lookup, rate-limit
+  // consumption, tenant reads or provider plumbing. Opening the terminal,
+  // hovering a cell and stale clients must never spend paid AI budget.
+  let body: { userInitiated?: unknown; language?: string }
+  try {
+    body = (await request.json()) as { userInitiated?: unknown; language?: string }
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+  }
+  if (body.userInitiated !== true) {
+    return NextResponse.json(
+      { error: "Explicit user action required to run AI Variance Explainer." },
+      { status: 428 },
+    )
+  }
+
   // Phase 8 C4 — per-org Anthropic key check. Env fallback covered.
   if (!hasAnthropicKey() && !(await hasAnthropicKeyForOrg(prisma, orgId))) {
     return NextResponse.json(
@@ -103,19 +121,6 @@ export async function POST(
     return NextResponse.json({ error: "Invalid indicator-value id" }, { status: 400 })
   }
 
-  // Body parse — empty body is fine (defaults). Malformed JSON → 400.
-  let body: { language?: string } = {}
-  try {
-    const text = await request.text()
-    if (text.trim() !== "") body = JSON.parse(text)
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error: `Invalid JSON body: ${err instanceof Error ? err.message : String(err)}`,
-      },
-      { status: 400 },
-    )
-  }
   const language: ExplainerLanguage =
     typeof body.language === "string" &&
     (LANGUAGES as readonly string[]).includes(body.language)

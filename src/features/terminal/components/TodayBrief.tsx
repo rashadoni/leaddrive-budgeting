@@ -20,7 +20,7 @@
  * IndicatorDetail already touches.
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
 import { useTerminalStore } from "../store/terminalStore";
@@ -254,34 +254,8 @@ export function TodayBrief() {
     if (ivId) {
       setActiveIv(ivId);
       setActivePanel(3);
-      // CLI Tier 2 #7 — auto-fire Variance Explainer when user clicks
-      // a Today's Brief row. One click → IV detail + AI narrative.
-      // VarianceExplainerPanel internally caches per-IV-id so repeated
-      // clicks on the same row don't burn LLM tokens.
-      window.dispatchEvent(
-        new CustomEvent("terminal:run-explainer", { detail: { id: ivId } }),
-      );
     }
   };
-
-  // CLI Tier 2 #7 — pre-warm AI Variance Explainer for the #1 worst red
-  // cell on terminal mount. Single LLM call (~$0.05) gives CFO immediate
-  // narrative when they switch to Panel 4. Subsequent mounts hit the
-  // module-level cache in VarianceExplainerPanel (no re-spend).
-  const preWarmedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (worst.length === 0) return;
-    const topIvId = worst[0]?.ivId;
-    if (!topIvId || preWarmedRef.current === topIvId) return;
-    preWarmedRef.current = topIvId;
-    // Slight delay so the matrix render finishes first.
-    const handle = window.setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent("terminal:run-explainer", { detail: { id: topIvId } }),
-      );
-    }, 1500);
-    return () => window.clearTimeout(handle);
-  }, [worst]);
 
   return (
     <div

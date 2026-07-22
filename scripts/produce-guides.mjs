@@ -731,6 +731,9 @@ async function installInitScripts(context, lang, userId) {
       // in applyGuideStyles is the reliable kill; this just reduces churn.)
       localStorage.setItem("leaddrive_tours_anonymous", JSON.stringify(completedTours));
       localStorage.setItem(`leaddrive_tours_${userId}`, JSON.stringify(completedTours));
+      // Terminal's independent first-visit overlay otherwise covers the
+      // matrix and the first ~12 seconds of every fresh-context recording.
+      localStorage.setItem("terminal-welcome-hint-v1", "1");
       sessionStorage.setItem("ld_hide_help_widget", "1");
     } catch {}
   }, { lang, userId, completedTours });

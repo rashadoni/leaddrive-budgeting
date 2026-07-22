@@ -1984,7 +1984,8 @@
       "snapshot": "Şirkət portreti",
       "snapshotShort": "PORTRET",
       "popOutTitle": "Ayrı pəncərədə aç (Bloomberg multi-monitor)",
-      "popOutAria": "Paneli ayrı pəncərədə aç"
+      "popOutAria": "Paneli ayrı pəncərədə aç",
+      "shortcutTitle": "Bu paneli fokuslamaq üçün F{id} basın"
     },
     "status": {
       "green": "Sağlam",
@@ -2061,7 +2062,11 @@
       "snapshot": "Aylıq dəyərlər üçün spark üzərinə gətirin · Klik müqayisə üçün"
     },
     "panelGrid": {
-      "panel": "PANEL"
+      "panel": "PANEL",
+      "compactOnLabel": "Kompakt",
+      "compactOffLabel": "Normal",
+      "compactOnTitle": "Kompakt rejim aktivdir — genişləndirmək üçün Ctrl+/",
+      "compactOffTitle": "Kompakt rejim deaktivdir — sıxlaşdırmaq üçün Ctrl+/"
     },
     "hotkeys": {
       "label": "QISA YOLLAR",
@@ -2146,7 +2151,29 @@
       "dataResetLabel": "DATA",
       "dataResetTitle": "{company} üçün import təmizliyini aç",
       "showPendingAriaLabel": "Onboardinq prosesindəki şirkətlərin görünürlüyünü dəyişdir",
-      "showPendingTitle": "Onboardinq prosesindəki şirkətləri göstər / gizlət (admin)"
+      "showPendingTitle": "Onboardinq prosesindəki şirkətləri göstər / gizlət (admin)",
+      "expand": "Aç",
+      "collapse": "Bağla",
+      "childCompanies": "{count} şirkət",
+      "awaitingData": "məlumat gözlənilir",
+      "readinessTitle": "Məlumat hazırlığı {score}% — {tier}",
+      "readinessAria": "Məlumat hazırlığı {score} faiz, {tier}",
+      "readinessTier": { "complete": "Tam — bütün məlumat sahələri mövcuddur", "good": "Yaxşı — əksər sahələr əhatə olunub, kiçik boşluqlar var", "partial": "Qismən — bir neçə sahədə boşluq var", "thin": "Zəif — məlumat seyrəkdir, AI səhv edə bilər", "empty": "Boş — real məlumat yoxdur, demo təhlükəsiz deyil" },
+      "compositeTitle": "Kompozit risk {score}/100",
+      "compositeAria": "Kompozit risk balı 100-dən {score}",
+      "trustStatusAria": "Etibar statusu: {status}",
+      "trustStatus": { "verified": "Yoxlanılıb", "partial": "Qismən yoxlanılıb", "suspicious": "Şübhəli", "pending": "Yoxlama gözləyir" },
+      "riskTag": { "subsidy_dependency": "Subsidiya asılılığı", "non_transparent_structure": "Qeyri-şəffaf struktur", "data_absence": "Məlumat yoxdur" },
+      "riskTagShort": { "subsidy_dependency": "Sub", "non_transparent_structure": "QŞ", "data_absence": "MY" },
+      "unstarAria": "{code} şirkətini seçilmişlərdən çıxar",
+      "starAria": "{code} şirkətini seçilmişlərə əlavə et",
+      "starredTitle": "Seçilmiş",
+      "starTitle": "Şirkəti seçilmişlərə əlavə et",
+      "lastRecompute": "Son yenidən hesablama: {date}",
+      "freshnessNow": "indi",
+      "freshnessMinutes": "{count}d",
+      "freshnessHours": "{count}s",
+      "freshnessDays": "{count}g"
     },
     "peer": {
       "title": "Peer müqayisəsi ({count} şirkət)",
@@ -2204,6 +2231,22 @@
       "showAllIndicatorsCollapsedHint": "Yalnız cari fəaliyyət profilinə uyğun indikatorlar göstərilir. Uyğun, lakin məlumatı olmayan indikatorlar görünən qalır.",
       "showAllIndicatorsExpandedHint": "Tam indikator kataloqu göstərilir; aktiv indikator axtarışı cədvəli daraltmağa davam edir.",
       "loadingHeatmap": "Risk xəritəsi yüklənir…",
+      "lockedLabel": "BAĞLIDIR",
+      "lockedTitle": "Dövr bağlanıb. Səbəb: {reason}. İmzalanıb: {date}.",
+      "readinessScore": "Məlumat hazırlığı {score}%.",
+      "readinessEmpty": "Bu qurum üçün real məlumat yoxdur — aşağıdakı xanalar placeholder və ya model əsaslıdır. Təhlili bu rəqəmlərə əsaslandırmayın.",
+      "readinessThin": "Məlumat seyrəkdir — AI Variance Explainer səhv edə bilər. Qırmızı və sarı xanaları istiqamət kimi qəbul edin, təsdiqlənmiş nəticə kimi yox.",
+      "readinessPartial": "Bir neçə məlumat sahəsində boşluq var — çatışmayanları görmək üçün hazırlıq göstəricisini yoxlayın.",
+      "readinessMissing": "Çatışmır: {areas}",
+      "readinessArea": { "pnl": "P&L büdcə sətirləri", "bs": "balans hesabatı", "counterparties": "qarşı tərəflər", "opKpis": "əməliyyat KPI-ları", "narrative": "strateji təsvir", "indicators": "hesablanmış indikatorlar", "fxTags": "FX valyuta nişanları" },
+      "lastRecompute": "Son yenidən hesablama: {date}",
+      "updatedFreshness": "{age} yenilənib",
+      "freshnessNow": "indicə",
+      "freshnessMinutes": "{count} dəq əvvəl",
+      "freshnessHours": "{count} saat əvvəl",
+      "freshnessDays": "{count} gün əvvəl",
+      "partialYearTitle": "{period} natamam ildir (ilin əvvəlindən).",
+      "partialYearBody": "Yalnız uçota alınmış aylar göstərilir; buna görə marjalar və rəng diapazonları ilkin xarakter daşıyır və tam dövrü əks etdirmir. Standart görünüş son tamamlanmış ildir.",
       "noCompaniesYet": "Şirkət və ya göstərici hələ yoxdur. /budgeting/onboarding ilə idxal et və göstərici seed-i işə sal (scripts/seed-indicators.ts).",
       "companyColumn": "Şirkət",
       "noCompaniesMatch": "Uyğunluq yoxdur:",

@@ -1984,7 +1984,8 @@
       "snapshot": "Company Snapshot",
       "snapshotShort": "SNAPSHOT",
       "popOutTitle": "Open in separate window (Bloomberg multi-monitor)",
-      "popOutAria": "Open panel in separate window"
+      "popOutAria": "Open panel in separate window",
+      "shortcutTitle": "Press F{id} to focus this panel"
     },
     "status": {
       "green": "Healthy",
@@ -2061,7 +2062,11 @@
       "snapshot": "Hover sparklines for monthly values · Click cards to compare"
     },
     "panelGrid": {
-      "panel": "PANEL"
+      "panel": "PANEL",
+      "compactOnLabel": "Compact",
+      "compactOffLabel": "Normal",
+      "compactOnTitle": "Compact mode on — Ctrl+/ to expand",
+      "compactOffTitle": "Compact mode off — Ctrl+/ to densify"
     },
     "hotkeys": {
       "label": "HOTKEYS",
@@ -2146,7 +2151,29 @@
       "dataResetLabel": "DATA",
       "dataResetTitle": "Open import cleanup for {company}",
       "showPendingAriaLabel": "Toggle visibility of onboarding-pending companies",
-      "showPendingTitle": "Show / hide onboarding-pending companies (admin)"
+      "showPendingTitle": "Show / hide onboarding-pending companies (admin)",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "childCompanies": "{count} companies",
+      "awaitingData": "awaiting data",
+      "readinessTitle": "Data readiness {score}% — {tier}",
+      "readinessAria": "Data readiness {score} percent, {tier}",
+      "readinessTier": { "complete": "Complete — all data areas present", "good": "Good — most areas covered, minor gaps", "partial": "Partial — multiple areas have gaps", "thin": "Thin — sparse data, AI may hallucinate", "empty": "Empty — no real data, demo unsafe" },
+      "compositeTitle": "Composite risk {score}/100",
+      "compositeAria": "Composite risk score {score} of 100",
+      "trustStatusAria": "Trust status: {status}",
+      "trustStatus": { "verified": "Verified", "partial": "Partially verified", "suspicious": "Suspicious", "pending": "Pending review" },
+      "riskTag": { "subsidy_dependency": "Subsidy dependency", "non_transparent_structure": "Non-transparent structure", "data_absence": "Data absence" },
+      "riskTagShort": { "subsidy_dependency": "Sub", "non_transparent_structure": "Opq", "data_absence": "NoD" },
+      "unstarAria": "Remove {code} from starred companies",
+      "starAria": "Add {code} to starred companies",
+      "starredTitle": "Starred",
+      "starTitle": "Star this company",
+      "lastRecompute": "Last recompute: {date}",
+      "freshnessNow": "now",
+      "freshnessMinutes": "{count}m",
+      "freshnessHours": "{count}h",
+      "freshnessDays": "{count}d"
     },
     "peer": {
       "title": "Peer Comparison ({count} companies)",
@@ -2204,6 +2231,22 @@
       "showAllIndicatorsCollapsedHint": "Only indicators relevant to the current activity profile are shown. Applicable indicators with missing data remain visible.",
       "showAllIndicatorsExpandedHint": "The full indicator catalogue is shown; an active indicator search still narrows the table.",
       "loadingHeatmap": "Loading heatmap…",
+      "lockedLabel": "LOCKED",
+      "lockedTitle": "Period locked. Reason: {reason}. Signed: {date}.",
+      "readinessScore": "Data readiness {score}%.",
+      "readinessEmpty": "No real data for this entity — cells below are placeholder or model-derived. Do not anchor analysis on these numbers.",
+      "readinessThin": "Sparse data — AI Variance Explainer may hallucinate. Treat amber/red cells as directional, not authoritative.",
+      "readinessPartial": "Multiple data areas have gaps — review the readiness chip on this entity for what is missing.",
+      "readinessMissing": "Missing: {areas}",
+      "readinessArea": { "pnl": "P&L budget lines", "bs": "balance sheet", "counterparties": "counterparties", "opKpis": "operational KPIs", "narrative": "strategic narrative", "indicators": "computed indicators", "fxTags": "FX currency tags" },
+      "lastRecompute": "Last recompute: {date}",
+      "updatedFreshness": "updated {age}",
+      "freshnessNow": "just now",
+      "freshnessMinutes": "{count}m ago",
+      "freshnessHours": "{count}h ago",
+      "freshnessDays": "{count}d ago",
+      "partialYearTitle": "{period} is a partial year (year-to-date).",
+      "partialYearBody": "Figures cover only the months booked so far, so margins and green/red bands are provisional — not a full-cycle result. The default view is the last complete year.",
       "noCompaniesYet": "No companies or indicators yet. Import via /budgeting/onboarding and seed indicators (scripts/seed-indicators.ts).",
       "companyColumn": "Company",
       "noCompaniesMatch": "No companies match",
