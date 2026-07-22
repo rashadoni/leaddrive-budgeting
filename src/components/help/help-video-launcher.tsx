@@ -3,7 +3,7 @@
 import Image from "next/image"
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { Minimize2, Play, Video, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -69,14 +69,20 @@ function subscribeToStoredState(onStoreChange: () => void) {
 
 export function HelpVideoLauncher() {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const searchKey = searchParams.toString()
+  const locationKey = `${pathname ?? ""}?${searchKey}`
   const rawLocale = useLocale()
   const locale = normalizeHelpVideoLocale(rawLocale)
-  const routeEntry = useMemo(() => getHelpVideoForPath(pathname), [pathname])
+  const routeEntry = useMemo(
+    () => getHelpVideoForPath(pathname, searchKey),
+    [pathname, searchKey],
+  )
   const [manualEntryState, setManualEntryState] = useState<{
     entry: HelpVideoEntry
-    pathname: string | null
+    locationKey: string
   } | null>(null)
-  const manualEntry = manualEntryState?.pathname === pathname ? manualEntryState.entry : null
+  const manualEntry = manualEntryState?.locationKey === locationKey ? manualEntryState.entry : null
   const entry = manualEntry ?? routeEntry
   const [sessionMode, setSessionMode] = useState<{ key: string; mode: VideoMode } | null>(null)
   const [posterFailedKey, setPosterFailedKey] = useState<string | null>(null)
@@ -101,13 +107,13 @@ export function HelpVideoLauncher() {
       const nextEntry = detail?.slug ? getHelpVideoForSlug(detail.slug) : routeEntry
       if (!nextEntry) return
 
-      setManualEntryState({ entry: nextEntry, pathname })
+      setManualEntryState({ entry: nextEntry, locationKey })
       setSessionMode({ key: storageKey(nextEntry, locale), mode: "expanded" })
     }
 
     window.addEventListener(OPEN_EVENT, handleOpen)
     return () => window.removeEventListener(OPEN_EVENT, handleOpen)
-  }, [locale, pathname, routeEntry])
+  }, [locale, locationKey, routeEntry])
 
   if (!entry || !assets || mode === "hidden") {
     return null

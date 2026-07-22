@@ -25,6 +25,7 @@ import { render, screen, cleanup } from "@testing-library/react";
 let mockPathname = "/dashboard";
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
+  useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock("next-auth/react", () => ({
   useSession: () => ({ data: { user: { name: "Test", organizationName: "TestOrg" } } }),

@@ -16,6 +16,11 @@ export type HelpVideoLocale = "az" | "en" | "ru"
 
 export interface HelpVideoEntry {
   slug: string
+  /**
+   * Route patterns may include required query parameters. For example,
+   * `/budgeting?tab=cash-flow` matches that tab plus unrelated query noise,
+   * but never `/budgeting?tab=workspace`.
+   */
   routes: readonly string[]
   helpSlugs?: readonly string[]
 }
@@ -49,22 +54,52 @@ export function normalizeHelpVideoLocale(raw: string): HelpVideoLocale {
   return raw === "az" || raw === "en" || raw === "ru" ? raw : "en"
 }
 
-export function getHelpVideoForPath(pathname: string | null): HelpVideoEntry | null {
+type HelpVideoSearchParams = Pick<URLSearchParams, "toString"> | string | null
+
+function splitLocation(pathname: string, searchParams: HelpVideoSearchParams) {
+  const queryIndex = pathname.indexOf("?")
+  const rawPath = queryIndex >= 0 ? pathname.slice(0, queryIndex) : pathname
+  const inlineQuery = queryIndex >= 0 ? pathname.slice(queryIndex + 1) : ""
+  const explicitQuery = typeof searchParams === "string"
+    ? searchParams
+    : searchParams?.toString() ?? ""
+
+  return {
+    cleanPath: rawPath.replace(/\/$/, "") || "/",
+    searchParams: new URLSearchParams(explicitQuery || inlineQuery),
+  }
+}
+
+export function matchesHelpVideoRoute(
+  pathname: string,
+  routePattern: string,
+  searchParams: HelpVideoSearchParams = null,
+) {
+  const location = splitLocation(pathname, searchParams)
+  const pattern = splitLocation(routePattern, null)
+  const pathMatches = pattern.cleanPath.endsWith("/*")
+    ? location.cleanPath.startsWith(`${pattern.cleanPath.slice(0, -2)}/`)
+    : location.cleanPath === pattern.cleanPath ||
+      location.cleanPath.startsWith(`${pattern.cleanPath}/`)
+
+  if (!pathMatches) return false
+
+  for (const [key, value] of pattern.searchParams) {
+    if (location.searchParams.get(key) !== value) return false
+  }
+  return true
+}
+
+export function getHelpVideoForPath(
+  pathname: string | null,
+  searchParams: HelpVideoSearchParams = null,
+): HelpVideoEntry | null {
   if (!pathname) return null
-  const cleanPath = pathname.split("?")[0]?.replace(/\/$/, "") || "/"
-  if (isHelpVideoPathBlocked(cleanPath)) return null
+  if (isHelpVideoPathBlocked(pathname, searchParams)) return null
 
   return (
     HELP_VIDEO_ENTRIES_BY_ROUTE.find((entry) =>
-      entry.routes.some((route) =>
-        // "/base/*" matches only SUB-paths of /base (e.g. a detail page) but NOT
-        // /base itself — so a detail guide can differ from the list guide.
-        // Longest-route-first sort makes "/base/*" win over "/base" for a
-        // sub-path, while "/base" still wins for the base itself.
-        route.endsWith("/*")
-          ? cleanPath.startsWith(`${route.slice(0, -2)}/`)
-          : cleanPath === route || cleanPath.startsWith(`${route}/`)
-      )
+      entry.routes.some((route) => matchesHelpVideoRoute(pathname, route, searchParams))
     ) ?? null
   )
 }
@@ -99,11 +134,11 @@ function isHelpVideoAvailable(entry: HelpVideoEntry) {
   return !isHelpVideoBlockedByVoiceover(entry.slug)
 }
 
-function isHelpVideoPathBlocked(pathname: string) {
+function isHelpVideoPathBlocked(pathname: string, searchParams: HelpVideoSearchParams) {
   return HELP_VIDEO_ENTRIES.some(
     (entry) =>
       isHelpVideoBlockedByVoiceover(entry.slug) &&
-      entry.routes.some((route) => pathname === route || pathname.startsWith(`${route}/`))
+      entry.routes.some((route) => matchesHelpVideoRoute(pathname, route, searchParams))
   )
 }
 
