@@ -28,6 +28,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { chromium } from "playwright";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
 import { getLogger } from "@/lib/log";
+import { enforceRateLimit, getClientIp } from "@/lib/rate-limit";
 
 // Phase 8 D4 final (2026-05-29) — structured logger.
 const log = getLogger("api:board-deck:export-pdf");
@@ -43,6 +44,13 @@ export const runtime = "nodejs";
  *  10s lets us absorb cold-start + LLM-summary fetch. Beyond that we
  *  abort and surface a 504 so a hung Chromium doesn't pin the route. */
 const RENDER_TIMEOUT_MS = 10_000;
+const PDF_RATE_LIMIT = {
+  name: "board-deck-pdf",
+  max: 2,
+  windowMs: 60_000,
+};
+const MAX_CONCURRENT_PDF_RENDERS = 2;
+let activePdfRenders = 0;
 
 const SUPPORTED_LANGUAGES: readonly string[] = ["en", "ru", "az"];
 
@@ -124,6 +132,30 @@ export async function GET(req: NextRequest) {
       { status: 503, headers: { "Cache-Control": "private, no-store" } },
     );
   }
+
+  const rateLimitError = enforceRateLimit(
+    `${PDF_RATE_LIMIT.name}:${auth.orgId}:${auth.userId}:${getClientIp(req)}`,
+    PDF_RATE_LIMIT,
+  );
+  if (rateLimitError) return rateLimitError;
+
+  // A Chromium process is materially heavier than an ordinary API request.
+  // Bound process fan-out per app instance in addition to the per-user rate
+  // limit. The counter is acquired synchronously and released on every launch
+  // and render outcome.
+  if (activePdfRenders >= MAX_CONCURRENT_PDF_RENDERS) {
+    return NextResponse.json(
+      {
+        error: "PDF renderer busy",
+        message: "Too many PDF exports are rendering. Retry shortly.",
+      },
+      {
+        status: 503,
+        headers: { "Cache-Control": "private, no-store", "Retry-After": "5" },
+      },
+    );
+  }
+  activePdfRenders += 1;
   const params = new URLSearchParams({ period });
   // The page resolves cached narrative only. Language is safe to forward on
   // every export; the retired `summary` flag can no longer trigger AI.
@@ -147,11 +179,17 @@ export async function GET(req: NextRequest) {
 
   let browser;
   try {
-    browser = await chromium.launch({ headless: true });
+    const executablePath =
+      process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim();
+    browser = await chromium.launch({
+      headless: true,
+      ...(executablePath ? { executablePath } : {}),
+    });
   } catch (err) {
     // Most common production failure: chromium binary not installed
     // (`npx playwright install chromium` not run on host). Surface a
     // clear 503 instead of a generic 500.
+    activePdfRenders -= 1;
     return NextResponse.json(
       {
         error: "PDF export unavailable",
@@ -219,5 +257,6 @@ export async function GET(req: NextRequest) {
         err: err instanceof Error ? err.message : String(err),
       });
     });
+    activePdfRenders -= 1;
   }
 }

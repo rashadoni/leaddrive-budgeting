@@ -19,6 +19,7 @@ const {
   pageMock,
   renderResponseMock,
   locatorMock,
+  enforceRateLimitMock,
 } = vi.hoisted(
   () => {
     const renderResponseMock = {
@@ -46,6 +47,7 @@ const {
       close: vi.fn().mockResolvedValue(undefined),
     };
     const chromiumLaunchMock = vi.fn().mockResolvedValue(browserMock);
+    const enforceRateLimitMock = vi.fn().mockReturnValue(null);
     return {
       chromiumLaunchMock,
       browserMock,
@@ -53,6 +55,7 @@ const {
       pageMock,
       renderResponseMock,
       locatorMock,
+      enforceRateLimitMock,
     };
   },
 );
@@ -60,6 +63,10 @@ const {
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 vi.mock("playwright", () => ({
   chromium: { launch: chromiumLaunchMock },
+}));
+vi.mock("@/lib/rate-limit", () => ({
+  enforceRateLimit: enforceRateLimitMock,
+  getClientIp: vi.fn(() => "203.0.113.9"),
 }));
 
 import { mockSession, makeRequest } from "@/test/api-harness";
@@ -70,7 +77,9 @@ const USER_ID = "u1";
 
 beforeEach(() => {
   process.env.NEXTAUTH_URL = "http://trusted-budgetpro.test:3000";
+  delete process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
   chromiumLaunchMock.mockReset().mockResolvedValue(browserMock);
+  enforceRateLimitMock.mockReset().mockReturnValue(null);
   browserMock.newContext.mockClear();
   browserMock.close.mockClear().mockResolvedValue(undefined);
   contextMock.addCookies.mockClear().mockResolvedValue(undefined);
@@ -282,6 +291,62 @@ describe("GET /api/budgeting/board-deck/export-pdf", () => {
     expect(body.message).toMatch(/Executable doesn't exist/);
     // Browser was never launched — close should NOT have been called.
     expect(browserMock.close).not.toHaveBeenCalled();
+  });
+
+  it("rate-limits before Chromium launch using org, user and IP scope", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
+    enforceRateLimitMock.mockReturnValueOnce(
+      Response.json({ error: "Too many requests" }, { status: 429 }),
+    );
+    const res = await GET(
+      makeRequest("/api/budgeting/board-deck/export-pdf?period=2025"),
+    );
+    expect(res.status).toBe(429);
+    expect(enforceRateLimitMock).toHaveBeenCalledWith(
+      "board-deck-pdf:org_demo:u1:203.0.113.9",
+      { name: "board-deck-pdf", max: 2, windowMs: 60_000 },
+    );
+    expect(chromiumLaunchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails fast when the process-wide Chromium render slots are saturated", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
+    let releaseLaunch!: (browser: typeof browserMock) => void;
+    const pendingLaunch = new Promise<typeof browserMock>((resolve) => {
+      releaseLaunch = resolve;
+    });
+    chromiumLaunchMock.mockReturnValue(pendingLaunch);
+
+    const first = GET(
+      makeRequest("/api/budgeting/board-deck/export-pdf?period=2025"),
+    );
+    const second = GET(
+      makeRequest("/api/budgeting/board-deck/export-pdf?period=2025"),
+    );
+    await vi.waitFor(() => expect(chromiumLaunchMock).toHaveBeenCalledTimes(2));
+
+    const saturated = await GET(
+      makeRequest("/api/budgeting/board-deck/export-pdf?period=2025"),
+    );
+    expect(saturated.status).toBe(503);
+    expect(saturated.headers.get("retry-after")).toBe("5");
+    expect(chromiumLaunchMock).toHaveBeenCalledTimes(2);
+
+    releaseLaunch(browserMock);
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+  });
+
+  it("uses the deployment-owned system Chromium path when configured", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "manager" });
+    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = "/usr/bin/chromium-browser";
+    const res = await GET(
+      makeRequest("/api/budgeting/board-deck/export-pdf?period=2025"),
+    );
+    expect(res.status).toBe(200);
+    expect(chromiumLaunchMock).toHaveBeenCalledWith({
+      headless: true,
+      executablePath: "/usr/bin/chromium-browser",
+    });
   });
 
   it("504 when render path throws (Chromium hung / page.goto fails)", async () => {

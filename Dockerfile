@@ -42,13 +42,16 @@ RUN npm run build
 FROM node:20-alpine AS runtime
 
 # tini = PID 1 signal forwarder so Ctrl+C / SIGTERM actually stops the app.
-# curl = healthcheck.
-RUN apk add --no-cache libc6-compat openssl curl tini
+# curl = healthcheck. System Chromium is required by the authenticated,
+# read-only Board Deck PDF renderer; Playwright's downloaded browser is not
+# present in the minimal standalone runtime image.
+RUN apk add --no-cache libc6-compat openssl curl tini chromium
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 WORKDIR /app
 
