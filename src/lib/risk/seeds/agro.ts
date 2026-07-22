@@ -42,16 +42,19 @@ export const agroIndicators: IndicatorSeed[] = [
     direction: "lower_better",
     formula: "drought_index",
     thresholds: {
-      green: { op: "<=", value: 30 },
-      amber: { op: "<=", value: 60 },
-      red: { op: ">", value: 60 },
+      // The manual/import contract stores drought_index on a 0–10 scale.
+      // Keep the status bands on that same scale: 0–3 low, >3–6 elevated,
+      // >6 severe. Using 30/60 here made every valid imported value green.
+      green: { op: "<=", value: 3 },
+      amber: { op: "<=", value: 6 },
+      red: { op: ">", value: 6 },
     },
     hintTemplateEn:
-      "Drought index at {value}/100 — above 60 is the historical threshold for >20% yield loss in the region.",
+      "Drought index at {value}/10 — above 6 indicates severe drought pressure and elevated yield-loss risk.",
     hintTemplateRu:
-      "Индекс засухи {value}/100 — выше 60 — исторический порог для >20% потери урожая в регионе.",
+      "Индекс засухи {value}/10 — выше 6 означает сильное засушливое давление и повышенный риск потери урожая.",
     hintTemplateAz:
-      "Quraqlıq indeksi {value}/100 — 60-dan yuxarı bölgə üçün >20% məhsul itkisinin tarixi həddi.",
+      "Quraqlıq indeksi {value}/10 — 6-dan yuxarı güclü quraqlıq təzyiqi və artmış məhsul itkisi riski deməkdir.",
     requiredInputs: ["operationalFact:drought_index"],
     aggregation: "snapshot", // index snapshot — latest, not mean
     sortOrder: 20,

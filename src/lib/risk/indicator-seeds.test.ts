@@ -20,6 +20,8 @@ import {
 } from "./indicator-seeds"
 import { esgIndicators } from "./esg-seeds"
 import { newsIndicators } from "./news-seeds"
+import { classifyValue } from "./formula-engine"
+import { getOperationalRule } from "./metric-validation-rules"
 
 /**
  * Integrity tests for the indicator-seeds catalog. These are
@@ -174,5 +176,21 @@ describe("News seeds (Phase 7.H Feature B)", () => {
   it("IND_NEWS_SENTIMENT_30D has news.sentiment30d as required input", () => {
     const news = newsIndicators.find((s) => s.code === "IND_NEWS_SENTIMENT_30D")
     expect(news?.requiredInputs).toContain("news.sentiment30d")
+  })
+})
+
+describe("Agro seed input-scale contracts", () => {
+  it("classifies drought_index on the same 0–10 scale accepted by imports", () => {
+    const seed = agroIndicators.find((s) => s.code === "AGRO_DROUGHT_RISK")
+    const input = getOperationalRule("drought_index")
+
+    expect(input?.min).toBe(0)
+    expect(input?.max).toBe(10)
+    expect(seed).toBeDefined()
+    expect(classifyValue(3, seed!.thresholds)).toBe("green")
+    expect(classifyValue(4, seed!.thresholds)).toBe("amber")
+    expect(classifyValue(6, seed!.thresholds)).toBe("amber")
+    expect(classifyValue(7, seed!.thresholds)).toBe("red")
+    expect(classifyValue(10, seed!.thresholds)).toBe("red")
   })
 })
