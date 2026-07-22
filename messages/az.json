@@ -1899,7 +1899,7 @@
       "chatTitle": "Sub-co maliyyə çatını aç (CHT GO ekvivalenti)",
       "scenario": "SSENARİ",
       "scenarioTitle": "Ssenariləri aç — SCN ilə doldurar, kod + GO yazın",
-      "whatif": "Nə-əgər",
+      "whatif": "What-if",
       "whatifTitle": "Ad-hoc önbax: FX kurslarını dəyiş və indikatorların yenidən hesablanmasını gör",
       "peer": "PİRLƏR",
       "peerTitle": "Şirkətlər arası benchmarking — PEER ilə doldurar, kodlar + GO",
@@ -2303,7 +2303,7 @@
       "variance": "Sapma",
       "forecast": "Proqnoz",
       "audit": "Audit",
-      "whatif": "Nə-əgər"
+      "whatif": "What-if"
     },
     "compare": {
       "subtitle": "Yan-yana göstəricilər · Δ = sağ − sol · Esc bağlamaq",
