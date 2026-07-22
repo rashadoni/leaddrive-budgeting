@@ -137,8 +137,10 @@ function periodLabel(plan: BudgetPlan, t: (key: string) => string): string {
 // ─── TemplateSeedButton — extracted to ./components/TemplateSeedButton.tsx (Turn LXXXX)
 
 // CXL: tabs whose underlying data table has a `companyId` column AND whose
-// component already propagates the prop. Other tabs (sales-budget / cogs /
-// balance-sheet / cash-flow / assumptions / variance / comparison /
+// component already propagates the prop. Forecast overrides have no companyId,
+// so Forecast is deliberately excluded even though its baseline BudgetLines do
+// carry companyId: showing the selector would falsely imply per-company saved
+// overrides. Other tabs (sales-budget / cogs / balance-sheet / cash-flow / assumptions / variance / comparison /
 // sales-forecast / expense-forecast / rolling) back schema rows that lack a
 // per-company discriminator → dropdown is hidden so the user doesn't get a
 // false "switching has no effect" UX. Adding companyId to remaining schemas
@@ -147,7 +149,6 @@ const COMPANY_FILTERED_TABS: ReadonlySet<string> = new Set([
   "pnl-report",
   "workspace",
   "pl",
-  "forecast",
 ])
 
 const DATA_IMPORT_TABS: ReadonlySet<string> = new Set([
@@ -370,7 +371,8 @@ export default function BudgetingPage() {
               with —— prefix. Selecting a sub-group rolls up its children.
               CXL: hide on tabs that DON'T propagate companyId to their data
               query — current schema-supported tabs are pnl-report / workspace
-              / pl / forecast (all use BudgetLine which has companyId). Other
+              / pl. Forecast is excluded because saved overrides lack companyId.
+              Other
               tabs back tables (sales_budget_lines / cash_flow_entries /
               balance_sheet_lines / etc.) that lack a companyId column —
               schema migration required to extend filtering. */}
@@ -458,7 +460,7 @@ export default function BudgetingPage() {
           {activeTab === "assumptions" && <BudgetAssumptions planId={resolvedPlanId} />}
           {activeTab === "workspace" && <WorkspaceTab planId={resolvedPlanId} companyId={selectedCompanyId} onNavigateTab={setActiveTab} />}
           {activeTab === "pl" && <PLTab planId={resolvedPlanId} companyId={selectedCompanyId} />}
-          {activeTab === "forecast" && <ForecastTab planId={resolvedPlanId} companyId={selectedCompanyId} />}
+          {activeTab === "forecast" && <ForecastTab planId={resolvedPlanId} />}
           {activeTab === "comparison" && <ComparisonTab />}
           {activeTab === "variance" && <VarianceTab />}
           {activeTab === "plans" && <PlansTab activePlanId={resolvedPlanId} onSelect={id => { setActivePlanId(id); setActiveTab("workspace") }} onShowCreate={() => setShowCreate(true)} />}

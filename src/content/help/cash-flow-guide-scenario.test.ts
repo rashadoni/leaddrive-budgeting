@@ -180,6 +180,15 @@ describe('Cash Flow help-video scenario', () => {
       'BS_EQUITY_TOGGLE',
       'CF_ENTRIES_BUTTON',
       'CF_OVERVIEW_BUTTON',
+      'FC_OPTIMISTIC',
+      'FC_PESSIMISTIC',
+      'FC_BASE',
+      'FC_REVENUE',
+      'FC_REVENUE',
+      'FC_COGS',
+      'FC_COGS',
+      'FC_EXPENSE',
+      'FC_EXPENSE',
       'RUN_BTN',
     ]);
   });

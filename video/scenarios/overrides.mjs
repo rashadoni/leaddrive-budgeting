@@ -143,6 +143,30 @@ const BS_ASSETS_TOGGLE = '[data-testid="balance-sheet-section-assets"]';
 const BS_LIABILITIES_TOGGLE = '[data-testid="balance-sheet-section-liabilities"]';
 const BS_EQUITY_TOGGLE = '[data-testid="balance-sheet-section-equity"]';
 
+// ── Forecast guide readiness ─────────────────────────────────────────────
+// READONLY-safe: scenario and section buttons only change local React state.
+// Settings inputs, editable amount cells, Add row, Save and AI actions are not
+// clicked or filled. The narration distinguishes saved monthly overrides from
+// the plan-derived baseline and never presents missing evidence as actuals.
+const FC_ROOT = '[data-testid="forecast-guide-root"]';
+const FC_PROVENANCE = '[data-testid="forecast-provenance"]';
+const FC_CURRENCY = [
+  '[data-testid="forecast-currency-known"]',
+  '[data-testid="forecast-currency-unknown"]',
+];
+const FC_KPIS = '[data-testid="forecast-kpis"]';
+const FC_MONTHLY = '[data-testid="forecast-monthly-trend"]';
+const FC_COMPARISON = '[data-testid="forecast-scenario-comparison"]';
+const FC_SETTINGS = '[data-testid="forecast-settings-toggle"]';
+const FC_PNL = '[data-testid="forecast-pnl-summary"]';
+const FC_MATRIX = '[data-testid="forecast-matrix"]';
+const FC_BASE = '[data-testid="forecast-scenario-base"]';
+const FC_OPTIMISTIC = '[data-testid="forecast-scenario-optimistic"]';
+const FC_PESSIMISTIC = '[data-testid="forecast-scenario-pessimistic"]';
+const FC_REVENUE = '[data-testid="forecast-section-revenue"]';
+const FC_COGS = '[data-testid="forecast-section-cogs"]';
+const FC_EXPENSE = '[data-testid="forecast-section-expense"]';
+
 // Select AZSEKER (code AZSF) from the company <select>. READONLY-safe: selecting
 // an option only changes local React state; the fetch is a GET. Find the option
 // whose text names AZSEKER/AZSF (label is "<code> · <name>"), else the first real
@@ -493,6 +517,123 @@ export default {
           await h.safeClick(CF_OVERVIEW_BUTTON);
           await p.waitForSelector(CF_OVERVIEW, { timeout: 8000 });
           await h.moveTo(CF_EVIDENCE);
+        },
+      },
+    ],
+  },
+  "forecast": {
+    route: "/budgeting?tab=forecast",
+    title: {
+      az: "Proqnoz — plan bazası və ssenarilər",
+      en: "Forecast — plan baseline and scenarios",
+      ru: "Прогноз — плановая база и сценарии",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "Bu, Büdcələşdirmə bölməsinin Proqnoz görünüşüdür. Əvvəl yuxarıdakı mənşə qeydini oxuyun. Kursiv aylıq xanalar saxlanmış fakt deyil: onlar plan dövrünün büdcə sətirlərinin göstərilən aylara bərabər paylanmış bazasıdır. Qeyd uyğun saxlanmış aylıq düzəlişləri və seçilmiş dövrdən kənarda nəzərə alınmayan qeydləri ayrıca sayır; bu rəqəmlər faktiki tarixçə kimi təqdim edilmir.",
+          en: "This is the Forecast view inside Budgeting. Begin with the provenance disclosure at the top. Italic monthly cells are not saved actuals: they are a baseline created by evenly distributing plan-period budget lines across the displayed months. The disclosure separately counts matching saved monthly overrides and ignored out-of-scope records, and none of these figures are presented as actual history.",
+          ru: "Это экран Прогноза внутри Бюджетирования. Сначала прочитайте пояснение об источнике наверху. Месячные ячейки курсивом — не сохранённый факт, а базовая линия, полученная равномерным распределением строк бюджета периода по показанным месяцам. Пояснение отдельно считает подходящие сохранённые переопределения и игнорируемые записи вне выбранного периода, не выдавая эти суммы за фактическую историю.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(FC_ROOT, { timeout: 12000 });
+          await h.moveTo(FC_ROOT);
+          await h.hover(FC_PROVENANCE);
+        },
+      },
+      {
+        voice: {
+          az: "Valyuta mənbə məlumatıdır, bəzək deyil. Təşkilatda baza valyutası qurulmayıbsa, ekran məbləğləri qəsdən valyuta vahidi olmadan göstərir və sarı xəbərdarlıq verir. Burada manat, dollar və ya başqa kodu təxmin etmək olmaz. Dörd KPI gəliri, maya dəyərini, əməliyyat xərclərini və EBITDA-nı eyni sübut sərhədində xülasə edir.",
+          en: "Currency is source data, not decoration. If the organization has no configured base currency, amounts deliberately appear without a currency unit and an amber disclosure explains why. The screen must not guess manat, dollars, or another code. The four KPI cards then summarize revenue, COGS, operating expense, and EBITDA within that same evidence boundary.",
+          ru: "Валюта — это исходные данные, а не оформление. Если у организации не настроена базовая валюта, суммы намеренно показаны без валютной единицы, а жёлтое пояснение объясняет причину. Экран не должен угадывать манаты, доллары или другой код. Четыре KPI суммируют доходы, себестоимость, операционные расходы и EBITDA в той же границе доказательств.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(FC_CURRENCY);
+          await h.hover(FC_KPIS);
+        },
+      },
+      {
+        voice: {
+          az: "Baza ssenarisində kanonik P&L düsturlarını yoxlayın. Ümumi mənfəət gəlirdən yalnız maya dəyəri çıxılaraq hesablanır. EBITDA isə ümumi mənfəətdən əməliyyat xərclərini də çıxır. Maya dəyəri, xərc payları və EBITDA marjası yalnız müsbət gəlir olduqda faizlə göstərilir; gəlir sübutu yoxdursa, nisbət sıfır kimi uydurulmur.",
+          en: "In the Base scenario, verify the canonical P&L formulas. Gross profit is revenue less COGS, while EBITDA is gross profit less operating expense. COGS share, expense share, and EBITDA margin are percentages only when revenue is positive; without positive revenue evidence the view leaves the ratio unavailable instead of manufacturing a zero or a misleading healthy percentage.",
+          ru: "В базовом сценарии проверьте канонические формулы P&L. Валовая прибыль равна доходам минус себестоимость, а EBITDA — валовой прибыли минус операционные расходы. Доля себестоимости, доля расходов и маржа EBITDA показываются только при положительных доходах; без такого подтверждения коэффициент остаётся недоступным, а не превращается в выдуманный ноль.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(FC_KPIS);
+          await h.hover(FC_COMPARISON);
+        },
+      },
+      {
+        voice: {
+          az: "İndi Optimist görünüşə keçirəm; o yalnız ekrandakı lokal çarpanları tətbiq edir: gəlir arta, maya dəyəri və xərclər azala bilər. Bu klik bazaya yeni proqnoz yazmır və planı dəyişmir. Aylıq trenddə yaşıl sütun gəliri, narıncı sütun maya dəyəri ilə əməliyyat xərclərinin cəmini, bənövşəyi xətt isə eyni düsturla EBITDA-nı göstərir.",
+          en: "Now I switch to Optimistic; it applies only the local on-screen multipliers, so revenue can rise while COGS and operating expense fall. This click does not save a new forecast or alter the plan. In the monthly trend, green bars are revenue, orange bars combine COGS and operating expenses, and the purple line is EBITDA from that same complete formula.",
+          ru: "Теперь я переключаюсь на оптимистичный вид; он применяет только локальные экранные множители: доходы могут вырасти, а себестоимость и операционные расходы снизиться. Переключение не сохраняет новый прогноз и не меняет план. На месячном графике зелёные столбцы — доходы, оранжевые — все затраты, фиолетовая линия — EBITDA по той же полной формуле.",
+        },
+        do: async (p, l, h) => {
+          await h.safeClick(FC_OPTIMISTIC);
+          await h.moveTo(FC_MONTHLY);
+          await h.hover(FC_COMPARISON);
+        },
+      },
+      {
+        voice: {
+          az: "İndi Pessimist ssenariyə keçirəm; bu, gəliri azaldıb xərcləri artıran lokal stress baxışıdır. Sağdakı müqayisə üç ssenarinin gəlirindən bütün xərcləri çıxaraq EBITDA nəticəsini eyni əsasda göstərir. Parametrlər düyməsi çarpanları açır, lakin bu təlim inputları açmır və dəyişmir, beləliklə istehsal məlumatında yeni məna yaratmır.",
+          en: "Now I switch to Pessimistic, a local stress view that reduces revenue and increases costs. The comparison card evaluates all three scenarios on one basis by deducting every cost from revenue to reach EBITDA. The settings control exposes multipliers, but this guide never opens or edits an input, so it cannot create a new meaning in production data.",
+          ru: "Теперь я переключаюсь на пессимистичный сценарий — локальный стресс-вид, который снижает доходы и повышает затраты. Карточка сравнения оценивает три сценария на одной основе, вычитая из доходов все затраты до EBITDA. Настройки открывают множители, но гайд не открывает и не меняет input, поэтому не создаёт новый смысл в производственных данных.",
+        },
+        do: async (p, l, h) => {
+          await h.safeClick(FC_PESSIMISTIC);
+          await h.moveTo(FC_SETTINGS);
+          await h.hover(FC_PNL);
+        },
+      },
+      {
+        voice: {
+          az: "İndi Baza ssenarisinə qayıdıb P&L xülasəsini yoxlayıram. Hər ay üçün gəlir, bütün xərclər, EBITDA və marja göstərilir; aylıq sütunların cəmi sağdakı dövr yekunu ilə uyğun olmalıdır. Sonra Gəlir bölməsini açıb məbləğin hansı büdcə kateqoriyalarından gəldiyini izləyirik, lakin heç bir rəqəm xanasına toxunmuruq.",
+          en: "Now I return to Base and inspect the P&L summary. Each month shows revenue, total costs, EBITDA, and margin, and the monthly columns must reconcile to the period total at the right. We then open Revenue to trace the amount into budget categories, but never click a numeric cell because that surface can enter an editable state.",
+          ru: "Теперь я возвращаюсь в базовый сценарий и проверяю сводку P&L. Для каждого месяца показаны доходы, все затраты, EBITDA и маржа, а сумма месячных колонок должна сходиться с итогом периода справа. Затем раскрываем Доходы до бюджетных категорий, но не нажимаем числовые ячейки, потому что они могут перейти в режим редактирования.",
+        },
+        do: async (p, l, h) => {
+          await h.safeClick(FC_BASE);
+          await h.safeClick(FC_REVENUE);
+          await h.moveTo(FC_MATRIX);
+        },
+      },
+      {
+        voice: {
+          az: "Gəlir bölməsini bağlayıb Maya dəyərini açıram və izah zamanı onu açıq saxlayıram. Maya dəyəri ümumi mənfəətdən əvvəl gəlirdən çıxılır; bu lokal keçid heç nə saxlamır. Bir kateqoriyada kursiv məbləğ görürsünüzsə, bu plan bazasıdır; adi üslubda açıq sıfır isə saxlanmış aylıq düzəliş ola bilər və itkin qeydlə qarışdırılmamalıdır.",
+          en: "I close Revenue, open COGS, and keep its rows visible while explaining them. COGS is deducted from revenue before gross profit, and this local view change saves nothing. If a category amount is italic, it comes from the plan baseline; an explicit saved zero can instead be a real monthly override and must remain distinguishable from an absent entry.",
+          ru: "Я закрываю Доходы, раскрываю Себестоимость и оставляю её строки видимыми на время объяснения. Себестоимость вычитается из доходов до валовой прибыли, а локальное изменение вида ничего не сохраняет. Курсивная сумма пришла из плановой базы; явный сохранённый ноль может быть месячным переопределением и должен отличаться от отсутствующей записи.",
+        },
+        do: async (p, l, h) => {
+          await h.safeClick(FC_REVENUE);
+          await h.safeClick(FC_COGS);
+          await h.moveTo(FC_MATRIX);
+        },
+      },
+      {
+        voice: {
+          az: "Maya dəyərini bağlayıb Əməliyyat xərclərini açıram və sətirləri ekranda saxlayıram. Bu xərclər EBITDA hesablamasının son əsas hissəsidir. Matrisdəki aylıq EBITDA yuxarı P&L xülasəsi və trend xətti ilə uyğun olmalıdır; fərq yaranarsa, videonu yayımlamaq və rəqəmi şərh etmək olmaz, əvvəl düstur, mənbə və dövr uzlaşdırılmalıdır.",
+          en: "I close COGS, open Operating expenses, and keep those rows on screen. They are the final major component of EBITDA. Monthly EBITDA in the matrix must agree with the upper P&L summary and trend line; if those surfaces ever disagree, the guide must not be published and the number must not be interpreted until formula, source, and period are reconciled.",
+          ru: "Я закрываю Себестоимость, раскрываю Операционные расходы и оставляю строки на экране. Это последний крупный компонент EBITDA. Месячная EBITDA в матрице должна совпадать с верхней сводкой P&L и линией тренда; если экраны расходятся, гайд нельзя публиковать и цифру нельзя интерпретировать до сверки формулы, источника и периода.",
+        },
+        do: async (p, l, h) => {
+          await h.safeClick(FC_COGS);
+          await h.safeClick(FC_EXPENSE);
+          await h.moveTo(FC_PNL);
+        },
+      },
+      {
+        voice: {
+          az: "Sonda Əməliyyat xərclərini bağlayıram. Təhlükəsiz iş ardıcıllığı belədir: əvvəl planı və dövrü təsdiqləyin, sonra saxlanmış düzəlişlərin sayını və valyuta sübutunu yoxlayın, daha sonra KPI, trend, ssenari müqayisəsi və detallı matrisi uzlaşdırın. Proqnoz qeydi yoxdursa, plan bazasını qərar üçün hazır tarixi proqnoz adlandırmayın; təsdiqlənmiş aylıq mənbəni əvvəl preview edin.",
+          en: "Finally I close Operating expenses. The safe sequence is: confirm plan and period, check the saved-override count and currency evidence, then reconcile KPIs, trend, scenario comparison, and detailed matrix. When no forecast entries exist, do not call the plan baseline a decision-ready historical forecast; preview an approved monthly forecast source before any import or interpretation.",
+          ru: "В завершение я закрываю Операционные расходы. Безопасная последовательность такова: подтвердите план и период, проверьте число сохранённых переопределений и валюту, затем сверьте KPI, тренд, сценарии и детальную матрицу. Если записей прогноза нет, не называйте плановую базу готовым для решений историческим прогнозом; до импорта и выводов сначала сделайте preview утверждённого месячного источника.",
+        },
+        do: async (p, l, h) => {
+          await h.safeClick(FC_EXPENSE);
+          await h.moveTo(FC_PROVENANCE);
+          await h.hover(FC_KPIS);
+          await h.moveTo(FC_MATRIX);
         },
       },
     ],
