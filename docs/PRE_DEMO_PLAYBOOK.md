@@ -208,8 +208,9 @@ npx tsx scripts/apply-azseker-land.ts
 # Apply forward forecast (İcmal sheet → Org.settings.forwardForecast)
 npx tsx scripts/apply-azseker-forward-forecast.ts
 
-# Derive drought_index from weather + land registry → operational_facts
-npx tsx scripts/derive-azseker-drought-index.ts
+# EDEN drought derivation is retired and fail-closed. Do not derive or write
+# drought_index until the owner approves a rainfall policy and a period-safe
+# canonical 0–10 replacement has passed preview/reconciliation gates.
 
 # Mark AZSEKER as fxExposureSource=all_domestic (all-AZN confirmed by Azik)
 npx tsx scripts/set-azseker-fx-all-domestic.ts
