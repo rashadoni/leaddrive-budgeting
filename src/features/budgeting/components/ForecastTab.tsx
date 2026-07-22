@@ -338,7 +338,7 @@ export function ForecastTab({ planId }: { planId: string }) {
             </td>
           )
         })}
-        <td className="px-3 py-2 text-right font-mono text-sm font-bold min-w-[100px]"><AnimatedNumber value={rowTotal} duration={400} /></td>
+        <td className="px-3 py-2 text-right font-mono text-sm font-bold min-w-[100px]"><AnimatedNumber value={rowTotal} duration={400} formatter={(value) => fmt(value, locale, currencyCode)} /></td>
       </tr>
     )
   }
@@ -376,9 +376,9 @@ export function ForecastTab({ planId }: { planId: string }) {
             </div>
           </td>
           {months.map(m => (
-            <td key={m} className="px-2 py-2 text-right font-mono text-sm font-semibold"><AnimatedNumber value={getGroupColTotal(children, m)} duration={400} /></td>
+            <td key={m} className="px-2 py-2 text-right font-mono text-sm font-semibold"><AnimatedNumber value={getGroupColTotal(children, m)} duration={400} formatter={(value) => fmt(value, locale, currencyCode)} /></td>
           ))}
-          <td className="px-3 py-2 text-right font-mono text-sm font-bold"><AnimatedNumber value={getGroupRowTotal(children)} duration={500} /></td>
+          <td className="px-3 py-2 text-right font-mono text-sm font-bold"><AnimatedNumber value={getGroupRowTotal(children)} duration={500} formatter={(value) => fmt(value, locale, currencyCode)} /></td>
         </tr>
         {isOpen && children.map(child => renderRow(child))}
       </React.Fragment>
@@ -411,9 +411,9 @@ export function ForecastTab({ planId }: { planId: string }) {
           </button>
         </td>
         {months.map(m => (
-          <td key={m} className="px-2 py-1.5 text-right font-mono text-xs font-bold"><AnimatedNumber value={getColTotal(lines, m)} duration={400} /></td>
+          <td key={m} className="px-2 py-1.5 text-right font-mono text-xs font-bold"><AnimatedNumber value={getColTotal(lines, m)} duration={400} formatter={(value) => fmt(value, locale, currencyCode)} /></td>
         ))}
-        <td className="px-3 py-1.5 text-right font-mono text-xs font-bold"><AnimatedNumber value={getSectionTotal(lines)} duration={500} /></td>
+        <td className="px-3 py-1.5 text-right font-mono text-xs font-bold"><AnimatedNumber value={getSectionTotal(lines)} duration={500} formatter={(value) => fmt(value, locale, currencyCode)} /></td>
       </tr>
       {/* Detail rows */}
       {!isFcCollapsed && lines.map(l => {
@@ -868,11 +868,11 @@ export function ForecastTab({ planId }: { planId: string }) {
                     const gpVal = getMonthlyPnl(m).grossProfit
                     return (
                     <td key={m} className={`px-2 py-2 text-right font-mono text-sm font-bold ${gpVal < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                      <AnimatedNumber value={gpVal} duration={500} />
+                      <AnimatedNumber value={gpVal} duration={500} formatter={(value) => fmt(value, locale, currencyCode)} />
                     </td>
                     )
                   })}
-                  <td className={`px-3 py-2 text-right font-mono text-sm font-bold ${totalGrossProfit < 0 ? "text-red-600 dark:text-red-400" : ""}`}><AnimatedNumber value={totalGrossProfit} duration={600} /></td>
+                  <td className={`px-3 py-2 text-right font-mono text-sm font-bold ${totalGrossProfit < 0 ? "text-red-600 dark:text-red-400" : ""}`}><AnimatedNumber value={totalGrossProfit} duration={600} formatter={(value) => fmt(value, locale, currencyCode)} /></td>
                 </tr>
 
                 {renderSection(t("sectionExpenses"), expenseLines, addingExpense, setAddingExpense, "expense")}
@@ -884,11 +884,11 @@ export function ForecastTab({ planId }: { planId: string }) {
                     const opVal = getMonthlyPnl(m).ebitda
                     return (
                     <td key={m} className={`px-2 py-2 text-right font-mono text-sm font-bold ${opVal < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                      <AnimatedNumber value={opVal} duration={500} />
+                      <AnimatedNumber value={opVal} duration={500} formatter={(value) => fmt(value, locale, currencyCode)} />
                     </td>
                     )
                   })}
-                  <td className={`px-3 py-2 text-right font-mono text-sm font-bold ${totalMargin < 0 ? "text-red-600 dark:text-red-400" : ""}`}><AnimatedNumber value={totalMargin} duration={600} /></td>
+                  <td className={`px-3 py-2 text-right font-mono text-sm font-bold ${totalMargin < 0 ? "text-red-600 dark:text-red-400" : ""}`}><AnimatedNumber value={totalMargin} duration={600} formatter={(value) => fmt(value, locale, currencyCode)} /></td>
                 </tr>
                 {/* {t("ebitdaMarginPct")} row */}
                 <tr className={`${totalMargin < 0 ? "bg-red-50/50 dark:bg-red-900/5" : "bg-purple-50/50 dark:bg-purple-900/5"}`}>

@@ -47,8 +47,8 @@ vi.mock("recharts", () => {
 })
 
 vi.mock("@/components/animated-number", () => ({
-  AnimatedNumber: ({ value }: { value: number }) => (
-    <span data-testid="animated-number">{value}</span>
+  AnimatedNumber: ({ value, formatter }: { value: number; formatter?: (value: number) => string }) => (
+    <span data-testid="animated-number">{formatter ? formatter(value) : value}</span>
   ),
 }))
 
@@ -120,6 +120,7 @@ describe("ForecastTab evidence and formula semantics", () => {
     expect(screen.getByTestId("forecast-currency-unknown")).toBeTruthy()
     expect(screen.getByTestId("forecast-kpi-revenue").textContent).not.toContain("AZN")
     expect(screen.getByTestId("forecast-kpi-revenue").textContent).not.toContain("₼")
+    expect(screen.getByTestId("forecast-guide-root").textContent).not.toContain("₼")
   })
 
   it("shows the configured base currency as explicit evidence", () => {
@@ -127,6 +128,7 @@ describe("ForecastTab evidence and formula semantics", () => {
     render(<ForecastTab planId="plan-1" />)
     expect(screen.getByTestId("forecast-currency-known").textContent).toContain("USD")
     expect(screen.getByTestId("forecast-kpi-revenue").textContent).toContain("USD")
+    expect(screen.getByTestId("forecast-matrix").textContent).toContain("USD")
   })
 
   it("does not claim currency is unconfigured when currency evidence failed", () => {
@@ -143,7 +145,7 @@ describe("ForecastTab evidence and formula semantics", () => {
 
     expect(summary.textContent).toContain("3.5")
     expect(summary.textContent).toContain("42")
-    expect(matrix.textContent).toContain("3.5")
+    expect(matrix.textContent).toContain("4")
     expect(matrix.textContent).toContain("42")
     expect(grossProfit.textContent).toContain("6")
     expect(grossProfit.textContent).toContain("72")
@@ -159,7 +161,7 @@ describe("ForecastTab evidence and formula semantics", () => {
       line("e", "Shared", "expense", 30),
     ]))
     render(<ForecastTab planId="plan-1" />)
-    expect(screen.getByTestId("forecast-matrix-ebitda").textContent).toContain("3.5")
+    expect(screen.getByTestId("forecast-matrix-ebitda").textContent).toContain("4")
     expect(screen.getByTestId("forecast-matrix-ebitda").textContent).toContain("42")
   })
 

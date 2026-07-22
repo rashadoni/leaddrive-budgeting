@@ -127,6 +127,7 @@ describe("Forecast help-video scenario", () => {
     expect(component).toContain("resolveForecastCell(saved")
     expect(component).toContain("const getMonthlyPnl")
     expect(component.match(/getMonthlyPnl\(m\)/g)?.length).toBeGreaterThanOrEqual(5)
+    expect(component.match(/<AnimatedNumber[^>]+formatter=/g)).toHaveLength(9)
     expect(page).not.toMatch(/COMPANY_FILTERED_TABS[^\]]*forecast/)
     expect(page).toContain("<ForecastTab planId={resolvedPlanId} />")
   })
