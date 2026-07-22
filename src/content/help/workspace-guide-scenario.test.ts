@@ -53,6 +53,8 @@ describe('Workspace help-video scenario', () => {
       'WS_LIST_BUTTON',
     ]);
     expect(actions).not.toContain('h.fill(');
+    expect(actions).not.toContain('matrix-seed');
+    expect(actions).not.toContain('.catch(() => {})');
   });
 
   it('pins every scenario anchor in the rendered Workspace component', () => {

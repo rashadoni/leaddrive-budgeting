@@ -634,41 +634,44 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
       </div>
 
       {/* === MATRIX VIEW === */}
-      {workspaceView === "matrix" && analytics?.matrix && analytics.matrix.cells.length > 0 && (
-        <div data-testid="workspace-matrix"><BudgetMatrixGrid matrix={analytics.matrix} compact={compactNumbers} /></div>
-      )}
-      {workspaceView === "matrix" && (!analytics?.matrix || analytics.matrix.cells.length === 0) && (
-        <Card>
-          <CardContent className="p-8 text-center text-muted-foreground">
-            <LayoutGrid className="h-12 w-12 mx-auto mb-3 opacity-40" />
-            <p className="text-lg font-medium mb-2">{t("matrixNotConfigured")}</p>
-            <p className="text-sm mb-4">{t("matrixNotConfiguredHint")}</p>
-            <Button
-              onClick={async () => {
-                try {
-                  const res = await fetch(`/api/budgeting/matrix-seed`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ planId }),
-                  })
-                  const json = await res.json()
-                  if (!res.ok) {
-                    // CXLIII: prefer translated errorKey when API supplies it
-                    const msg = json.errorKey ? t(json.errorKey) : (json.error || t("wsGenMatrixFailed"))
-                    alert(msg)
-                    return
-                  }
-                  window.location.reload()
-                } catch (err) {
-                  alert(t("wsNetworkError"))
-                }
-              }}
-            >
-              <LayoutGrid className="h-4 w-4 mr-2" />
-              {t("matrixGenerate")}
-            </Button>
-          </CardContent>
-        </Card>
+      {workspaceView === "matrix" && (
+        <div data-testid="workspace-matrix">
+          {analytics?.matrix && analytics.matrix.cells.length > 0 ? (
+            <BudgetMatrixGrid matrix={analytics.matrix} compact={compactNumbers} />
+          ) : (
+            <Card>
+              <CardContent className="p-8 text-center text-muted-foreground">
+                <LayoutGrid className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                <p className="text-lg font-medium mb-2">{t("matrixNotConfigured")}</p>
+                <p className="text-sm mb-4">{t("matrixNotConfiguredHint")}</p>
+                <Button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/budgeting/matrix-seed`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ planId }),
+                      })
+                      const json = await res.json()
+                      if (!res.ok) {
+                        // CXLIII: prefer translated errorKey when API supplies it
+                        const msg = json.errorKey ? t(json.errorKey) : (json.error || t("wsGenMatrixFailed"))
+                        alert(msg)
+                        return
+                      }
+                      window.location.reload()
+                    } catch (err) {
+                      alert(t("wsNetworkError"))
+                    }
+                  }}
+                >
+                  <LayoutGrid className="h-4 w-4 mr-2" />
+                  {t("matrixGenerate")}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       )}
 
       {/* === MAIN EDITABLE GRID === */}

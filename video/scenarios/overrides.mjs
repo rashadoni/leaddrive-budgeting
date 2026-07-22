@@ -195,13 +195,13 @@ export default {
       },
       {
         voice: {
-          az: "Siyahıdan matris görünüşünə keçid yalnız ekrandakı təqdimatı dəyişir. Matris şöbə ilə xərc növünün kəsişməsində planı göstərir və böyük büdcədə struktur boşluqlarını tapmağa kömək edir. Bu əməliyyat oxuma rejimindədir: sətir yaratmır, məbləği dəyişmir və heç bir təsdiq prosesi başlatmır.",
-          en: "Switching from List to Matrix changes only the on-screen presentation. The matrix places the plan at the intersection of department and cost type, which helps reveal structural gaps in a large budget. This is a read-only view change: it creates no line, changes no amount and starts no approval workflow.",
-          ru: "Переключение со Списка на Матрицу меняет только представление на экране. Матрица раскладывает план на пересечении подразделения и типа затрат и помогает заметить структурные пробелы большого бюджета. Это режим чтения: он не создаёт строк, не меняет суммы и не запускает согласование.",
+          az: "Siyahıdan Matris görünüşünə keçid yalnız ekrandakı təqdimatı dəyişir. Matris sazlanıbsa, plan şöbə ilə xərc növünün kəsişməsində görünür. Sazlanmayıbsa, ekran bunu açıq bildirir və ayrıca yaratma düyməsi göstərir. Bu təlimdə həmin düyməyə toxunmuruq: yalnız görünüşü yoxlayır, sətir yaratmır, məbləği dəyişmir və təsdiq prosesi başlatmırıq.",
+          en: "Switching from List to Matrix changes only the on-screen presentation. When a matrix is configured, it places the plan at the intersection of department and cost type. When it is not configured, the page says so and offers a separate Generate action. This guide does not press that action: it only inspects the view and creates no line, amount change or approval workflow.",
+          ru: "Переключение со Списка на Матрицу меняет только представление на экране. Если матрица настроена, план раскладывается по подразделениям и типам затрат. Если она не настроена, экран прямо сообщает об этом и отдельно предлагает создание. В этом гайде мы не нажимаем эту кнопку: только проверяем вид, не создаём строки, не меняем суммы и не запускаем согласование.",
         },
         do: async (p, l, h) => {
           await h.click(WS_MATRIX_BUTTON);
-          await p.waitForSelector('[data-testid="workspace-matrix"]', { timeout: 8000 }).catch(() => {});
+          await p.waitForSelector('[data-testid="workspace-matrix"]', { timeout: 8000 });
           await h.moveTo(WS_MATRIX);
         },
       },
@@ -213,7 +213,7 @@ export default {
         },
         do: async (p, l, h) => {
           await h.click(WS_LIST_BUTTON);
-          await p.waitForSelector('[data-testid="workspace-table"]', { timeout: 8000 }).catch(() => {});
+          await p.waitForSelector('[data-testid="workspace-table"]', { timeout: 8000 });
           await h.moveTo(WS_TABLE);
           await h.hover(WS_TABLE);
         },
