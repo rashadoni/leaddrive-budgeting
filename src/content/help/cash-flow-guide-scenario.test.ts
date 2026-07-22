@@ -180,6 +180,8 @@ describe('Cash Flow help-video scenario', () => {
       'BS_EQUITY_TOGGLE',
       'CF_ENTRIES_BUTTON',
       'CF_OVERVIEW_BUTTON',
+      'CMP_PRIMARY',
+      'CMP_SECONDARY',
       'FC_OPTIMISTIC',
       'FC_PESSIMISTIC',
       'FC_BASE',

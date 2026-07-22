@@ -22,6 +22,8 @@ interface TooltipProps {
   planKey?: string
   actualKey?: string
   forecastKey?: string
+  /** Evidence-aware caller formatter. Defaults to the legacy app formatter. */
+  formatValue?: (value: number) => string
 }
 
 export function BudgetChartTooltip({
@@ -33,6 +35,7 @@ export function BudgetChartTooltip({
   planKey,
   actualKey,
   forecastKey,
+  formatValue = fmt,
 }: TooltipProps) {
   if (!active || !payload?.length) return null
 
@@ -54,7 +57,7 @@ export function BudgetChartTooltip({
               <span className="text-muted-foreground text-xs">{entry.name}</span>
             </div>
             <span className="font-mono font-medium text-popover-foreground text-xs">
-              {fmt(entry.value ?? 0)}
+              {formatValue(entry.value ?? 0)}
             </span>
           </div>
         ))}

@@ -22,6 +22,7 @@ const { hooksMock } = vi.hoisted(() => ({
   hooksMock: {
     useBudgetPlans: vi.fn(),
     useBudgetAnalytics: vi.fn(),
+    useExchangeRates: vi.fn(),
   },
 }))
 
@@ -36,6 +37,7 @@ vi.mock("@/lib/budgeting/hooks", async () => {
 // it natively. Stub minimally so the chart components render without
 // throwing (test depth doesn't include chart-pixel verification).
 beforeEach(() => {
+  hooksMock.useExchangeRates.mockReset().mockReturnValue({ data: { currencies: [] }, error: null, isLoading: false })
   if (typeof globalThis.ResizeObserver === "undefined") {
     globalThis.ResizeObserver = class {
       observe(): void {}
@@ -68,9 +70,11 @@ const ANALYTICS = (planned: number, actual: number) => ({
     totalPlanned: planned,
     totalActual: actual,
     totalVariance: actual - planned,
+    totalExpensePlanned: planned,
+    totalExpenseActual: actual,
     byCategory: [
-      { category: "Sales", planned: planned * 0.5, actual: actual * 0.5, variance: (actual - planned) * 0.5, variancePct: 10 },
-      { category: "Rent", planned: planned * 0.3, actual: actual * 0.3, variance: (actual - planned) * 0.3, variancePct: 5 },
+      { category: "Sales", lineType: "expense", planned: planned * 0.5, actual: actual * 0.5, variance: (actual - planned) * 0.5, variancePct: 10, actualAvailable: true },
+      { category: "Rent", lineType: "expense", planned: planned * 0.3, actual: actual * 0.3, variance: (actual - planned) * 0.3, variancePct: 5, actualAvailable: true },
     ],
   },
 })
@@ -195,11 +199,11 @@ describe("ComparisonTab — KPI cards rendered when 2+ selected", () => {
     // (one per selected plan). Each card has a planned-value cell with
     // .tabular-nums + a planned-relative-share progress bar. Verify the
     // KPI grid is present (≥ 2 cards = ≥ 2 .tabular-nums entries) and
-    // that the manat suffix is rendered (formatted via fmtK + " ₼").
+    // Amounts render, but no currency is invented when the organization has
+    // no evidenced base currency.
     const moneyCells = document.querySelectorAll(".tabular-nums")
     expect(moneyCells.length).toBeGreaterThanOrEqual(2)
-    // Manat suffix presence — ensures the formatted-money helper actually ran.
-    expect(document.body.textContent).toContain("₼")
+    expect(document.body.textContent).not.toContain("₼")
   })
 })
 
@@ -225,13 +229,17 @@ describe("ComparisonTab — sparkline trend column (Phase 3.1 v1.2 ext)", () => 
             totalPlanned: 400_000,
             totalActual: 148_000,
             totalVariance: -252_000,
+            totalExpensePlanned: 400_000,
+            totalExpenseActual: 148_000,
             byCategory: [
               {
                 category: "Sales",
+                lineType: "expense",
                 planned: 400_000,
                 actual: 148_000,
                 variance: -252_000,
                 variancePct: -63,
+                actualAvailable: true,
                 monthlyPlanned: q1Heavy,
                 monthlyActual: elapsed3,
               },
@@ -258,7 +266,163 @@ describe("ComparisonTab — sparkline trend column (Phase 3.1 v1.2 ext)", () => 
     expect(actualLine).toBeTruthy()
     // Tooltip mentions plan + actual labels
     const title = sparkline!.querySelector("title")
-    expect(title?.textContent ?? "").toContain("plan")
-    expect(title?.textContent ?? "").toContain("actual")
+    expect((title?.textContent ?? "").toLowerCase()).toContain("plan")
+    expect((title?.textContent ?? "").toLowerCase()).toContain("actual")
+  })
+})
+
+describe("ComparisonTab — evidence-safe comparison", () => {
+  const richAnalytics = (rows: Array<Record<string, unknown>>, extra: Record<string, unknown> = {}) => ({
+    data: {
+      plan: { id: "p", name: "Budget", year: 2026, kind: "budget", periodType: "annual" },
+      totalPlanned: 16_270_000,
+      totalActual: 10_542_000,
+      totalVariance: -43_620_000,
+      totalExpensePlanned: 16_270_000,
+      totalExpenseActual: 10_542_000,
+      byCategory: rows,
+      ...extra,
+    },
+    isLoading: false,
+    error: null,
+  })
+
+  it("keeps duplicate display names separate by account code and uses the OpEx variance basis", () => {
+    hooksMock.useBudgetPlans.mockReset().mockReturnValue({
+      data: [PLAN("p1", 2026, "Budget 2026"), PLAN("p2", 2025, "Budget 2025")],
+      isLoading: false,
+    })
+    hooksMock.useBudgetAnalytics.mockReset().mockImplementation((id: string) => id
+      ? richAnalytics([
+          { category: "Other expense", accountCode: "7210", lineType: "expense", planned: 10_000_000, actual: 6_000_000, variance: 4_000_000, variancePct: 40, actualAvailable: true },
+          { category: "Other expense", accountCode: "7220", lineType: "expense", planned: 6_270_000, actual: 4_542_000, variance: 1_728_000, variancePct: 27.6, actualAvailable: true },
+        ])
+      : { data: undefined, isLoading: false, error: null })
+
+    render(<ComparisonTab />)
+    fireEvent.click(screen.getByTestId("comparison-plan-option-0"))
+    fireEvent.click(screen.getByTestId("comparison-plan-option-1"))
+
+    expect(document.body.textContent).toContain("7210 · Other expense")
+    expect(document.body.textContent).toContain("7220 · Other expense")
+    expect(document.body.textContent).toContain("35.2%")
+    expect(document.body.textContent).not.toContain("268.1%")
+  })
+
+  it("renders missing actuals as dashes but preserves an evidenced zero", () => {
+    hooksMock.useBudgetPlans.mockReset().mockReturnValue({
+      data: [PLAN("p1", 2026, "Budget 2026"), PLAN("p2", 2025, "Budget 2025")],
+      isLoading: false,
+    })
+    hooksMock.useBudgetAnalytics.mockReset().mockImplementation((id: string) => id
+      ? richAnalytics([
+          { category: "Missing actual", accountCode: "7300", lineType: "expense", planned: 100, actual: 0, variance: 100, variancePct: 100, actualAvailable: false },
+          { category: "Explicit zero", accountCode: "7310", lineType: "expense", planned: 100, actual: 0, variance: 100, variancePct: 100, actualAvailable: true },
+        ], { totalExpensePlanned: 200, totalExpenseActual: 0 })
+      : { data: undefined, isLoading: false, error: null })
+
+    render(<ComparisonTab />)
+    fireEvent.click(screen.getByTestId("comparison-plan-option-0"))
+    fireEvent.click(screen.getByTestId("comparison-plan-option-1"))
+
+    const missing = screen.getByText("7300 · Missing actual").closest("tr")
+    const zero = screen.getByText("7310 · Explicit zero").closest("tr")
+    expect(missing?.textContent).toContain("—")
+    expect(zero?.textContent).toContain("0")
+    expect(screen.getByTestId("comparison-actuals-absence")).toBeTruthy()
+  })
+
+  it("disables plans with an incompatible kind or period after the baseline selection", () => {
+    hooksMock.useBudgetPlans.mockReset().mockReturnValue({
+      data: [
+        { ...PLAN("b26", 2026, "Budget 2026"), kind: "budget", periodType: "annual" },
+        { ...PLAN("a26", 2026, "Actuals 2026"), kind: "actual", periodType: "annual" },
+        { ...PLAN("m26", 2026, "June 2026"), kind: "budget", periodType: "monthly", month: 6 },
+        { ...PLAN("b25", 2025, "Budget 2025"), kind: "budget", periodType: "annual" },
+      ],
+      isLoading: false,
+    })
+    hooksMock.useBudgetAnalytics.mockReset().mockReturnValue({ data: undefined, isLoading: false, error: null })
+
+    render(<ComparisonTab />)
+    fireEvent.click(screen.getByTestId("comparison-plan-option-0"))
+    expect((screen.getByTestId("comparison-plan-option-1") as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByTestId("comparison-plan-option-2") as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByTestId("comparison-plan-option-3") as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("fails closed while a selected analytics response is loading", () => {
+    hooksMock.useBudgetPlans.mockReset().mockReturnValue({
+      data: [PLAN("p1", 2026, "Budget 2026"), PLAN("p2", 2025, "Budget 2025")],
+      isLoading: false,
+    })
+    hooksMock.useBudgetAnalytics.mockReset().mockImplementation((id: string) => {
+      if (id === "p1") return richAnalytics([{ category: "A", accountCode: "1", lineType: "expense", planned: 1, actual: 1, variance: 0, variancePct: 0, actualAvailable: true }])
+      if (id === "p2") return { data: undefined, isLoading: true, error: null }
+      return { data: undefined, isLoading: false, error: null }
+    })
+
+    render(<ComparisonTab />)
+    fireEvent.click(screen.getByTestId("comparison-plan-option-0"))
+    fireEvent.click(screen.getByTestId("comparison-plan-option-1"))
+    expect(screen.getByTestId("comparison-loading")).toBeTruthy()
+    expect(screen.queryByTestId("comparison-kpis")).toBeNull()
+  })
+
+  it("uses a configured currency everywhere and never defaults to manat", () => {
+    hooksMock.useExchangeRates.mockReset().mockReturnValue({ data: { currencies: [{ code: "USD", isBase: true }] }, error: null, isLoading: false })
+    hooksMock.useBudgetPlans.mockReset().mockReturnValue({
+      data: [PLAN("p1", 2026, "Budget 2026"), PLAN("p2", 2025, "Budget 2025")],
+      isLoading: false,
+    })
+    hooksMock.useBudgetAnalytics.mockReset().mockImplementation((id: string) => id
+      ? richAnalytics([{ category: "Expense", accountCode: "7000", lineType: "expense", planned: 100, actual: 80, variance: 20, variancePct: 20, actualAvailable: true }], { totalExpensePlanned: 100, totalExpenseActual: 80 })
+      : { data: undefined, isLoading: false, error: null })
+
+    render(<ComparisonTab />)
+    fireEvent.click(screen.getByTestId("comparison-plan-option-0"))
+    fireEvent.click(screen.getByTestId("comparison-plan-option-1"))
+    expect(screen.getByTestId("comparison-currency-known")).toBeTruthy()
+    expect(document.body.textContent).toContain("USD")
+    expect(document.body.textContent).not.toContain("₼")
+  })
+
+  it("guides to populated annual actuals and renders one realized column per period", () => {
+    hooksMock.useBudgetPlans.mockReset().mockReturnValue({
+      data: [
+        { ...PLAN("b26", 2026, "Budget 2026"), kind: "budget", _count: { lines: 134 } },
+        { ...PLAN("b25", 2025, "Budget 2025"), kind: "budget", _count: { lines: 0 } },
+        { ...PLAN("a26", 2026, "Actuals 2026"), kind: "actual", _count: { lines: 934 } },
+        { ...PLAN("a25", 2025, "Actuals 2025"), kind: "actual", _count: { lines: 2125 } },
+      ],
+      isLoading: false,
+    })
+    hooksMock.useBudgetAnalytics.mockReset().mockImplementation((id: string) => id
+      ? richAnalytics([
+          { category: "Realized rent", accountCode: "7110", lineType: "expense", planned: id === "a26" ? 120 : 100, actual: 0, variance: 0, variancePct: 0 },
+        ], {
+          plan: { id, name: id === "a26" ? "Actuals 2026" : "Actuals 2025", year: id === "a26" ? 2026 : 2025, kind: "actual", periodType: "annual" },
+          totalExpensePlanned: id === "a26" ? 120 : 100,
+          totalExpenseActual: 0,
+        })
+      : { data: undefined, isLoading: false, error: null })
+
+    render(<ComparisonTab />)
+    const primary = document.querySelector('[data-guide-slot="primary"]') as HTMLButtonElement
+    const secondary = document.querySelector('[data-guide-slot="secondary"]') as HTMLButtonElement
+    expect(primary.dataset.planKind).toBe("actual")
+    expect(secondary.dataset.planKind).toBe("actual")
+    expect((screen.getByTestId("comparison-plan-option-1") as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(primary)
+    fireEvent.click(secondary)
+
+    expect(screen.queryByTestId("comparison-materiality-controls")).toBeNull()
+    const table = screen.getByTestId("comparison-table")
+    const headers = Array.from(table.querySelectorAll("thead th")).map((node) => node.textContent ?? "")
+    expect(headers.filter((text) => text.includes("Actuals 2026") && text.includes("Actual"))).toHaveLength(1)
+    expect(headers.filter((text) => text.includes("Actuals 2025") && text.includes("Actual"))).toHaveLength(1)
+    expect(headers.some((text) => text.includes("Budget"))).toBe(false)
+    expect(headers.some((text) => text.includes("Variance"))).toBe(false)
   })
 })

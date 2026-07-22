@@ -23,6 +23,13 @@ interface Props {
   actuals?: number[]
   width?: number
   height?: number
+  monthLabels?: string[]
+  planLabel?: string
+  actualLabel?: string
+  distributionLabel?: string
+  /** Distinguishes an evidenced all-zero actual series from absent actuals. */
+  actualEvidence?: boolean
+  valueFormatter?: (value: number) => string
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -31,7 +38,18 @@ function fmt(v: number): string {
   return v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toFixed(0)
 }
 
-export function MonthlySparkline({ values, actuals, width = 72, height = 18 }: Props) {
+export function MonthlySparkline({
+  values,
+  actuals,
+  width = 72,
+  height = 18,
+  monthLabels = MONTHS,
+  planLabel = "plan",
+  actualLabel = "actual",
+  distributionLabel = "12-month distribution",
+  actualEvidence,
+  valueFormatter = fmt,
+}: Props) {
   if (!values || values.length !== 12) {
     return <span className="text-muted-foreground/40 text-xs">—</span>
   }
@@ -53,14 +71,18 @@ export function MonthlySparkline({ values, actuals, width = 72, height = 18 }: P
       })
       .join(" ")
   const plannedPoints = toPoints(values)
-  const hasActual = actuals && actuals.length === 12 && actuals.some((v) => v !== 0)
+  const hasActual = Boolean(
+    actuals
+    && actuals.length === 12
+    && (actualEvidence ?? actuals.some((v) => v !== 0)),
+  )
   const actualPoints = hasActual ? toPoints(actuals!) : null
   const tooltip = values
     .map((v, i) => {
       if (hasActual) {
-        return `${MONTHS[i]}: plan ${fmt(v)} / actual ${fmt(actuals![i])}`
+        return `${monthLabels[i] ?? MONTHS[i]}: ${planLabel} ${valueFormatter(v)} / ${actualLabel} ${valueFormatter(actuals![i])}`
       }
-      return `${MONTHS[i]}: ${fmt(v)}`
+      return `${monthLabels[i] ?? MONTHS[i]}: ${valueFormatter(v)}`
     })
     .join(" · ")
   return (
@@ -68,7 +90,7 @@ export function MonthlySparkline({ values, actuals, width = 72, height = 18 }: P
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
-      aria-label={`12-month distribution: ${tooltip}`}
+      aria-label={`${distributionLabel}: ${tooltip}`}
       className="overflow-visible"
       data-testid="variance-sparkline"
     >

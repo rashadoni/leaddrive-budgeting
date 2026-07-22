@@ -11,13 +11,15 @@ interface BarLabelProps {
   index?: number
   /** If true, render for vertical layout (horizontal bars) */
   horizontal?: boolean
+  /** Evidence-aware caller formatter. Defaults to the legacy compact manat label. */
+  formatter?: (value: number) => string
 }
 
 /** Smart label rendered at the end of each bar */
-export function BudgetBarLabel({ x = 0, y = 0, width = 0, height = 0, value, horizontal = true }: BarLabelProps) {
+export function BudgetBarLabel({ x = 0, y = 0, width = 0, height = 0, value, horizontal = true, formatter }: BarLabelProps) {
   if (value == null || value === 0) return null
 
-  const text = fmtK(value) + " ₼"
+  const text = formatter ? formatter(value) : fmtK(value) + " ₼"
 
   if (horizontal) {
     // Horizontal bars: label to the right of bar

@@ -167,6 +167,30 @@ const FC_REVENUE = '[data-testid="forecast-section-revenue"]';
 const FC_COGS = '[data-testid="forecast-section-cogs"]';
 const FC_EXPENSE = '[data-testid="forecast-section-expense"]';
 
+// ── Comparison guide readiness ───────────────────────────────────────────
+// READONLY-safe: the two guide slots are deterministic populated compatible
+// plans (annual actuals on current production data). Selecting them changes
+// local state and issues GET analytics only. Numeric threshold inputs and
+// create/import/edit/delete/approval actions are never touched.
+const CMP_ROOT = '[data-testid="comparison-guide-root"]';
+const CMP_PROVENANCE = '[data-testid="comparison-provenance"]';
+const CMP_CURRENCY = [
+  '[data-testid="comparison-currency-known"]',
+  '[data-testid="comparison-currency-unknown"]',
+];
+const CMP_PICKER = '[data-testid="comparison-plan-picker"]';
+const CMP_PRIMARY = '[data-guide-slot="primary"]';
+const CMP_SECONDARY = '[data-guide-slot="secondary"]';
+const CMP_BASIS = '[data-testid="comparison-basis"]';
+const CMP_KPIS = '[data-testid="comparison-kpis"]';
+const CMP_CHART = '[data-testid="comparison-category-chart"]';
+const CMP_TOTALS = '[data-testid="comparison-opex-totals"]';
+const CMP_ABSENCE = [
+  '[data-testid="comparison-actuals-absence"]',
+  '[data-testid="comparison-table"]',
+];
+const CMP_TABLE = '[data-testid="comparison-table"]';
+
 // Select AZSEKER (code AZSF) from the company <select>. READONLY-safe: selecting
 // an option only changes local React state; the fetch is a GET. Find the option
 // whose text names AZSEKER/AZSF (label is "<code> · <name>"), else the first real
@@ -517,6 +541,118 @@ export default {
           await h.safeClick(CF_OVERVIEW_BUTTON);
           await p.waitForSelector(CF_OVERVIEW, { timeout: 8000 });
           await h.moveTo(CF_EVIDENCE);
+        },
+      },
+    ],
+  },
+  "comparison": {
+    route: "/budgeting?tab=comparison",
+    title: {
+      az: "Müqayisə — eyni əsaslı faktiki dövrlər",
+      en: "Comparison — like-for-like actual periods",
+      ru: "Сравнение — сопоставимые фактические периоды",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "Bu, Büdcələşdirmə bölməsinin Müqayisə görünüşüdür. Ekran bütün təşkilat üzrə konsolidasiya olunmuş plan analitikasını yan-yana qoyur; ayrıca şirkət filtri tətbiq etmir. Yuxarıdakı mənşə qeydi əsas qaydanı bildirir: çatışmayan kateqoriya və ya faktiki sübut sıfır deyil və cədvəldə tire kimi qalmalıdır.",
+          en: "This is the Comparison view in Budgeting. It places organization-wide consolidated plan analytics side by side and does not apply an individual company filter. The provenance disclosure states the governing rule: a missing category or missing actual evidence is not zero, so the detailed table must preserve it as a dash.",
+          ru: "Это экран Сравнения в разделе Бюджетирования. Он ставит рядом консолидированную аналитику планов всей организации и не применяет фильтр отдельной компании. Пояснение об источнике закрепляет главное правило: отсутствующая категория или неподтверждённый факт не равны нулю и должны оставаться тире в детальной таблице.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(CMP_ROOT, { timeout: 12000 });
+          await h.moveTo(CMP_PROVENANCE);
+          await h.hover(CMP_PICKER);
+        },
+      },
+      {
+        voice: {
+          az: "İndi iki məlumatla doldurulmuş uyğun illik faktiki dövrü seçirəm. Birinci seçim müqayisə əsasını sabitləyir: plan növü, illik və ya aylıq detallılıq, eləcə də ay və ya rüb yuvası eyni olmalıdır. Boş planlar, faktiki dövrü büdcə ilə və ya aylıq dövrü illik dövrlə qarışdıran kartlar avtomatik deaktiv olur.",
+          en: "I now select two populated, compatible annual actuals periods. The first selection fixes the comparison basis: plan kind, annual or monthly granularity, and the relevant month or quarter slot must match. Empty plans and cards that would mix actuals with a budget, or a monthly period with an annual period, are automatically disabled.",
+          ru: "Теперь я выбираю два заполненных совместимых годовых фактических периода. Первый выбор фиксирует основу сравнения: должны совпасть вид плана, годовая или месячная детализация и соответствующий месяц либо квартал. Пустые планы и карточки, смешивающие факт с бюджетом или месячный период с годовым, автоматически отключаются.",
+        },
+        do: async (p, l, h) => {
+          await h.safeClick(CMP_PRIMARY);
+          await h.safeClick(CMP_SECONDARY);
+          await p.waitForSelector(CMP_KPIS, { timeout: 15000 });
+          await h.moveTo(CMP_BASIS);
+        },
+      },
+      {
+        voice: {
+          az: "Rəqəmləri oxumazdan əvvəl valyuta sübutunu yoxlayın. Təşkilatın təsdiqlənmiş baza valyutası yoxdursa, bütün məbləğlər qəsdən valyuta kodu və simvolu olmadan göstərilir; ekran manat, dollar və ya başqa vahid təxmin etmir. Bu qayda kartlara, qrafik etiketlərinə, tooltip-lərə, fərqlərə və cədvələ eyni şəkildə tətbiq olunur.",
+          en: "Before reading the numbers, verify the currency evidence. If the organization has no confirmed base currency, every amount deliberately appears without a currency code or symbol; the view does not guess manat, dollars, or another unit. The same rule applies to cards, chart labels, tooltips, deltas, and the detailed table.",
+          ru: "До чтения цифр проверьте подтверждение валюты. Если у организации нет установленной базовой валюты, все суммы намеренно показаны без кода и символа; экран не угадывает манаты, доллары или другую единицу. Одно правило действует для карточек, подписей графика, подсказок, разниц и детальной таблицы.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CMP_CURRENCY);
+          await h.hover(CMP_PROVENANCE);
+        },
+      },
+      {
+        voice: {
+          az: "Yuxarı kartlar hər seçilmiş faktiki dövr üçün reallaşmış əməliyyat xərclərini göstərir; bu, büdcə, qarışıq ümumi məbləğ və ya EBITDA deyil. Faktiki planın öz sətirləri reallaşmış mənbə sayılır və ekran eyni rəqəmi ayrıca Büdcə və Faktiki sütunlarında təkrarlamır. Kateqoriya sayı ayrı hesab və növ sətirlərini göstərir.",
+          en: "The upper cards show realized operating expense for each selected actuals period; this is not a budget, a mixed grand total, or EBITDA. An actuals plan's own lines are the realized source, and the screen does not repeat the same value in separate Budget and Actual columns. The category count reflects separate account-and-type rows.",
+          ru: "Верхние карточки показывают реализованные операционные расходы каждого выбранного фактического периода; это не бюджет, не смешанный общий итог и не EBITDA. Собственные строки фактического плана являются реализованным источником, поэтому экран не дублирует одно значение в отдельных колонках Бюджет и Факт. Число категорий отражает отдельные строки счёта и типа.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CMP_KPIS);
+          await h.hover(CMP_KPIS);
+        },
+      },
+      {
+        voice: {
+          az: "Kateqoriya qrafiki bütün sətirləri gizlətmir: vizual sıxlığı idarə etmək üçün reallaşmış məbləğin ən böyük olduğu on hesab və növ sətirini göstərir, tam siyahı isə aşağıdakı cədvəldə qalır. Eyni görünən adlar hesab kodu ilə ayrılır; müxtəlif kodlu sətirlər birləşdirilmir və onların məbləği itmir.",
+          en: "The category chart does not pretend to be the full ledger. To control visual density it shows the ten account-and-type rows with the largest realized amount, while the complete list remains in the table below. Duplicate display names are separated by account code, so distinct coded rows are never merged or silently omitted.",
+          ru: "График категорий не выдаёт себя за полный реестр. Для читаемости он показывает десять строк счёта и типа с крупнейшей реализованной суммой, а полный список остаётся в таблице ниже. Одинаковые отображаемые названия разделяются кодом счёта, поэтому разные строки не склеиваются и не теряются.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CMP_CHART);
+          await h.hover(CMP_CHART);
+        },
+      },
+      {
+        voice: {
+          az: "Sağdakı yekunlar yalnız reallaşmış əməliyyat xərclərini eyni əsasda müqayisə edir. Aşağıdakı fərq birinci faktiki dövrün məbləğini digər seçilmiş dövrlə tutur və böyük məbləği avtomatik yaxşı və ya pis rəngləmir. Müqayisə mənfəət marjasını xərc məbləğinə bölmür; sıfır müqayisə bazasında faiz isə tire qalır.",
+          en: "The totals card compares realized operating expenses only, on one consistent basis. The delta below compares the first actuals period with the other selected period and does not color a larger amount as automatically good or bad. It never divides an operating-margin variance by expense, and a percentage with a zero comparison base remains a dash.",
+          ru: "Карточка итогов сравнивает только реализованные операционные расходы на одной основе. Разница ниже сопоставляет первый фактический период с другим и не окрашивает большую сумму как автоматически хорошую или плохую. Она не делит отклонение маржи на расходы, а процент при нулевой базе остаётся тире.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CMP_TOTALS);
+          await h.hover(CMP_TOTALS);
+        },
+      },
+      {
+        voice: {
+          az: "Faktiki dövrlər rejimində cədvəl hər dövr üçün yalnız bir reallaşmış məbləğ sütunu göstərir. Büdcə, Faktiki və Fərq sütunlarını süni şəkildə təkrarlamır, çünki faktiki planın öz sətirləri reallaşmış məlumatdır. Materiallıq filtri də gizlənir: plan-fakt fərqi olmayan rejimdə belə filtrin mənası yoxdur və yanlış seçim təsiri yaratmamalıdır.",
+          en: "In actuals-period mode, the table shows one realized amount column for each period. It does not manufacture duplicate Budget, Actual, and Variance columns because an actuals plan's own rows are the realized data. The materiality filter is also hidden: without a plan-versus-actual variance, that control has no valid meaning and should not imply one.",
+          ru: "В режиме фактических периодов таблица показывает по одной колонке реализованной суммы для каждого периода. Она не создаёт дубли Бюджет, Факт и Отклонение, потому что собственные строки фактического плана и есть реализованные данные. Фильтр существенности также скрыт: без отклонения план-факт у него нет корректного смысла.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CMP_TABLE);
+          await h.hover(CMP_TABLE);
+        },
+      },
+      {
+        voice: {
+          az: "Detallı cədvəl seçilmiş faktiki dövrlərdəki hər hesab kodu və sətir növünü saxlayır. Sətir dövrlərdən birində yoxdursa, həmin dövrün xanası tire qalır və sıfır sayılmır. Mənbə sətrində açıq sıfır varsa, o adi sıfır kimi göstərilir və çatışmayan məlumatla qarışdırılmır.",
+          en: "The detailed table retains every account-code and line-type identity across the selected actuals periods. If a row is absent from one period, that period's cell remains a dash and is not counted as zero. When the source row contains an explicit zero, the table displays an ordinary zero, keeping evidenced zero distinct from missing data.",
+          ru: "Детальная таблица сохраняет каждую идентичность кода счёта и типа строки в выбранных фактических периодах. Если строка отсутствует в одном периоде, его ячейка остаётся тире и не считается нулём. Явный ноль в исходной строке показывается обычным нулём и не смешивается с отсутствием данных.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CMP_ABSENCE);
+          await h.hover(CMP_TABLE);
+        },
+      },
+      {
+        voice: {
+          az: "Sonda təhlükəsiz ardıcıllığı yekunlaşdırıram: müqayisə əsasını və təşkilat əhatəsini təsdiqləyin, hər iki dövrün dolu olduğunu yoxlayın, valyuta sübutunu oxuyun, reallaşmış əməliyyat xərci kartlarını və neytral fərqləri yoxlayın, sonra onluq qrafikdən tam hesab-kodu cədvəlinə enin. Tireləri sıfır və ya yaxşı nəticə kimi şərh etməyin.",
+          en: "Finally, use this safe sequence: confirm comparison basis and organization scope, verify that both periods are populated, read the currency evidence, inspect realized operating-expense cards and neutral deltas, then move from the ten-row chart to the complete account-code table. Never interpret a dash as zero or as a favorable result, and never compare an empty plan.",
+          ru: "В завершение используйте безопасный порядок: подтвердите основу сравнения и границы организации, убедитесь, что оба периода заполнены, прочитайте сведения о валюте, проверьте реализованные операционные расходы и нейтральные разницы, затем перейдите от графика десяти строк к полной таблице кодов счёта. Не трактуйте тире как ноль и не сравнивайте пустой план.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(CMP_PROVENANCE);
+          await h.hover(CMP_TABLE);
         },
       },
     ],
