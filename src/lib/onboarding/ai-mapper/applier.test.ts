@@ -934,3 +934,55 @@ describe('applyProposal — numeric/date-serial header (C2.5)', () => {
     expect(res.lines.find((l) => l.code === '601-01')?.plannedAnnual).toBe(1200)
   })
 })
+
+// ─── Phase 11.31 — an unreadable cell is not a zero ─────────────────────
+describe('applyProposal — unreadable amounts', () => {
+  it('SKIPS the row and warns instead of fabricating a 0.00', () => {
+    // `toNumberOrNull(cell) ?? 0` used to turn any cell the parser could not
+    // read into a real 0.00 in the P&L — indistinguishable from a genuine
+    // zero and invisible in the warnings. And the local parser called bare
+    // `Number()`, so ordinary grouped/European cells were exactly that case.
+    const aoa: (string | number | null)[][] = [
+      ['NUM', 'KOD', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      [1, '601-04', 'Revenue', 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+      [2, '701-01', 'COGS', 'n/a', -50, -50, -50, -50, -50, -50, -50, -50, -50, -50, -50],
+    ];
+    const wb = makeWorkbook(aoa);
+    const proposal = buildProposal([
+      { sourceIndex: 0, role: 'skip', confidence: 1, reasoning: '' },
+      { sourceIndex: 1, role: 'code', confidence: 0.95, reasoning: 'KOD' },
+      { sourceIndex: 2, role: 'label', confidence: 0.95, reasoning: 'Label' },
+      ...fullMonthCols(3),
+    ]);
+
+    const result = applyProposal(wb, 'Sheet1', proposal, XLSX);
+    expect('error' in result).toBe(false);
+    if ('error' in result) return;
+    // The unreadable row is not silently written as zeros.
+    expect(result.lines.some((l) => l.code === '701-01')).toBe(false);
+    expect(
+      result.warnings.some((w) => /unreadable amount/.test(w.reason)),
+    ).toBe(true);
+  });
+
+  it('still reads a grouped / European-decimal cell as a number', () => {
+    // The same delegation that surfaced the warning above also FIXES the
+    // shapes that used to trip it: bare Number("1 234,56") is NaN.
+    const aoa: (string | number | null)[][] = [
+      ['NUM', 'KOD', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      [1, '601-04', 'Revenue', '1 234,56', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ];
+    const wb = makeWorkbook(aoa);
+    const proposal = buildProposal([
+      { sourceIndex: 0, role: 'skip', confidence: 1, reasoning: '' },
+      { sourceIndex: 1, role: 'code', confidence: 0.95, reasoning: 'KOD' },
+      { sourceIndex: 2, role: 'label', confidence: 0.95, reasoning: 'Label' },
+      ...fullMonthCols(3),
+    ]);
+
+    const result = applyProposal(wb, 'Sheet1', proposal, XLSX);
+    if ('error' in result) throw new Error('unexpected error result');
+    const revenue = result.lines.find((l) => l.code === '601-04');
+    expect(revenue?.perMonth[0]).toBeCloseTo(1234.56, 2);
+  });
+});

@@ -149,6 +149,15 @@ export async function runKpiDispatcher({
           })
         }
         if (rows.length > 0) await tx.operationalFact.createMany({ data: rows })
+      }, {
+        // Phase 11.32 (2026-07-29) — explicit timeout. Prisma's interactive
+        // default is 5 s; the multi-file orchestrator raised its own to 120 s
+        // after a real workbook measured 5114 ms, and these two dispatchers
+        // were left on the default. On P2028 the surrounding catch pushes an
+        // error entry and the route STILL returns HTTP 200 "applied", so the
+        // operator sees a clean success with the rows missing.
+        maxWait: 15_000,
+        timeout: 120_000,
       })
 
       const entitiesTouched = Array.from(
@@ -346,6 +355,15 @@ export async function runBsDispatcher({
         }
         if (rows.length > 0) await tx.balanceSheetLine.createMany({ data: rows })
         rowsInserted = rows.length
+      }, {
+        // Phase 11.32 (2026-07-29) — explicit timeout. Prisma's interactive
+        // default is 5 s; the multi-file orchestrator raised its own to 120 s
+        // after a real workbook measured 5114 ms, and these two dispatchers
+        // were left on the default. On P2028 the surrounding catch pushes an
+        // error entry and the route STILL returns HTTP 200 "applied", so the
+        // operator sees a clean success with the rows missing.
+        maxWait: 15_000,
+        timeout: 120_000,
       })
 
       bsResults.push({

@@ -35,8 +35,15 @@ interface PreviewResult {
   controlNoData?: boolean
   controlTotals?: ControlTotal[]
 }
+interface DispatcherFailure {
+  sheetName: string
+  error?: string
+}
 interface AppliedResult {
-  status: "applied"
+  /** Phase 11.32 — `applied_partial` when a dispatcher (KPI / BS) failed
+   *  AFTER the budget data had already committed. */
+  status: "applied" | "applied_partial"
+  dispatcherFailures?: DispatcherFailure[]
   year: number
   inserted: number
   deleted: number
@@ -195,6 +202,23 @@ export function MultiSheetImportForm() {
       const url = `/api/onboarding/import/staging/${analysis.stagingId}/apply-multi${dryRun ? "?dryRun=true" : ""}`
       const res = await fetch(url, { method: "POST", body: fd })
       const body = await res.json().catch(() => null)
+      // Phase 11.32 — a 409 carrying `dispatcherFailures` is NOT a failed
+      // apply: the budget data committed and only the KPI / balance-sheet
+      // dispatchers fell over. Throwing here would tell the operator nothing
+      // landed, which is the opposite of the truth — so surface the partial
+      // result AND name what is missing.
+      if (!res.ok && body?.dispatcherFailures) {
+        setApplied(body as AppliedResult)
+        setError(
+          `Budget data was applied, but ${body.dispatcherFailures.length} ` +
+            `dispatcher(s) failed — operational facts and/or balance-sheet rows ` +
+            `are MISSING: ` +
+            (body.dispatcherFailures as DispatcherFailure[])
+              .map((f) => `${f.sheetName}: ${f.error ?? "unknown error"}`)
+              .join("; "),
+        )
+        return
+      }
       if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
       if (dryRun) {
         if (previewEpoch.current !== myEpoch) return

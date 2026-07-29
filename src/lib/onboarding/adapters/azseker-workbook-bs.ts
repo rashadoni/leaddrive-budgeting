@@ -31,6 +31,7 @@
  * file shape; LLM cost adds nothing.
  */
 import type * as XLSX from "xlsx"
+import { numericCellValue } from "../numeric-cell"
 
 export type BsLineType = "asset" | "liability" | "equity"
 export type BsSubType =
@@ -95,14 +96,18 @@ function excelSerialToDate(cell: unknown): Date | null {
   return d
 }
 
+/**
+ * Phase 11.31 (2026-07-29) — delegate to the canonical parser.
+ *
+ * This used to strip commas outright (`replace(/[,\s]/g,"")`), i.e. treat a
+ * comma as a THOUSANDS separator, while `dynamic-bs-adapter.ts` — which this
+ * very handler falls through to when this parser yields zero rows — replaced
+ * the first comma with a dot, i.e. treated it as a DECIMAL separator. `"1,5"`
+ * therefore landed as 15 here and 1.5 there: a 10x error in a balance sheet,
+ * with no warning on either path.
+ */
 function toNumber(cell: unknown): number | null {
-  if (typeof cell === "number" && Number.isFinite(cell)) return cell
-  if (typeof cell === "string") {
-    const t = cell.replace(/[,\s]/g, "")
-    const n = Number(t)
-    if (Number.isFinite(n)) return n
-  }
-  return null
+  return numericCellValue(cell)
 }
 
 interface BsLayout {

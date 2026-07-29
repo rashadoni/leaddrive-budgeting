@@ -15,6 +15,7 @@
  */
 
 import type { PrismaClient, Prisma } from "@prisma/client"
+import { numericCellValue } from "../numeric-cell"
 import type {
   AdapterRunInput,
   AdapterRunResult,
@@ -568,12 +569,11 @@ export async function runDynamicBsAdapter(
 
     for (const [monthIdx, colIdx] of monthCols) {
       const cellVal = row[colIdx]
-      const raw =
-        typeof cellVal === "number"
-          ? cellVal
-          : typeof cellVal === "string" && cellVal.trim() !== ""
-            ? Number(cellVal.replace(",", "."))
-            : null
+      // Phase 11.31 — canonical parser. This used to do
+      // `Number(cellVal.replace(",", "."))`, treating a comma as a DECIMAL
+      // separator, while the named BS parser this is the fallback FOR stripped
+      // commas as thousands grouping. Same cell, two answers, 10x apart.
+      const raw = numericCellValue(cellVal)
 
       if (raw === null || !Number.isFinite(raw) || raw === 0) continue
 
