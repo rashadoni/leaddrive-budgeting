@@ -727,6 +727,28 @@ Owner approved soft-deleting it (2026-07-29). Applied as a single guarded `UPDAT
 
 **Answer to the owner's original question, as of now:** a delete → re-import round trip no longer loses numbers silently, and — the part that was actually missing — the system can now *tell you* whether it did. The verdict on screen is backed by a real post-write database re-read, a dropped file returns 409 instead of `ok: true`, and the evidence is persisted per run. What remains open is listed above; none of it is a silent-corruption path.
 
+### Unshipped audit findings — honest accounting (added 2026-07-29)
+
+**These were dropped when this phase was scoped, not evaluated and rejected.** The audit returned a `mediums` list of 15 items; three became tasks (11.12 / 11.13 / 11.14) and the rest were silently omitted from the roadmap. Recording them properly, with the two that were verified on re-check marked as such. None has been fixed unless stated.
+
+| # | Finding | Status |
+|---|---------|--------|
+| 11.15 | **`Math.abs()` on imported actuals** (`budget-actuals-import.ts:231`) destroys credit notes and reversals — a −500 correction lands as +500 — and an explicit zero is discarded as a parse error. Directly contradicts the "down to the last zero" requirement | ⬜ **verified present** |
+| 11.16 | ~~Client upload cap 20 MB vs server 40 MB vs pipeline 64 MB~~ — the browser rejected files the server accepts, including the client's own 26.6 MB `Reporting 2026.xlsx`, with a message that read like a hard product limit | ✅ **fixed 2026-07-29** — client aligned to the server's 40 MB |
+| 11.17 | **Eight incompatible string→number parsers**; a comma is a decimal separator in five and a thousands separator in the others | ⬜ |
+| 11.18 | **No unit-scale detection** — the only ×1000 is hardcoded in `azseker-consolidated-bs.ts` and its Σ-leaves guard is scale-invariant, so it can never catch a wrong multiplier. This is owner question #1 | ⬜ |
+| 11.19 | **Dynamic CF adapter loses the per-month sign** — the same reversal bug already fixed in `azseker-plf` | ⬜ |
+| 11.20 | **`ChartOfAccount.accountType` is frozen by the first import** and no API can change it; a mistyped account misplaces the number forever even when the amount is right | ⬜ |
+| 11.21 | **Legacy `apply-multi` dispatchers clean only the months present in the NEW file**, so a prior import's other months survive | ⬜ |
+| 11.22 | **Two adapters clean `Counterparty(company, 'customer', year)` in one transaction** — last writer wins | ⬜ |
+| 11.23 | **Reset archives `Counterparty` for ALL periods** while a re-import restores only one year | ⬜ |
+| 11.24 | **Prisma's 5 s interactive-transaction default on every path except the multi-file orchestrator**, which raised it to 120 s after a measured failure | ⬜ |
+| 11.25 | **Compliance / legal / audit parsers use hardcoded row and column offsets** with silent drops | ⬜ |
+| 11.26 | **`land-registry` and `risk-register` handlers hardcode company `AZSEKER-EDEN`** and fail silently otherwise — same class as 11.11, which is now fixed for the financial path | ⬜ |
+| 11.27 | **Approved re-import template returns `anomalies: []`** and replays `accountTypeOverrides` inferred from the ORIGINAL file | ⬜ |
+
+11.15, 11.18 and 11.19 are the ones that can change a number without anyone noticing; 11.26 is the remaining half of the AZSEKER hardcode.
+
 ### Execution order
 
 11.1 first and alone — it is the only irreversible data loss in the audit, and any round-trip rehearsal before it can destroy another company's actuals. Then 11.2 (nothing after it is verifiable without it; fix the reader scope in `import-batch.ts` *before* enabling the check, or every legitimate import fails), then 11.3 (11.2 catches wrong numbers, 11.3 catches missing ones — after both, the screen is worth believing). Then 11.4 (needs a migration), 11.5, 11.6, 11.7, 11.8 (unique indexes only after the data is clean), then 11.9-11.14 in any order.
