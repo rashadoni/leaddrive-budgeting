@@ -57,7 +57,7 @@ import {
   archiveOrgOrphanBudgetLines,
 } from "@/lib/server/archive"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
-import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
+import { getActivePeriodLock, parseLockedPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 const RATE_LIMIT = { name: "data-archive", max: 5, windowMs: 60_000 }
@@ -253,6 +253,32 @@ export async function POST(request: NextRequest) {
       const lock = await getActivePeriodLock(prisma, orgId, String(year))
       if (lock) {
         return lockedResponse(lock, {
+          prisma,
+          orgId,
+          userId: session.userId ?? null,
+          route: "POST /api/admin/data-archive",
+        })
+      }
+    } else {
+      // Phase 11.39 (2026-07-29) — the gate above only ran when a year was
+      // GIVEN, and the UI's year field is optional with "blank = all years".
+      // So the wider operation had the weaker check: an all-years reset
+      // covers every period by definition — including every locked one — and
+      // it sailed through while a single-year reset of the same data was
+      // refused. One blank field turned the lock into decoration.
+      //
+      // An all-years reset is refused while ANY lock is active. Not narrowed
+      // to "locks that match data being deleted": a lock is a statement that
+      // a period is closed, and the operator wiping everything can either
+      // name a year (and pass through the precise gate above) or release the
+      // lock first — both leave an audit trail.
+      const org = await prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { lockedPeriods: true },
+      })
+      const locks = parseLockedPeriods(org?.lockedPeriods)
+      if (locks.length > 0) {
+        return lockedResponse(locks[0], {
           prisma,
           orgId,
           userId: session.userId ?? null,
