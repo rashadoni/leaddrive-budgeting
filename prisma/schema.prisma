@@ -584,6 +584,20 @@ model BudgetActual {
   // pre-Turn-35 actuals stay null and fall through global aggregation).
   companyId      String?
   company        Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  /// Phase 11.1b (2026-07-29) — provenance, and the reset's ownership key.
+  ///
+  /// NULL means "not written by an import": legacy rows, rows typed in through
+  /// /budgeting, auto-sync and snapshot output. An import's clean-slate now
+  /// refuses to touch those — `BudgetActual` has no `deletedAt`, so deleting a
+  /// hand-entered actual is unrecoverable.
+  ///
+  /// For import rows this carries the batch's `sourceDocument`
+  /// (e.g. `budget-actuals-sheet:ACTUALS CPC`), which also makes each SHEET
+  /// own its own rows. Without that, two BUDGET_ACTUALS sheets for the same
+  /// company and year in one workbook run sequentially in one transaction and
+  /// the second sheet's reset deletes the first sheet's inserts — only the
+  /// last one survives.
+  source         String?
   createdAt      DateTime          @default(now())
 
   @@index([organizationId])
@@ -591,6 +605,7 @@ model BudgetActual {
   @@index([costTypeId])
   @@index([departmentId])
   @@index([companyId])
+  @@index([planId, source])
   @@map("budget_actuals")
 }
 
