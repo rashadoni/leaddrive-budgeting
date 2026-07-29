@@ -93,7 +93,7 @@ export function AIImportTabs({ initialYear }: { initialYear?: number }) {
         {mode === "single" ? (
           <AIImportForm initialYear={initialYear} />
         ) : mode === "multi" ? (
-          <MultiFileForm />
+          <MultiFileForm initialYear={initialYear} />
         ) : mode === "universal" ? (
           <UniversalImportForm preferredYear={initialYear} />
         ) : (

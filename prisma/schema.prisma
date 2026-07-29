@@ -81,6 +81,7 @@ model Organization {
   predictiveBreaches    PredictiveBreach[]
   feedImpactForecasts   FeedImpactForecast[]
   tradeSpendLedgerEntries TradeSpendLedger[]
+  importBatchReports ImportBatchReport[]
 }
 
 model User {
@@ -457,6 +458,13 @@ model BudgetPlan {
   budgetAssumptions     BudgetAssumption[]
 
   @@index([organizationId])
+  // Phase 11.4 (2026-07-29) — the UNIQUE backstop lives in
+  // prisma/migrations/20260729120000_budget_plan_unique_per_year_kind as a
+  // PARTIAL index (`WHERE "deletedAt" IS NULL`), which Prisma's schema
+  // language cannot express. Do NOT replace it with a plain @@unique: that
+  // would also constrain soft-deleted plans, which may legitimately repeat a
+  // (year, kind) a live plan now occupies. Application-side resolution is
+  // src/lib/onboarding/resolve-plan.ts — every import path must call it.
   @@map("budget_plans")
 }
 
@@ -2618,6 +2626,55 @@ model TradeImportBatch {
  * creates the table, so the table never exists without org isolation. Unset
  * `app.organization_id` yields NULL, which is not TRUE — deny by default.
  */
+/// Phase 11.13 (2026-07-29) — persisted proof that one import run was clean.
+///
+/// Why this exists: Phase 11.2 made the post-write reconciliation real (the
+/// batch layer re-reads what it wrote, inside the transaction, and the verdict
+/// governs the commit). But the verdict lived only in the HTTP response. A
+/// month later "prove the July import was clean" could only be answered by
+/// re-running the import — which no longer reproduces the same state.
+///
+/// Written INSIDE the group transaction, so a report exists if and only if the
+/// rows it describes were committed. Append-only by convention: a run is a
+/// historical fact and is never edited.
+model ImportBatchReport {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Groups the per-group rows belonging to one HTTP request.
+  runId          String
+  /// File-type group ("main-financial", "kpi-only", …).
+  fileType       String
+  /// Files in this group, for the audit trail.
+  filenames      String[]
+  year           Int
+
+  /// "green" | "yellow" | "red".
+  verdict        String
+  /// "db-readback" | "parse-self-check" — a verdict backed by a real
+  /// post-write query is not the same claim as a parse-time self-compare,
+  /// and the distinction has to survive into the record.
+  evidence       String
+  /// Sheets whose sums were re-queried from the database after the write.
+  sheetsVerified Int          @default(0)
+  /// Sheets carrying nothing reconcilable (settings JSON, zero rows).
+  sheetsUnverified Int        @default(0)
+  rowsInserted   Int          @default(0)
+  committed      Boolean      @default(false)
+
+  /// Full UniversalReconciliationReport — per-sheet drift, missing and extra
+  /// keys. The detail that makes the verdict auditable rather than a colour.
+  report         Json
+
+  actorUserId    String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, year])
+  @@index([organizationId, runId])
+  @@map("import_batch_reports")
+}
+
 model DataRevision {
   id             String       @id @default(cuid())
   organizationId String

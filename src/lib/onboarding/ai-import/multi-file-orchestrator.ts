@@ -94,12 +94,16 @@ import type {
 } from "./adapter-registry"
 import {
   reconcileAllSheets,
+  aggregateSheetReports,
   decideAction,
   type UniversalReconciliationReport,
   type SheetReconciliationInput,
 } from "./universal-reconciler"
 import type { LLMUsage } from "@/lib/llm/types"
-import type { ReconciliationKey } from "../reconciliation"
+import type {
+  ReconciliationKey,
+  ReconciliationReport,
+} from "../reconciliation"
 import { clearDataPendingBanners } from "../clear-data-pending-banner"
 import {
   runRecomputeForCompanies,
@@ -162,6 +166,10 @@ const APPLY_ORDER: Record<FileType, number> = {
   // canonical compliance facts; it only needs companies seeded, so it sits
   // beside the other soft buckets. 2026-07-15.
   "compliance-register": 2.7,
+  // Phase 11.12 — product sales need companies seeded and (for the
+  // revenue-account link) the CoA that main-financial creates, so they
+  // apply after it alongside the other soft buckets.
+  "sales-products": 2.8,
   "capex-plan": 3,
   "land-registry": 4,
   "forward-forecast": 5,
@@ -173,6 +181,13 @@ const APPLY_ORDER: Record<FileType, number> = {
 // ──────────────────────────────────────────────────────────────────────
 
 export interface MultiFileImportInput {
+  /**
+   * Phase 11.13 — groups this request's per-group `ImportBatchReport` rows.
+   * Omit to skip persistence (tests, callers with no request identity).
+   */
+  runId?: string
+  /** Actor recorded on the persisted report. */
+  actorUserId?: string | null
   files: ReadonlyArray<{
     filename: string
     // Phase 8 D3 (2026-05-28) — tightened to XLSX.WorkBook so the
@@ -324,6 +339,33 @@ export interface MultiFileImportResult {
   }
   /** Dry-run benchmark counters. These are informational and never drive writes. */
   parseMetrics: MultiFileParseMetrics
+  /**
+   * Phase 11.3 (2026-07-29) — did everything the user handed over actually
+   * land? `overallVerdict` answers "are the numbers that landed correct";
+   * this answers the different and equally important question "did any of
+   * them fail to land at all".
+   *
+   * They were previously conflated, so a run where one file failed
+   * classification, or a whole group was skipped, still reported
+   * `overallVerdict: "green"` and the route replied `ok: true` /
+   * `applied_complete`. Immediately after a reset that reads as "your
+   * numbers imported fine" when they are simply gone.
+   */
+  completeness: {
+    /** True only when every uploaded file was classified, every sheet was
+     *  routed, and every group committed. */
+    complete: boolean
+    /** Files whose classification failed outright. */
+    filesWithErrors: string[]
+    /** Files whose type could not be determined — never auto-applied. */
+    unclassifiedFiles: string[]
+    /** Groups that did not commit, with the reason. */
+    groupsNotCommitted: Array<{
+      fileType: string
+      filenames: string[]
+      reason: string
+    }>
+  }
   /** Non-fatal issues observed. */
   warnings: string[]
 }
@@ -665,7 +707,12 @@ async function parseFileSheets(
         adapterResult: ar,
         expectedSums,
         skippedReason: null,
-        blockedReason: null,
+        // Phase 11.3 — an adapter that reports `blocked` could not do its
+        // job; its rows will NOT reach the DB. Route it into the pre-write
+        // safety gate instead of letting a zero-row "success" commit green.
+        blockedReason: ar.blocked
+          ? `${filename} / "${cls.sheetName}" (${cls.dataType}): ${ar.blocked.reason}`
+          : null,
         effectivePlanKind,
         effectiveEntityCode,
       })
@@ -690,7 +737,14 @@ async function parseFileSheets(
         adapterResult: null,
         expectedSums: new Map(),
         skippedReason: `Adapter threw: ${msg}`,
-        blockedReason: null,
+        // Phase 11.3 — a parse exception means this sheet's numbers are
+        // going nowhere. Previously it left `blockedReason: null`, so the
+        // record was silently dropped from the group and the REST of the
+        // group committed green: the user was told the import succeeded
+        // while one sheet's data had vanished. It is now a hard block —
+        // the whole import aborts before any transaction opens, which is
+        // the only safe outcome after a reset.
+        blockedReason: `${filename} / "${cls.sheetName}" (${cls.dataType}) failed to parse: ${msg}`,
       })
       warnings.push(
         `${filename}: sheet "${cls.sheetName}" parse error — ${msg}`,
@@ -712,6 +766,48 @@ function aggregateVerdict(
     if (g.verdict === "yellow" && worst === "green") worst = "yellow"
   }
   return worst
+}
+
+/**
+ * Phase 11.3 — did every uploaded file's data actually reach the database?
+ *
+ * Deliberately separate from `aggregateVerdict`: that one answers "are the
+ * numbers that landed correct", this one answers "did any fail to land at
+ * all". A run can be green on the first and incomplete on the second, and
+ * conflating them is what let a failed file exit under `ok: true`.
+ *
+ * In dry-run nothing is meant to commit, so an uncommitted group is the
+ * expected outcome and is not counted as incompleteness.
+ */
+function buildCompleteness(
+  perFile: ReadonlyArray<PerFileResult>,
+  perGroup: ReadonlyArray<PerGroupResult>,
+  dryRun: boolean,
+): MultiFileImportResult["completeness"] {
+  const filesWithErrors = perFile
+    .filter((f) => f.error !== null)
+    .map((f) => f.filename)
+  const unclassifiedFiles = perGroup
+    .filter((g) => g.fileType === "unknown")
+    .flatMap((g) => g.filenames)
+  const groupsNotCommitted = dryRun
+    ? []
+    : perGroup
+        .filter((g) => !g.committed && g.fileType !== "unknown")
+        .map((g) => ({
+          fileType: g.fileType,
+          filenames: g.filenames,
+          reason: g.skipReason ?? `verdict=${g.verdict}`,
+        }))
+  return {
+    complete:
+      filesWithErrors.length === 0 &&
+      unclassifiedFiles.length === 0 &&
+      groupsNotCommitted.length === 0,
+    filesWithErrors,
+    unclassifiedFiles,
+    groupsNotCommitted,
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -883,6 +979,7 @@ export async function runMultiFileImport(
           opsFacts: 0,
           budgetActuals: 0,
           salesForecast: 0,
+          salesProducts: 0,
           complianceRegister: 0,
           unknown: 0,
         },
@@ -1199,6 +1296,23 @@ export async function runMultiFileImport(
       durationMs: Date.now() - t0,
       recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
       parseMetrics,
+      // Phase 11.3 — a pre-write abort writes NOTHING, so the run is
+      // incomplete by definition; buildCompleteness() would otherwise see an
+      // empty perGroup and call it complete.
+      completeness: {
+        complete: false,
+        filesWithErrors: perFile
+          .filter((f) => f.error !== null)
+          .map((f) => f.filename),
+        unclassifiedFiles: [],
+        groupsNotCommitted: [
+          {
+            fileType: "*",
+            filenames: input.files.map((f) => f.filename),
+            reason: `Routing safety gate — ${reasons.length} issue(s); aborted before any DB write`,
+          },
+        ],
+      },
       warnings: [
         ...warnings,
         ...reasons,
@@ -1219,6 +1333,20 @@ export async function runMultiFileImport(
       durationMs: Date.now() - t0,
       recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
       parseMetrics,
+      completeness: {
+        complete: false,
+        filesWithErrors: perFile
+          .filter((f) => f.error !== null)
+          .map((f) => f.filename),
+        unclassifiedFiles: [],
+        groupsNotCommitted: [
+          {
+            fileType: "*",
+            filenames: input.files.map((f) => f.filename),
+            reason: `Cross-file conflict gate — ${conflicts.length} cell(s) disagree across files; aborted before any DB write`,
+          },
+        ],
+      },
       warnings: [
         ...warnings,
         `Cross-file conflict gate — ${conflicts.length} cell(s) disagree across files; aborted before any DB write`,
@@ -1289,17 +1417,25 @@ export async function runMultiFileImport(
       continue
     }
 
-    // Pre-write reconciliation (parse-only — expected vs expected).
-    // The same trick the single-file orchestrator uses to flag adapter
-    // sums that are internally inconsistent.
-    const dryInputs: SheetReconciliationInput[] = groupRecords.map((r) => ({
+    // Pre-write SELF-CHECK (parse-only — expected vs expected).
+    //
+    // Phase 11.2 (2026-07-29) — naming this honestly, because it was being
+    // read as a reconciliation result. Comparing `expectedSums` with itself
+    // can only ever return green: it proves the adapter's own sums are
+    // internally consistent and NOTHING about what reaches the database.
+    // The real proof is the post-write DB re-read assembled after the commit
+    // loop below. Do not present this value to a user as "reconciliation".
+    const selfCheckInputs: SheetReconciliationInput[] = groupRecords.map((r) => ({
       sheetName: `${r.filename}::${r.classification.sheetName}`,
       dataType: r.classification.dataType,
       entityCode: writeEntity(r),
       expectedSums: r.expectedSums,
       actualSums: r.expectedSums,
     }))
-    const dryReconciliation = reconcileAllSheets(dryInputs)
+    const dryReconciliation: UniversalReconciliationReport = {
+      ...reconcileAllSheets(selfCheckInputs),
+      evidence: "parse-self-check",
+    }
 
     if (
       dryReconciliation.overallVerdict === "red" ||
@@ -1342,6 +1478,15 @@ export async function runMultiFileImport(
     let groupCommitError: string | null = null
     /** Company codes the adapters resolved themselves (cross-entity registers). */
     const adapterTouchedCodes = new Set<string>()
+    /**
+     * Phase 11.2 — per-record post-write reconciliation, straight from the
+     * batch layer's in-transaction DB re-read. `null` = adapter produced no
+     * reconcilable sums.
+     */
+    const batchReports = new Map<
+      (typeof groupRecords)[number],
+      ReconciliationReport | null
+    >()
     try {
       await deps.prisma.$transaction(async (tx) => {
         for (const r of groupRecords) {
@@ -1351,6 +1496,11 @@ export async function runMultiFileImport(
           for (const code of applied.touchedCompanyCodes ?? []) {
             adapterTouchedCodes.add(code)
           }
+          // Phase 11.2 — capture the batch layer's post-write DB re-read.
+          // `undefined` means this adapter writes nothing reconcilable (a
+          // JSON blob on Company.settings) OR parsed zero rows; both are
+          // recorded as `unverified` below rather than counted as green.
+          batchReports.set(r, applied.reconciliation ?? null)
         }
 
         // Companies that just received data are no longer "awaiting data" —
@@ -1363,9 +1513,21 @@ export async function runMultiFileImport(
             .filter((c): c is string => !!c),
         )
 
-        // Post-write reconciliation (inside the tx so re-reads see
-        // uncommitted writes). Use the supplied actualSums reader if
-        // any; else fall back to expected=actual (adapter-validated).
+        // ── Post-write reconciliation (still inside the tx, so every
+        // re-read observes this group's uncommitted writes) ──────────
+        //
+        // Phase 11.2 (2026-07-29). Until now this whole block was gated on
+        // `deps.readActualSums`, which NO production route ever passed — so
+        // `postReconciliation` stayed equal to the parse-time self-check and
+        // the abort branch below was dead code. Missing rows, doubled rows
+        // and rows the previous import failed to archive were all invisible,
+        // under a green tick.
+        //
+        // The evidence now comes from the batch layer itself: every batch
+        // function re-queries the rows it just wrote and reconciles them
+        // against the parsed expectations. `deps.readActualSums`, when
+        // supplied, still overrides — it is the seam tests use to force a
+        // specific post-write state.
         if (deps.readActualSums) {
           const postInputs: SheetReconciliationInput[] = []
           for (const r of groupRecords) {
@@ -1384,17 +1546,63 @@ export async function runMultiFileImport(
               actualSums: actual,
             })
           }
-          postReconciliation = reconcileAllSheets(postInputs)
-          const action = decideAction(postReconciliation, {
-            allowYellow: input.allowYellow,
-          })
-          if (action === "abort") {
-            // Throwing inside the tx callback rolls back the entire
-            // group — finance never sees a half-state.
-            throw new Error(
-              `Post-write reconciliation rejected (verdict=${postReconciliation.overallVerdict})`,
-            )
+          postReconciliation = {
+            ...reconcileAllSheets(postInputs),
+            evidence: "db-readback",
           }
+        } else {
+          postReconciliation = aggregateSheetReports(
+            groupRecords
+              .filter((r) => r.adapterResult)
+              .map((r) => ({
+                sheetName: `${r.filename}::${r.classification.sheetName}`,
+                dataType: r.classification.dataType,
+                entityCode: writeEntity(r),
+                report: batchReports.get(r) ?? null,
+                unverifiedReason:
+                  "adapter wrote no reconcilable sums (settings JSON or zero parsed rows)",
+              })),
+          )
+        }
+
+        // Phase 11.13 — persist the verdict INSIDE the transaction, so a
+        // report exists if and only if the rows it describes commit. Written
+        // before the abort check on purpose: an aborted group rolls this row
+        // back with everything else, which is the correct outcome — there is
+        // no committed data for it to attest to.
+        if (input.runId) {
+          await tx.importBatchReport.create({
+            data: {
+              organizationId: input.organizationId,
+              runId: input.runId,
+              fileType,
+              filenames,
+              year: input.year,
+              verdict: postReconciliation.overallVerdict,
+              evidence: postReconciliation.evidence ?? "parse-self-check",
+              sheetsVerified: postReconciliation.perSheet.length,
+              sheetsUnverified: postReconciliation.unverified?.length ?? 0,
+              rowsInserted: totalRowsInserted,
+              committed: true,
+              report: postReconciliation as unknown as object,
+              actorUserId: input.actorUserId ?? null,
+            },
+          })
+        }
+
+        const action = decideAction(postReconciliation, {
+          allowYellow: input.allowYellow,
+        })
+        if (action === "abort") {
+          // Throwing inside the tx callback rolls back the entire
+          // group — finance never sees a half-state.
+          throw new Error(
+            `Post-write reconciliation rejected (verdict=${postReconciliation.overallVerdict}` +
+              `, drifted sheets=${postReconciliation.perSheet
+                .filter((s) => s.verdict !== "green")
+                .map((s) => s.sheetName)
+                .join(", ")})`,
+          )
         }
         // Interactive-tx timeout bumped from Prisma's 5s default: the main-
         // financial group writes PLF+BS+CF for EVERY entity PLUS in-tx
@@ -1412,6 +1620,23 @@ export async function runMultiFileImport(
         totalRowsInserted,
         skipReason: null,
       })
+
+      // Phase 11.2 — a green verdict over ZERO verified sheets is not proof,
+      // and it is the shape most likely to be misread as one. Say so out
+      // loud rather than letting the summary imply everything was checked.
+      const unverifiedCount = postReconciliation.unverified?.length ?? 0
+      if (unverifiedCount > 0) {
+        const names = (postReconciliation.unverified ?? [])
+          .map((u) => u.sheetName)
+          .join(", ")
+        warnings.push(
+          postReconciliation.perSheet.length === 0
+            ? `Group "${fileType}" committed with NO post-write verification — ` +
+              `all ${unverifiedCount} sheet(s) write data that carries no reconcilable sums (${names})`
+            : `Group "${fileType}": ${postReconciliation.perSheet.length} sheet(s) verified against the database, ` +
+              `${unverifiedCount} not verifiable (${names})`,
+        )
+      }
 
       // Track touched companies for the single recompute pass.
       for (const r of groupRecords) {
@@ -1475,6 +1700,13 @@ export async function runMultiFileImport(
             recomputeLog.error(label, {
               err: err instanceof Error ? err.message : String(err),
             }),
+          start: (msg) => recomputeLog.info(msg),
+        },
+        {
+          // Phase 11.7 — an import writes MONTHLY rows, so refreshing only
+          // the year period left every month/quarter indicator cell showing
+          // its pre-import value and pre-import status colour indefinitely.
+          granularity: "year+quarter+month",
         },
       )
       recompute = {
@@ -1482,6 +1714,15 @@ export async function runMultiFileImport(
         unknown: r.unknown,
         failed: r.failed,
         targets: r.targets,
+      }
+      // No silent caps: if the granular fan-out was too large it fell back to
+      // year-only, and the user must know month/quarter cells are stale.
+      if (r.granularityDowngraded) {
+        warnings.push(
+          "Recompute ran over YEAR periods only — the month/quarter fan-out " +
+            "exceeded the safety ceiling. Month and quarter indicator cells " +
+            "still hold their pre-import values; run the offline recompute worker.",
+        )
       }
     } catch (err) {
       // Recompute failure is observable but non-fatal — the writes
@@ -1500,6 +1741,7 @@ export async function runMultiFileImport(
     durationMs: Date.now() - t0,
     recompute,
     parseMetrics,
+    completeness: buildCompleteness(perFile, perGroup, input.dryRun === true),
     warnings,
   }
 }

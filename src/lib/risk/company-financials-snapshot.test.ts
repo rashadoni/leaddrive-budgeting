@@ -87,7 +87,12 @@ describe("getCompanyFinancialsSnapshot", () => {
     await getCompanyFinancialsSnapshot(p, "c1", 2026, "org_1")
     expect(captured.where.organizationId).toBe("org_1")
     expect(captured.where.companyId).toBe("c1")
-    expect(captured.where.plan).toEqual({ year: 2026, kind: "actual" })
+    // Phase 11.4 — soft-deleted plans must not feed the snapshot.
+    expect(captured.where.plan).toEqual({
+      year: 2026,
+      kind: "actual",
+      deletedAt: null,
+    })
     expect(captured.where.deletedAt).toBeNull()
   })
 

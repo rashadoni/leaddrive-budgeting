@@ -33,6 +33,10 @@
  * org budget; 429 if exceeded.
  */
 import { NextRequest, NextResponse } from "next/server"
+import { currentBakuYearNumber } from "@/lib/risk/periods"
+import { acquireImportLock } from "@/lib/onboarding/import-lock"
+import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import * as XLSX from "xlsx"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
@@ -118,6 +122,14 @@ type SafetyReceiptStatus =
   | "blocked"
   | "preview_ready"
   | "applied_complete"
+  /**
+   * Phase 11.3 (2026-07-29) — writes committed, but at least one uploaded
+   * file never reached the database (classification failed, file type
+   * unknown, or a group did not commit). Previously these runs reported
+   * `applied_complete` with `ok: true`: right after a reset that reads as
+   * "your numbers imported fine" when they are simply missing.
+   */
+  | "applied_incomplete"
   | "applied_recompute_pending"
   | "applied_recompute_failed"
   | "applied_no_writes"
@@ -149,12 +161,30 @@ type SafetyReceipt = {
   reconciliation: {
     verdict: MultiFileImportResult["overallVerdict"]
     conflicts: number
+    /**
+     * Phase 11.2 (2026-07-29) — what the verdict above is actually made of.
+     * A verdict with `sheetsVerified: 0` is NOT proof of anything, and the
+     * receipt has to say so: before this phase every verdict was a
+     * parse-time self-compare (expected vs expected, green by construction)
+     * that was being read as a database reconciliation.
+     */
+    evidence: {
+      /** Sheets whose sums were re-queried from the DB after the write. */
+      sheetsVerified: number
+      /** Sheets that carry no reconcilable sums (settings JSON, zero rows). */
+      sheetsUnverified: number
+      unverifiedSheetNames: string[]
+      /** True only when every committed group produced a DB re-read. */
+      allCommittedGroupsVerified: boolean
+    }
     groups: Array<{
       fileType: string
       verdict: string
       committed: boolean
       rows: number
       skipReason: string | null
+      /** "db-readback" | "parse-self-check" | null (group never ran). */
+      evidence: string | null
     }>
   }
   recompute: {
@@ -259,6 +289,7 @@ function buildSafetyReceipt(
         "derived_summary",
     }))
 
+  const committedGroups = result.perGroup.filter((g) => g.committed)
   const recomputeStatus: SafetyReceipt["recompute"]["status"] = !opts.shouldApply
     ? "not_run"
     : result.recompute.failed > 0
@@ -276,11 +307,13 @@ function buildSafetyReceipt(
         ? "preview_ready"
         : committedRows === 0
           ? "applied_no_writes"
-          : recomputeStatus === "failed"
-            ? "applied_recompute_failed"
-            : recomputeStatus === "pending" || recomputeStatus === "not_run"
-              ? "applied_recompute_pending"
-              : "applied_complete"
+          : !result.completeness.complete
+            ? "applied_incomplete"
+            : recomputeStatus === "failed"
+              ? "applied_recompute_failed"
+              : recomputeStatus === "pending" || recomputeStatus === "not_run"
+                ? "applied_recompute_pending"
+                : "applied_complete"
 
   return {
     mode: opts.shouldApply ? "applied" : "preview",
@@ -302,12 +335,33 @@ function buildSafetyReceipt(
     reconciliation: {
       verdict: result.overallVerdict,
       conflicts: result.conflicts.length,
+      evidence: {
+        sheetsVerified: committedGroups.reduce(
+          (n, g) => n + (g.reconciliation?.perSheet.length ?? 0),
+          0,
+        ),
+        sheetsUnverified: committedGroups.reduce(
+          (n, g) => n + (g.reconciliation?.unverified?.length ?? 0),
+          0,
+        ),
+        unverifiedSheetNames: committedGroups.flatMap((g) =>
+          (g.reconciliation?.unverified ?? []).map((u) => u.sheetName),
+        ),
+        allCommittedGroupsVerified:
+          committedGroups.length > 0 &&
+          committedGroups.every(
+            (g) =>
+              g.reconciliation?.evidence === "db-readback" &&
+              (g.reconciliation?.perSheet.length ?? 0) > 0,
+          ),
+      },
       groups: result.perGroup.map((group) => ({
         fileType: group.fileType,
         verdict: group.verdict,
         committed: group.committed,
         rows: group.totalRowsInserted,
         skipReason: group.skipReason,
+        evidence: group.reconciliation?.evidence ?? null,
       })),
     },
     recompute: {
@@ -393,8 +447,13 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const yearStr = (form.get("year") as string | null) ?? String(new Date().getFullYear())
-  const year = Number(yearStr) || new Date().getFullYear()
+  // Phase 11.5 (2026-07-29) — default from the ORG's timezone, not the
+  // server process clock. `new Date().getFullYear()` on a UTC host rolls the
+  // default over ~4 hours before Baku does, so an import run in the first
+  // hours of 1 January silently targeted the wrong year.
+  const yearStr =
+    (form.get("year") as string | null) ?? String(currentBakuYearNumber())
+  const year = Number(yearStr) || currentBakuYearNumber()
   if (!Number.isInteger(year) || year < 2020 || year > 2050) {
     return NextResponse.json(
       { ok: false, error: "Field 'year' must be an integer 2020-2050" },
@@ -945,6 +1004,52 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // ── Period-lock gate (Phase 11.13) ──────────────────────────────
+  // A signed, closed period must not be silently rewritten by an import.
+  // Every interactive mutation route already gates on this
+  // (assumptions / sales-budget / sales-forecast / cash-flow); the bulk
+  // import path — by far the largest single mutation in the product — did
+  // not, so a reset + re-import could overwrite a locked year while the
+  // audit trail recorded only a routine import.
+  if (shouldApply) {
+    const lock = await getActivePeriodLock(prisma, orgId, String(year))
+    if (lock) {
+      return lockedResponse(lock, {
+        prisma,
+        orgId,
+        userId: session.userId ?? null,
+        route: "POST /api/import/ai-auto-multi",
+      })
+    }
+  }
+
+  // ── Mutual exclusion (Phase 11.8) ───────────────────────────────
+  // Only for APPLY. A preview writes nothing, so concurrent previews are
+  // harmless and must not be refused. Every import batch is clean-slate
+  // (archive-in-scope, then insert), so two concurrent applies of the same
+  // scope interleave as: A archives N and inserts N, B archives 0 (A already
+  // did) and inserts N — a full duplicate set. `assertNoCollateralDeletion`
+  // cannot see it (it fires on over-deletion; B under-deleted) and no target
+  // table has a unique constraint that would reject the second copy.
+  const importLock = shouldApply
+    ? await acquireImportLock(orgId, year)
+    : null
+  if (importLock && !importLock.acquired) {
+    await importLock.release()
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Another import is already running for this organization and year. " +
+          "Wait for it to finish before starting a second one — running both " +
+          "would duplicate every row they share.",
+        code: "IMPORT_IN_PROGRESS",
+        scope: importLock.scope,
+      },
+      { status: 409 },
+    )
+  }
+
   // ── Run the orchestrator ────────────────────────────────────────
   let result
   try {
@@ -964,6 +1069,12 @@ export async function POST(request: NextRequest) {
         // Apply only when caller asked explicitly. Default: preview-only
         // (dryRun=true) — matches the 2-step UX shipped in Tier 4.
         dryRun: !shouldApply,
+        // Phase 11.13 — identity for the persisted per-group evidence rows.
+        // Only on apply: a preview commits nothing, so there is nothing to
+        // attest to.
+        ...(shouldApply
+          ? { runId: `ai-multi:${orgId}:${year}:${t0}`, actorUserId: session.userId ?? null }
+          : {}),
       },
       {
         prisma,
@@ -977,6 +1088,7 @@ export async function POST(request: NextRequest) {
     // Broad catch (AI classify + DB apply). Never return the raw provider
     // message (can carry billing text); log it server-side and surface a
     // generic admin message + a stable code (AI class when recognized).
+    await importLock?.release()
     const raw = err instanceof Error ? err.message : String(err)
     log.error("multi-file import failed", { err: raw })
     return NextResponse.json(
@@ -988,6 +1100,11 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     )
   }
+
+  // Phase 11.8 — every DB write is done by the time the orchestrator returns
+  // (its Phase F recompute included), so the lock is released here rather
+  // than being held through response assembly.
+  await importLock?.release()
 
   // ── Record token spend (non-fatal) ──────────────────────────────
   if (result.llmUsage.inputTokens + result.llmUsage.outputTokens > 0) {
@@ -1220,10 +1337,18 @@ export async function POST(request: NextRequest) {
             companyId: anchor?.id ?? "unknown",
             year,
             inserted: totalInserted,
-            deleted: 0,
             warnings: result.warnings.length,
-            parentRollupsDropped: 0,
-            parentRollupsUnallocated: 0,
+            // Phase 11.13 — the audit row used to carry hardcoded
+            // `deleted: 0` / `parentRollupsDropped: 0` /
+            // `parentRollupsUnallocated: 0`, which read as measurements and
+            // were not. Dropped rather than faked; the real per-group
+            // evidence now lives in `import_batch_reports`, keyed by runId.
+            evidenceRunId: `ai-multi:${orgId}:${year}:${t0}`,
+            reconciliationEvidence: safetyReceipt.reconciliation.evidence
+              .allCommittedGroupsVerified
+              ? "db-readback"
+              : "partial-or-unverified",
+            complete: result.completeness.complete,
             recompute: result.recompute,
             multiSheet: true,
             sheetCount: result.perFile.reduce(
@@ -1246,8 +1371,13 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Normal path ─────────────────────────────────────────────────
+  // Phase 11.3 — `ok` is the client's headline signal, so it must not stay
+  // true when part of the upload never landed. An apply that dropped a file
+  // (classification failure, unknown type, uncommitted group) answers 409
+  // with the specifics in `result.completeness`, not 200/ok:true.
+  const applyIncomplete = shouldApply && !result.completeness.complete
   return NextResponse.json({
-    ok: true,
+    ok: !applyIncomplete,
     mode: shouldApply ? ("applied" as const) : ("preview" as const),
     ...result,
     sheetImpactsByFilename: Object.fromEntries(sheetImpactsByFilename),
@@ -1259,5 +1389,5 @@ export async function POST(request: NextRequest) {
     buColumnSplits,
     productSalesSheets,
     durationMs: Date.now() - t0,
-  })
+  }, applyIncomplete ? { status: 409 } : undefined)
 }

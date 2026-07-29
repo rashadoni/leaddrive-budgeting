@@ -2,12 +2,14 @@
 /**
  * Phase 7.M Tier 4 (2026-05-19) — AI Auto Import client form.
  *
- * Two-step flow:
- *   Step 1: Upload xlsx → POST /api/import/ai-auto (preview)
- *           → render classification table + entity sheet map
- *   Step 2: User clicks "Подтвердить и импортировать" →
- *           POST /api/admin/import-workbook (battle-tested import)
- *           → render verdict per phase
+ * CLASSIFY-ONLY screen. Upload xlsx → POST /api/import/ai-auto → render the
+ * classification table + entity sheet map. There is no write step here.
+ *
+ * Phase 11.14 (2026-07-29): the original design chained a confirm step to
+ * `POST /api/admin/import-workbook`, a route that was never built. The write
+ * button is gone and the banner points at the tabs that do commit
+ * (`ai-auto-multi` / staging apply); this header used to still describe the
+ * dead flow.
  */
 import { useState, useRef, type DragEvent, type ChangeEvent } from "react"
 import { useTranslations } from "next-intl"

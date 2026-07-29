@@ -201,6 +201,25 @@ export async function runBalanceSheetBatch(
       const incomingCompanyIds = [
         ...new Set(plan.rows.map((r) => r.companyId).filter((x): x is string => x != null)),
       ]
+      // Phase 11.11 (2026-07-29) — the "fall back to plan-only scope" branch
+      // above is a CROSS-COMPANY WIPE, not a fallback. With companyId null on
+      // every row, `companyScope` degrades to `{}` and the archive below
+      // matches every company's balances on this plan for this year; the
+      // collateral guard cannot object because `footprintLiveCount` is
+      // computed from the same degenerate scope, so it compares the wipe
+      // against itself.
+      //
+      // Callers now guard upstream (BS handler blocks on an unresolved
+      // entity), so this is the last line of defence: refuse rather than
+      // silently widen. Rows legitimately carrying no company have no
+      // business clean-slating rows that do.
+      if (plan.rows.length > 0 && incomingCompanyIds.length === 0) {
+        throw new Error(
+          "[bs-import-batch] refusing to reset: none of the incoming rows " +
+            "carries a companyId, so the archive scope would widen to EVERY " +
+            "company on this plan and year. Resolve the entity before importing.",
+        )
+      }
       const companyScope =
         incomingCompanyIds.length > 0 ? { companyId: { in: incomingCompanyIds } } : {}
       // 2026-06-16 derive-delete-from-write — the purge/archive scope is now

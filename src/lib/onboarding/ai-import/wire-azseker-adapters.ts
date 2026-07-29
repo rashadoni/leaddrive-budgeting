@@ -20,7 +20,8 @@ import type { SheetClassification } from "./sheet-classifier"
 
 /**
  * Group classifications by entity + sheet family — the shape needed by
- * the existing Phase 7.M ENTITIES array in import-workbook/route.ts.
+ * the Phase 7.M ENTITIES array shape (the import-workbook route it was
+ * originally written against was never built — see ai-auto/route.ts).
  *
  * Output:
  *   { code, plSheet, bsSheet, cfSheet } per entity for which the AI

@@ -3322,6 +3322,8 @@
       "reviewBadge": "baxış"
     },
     "multi": {
+      "yearLabel": "İdxal ili",
+      "yearHint": "Sıfırlamada təmizlədiyiniz illə eyni olmalıdır",
       "dropZone": {
         "empty": "1-{max} xlsx faylını buraya çəkin və ya seçmək üçün klikləyin",
         "limits": "Maksimum {max} fayl, cəmi {mb} MB"
@@ -3535,6 +3537,11 @@
       "result": {
         "title": "Tətbiq nəticəsi",
         "fileCount": "{n} fayl",
+        "warningsTitle": "İdxalda {n} xəbərdarlıq",
+        "incompleteTitle": "Yüklənmənin bir hissəsi bazaya DÜŞMƏDİ",
+        "incompleteFileError": "{f} — təsnif edilə bilmədi; bu fayldan heç nə idxal olunmadı",
+        "incompleteUnclassified": "{f} — fayl tipi naməlum; ötürüldü, əl ilə yoxlama tələb olunur",
+        "incompleteGroup": "\"{g}\" qrupu commit olunmadı — {reason}",
         "rowsWritten": "{n} sətir yazıldı",
         "skipped": "atlandı",
         "recomputeLine": "Recompute: {ok}/{total} uğurlu",

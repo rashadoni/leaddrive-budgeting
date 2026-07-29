@@ -69,6 +69,13 @@ export interface RunRecomputeResult {
   failed: number;
   targets: number;
   /**
+   * Phase 11.7 — true when a `granularity: 'year+quarter+month'` request was
+   * downgraded to year-only because it exceeded `maxGranularUnits`. Month and
+   * quarter cells were therefore NOT refreshed. Surfaced so callers report it
+   * rather than implying a full refresh happened.
+   */
+  granularityDowngraded?: boolean;
+  /**
    * Phase 7.E C6 v3.1 — alert-event persistence outcome (post-recompute).
    * Phase 7.G Turn IX (v3.4) — required not optional. Short-circuit paths
    * (empty-affected / no-operational / no-targets) return zero-shape
@@ -113,6 +120,51 @@ export interface RunRecomputeResult {
  */
 export interface RunRecomputeOptions {
   codeFilter?: readonly string[];
+  /**
+   * Phase 11.7 (2026-07-29) — recompute month and quarter periods as well as
+   * the year.
+   *
+   * This trigger has always fanned out over YEARS only (`period = String(year)`).
+   * `IndicatorValue.period` is `"2026" | "2026-Q2" | "2026-04"`, so any
+   * month- or quarter-granular row simply never got refreshed by an import:
+   * it kept its previous value AND its previous status colour indefinitely.
+   *
+   * Default stays `"year"` — the cost is real (17 periods instead of 1, on
+   * top of the pair fan-out), and the year period is what the HeatMap reads.
+   * Callers that know they wrote monthly data opt in.
+   */
+  granularity?: 'year' | 'year+quarter+month';
+  /**
+   * Hard ceiling on `pairs × periods` for a granular run. Beyond it the run
+   * falls back to year-only and SAYS SO through `logger.start` and the
+   * returned `granularityDowngraded` flag — a silently truncated recompute
+   * reads as "everything was refreshed" when it was not.
+   */
+  maxGranularUnits?: number;
+}
+
+/** Default ceiling for `granularity: 'year+quarter+month'`. Chosen so a
+ *  4-company × ~50-indicator pilot (200 pairs × 17 = 3400) runs inline while
+ *  a 60-company org (2700 pairs × 17 ≈ 46k) is refused rather than hanging. */
+export const DEFAULT_MAX_GRANULAR_UNITS = 6_000;
+
+/**
+ * Expand a year into every `IndicatorValue.period` shape it owns:
+ * the year itself, its 4 quarters, and its 12 months — in that order, so the
+ * year period (the one the HeatMap reads) is refreshed first and a run that
+ * is interrupted still leaves the headline cells correct.
+ */
+export function expandYearPeriods(
+  year: number,
+  granularity: RunRecomputeOptions['granularity'] = 'year',
+): string[] {
+  const y = String(year);
+  if (granularity !== 'year+quarter+month') return [y];
+  const quarters = [1, 2, 3, 4].map((q) => `${y}-Q${q}`);
+  const months = Array.from({ length: 12 }, (_, i) =>
+    `${y}-${String(i + 1).padStart(2, '0')}`,
+  );
+  return [y, ...quarters, ...months];
 }
 
 const EMPTY_RESULT: RunRecomputeResult = {
@@ -369,6 +421,24 @@ export async function runRecomputeForCompanies(
       `year${years.length === 1 ? '' : 's'} (${years.join(', ')})${parentSummary} …`,
   );
 
+  // Phase 11.7 — resolve the period granularity, refusing (loudly) rather
+  // than silently truncating when a granular run would be too large.
+  const requestedGranularity = options.granularity ?? 'year';
+  const periodsPerYear = expandYearPeriods(2000, requestedGranularity).length;
+  const maxUnits = options.maxGranularUnits ?? DEFAULT_MAX_GRANULAR_UNITS;
+  const granularUnits = totalPairs * periodsPerYear;
+  const granularityDowngraded =
+    requestedGranularity !== 'year' && granularUnits > maxUnits;
+  const effectiveGranularity: RunRecomputeOptions['granularity'] =
+    granularityDowngraded ? 'year' : requestedGranularity;
+  if (granularityDowngraded) {
+    logger.start?.(
+      `Recompute: granular (year+quarter+month) run would be ${granularUnits} units ` +
+        `(> ${maxUnits}); falling back to YEAR periods only. Month and quarter ` +
+        `indicator cells will NOT be refreshed by this run — use the offline worker.`,
+    );
+  }
+
   const ds = createPrismaDataSource(prisma);
   let ok = 0;
   let unknown = 0;
@@ -378,7 +448,7 @@ export async function runRecomputeForCompanies(
     const yearOperational = operational.filter((c) =>
       yearCompanyIds.has(c.id),
     );
-    const period = String(year);
+    const periods = expandYearPeriods(year, effectiveGranularity);
     const operationalTargets = matchApplicablePairs(
       yearOperational,
       operationalDefs,
@@ -388,6 +458,7 @@ export async function runRecomputeForCompanies(
     // assignment-before-taxonomy contract. Rollup definitions are universal
     // by seed contract, but an explicit disabled CompanyIndicator still wins.
     const targets = [...operationalTargets, ...applicableParentTargets];
+    for (const period of periods) {
     for (const { company, definition } of targets) {
       const defLike: IndicatorDefinitionLike = {
         id: definition.id,
@@ -431,6 +502,7 @@ export async function runRecomputeForCompanies(
           err,
         );
       }
+    }
     }
   }
   logger.done?.(`Recompute done: ok=${ok} unknown=${unknown} failed=${failed}`);
@@ -526,7 +598,14 @@ export async function runRecomputeForCompanies(
     // drift, so we don't pollute the per-period error stream.
   }
 
-  return { ok, unknown, failed, targets: totalPairs, alertEvents };
+  return {
+    ok,
+    unknown,
+    failed,
+    targets: totalPairs,
+    granularityDowngraded,
+    alertEvents,
+  };
 }
 
 /**

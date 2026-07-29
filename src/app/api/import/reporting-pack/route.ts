@@ -134,9 +134,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // entityCode → companyId for the post-apply recompute (AZSEKER tree).
+  // entityCode → companyId for the post-apply recompute.
+  // Phase 11.11 — was filtered to `startsWith: "AZSEKER"`, so any other
+  // entity in the org silently got no recompute after its rows landed.
   const companies = await prisma.company.findMany({
-    where: { organizationId: orgId, code: { startsWith: "AZSEKER" } },
+    where: { organizationId: orgId, status: { not: "archived" } },
     select: { id: true, code: true },
   })
   const codeToId = new Map(companies.map((c) => [c.code, c.id]))

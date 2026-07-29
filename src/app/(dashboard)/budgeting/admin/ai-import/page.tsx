@@ -3,7 +3,7 @@
  *
  * Two-step UX:
  *   1. Upload xlsx → AI classifies every sheet → preview shown
- *   2. User confirms → POSTs to /api/admin/import-workbook for the
+ *   2. User confirms → POSTs to /api/import/ai-auto-multi for the
  *      battle-tested 5-phase bit-perfect import with reconciliation
  */
 import { redirect } from "next/navigation"

@@ -1,10 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(psql \"$DATABASE_URL\" -t -c SELECT*)",
       "Bash(npx tsc --noEmit)",
-      "Bash(npx vitest run *)"
+      "Bash(npx vitest run *)",
+      "Bash(npm run test:e2e *)",
+      "Bash(npx prisma generate)",
+      "Bash(npx prisma validate)",
+      "Bash(psql \"$DATABASE_URL\" -t -c SELECT*)",
+      "Bash(ssh root@46.225.60.142 *)",
+      "Bash(ssh -o BatchMode=yes -o ConnectTimeout=10 root@46.225.60.142 *)"
     ]
-  },
-  "hooks": {}
+  }
 }

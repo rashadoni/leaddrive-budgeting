@@ -37,6 +37,7 @@ import { getOrCreateProposal } from "../ai-mapper/proposal-cache"
 import { resolveColumns, detectProposalYear } from "../ai-mapper/applier"
 import type { ColumnMappingProposal } from "../ai-mapper/types"
 import { runImportBatch, type ImportBatchRow } from "../import-batch"
+import { resolveCostSigns } from "./cost-sign"
 import { buildReconKey, type ReconciliationKey } from "../reconciliation"
 import {
   findApprovedSemanticCoaDecision,
@@ -137,8 +138,14 @@ interface SemanticPlfColumns {
 
 function resolveColumnsWithSemanticFallback(
   columns: ColumnMappingProposal[],
+  /** Phase 11.10 — target year, so a multi-year sheet selects the RIGHT
+   *  12 columns instead of whichever ones happen to come first/last. */
+  targetYear?: number,
 ): { ok: true; columns: SemanticPlfColumns } | { ok: false; reason: string } {
-  const strict = resolveColumns(columns)
+  // `resolveColumns` has supported `preferYear` since Phase C — this caller
+  // simply never passed it, so on a two-year sheet it fell back to the LAST
+  // year present rather than the requested one.
+  const strict = resolveColumns(columns, { preferYear: targetYear })
   if (strict.ok) {
     return {
       ok: true,
@@ -153,12 +160,24 @@ function resolveColumnsWithSemanticFallback(
 
   let labelCol = -1
   const monthCols = new Array<number>(12).fill(-1)
+  /** Phase 11.10 — years seen but rejected, so "this sheet is for another
+   *  year" (a legitimate skip) is distinguishable from "this sheet has no
+   *  usable month columns" (a real mapping failure that blocks). */
+  const droppedYears = new Set<string>()
   for (const c of columns) {
     if (c.role === "label") {
       if (labelCol !== -1) return { ok: false, reason: `Multiple "label" columns` }
       labelCol = c.sourceIndex
     } else if (c.role.startsWith("amount:")) {
       const period = c.role.slice("amount:".length).toLowerCase()
+      // Phase 11.10 — same rule as the strict resolver above: a role that
+      // declares a different year is not a candidate. Year-less roles stay
+      // eligible (plenty of single-year sheets just say "jan".."dec").
+      const declaredYear = period.match(/20\d{2}/)?.[0]
+      if (declaredYear && targetYear && Number(declaredYear) !== targetYear) {
+        droppedYears.add(declaredYear)
+        continue
+      }
       const monthToken = period.replace(/20\d{2}/g, "").trim()
       const monthIdx = MONTH_INDEX[monthToken]
       if (monthIdx !== undefined && monthCols[monthIdx] === -1) {
@@ -167,7 +186,15 @@ function resolveColumnsWithSemanticFallback(
     }
   }
   if (labelCol === -1) return { ok: false, reason: strict.reason }
-  if (monthCols.some((col) => col === -1)) return { ok: false, reason: strict.reason }
+  if (monthCols.some((col) => col === -1)) {
+    if (droppedYears.size > 0) {
+      return {
+        ok: false,
+        reason: `YEAR_MISMATCH:${[...droppedYears].sort().join(",")}`,
+      }
+    }
+    return { ok: false, reason: strict.reason }
+  }
   return {
     ok: true,
     columns: {
@@ -249,6 +276,10 @@ export async function runDynamicPlfAdapter(
         `Dynamic detection LLM error (hint: ${cacheKeyHint}): ${msg}`,
         "Sheet not imported — upload again once API is available.",
       ],
+      // Phase 11.3 — a hard failure, NOT an empty sheet. Without this the
+      // zero-row return passed the orchestrator's success filter and
+      // committed green with no data.
+      blocked: { reason: `dynamic PLF detection failed (LLM error): ${msg}` },
       applyToDb: async () => ({ rowsInserted: 0 }),
     }
   }
@@ -264,13 +295,33 @@ export async function runDynamicPlfAdapter(
         cacheHit ? "(cache hit — no LLM cost)" : "(cache miss — LLM called)",
         `Low confidence (${proposal.overallConfidence.toFixed(2)} < 0.50) — no rows imported. Review sheet "${input.sheetName}" manually.`,
       ],
+      // Phase 11.3 — a hard failure, NOT an empty sheet. Without this the
+      // zero-row return passed the orchestrator's success filter and
+      // committed green with no data.
+      blocked: {
+        reason: `dynamic PLF detection confidence ${proposal.overallConfidence.toFixed(2)} < 0.50 — refusing to guess the layout`,
+      },
       applyToDb: async () => ({ rowsInserted: 0 }),
     }
   }
 
   // ── 4. Resolve column positions from proposal roles ───────────────────────
-  const colsResult = resolveColumnsWithSemanticFallback(proposal.columns)
+  const colsResult = resolveColumnsWithSemanticFallback(proposal.columns, input.year)
   if (!colsResult.ok) {
+    // Phase 11.10 — a sheet whose month columns all belong to ANOTHER year is
+    // a legitimate skip (a workbook may ship one tab per year), not a mapping
+    // failure. Skipping quietly keeps it out of the blocking gate.
+    if (colsResult.reason.startsWith("YEAR_MISMATCH:")) {
+      const otherYears = colsResult.reason.slice("YEAR_MISMATCH:".length)
+      return {
+        summary: `Dynamic PLF: sheet "${input.sheetName}" carries ${otherYears} columns, not ${input.year} — skipped`,
+        itemCount: 0,
+        warnings: [
+          `Dynamic PLF: every month column on sheet "${input.sheetName}" belongs to ${otherYears}, but the import year is ${input.year} — skipped. Re-run the import with year=${otherYears.split(",")[0]} to load it.`,
+        ],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
     return {
       summary: `Dynamic PLF: column resolution failed — ${colsResult.reason}`,
       itemCount: 0,
@@ -279,6 +330,10 @@ export async function runDynamicPlfAdapter(
         cacheHit ? "(cache hit)" : "(cache miss — LLM called)",
         `Column mapping incomplete: ${colsResult.reason}`,
       ],
+      // Phase 11.3 — a hard failure, NOT an empty sheet.
+      blocked: {
+        reason: `dynamic PLF column mapping incomplete: ${colsResult.reason}`,
+      },
       applyToDb: async () => ({ rowsInserted: 0 }),
     }
   }
@@ -356,6 +411,14 @@ export async function runDynamicPlfAdapter(
   // ── 8. Extract rows ───────────────────────────────────────────────────────
   const rows: ImportBatchRow[] = []
   const expectedSums = new Map<ReconciliationKey, number>()
+  // Phase 11.9 — cost-sign inference state (see pass 2 below).
+  const cogsRawAnnuals: number[] = []
+  const expenseRawAnnuals: number[] = []
+  const costRowSpans: Array<{
+    from: number
+    to: number
+    accountType: "cogs" | "expense"
+  }> = []
   const lineLabelByCode = new Map<string, string>()
   const semanticAccounts = await loadSemanticCoaAccounts(
     prisma,
@@ -506,12 +569,16 @@ export async function runDynamicPlfAdapter(
     }
     if (!accountType) continue // net-profit or unrecognised prefix — skip
 
-    // Sign convention: COGS and expense values are stored as positive in DB.
-    // The Excel may store them as negative — negate so they become positive.
-    // If they're ALREADY positive (e.g. reversal rows), negation makes them
-    // negative, which correctly reduces the annual total (same as azseker-plf.ts).
-    const normalizeSign = accountType === "cogs" || accountType === "expense"
+    // Phase 11.9 — sign is INFERRED from the file, not assumed. Pass 1 keeps
+    // RAW values and records each cost row's raw annual; the convention is
+    // classified after the loop and applied in pass 2. An unconditional
+    // `-raw` here silently corrupted any debit-convention file (SAP / 1C
+    // export): negating an already-positive cost turns gross profit into
+    // revenue PLUS cost.
+    const isCostRow = accountType === "cogs" || accountType === "expense"
     const categoryCode = `${input.entityCode}-${code}`
+    const rowStartIndex = rows.length
+    let rowRawAnnual = 0
 
     for (let m = 0; m < 12; m++) {
       const cellVal = row[monthCols[m]]
@@ -524,7 +591,9 @@ export async function runDynamicPlfAdapter(
 
       if (raw === null || !Number.isFinite(raw) || raw === 0) continue
 
-      const amount = normalizeSign ? -raw : raw
+      // RAW in pass 1 — flipped after the convention is known.
+      const amount = raw
+      rowRawAnnual += raw
       const period = periodScope[m]
 
       rows.push({
@@ -550,6 +619,35 @@ export async function runDynamicPlfAdapter(
       )
       expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
     }
+
+    if (isCostRow && rows.length > rowStartIndex) {
+      costRowSpans.push({
+        from: rowStartIndex,
+        to: rows.length,
+        accountType: accountType as "cogs" | "expense",
+      })
+      if (accountType === "cogs") cogsRawAnnuals.push(rowRawAnnual)
+      else expenseRawAnnuals.push(rowRawAnnual)
+    }
+  }
+
+  // ── 8b. Pass 2 — apply the INFERRED cost-sign convention ──────────────────
+  const signDecision = resolveCostSigns(cogsRawAnnuals, expenseRawAnnuals)
+  for (const span of costRowSpans) {
+    const flip =
+      span.accountType === "cogs"
+        ? signDecision.flipCogs
+        : signDecision.flipExpense
+    if (!flip) continue
+    for (let i = span.from; i < span.to; i++) {
+      const r = rows[i]
+      const key = buildReconKey(input.entityCode!, r.category, r.period)
+      // Keep the expected-sum map in lockstep with the row it describes,
+      // otherwise the post-write reconciliation (Phase 11.2) would compare
+      // flipped DB rows against unflipped expectations and report red.
+      expectedSums.set(key, (expectedSums.get(key) ?? 0) - 2 * r.plannedAmount)
+      r.plannedAmount = -r.plannedAmount
+    }
   }
 
   // ── 9. Assemble result ────────────────────────────────────────────────────
@@ -567,6 +665,9 @@ export async function runDynamicPlfAdapter(
         ]
       : []),
     ...yearWarnings,
+    // Phase 11.9 — always state which convention was inferred. A silent
+    // correct flip and a silent wrong flip look identical in the output.
+    ...signDecision.notes.map((n) => `Cost sign — ${n}`),
   ]
 
   // Expose expectedSums for orchestrator cross-file conflict detection
@@ -582,6 +683,12 @@ export async function runDynamicPlfAdapter(
       mappings: semanticCoaMappings,
       reviewItems: semanticCoaReviewItems,
     },
+    // Phase 11.9 — an ambiguous cost-sign convention BLOCKS. Guessing the
+    // sign of every cost in a statement is not a call the importer gets to
+    // make quietly, and the pre-write gate aborts before any transaction.
+    ...(signDecision.blockedReason
+      ? { blocked: { reason: signDecision.blockedReason } }
+      : {}),
     ...extra,
     applyToDb: async (tx: Prisma.TransactionClient) => {
       if (rows.length === 0) return { rowsInserted: 0 }
@@ -631,7 +738,11 @@ export async function runDynamicPlfAdapter(
         rows: resolvedRows,
         expectedSums,
       })
-      return { rowsInserted: result.metrics.rowsInserted }
+      return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
     },
   }
 }

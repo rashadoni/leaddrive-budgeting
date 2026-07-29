@@ -20,18 +20,32 @@ function buildPrismaStub(opts: {
   }>
   deleteCount?: number
   createCount?: number
+  /** Live rows inside the import's own footprint, as seen by the guard.
+   *  Defaults to `deleteCount` so the guard is satisfied unless a test is
+   *  deliberately simulating an over-reaching reset. */
+  footprintCount?: number
 } = {}) {
   const deleteMany = vi.fn(async () => ({ count: opts.deleteCount ?? 0 }))
   const createMany = vi.fn(async () => ({ count: opts.createCount ?? 0 }))
   const findMany = vi.fn(async () => opts.existingActuals ?? [])
+  const count = vi.fn(async () => opts.footprintCount ?? opts.deleteCount ?? 0)
 
+  const budgetActual = { deleteMany, createMany, findMany, count }
   const fake = {
-    budgetActual: { deleteMany, createMany, findMany },
+    budgetActual,
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-      return fn({ budgetActual: { deleteMany, createMany, findMany } })
+      return fn({ budgetActual })
     }),
   } as unknown as PrismaClient
-  return { prisma: fake, deleteMany, createMany, findMany }
+  return { prisma: fake, deleteMany, createMany, findMany, count }
+}
+
+/** Pull the single `AND`-composed WHERE the RESET phase built. */
+function resetWhere(deleteMany: ReturnType<typeof vi.fn>) {
+  const [arg] = deleteMany.mock.calls[0] as unknown as [
+    { where: Record<string, unknown> },
+  ]
+  return arg.where
 }
 
 function row(
@@ -77,15 +91,19 @@ describe("runActualsBatch", () => {
       ],
       expectedSums,
     })
-    // RESET filter: year prefix → OR with startsWith
+    // RESET filter: (org, plan) + AND[dateWindow, companyFootprint].
+    // Phase 11.1 — the date window and the company scope are composed under
+    // `AND` because each can itself be an `OR`, and two `OR` keys cannot
+    // coexist in one Prisma WHERE object.
     expect(deleteMany).toHaveBeenCalledOnce()
-    const [deleteArg] = deleteMany.mock.calls[0] as unknown as [
-      { where: Record<string, unknown> },
-    ]
-    expect(deleteArg.where).toMatchObject({
+    expect(resetWhere(deleteMany)).toEqual({
       organizationId: "org_1",
       planId: "plan_1",
-      OR: [{ expenseDate: { startsWith: "2026" } }],
+      AND: [
+        { OR: [{ expenseDate: { startsWith: "2026" } }] },
+        // both rows carry companyId null → org-wide bucket only
+        { companyId: null },
+      ],
     })
     // WRITE: payload shape correct
     expect(createMany).toHaveBeenCalledOnce()
@@ -121,13 +139,10 @@ describe("runActualsBatch", () => {
       rows: [row("Cat1", 100, "2026-03-15", 2)],
       expectedSums: new Map(),
     })
-    const [explicitArg] = deleteMany.mock.calls[0] as unknown as [
-      { where: Record<string, unknown> },
-    ]
-    expect(explicitArg.where).toMatchObject({
+    expect(resetWhere(deleteMany)).toEqual({
       organizationId: "org_1",
       planId: "plan_1",
-      expenseDate: { in: ["2026-03-15"] },
+      AND: [{ expenseDate: { in: ["2026-03-15"] } }, { companyId: null }],
     })
   })
 
@@ -149,9 +164,12 @@ describe("runActualsBatch", () => {
     expect(createMany).toHaveBeenCalledOnce()
   })
 
-  it("empty rows array: no insert call, no row in metrics", async () => {
+  it("empty rows array: RESET scope matches nothing (no delete-without-reinsert)", async () => {
+    // Phase 11.1 — a zero-row parse must NOT wipe the window. The company
+    // footprint is empty, so the scope degrades to `{ in: [] }`, which
+    // matches no row: the delete runs but can only ever remove 0.
     const { prisma, deleteMany, createMany } = buildPrismaStub({
-      deleteCount: 5,
+      deleteCount: 0,
     })
     const result = await runActualsBatch(prisma, {
       organizationId: "org_1",
@@ -164,8 +182,145 @@ describe("runActualsBatch", () => {
       expectedSums: new Map(),
     })
     expect(deleteMany).toHaveBeenCalledOnce()
+    expect(resetWhere(deleteMany)).toEqual({
+      organizationId: "org_1",
+      planId: "plan_1",
+      AND: [
+        { OR: [{ expenseDate: { startsWith: "2026" } }] },
+        { companyId: { in: [] } },
+      ],
+    })
     expect(createMany).not.toHaveBeenCalled()
-    expect(result.metrics).toEqual({ resetDeleted: 5, rowsInserted: 0 })
+    expect(result.metrics).toEqual({ resetDeleted: 0, rowsInserted: 0 })
+  })
+
+  describe("Phase 11.1 — company-scoped reset (derive-delete-from-write)", () => {
+    it("scopes the RESET to exactly the companies the batch inserts", async () => {
+      const { prisma, deleteMany, count } = buildPrismaStub({ deleteCount: 4 })
+      await runActualsBatch(prisma, {
+        organizationId: "org_1",
+        planId: "plan_1",
+        label: "test",
+        actorUserId: "u1",
+        sourceDocument: "test.xlsx",
+        dateScope: ["2026"],
+        rows: [
+          row("Cat1", 100, "2026-03-15", 2, { companyId: "co_a" }),
+          row("Cat2", 200, "2026-04-10", 3, { companyId: "co_b" }),
+          row("Cat3", 300, "2026-05-10", 4, { companyId: "co_a" }),
+        ],
+        expectedSums: new Map(),
+      })
+      // The sibling company `co_c` is NOT in the footprint, so its actuals
+      // are unreachable by this reset — the whole point of 11.1.
+      expect(resetWhere(deleteMany)).toEqual({
+        organizationId: "org_1",
+        planId: "plan_1",
+        AND: [
+          { OR: [{ expenseDate: { startsWith: "2026" } }] },
+          { companyId: { in: ["co_a", "co_b"] } },
+        ],
+      })
+      // The guard counted the footprint independently before deleting.
+      expect(count).toHaveBeenCalledOnce()
+    })
+
+    it("mixes named companies and the org-wide (null) bucket under one OR", async () => {
+      const { prisma, deleteMany } = buildPrismaStub({ deleteCount: 2 })
+      await runActualsBatch(prisma, {
+        organizationId: "org_1",
+        planId: "plan_1",
+        label: "test",
+        actorUserId: "u1",
+        sourceDocument: "test.xlsx",
+        dateScope: ["2026"],
+        rows: [
+          row("Cat1", 100, "2026-03-15", 2, { companyId: "co_a" }),
+          row("Cat2", 200, "2026-03-16", 2), // companyId null → org-wide
+        ],
+        expectedSums: new Map(),
+      })
+      expect(resetWhere(deleteMany)).toEqual({
+        organizationId: "org_1",
+        planId: "plan_1",
+        AND: [
+          { OR: [{ expenseDate: { startsWith: "2026" } }] },
+          { OR: [{ companyId: { in: ["co_a"] } }, { companyId: null }] },
+        ],
+      })
+    })
+
+    it("throws CollateralDeletionError when the reset removes more than the footprint", async () => {
+      // Simulates the pre-11.1 regression shape: the delete reached 9 rows
+      // while only 3 live rows belong to this import. The guard must abort so
+      // the surrounding transaction rolls back — BudgetActual has no
+      // soft-delete, so an over-reaching purge is unrecoverable.
+      const { prisma, createMany } = buildPrismaStub({
+        deleteCount: 9,
+        footprintCount: 3,
+      })
+      await expect(
+        runActualsBatch(prisma, {
+          organizationId: "org_1",
+          planId: "plan_1",
+          label: "test",
+          actorUserId: "u1",
+          sourceDocument: "test.xlsx",
+          dateScope: ["2026"],
+          rows: [row("Cat1", 100, "2026-03-15", 2, { companyId: "co_a" })],
+          expectedSums: new Map(),
+        }),
+      ).rejects.toThrow(/\[clean-slate guard\] BudgetActual/)
+      // Aborted BEFORE the insert — no partial state.
+      expect(createMany).not.toHaveBeenCalled()
+    })
+
+    it("skips the guard entirely when there is no dateScope (append semantics)", async () => {
+      const { prisma, deleteMany, count } = buildPrismaStub({})
+      await runActualsBatch(prisma, {
+        organizationId: "org_1",
+        planId: "plan_1",
+        label: "test",
+        actorUserId: "u1",
+        sourceDocument: "test.xlsx",
+        dateScope: [],
+        rows: [row("Cat1", 100, "2026-03-15", 2, { companyId: "co_a" })],
+        expectedSums: new Map(),
+      })
+      expect(deleteMany).not.toHaveBeenCalled()
+      expect(count).not.toHaveBeenCalled()
+    })
+
+    it("reads reconciliation sums back through the same company footprint", async () => {
+      // Without this the key (planId, category, monthIndex) would fold a
+      // sibling company's surviving rows into the comparison and report a
+      // false mismatch — a regression the plan-wide purge used to mask.
+      const { prisma, findMany } = buildPrismaStub({
+        existingActuals: [{ category: "Cat1", monthIndex: 2, actualAmount: 100 }],
+        deleteCount: 1,
+      })
+      await runActualsBatch(prisma, {
+        organizationId: "org_1",
+        planId: "plan_1",
+        label: "test",
+        actorUserId: "u1",
+        sourceDocument: "test.xlsx",
+        dateScope: ["2026"],
+        rows: [row("Cat1", 100, "2026-03-15", 2, { companyId: "co_a" })],
+        expectedSums: new Map([[buildReconKey("plan_1", "Cat1", "2"), 100]]),
+      })
+      const [readArg] = findMany.mock.calls[0] as unknown as [
+        { where: Record<string, unknown> },
+      ]
+      expect(readArg.where).toEqual({
+        organizationId: "org_1",
+        planId: "plan_1",
+        AND: [
+          { OR: [{ expenseDate: { startsWith: "2026" } }] },
+          { companyId: { in: ["co_a"] } },
+        ],
+      })
+    })
   })
 
   it("accepts outer transaction (tx) without invoking $transaction", async () => {
@@ -181,6 +336,7 @@ describe("runActualsBatch", () => {
         deleteMany: outerTxDelete,
         createMany: outerTxCreate,
         findMany: vi.fn(async () => []),
+        count: vi.fn(async () => 0),
       },
     } as unknown as Prisma.TransactionClient
     await runActualsBatch(outerTx, {

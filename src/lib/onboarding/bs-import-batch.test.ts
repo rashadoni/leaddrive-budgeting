@@ -163,7 +163,10 @@ const R = (
   accountCode: string,
   amount: number,
   month: number = 4,
-  companyId: string | null = null,
+  // Phase 11.11 — a real companyId is now the norm: the BS handler blocks on
+  // an unresolved entity, and the batch REFUSES a reset whose rows carry no
+  // company (that path widened the archive to every company on the plan).
+  companyId: string | null = "co_default",
 ): BsImportRow => ({
   planId: "plan_2026",
   companyId,
@@ -376,5 +379,21 @@ describe("runBalanceSheetBatch — per-entity isolation on a shared plan", () =>
     expect(otherLive).toHaveLength(1)
     expect(otherLive[0].amount).toBe(8888)
     expect(result.reconciliation.verdict).toBe("green")
+  })
+
+  it("REFUSES to reset when no incoming row carries a companyId", async () => {
+    // Phase 11.11 — this used to fall back to a plan-only scope, i.e. archive
+    // EVERY company's balances on the plan for the year. The collateral guard
+    // could not object: footprintLiveCount was computed from the same
+    // degenerate scope, so it compared the wipe against itself.
+    const prisma = makeFakePrisma()
+    await expect(
+      runBalanceSheetBatch(
+        prisma,
+        planFor([R("BS.01.01.01", 1000, 4, null)]),
+      ),
+    ).rejects.toThrow(/refusing to reset/i)
+    // Nothing written — the throw rolls the write phase back.
+    expect(prisma.__bs.filter((r) => r.deletedAt === null)).toHaveLength(0)
   })
 })

@@ -21,6 +21,12 @@
  */
 import type { Prisma } from "@prisma/client"
 import { resolveUnitPrice, type ProductMonthRow } from "./ai-import/product-sales-parser"
+import {
+  reconcile,
+  buildReconKey,
+  type ReconciliationKey,
+  type ReconciliationReport,
+} from "./reconciliation"
 
 export interface SalesProductBatchPlan {
   organizationId: string
@@ -42,6 +48,10 @@ export interface SalesProductBatchResult {
     rowsArchived: number
   }
   warnings: string[]
+  /** Post-write DB readback, reconciled per (plan, product, month) on
+   *  amount. Absent on the empty-parse no-op — nothing was written, so
+   *  there is nothing to prove. See Phase 11.2. */
+  reconciliation?: ReconciliationReport
 }
 
 /** Money/quantity comparison tolerance — float noise only, not a real drift. */
@@ -152,6 +162,23 @@ export async function runSalesProductBatch(
     }
   }
 
+  // Phase 11.2 (2026-07-29) — emit the same readback as a structured
+  // ReconciliationReport so this batch reports evidence in the shape every
+  // other batch uses, instead of only signalling by exception. The throws
+  // above stay as the hard gate; the report is DERIVED from the two maps
+  // rather than asserted green, so it stays honest if the throws are ever
+  // relaxed.
+  const expectedAmounts = new Map<ReconciliationKey, number>()
+  for (const p of payload) {
+    const key = buildReconKey(plan.planId, p.productLineId, String(p.month))
+    expectedAmounts.set(key, (expectedAmounts.get(key) ?? 0) + p.amount)
+  }
+  const actualAmounts = new Map<ReconciliationKey, number>()
+  for (const w of written) {
+    const key = buildReconKey(plan.planId, w.productLineId, String(w.month))
+    actualAmounts.set(key, (actualAmounts.get(key) ?? 0) + w.amount)
+  }
+
   return {
     metrics: {
       productsUpserted: productIdByCode.size,
@@ -159,5 +186,6 @@ export async function runSalesProductBatch(
       rowsArchived: del.count,
     },
     warnings,
+    reconciliation: reconcile(expectedAmounts, actualAmounts),
   }
 }

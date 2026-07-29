@@ -56,6 +56,8 @@ import {
   archiveOrgOrphanBudgetLines,
 } from "@/lib/server/archive"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
+import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 const RATE_LIMIT = { name: "data-archive", max: 5, windowMs: 60_000 }
 
@@ -240,6 +242,24 @@ export async function POST(request: NextRequest) {
     })
     const isWholeHolding =
       operationalCompanies.length > 0 && operationalCompanies.every((c) => found.has(c.code))
+    // Phase 11.13 (2026-07-29) — period-lock gate. A signed, closed period
+    // must not be silently wiped. Every interactive mutation route already
+    // gates on this; the reset — the single most destructive operation in the
+    // product — did not, so a locked year could be erased while the audit
+    // trail recorded only a routine `data_reset`. Checked BEFORE the loop so
+    // a locked year deletes nothing at all rather than partially.
+    if (year) {
+      const lock = await getActivePeriodLock(prisma, orgId, String(year))
+      if (lock) {
+        return lockedResponse(lock, {
+          prisma,
+          orgId,
+          userId: session.userId ?? null,
+          route: "POST /api/admin/data-archive",
+        })
+      }
+    }
+
     // Per-company reset — each is its own transaction inside
     // resetCompanyImportData and writes its own `data_reset` audit event — then
     // recompute. Aggregate; on a per-company failure keep going and report it
@@ -296,7 +316,13 @@ export async function POST(request: NextRequest) {
             )
         const affected = years.map((y) => ({ companyId: target.id, year: y }))
         if (affected.length > 0) {
-          const r = await runRecomputeForCompanies(prisma, orgId, affected)
+          // Phase 11.7 — the reset now deletes month/quarter IndicatorValue
+          // rows (11.6), so the follow-up recompute must be able to rebuild
+          // them; a year-only fan-out would leave those cells permanently
+          // empty rather than recomputed.
+          const r = await runRecomputeForCompanies(prisma, orgId, affected, {}, {
+            granularity: "year+quarter+month",
+          })
           rc = r.ok ?? 0
         }
       } catch (err) {

@@ -157,10 +157,17 @@ interface PartialResolvedColumns {
 
 function resolveColumnsPartial(
   columns: ColumnMappingProposal[],
+  /** Phase 11.10 — target year. Roles that declare a DIFFERENT year are
+   *  skipped; year-less roles remain eligible. */
+  targetYear?: number,
 ): { ok: true; columns: PartialResolvedColumns } | { ok: false; reason: string } {
   let codeCol = -1
   let labelCol = -1
   const monthCols = new Map<number, number>()
+  /** Phase 11.10 — years we saw but rejected, so the caller can tell
+   *  "this sheet is for another year" (a legitimate skip) apart from
+   *  "this sheet has no month columns at all" (a real failure). */
+  const droppedYears = new Set<string>()
 
   for (const c of columns) {
     if (c.role === "code") {
@@ -171,7 +178,21 @@ function resolveColumnsPartial(
       labelCol = c.sourceIndex
     } else if (c.role.startsWith("amount:")) {
       const period = c.role.slice("amount:".length).toLowerCase()
-      // Strip 4-digit year (e.g. "jan2026" → "jan"; "january2026" → "january")
+      // Phase 11.10 (2026-07-29) — honour the year the role declares.
+      //
+      // This used to strip the year and take the FIRST column matching a
+      // month index. On a two-year sheet (Jan-Dec 2025 + Jan-Dec 2026 — the
+      // reporting-pack shape, and the mapper prompt itself instructs the LLM
+      // to emit 24 such roles) the first 12 columns won regardless of the
+      // requested year: the losing range was not merely mislabelled, its
+      // numbers were written UNDER the requested year while the correct
+      // range was discarded. Year-less roles stay eligible — plenty of
+      // single-year sheets label columns "jan".."dec" with no year at all.
+      const declaredYear = period.match(/20\d{2}/)?.[0]
+      if (declaredYear && targetYear && Number(declaredYear) !== targetYear) {
+        droppedYears.add(declaredYear)
+        continue
+      }
       const monthToken = period.replace(/20\d{2}/, "").trim()
       const monthIdx = MONTH_INDEX[monthToken]
       if (monthIdx !== undefined && !monthCols.has(monthIdx)) {
@@ -182,7 +203,19 @@ function resolveColumnsPartial(
   }
 
   if (labelCol === -1) return { ok: false, reason: 'No "label" column in proposal' }
-  if (monthCols.size === 0) return { ok: false, reason: "No month columns in proposal — sheet may be annual-only" }
+  if (monthCols.size === 0) {
+    // Distinguish the two zero-column outcomes: a sheet that belongs to
+    // another year is skipped quietly (a workbook legitimately ships one
+    // tab per year), while a sheet with no month columns at all is a real
+    // mapping failure that blocks.
+    if (droppedYears.size > 0) {
+      return {
+        ok: false,
+        reason: `YEAR_MISMATCH:${[...droppedYears].sort().join(",")}`,
+      }
+    }
+    return { ok: false, reason: "No month columns in proposal — sheet may be annual-only" }
+  }
 
   return {
     ok: true,
@@ -263,6 +296,10 @@ export async function runDynamicBsAdapter(
         `Dynamic BS LLM error (hint: ${cacheKeyHint}): ${msg}`,
         "Sheet not imported — upload again once API is available.",
       ],
+      // Phase 11.3 — a hard failure, NOT an empty sheet. Without this the
+      // zero-row return passed the orchestrator's success filter and
+      // committed green with no data.
+      blocked: { reason: `dynamic BS detection failed (LLM error): ${msg}` },
       applyToDb: async () => ({ rowsInserted: 0 }),
     }
   }
@@ -278,13 +315,33 @@ export async function runDynamicBsAdapter(
         cacheHit ? "(cache hit — no LLM cost)" : "(cache miss — LLM called)",
         `Low confidence (${proposal.overallConfidence.toFixed(2)} < 0.50) — no rows imported. Review sheet "${input.sheetName}" manually.`,
       ],
+      // Phase 11.3 — a hard failure, NOT an empty sheet. Without this the
+      // zero-row return passed the orchestrator's success filter and
+      // committed green with no data.
+      blocked: {
+        reason: `dynamic BS detection confidence ${proposal.overallConfidence.toFixed(2)} < 0.50 — refusing to guess the layout`,
+      },
       applyToDb: async () => ({ rowsInserted: 0 }),
     }
   }
 
   // ── 4. Resolve column positions (partial — BS may be mid-year) ────────────
-  const colsResult = resolveColumnsPartial(proposal.columns)
+  const colsResult = resolveColumnsPartial(proposal.columns, input.year)
   if (!colsResult.ok) {
+    // Phase 11.10 — a sheet whose month columns all belong to ANOTHER year is
+    // a legitimate skip (a workbook may ship one tab per year), not a mapping
+    // failure. Skipping quietly keeps it out of the blocking gate.
+    if (colsResult.reason.startsWith("YEAR_MISMATCH:")) {
+      const otherYears = colsResult.reason.slice("YEAR_MISMATCH:".length)
+      return {
+        summary: `Dynamic BS: sheet "${input.sheetName}" carries ${otherYears} columns, not ${input.year} — skipped`,
+        itemCount: 0,
+        warnings: [
+          `Dynamic BS: every month column on sheet "${input.sheetName}" belongs to ${otherYears}, but the import year is ${input.year} — skipped. Re-run the import with year=${otherYears.split(",")[0]} to load it.`,
+        ],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
     return {
       summary: `Dynamic BS: column resolution failed — ${colsResult.reason}`,
       itemCount: 0,
@@ -293,6 +350,10 @@ export async function runDynamicBsAdapter(
         cacheHit ? "(cache hit)" : "(cache miss — LLM called)",
         `Column mapping incomplete: ${colsResult.reason}`,
       ],
+      // Phase 11.3 — a hard failure, NOT an empty sheet.
+      blocked: {
+        reason: `dynamic BS column mapping incomplete: ${colsResult.reason}`,
+      },
       applyToDb: async () => ({ rowsInserted: 0 }),
     }
   }
@@ -616,7 +677,11 @@ export async function runDynamicBsAdapter(
         rows: resolvedRows,
         expectedSums,
       })
-      return { rowsInserted: result.metrics.rowsInserted }
+      return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
     },
   }
 }

@@ -10,6 +10,11 @@ function makePrisma() {
     counterparty: { count: vi.fn() },
     operationalFact: { count: vi.fn() },
     budgetActual: { count: vi.fn() },
+    // Phase 11.6 — the reset now also clears sales lines and indicator
+    // values, so the preview must count them or it under-reports the blast
+    // radius (the exact way it used to mislead).
+    salesBudgetLine: { count: vi.fn() },
+    indicatorValue: { count: vi.fn() },
   }
 }
 
@@ -31,6 +36,8 @@ describe("previewCompanyImportReset", () => {
     prisma.counterparty.count.mockResolvedValueOnce(2)
     prisma.operationalFact.count.mockResolvedValueOnce(5)
     prisma.budgetActual.count.mockResolvedValueOnce(1)
+    prisma.salesBudgetLine.count.mockResolvedValueOnce(6)
+    prisma.indicatorValue.count.mockResolvedValueOnce(9)
 
     const preview = await previewCompanyImportReset({
       prisma: prisma as never,
@@ -39,7 +46,7 @@ describe("previewCompanyImportReset", () => {
       year: 2026,
     })
 
-    expect(preview.rowsAffected).toBe(27)
+    expect(preview.rowsAffected).toBe(42)
     expect(preview.breakdown).toMatchObject({
       budgetLine: 10,
       balanceSheetLine: 4,
@@ -47,7 +54,23 @@ describe("previewCompanyImportReset", () => {
       counterparty: 2,
       operationalFact: 5,
       budgetActual: 1,
+      salesBudgetLine: 6,
+      indicatorValue: 9,
       settingsKeys: 2,
+    })
+    // SalesBudgetLine carries no companyId — the scope has to travel through
+    // the entity-namespaced ProductLine.code.
+    expect(prisma.salesBudgetLine.count.mock.calls[0][0].where).toMatchObject({
+      organizationId: "org1",
+      productLine: { code: { startsWith: "AZSEKER_CPC__" } },
+      year: 2026,
+    })
+    // IndicatorValue.period is "2026" | "2026-Q2" | "2026-04", so one
+    // startsWith covers every granularity for the year.
+    expect(prisma.indicatorValue.count.mock.calls[0][0].where).toMatchObject({
+      organizationId: "org1",
+      companyId: "c1",
+      period: { startsWith: "2026" },
     })
     expect(prisma.cashFlowEntry.count.mock.calls[0][0].where).toMatchObject({
       organizationId: "org1",

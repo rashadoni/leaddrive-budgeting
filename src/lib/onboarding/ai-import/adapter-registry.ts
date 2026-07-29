@@ -21,6 +21,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client"
 import type * as XLSXType from "xlsx"
 import type { AccountType } from "../ai-mapper/types"
+import type { ReconciliationReport } from "../reconciliation"
 import type { SheetDataType } from "./sheet-classifier"
 
 export interface SemanticCoaDecision {
@@ -98,6 +99,22 @@ export interface AdapterRunResult {
     mappings: AdapterSemanticCoaMapping[]
     reviewItems: AdapterSemanticCoaReviewItem[]
   }
+  /**
+   * Set when the adapter could not do its job and the sheet's data will NOT
+   * reach the database — as opposed to legitimately having nothing to write.
+   *
+   * Phase 11.3 (2026-07-29) — the dynamic adapters used to signal an LLM
+   * failure, a sub-0.5 confidence score or a failed column resolution by
+   * returning `itemCount: 0` with an empty `applyToDb`. That is
+   * indistinguishable from "this sheet correctly contains no rows", so the
+   * record passed the orchestrator's success filter, was reconciled against
+   * itself and committed green with zero rows. After a reset that reads as
+   * "the numbers are gone" under a green tick.
+   *
+   * Setting this routes the sheet into the pre-write safety gate, which
+   * aborts the whole import BEFORE any transaction opens.
+   */
+  blocked?: { reason: string }
   /** Apply step — invoked by orchestrator AFTER reconciliation passes. */
   applyToDb: (
     /**
@@ -108,6 +125,24 @@ export interface AdapterRunResult {
     tx: Prisma.TransactionClient,
   ) => Promise<{
     rowsInserted: number
+    /**
+     * Post-write reconciliation the batch layer computed by RE-READING the
+     * rows this adapter just wrote, inside the same transaction.
+     *
+     * Phase 11.2 (2026-07-29) — this channel did not exist, so every adapter
+     * that ran a batch function discarded `result.reconciliation` and
+     * returned only `rowsInserted`. The orchestrator therefore had no
+     * post-write evidence at all and fell back to comparing the parsed
+     * expected sums against themselves — a verdict that is green by
+     * construction and proves nothing. Missing rows, doubled rows and
+     * under-archived rows from a previous import were all invisible.
+     *
+     * Adapters that write nothing reconcilable (JSON blobs on
+     * `Company.settings` — descriptions, land registry, forward forecast)
+     * leave this undefined; the orchestrator records them as
+     * `unverified` rather than folding them into a green verdict.
+     */
+    reconciliation?: ReconciliationReport
     /**
      * Company codes this adapter wrote to, when it resolves them ITSELF
      * (per-row) rather than from the sheet's single `entityCode`. The

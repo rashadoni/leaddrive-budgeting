@@ -14,7 +14,7 @@
  *   }
  *
  * Auth: admin role. Write-backs persist to settings JSON; a re-import
- * via /api/admin/import-workbook OR /api/import/ai-auto-multi overwrites
+ * via /api/import/ai-auto-multi overwrites
  * the items[] array and **drops** these mutations. Documented limitation
  * — for v2, mutations should land in a separate `FindingMutation` table.
  *

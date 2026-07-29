@@ -22,24 +22,29 @@
  *     entitySheetMaps: [{ code, plSheet, bsSheet, cfSheet, ... }],
  *     llmUsage: { inputTokens, outputTokens, modelName, promptVersion },
  *     durationMs: number,
- *     nextStep?: "POST /api/admin/import-workbook with the discovered ENTITIES"
+ *     nextStep?: where to go to actually commit
  *   }
  *
  * Auth: admin role. Rate-limit: 6/hour/org (LLM-bounded).
  *
- * **Important**: this endpoint v1 ships in CLASSIFY-ONLY mode. The apply
- * step calls into existing `/api/admin/import-workbook` which already
- * has bit-perfect reconciliation. The UI flow is:
+ * **CLASSIFY-ONLY — this endpoint never writes.**
  *
- *   1. User uploads xlsx → POST /api/import/ai-auto (apply=false)
- *   2. Server returns classification + entity sheet map
- *   3. User reviews + confirms
- *   4. UI POSTs same xlsx to /api/admin/import-workbook for the actual write
+ * Phase 11.14 (2026-07-29): the header, the `nextStep` hint and the
+ * `apply=true` refusal all used to direct the caller to
+ * `POST /api/admin/import-workbook`. **That route does not exist** — it was
+ * never built (verify: `find src/app/api -path "*import-workbook*"`), and the
+ * references survived only in prose. Anyone following them hit a 404 after a
+ * successful classification.
  *
- * This two-step keeps the user in control + reuses the already-audited
- * Phase 7.M import pipeline.
+ * The real write paths are `/api/import/ai-auto-multi` (the multi-file
+ * orchestrator — group-atomic, cross-file conflict gate, post-write DB
+ * reconciliation) and the staging apply routes under
+ * `/api/onboarding/import/staging/[id]/`. This endpoint stays useful as a
+ * cheap classification preview / diagnostic; the UI tab that fronts it
+ * already tells the user to import through the other tabs.
  */
 import { NextRequest, NextResponse } from "next/server"
+import { currentBakuYearNumber } from "@/lib/risk/periods"
 import * as XLSX from "xlsx"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
@@ -126,8 +131,11 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     )
   }
-  const yearStr = (form.get("year") as string | null) ?? "2026"
-  const year = Number(yearStr) || new Date().getFullYear()
+  // Phase 11.5 (2026-07-29) — was a hardcoded "2026" fallback, which would
+  // quietly misfile every 2027 upload. Default from the org's timezone.
+  const yearStr =
+    (form.get("year") as string | null) ?? String(currentBakuYearNumber())
+  const year = Number(yearStr) || currentBakuYearNumber()
   const applyVal = String(form.get("apply") ?? "").toLowerCase()
   const shouldApply = applyVal === "1" || applyVal === "true"
 
@@ -217,8 +225,7 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // Group by entity → ready-to-call ENTITIES array for downstream
-  // /api/admin/import-workbook
+  // Group by entity → the entity sheet map, rendered in the preview
   const entitySheetMaps = buildEntitySheetMaps(classifierResult.classifications)
 
   // 2026-05-27 — per-sheet «affected indicators» preview projection.
@@ -243,15 +250,17 @@ export async function POST(request: NextRequest) {
     }
   })
 
-  // In v1 we DO NOT apply from this endpoint — caller chains to
-  // /api/admin/import-workbook with the discovered ENTITIES. That
-  // endpoint has the battle-tested 5-phase bit-perfect pipeline.
+  // This endpoint never writes. See the header: the route this used to point
+  // at does not exist.
   if (shouldApply) {
     return NextResponse.json(
       {
         ok: false,
         error:
-          "apply=true not yet supported in v1. Use this endpoint for classify preview, then POST to /api/admin/import-workbook to commit.",
+          "This endpoint is classification-only and never writes. To commit, " +
+          "POST the same file(s) to /api/import/ai-auto-multi with apply=1 — " +
+          "that path is group-atomic and reconciles against the database after " +
+          "the write.",
       },
       { status: 501 },
     )
@@ -268,6 +277,6 @@ export async function POST(request: NextRequest) {
     skippedLLM: classifierResult.skippedLLM,
     durationMs: Date.now() - t0,
     nextStep:
-      "Confirm the entity sheet map, then POST /api/admin/import-workbook with this xlsx to commit.",
+      "Classification only — nothing was written. To commit, upload the same file via the multi-file tab (POST /api/import/ai-auto-multi with apply=1).",
   })
 }

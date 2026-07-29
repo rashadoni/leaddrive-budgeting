@@ -38,6 +38,12 @@ export type FileType =
   | "strategic-descriptions"
   | "capex-plan"
   | "kpi-only"
+  // Phase 11.12 (2026-07-29) — a standalone product-sales workbook.
+  // SALES_PRODUCTS was a classifier dataType with NO file-type bucket, so a
+  // file made only of such sheets detected as `unknown`, was never applied,
+  // and parsed to zero rows. Same structural gap that was closed for the
+  // compliance registers on 2026-07-15.
+  | "sales-products"
   // Phase 7.M Tier 6 — onboarding consolidation. company-setup file
   // bootstraps / updates the org's entity hierarchy. Detected by a
   // COMPANIES-classified sheet without any financial sheets.
@@ -94,6 +100,8 @@ export interface FileTypeResult {
     opsFacts: number
     budgetActuals: number
     salesForecast: number
+    /** SALES_PRODUCTS sheets (product × month volumes/prices). */
+    salesProducts: number
     /** COUNTERPARTY + LEGAL_CASES + AUDIT_FINDINGS + RISK_REGISTER sheets. */
     complianceRegister: number
     unknown: number
@@ -119,6 +127,7 @@ function bucketSheets(
     opsFacts: 0,
     budgetActuals: 0,
     salesForecast: 0,
+    salesProducts: 0,
     complianceRegister: 0,
     unknown: 0,
   }
@@ -144,6 +153,9 @@ function bucketSheets(
         break
       case "SALES":
         counts.sales++
+        break
+      case "SALES_PRODUCTS":
+        counts.salesProducts++
         break
       case "LAND_REGISTRY":
         counts.landRegistry++
@@ -404,6 +416,28 @@ export function detectFileType(
       fileType: "ops-facts",
       confidence: conf,
       reasoning: `${counts.opsFacts} ops-facts sheet(s), no PLF/BS/CF → standalone operational-facts file`,
+      sheetCounts: counts,
+    }
+  }
+
+  // Priority 5.6: sales-products — product-level sales sheets without
+  // PLF/BS/CF. Writes ProductLine + SalesBudgetLine via runSalesProductBatch.
+  // Mixed with PLF/BS/CF → falls through to main-financial, the same rule
+  // every soft bucket above follows (financial intent dominates).
+  if (
+    counts.salesProducts >= 1 &&
+    counts.plf === 0 &&
+    counts.bs === 0 &&
+    counts.cf === 0
+  ) {
+    const conf = avgConfidenceOver(
+      classifications,
+      (c) => c.dataType === "SALES_PRODUCTS",
+    )
+    return {
+      fileType: "sales-products",
+      confidence: conf,
+      reasoning: `${counts.salesProducts} product-sales sheet(s), no PLF/BS/CF → standalone product-sales file`,
       sheetCounts: counts,
     }
   }

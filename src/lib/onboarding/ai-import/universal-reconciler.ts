@@ -43,6 +43,26 @@ export interface SheetReconciliationResult {
   topExtra: ReadonlyArray<string>
 }
 
+/**
+ * A sheet whose write could NOT be proved against the database.
+ *
+ * Phase 11.2 (2026-07-29) — not every adapter writes through a batch
+ * function with a post-write DB re-read: the "soft" adapters store JSON on
+ * `Company.settings` (descriptions, land registry, forward forecast) and have
+ * no sums to reconcile. Silently folding those into a green verdict is
+ * exactly the dishonesty this phase exists to remove, so they are counted and
+ * named separately instead. An unverified sheet does NOT abort the commit —
+ * it is surfaced so the receipt distinguishes "proved correct" from
+ * "not checked".
+ */
+export interface UnverifiedSheet {
+  sheetName: string
+  dataType: string
+  entityCode: string | null
+  /** Why no proof exists (e.g. "adapter writes no reconcilable sums"). */
+  reason: string
+}
+
 export interface UniversalReconciliationReport {
   overallVerdict: SheetVerdict
   perSheet: ReadonlyArray<SheetReconciliationResult>
@@ -51,7 +71,26 @@ export interface UniversalReconciliationReport {
     greenSheets: number
     yellowSheets: number
     redSheets: number
+    /** Sheets with no post-write proof. Present only on aggregated
+     *  post-write reports (Phase 11.2); absent on map-based reports. */
+    unverifiedSheets?: number
   }
+  /** Named unverified sheets — see {@link UnverifiedSheet}. */
+  unverified?: ReadonlyArray<UnverifiedSheet>
+  /**
+   * Does the reconciliation evidence come from a real post-write database
+   * re-read, or is it a parse-time self-check?
+   *
+   * `"db-readback"` — every `perSheet` entry was produced by a batch
+   * function that re-queried the rows it had just written, inside the same
+   * transaction. This is the only value that can honestly be called proof.
+   *
+   * `"parse-self-check"` — expected sums were compared against themselves.
+   * Structurally green; proves the adapter is internally consistent and
+   * NOTHING about what reached the database. Never present this to a user as
+   * a reconciliation result.
+   */
+  evidence?: "db-readback" | "parse-self-check"
   /**
    * Should the orchestrator commit the import?
    *   • green / yellow → ok=true (yellow requires explicit user
@@ -131,6 +170,89 @@ export function reconcileAllSheets(
       yellowSheets,
       redSheets,
     },
+    ok: overallVerdict !== "red",
+  }
+}
+
+/**
+ * Aggregate reconciliation reports the BATCH LAYER already computed from a
+ * real post-write database re-read.
+ *
+ * Phase 11.2 (2026-07-29). `reconcileAllSheets` above takes two sum maps and
+ * does the math itself; this takes reports that have already been computed
+ * against the DB and only rolls them up. That distinction is the entire
+ * point: every batch function (`runImportBatch`, `runBalanceSheetBatch`,
+ * `runCashFlowBatch`, `runKpiBatch`, `runActualsBatch`,
+ * `runSalesForecastBatch`) re-reads the rows it just wrote — inside the same
+ * transaction, so it sees uncommitted state — and reconciles them against the
+ * parsed expectations. Until this function existed every adapter threw that
+ * report away and returned only `rowsInserted`, so the orchestrator had
+ * nothing to verify against and fell back to comparing the expected map with
+ * itself.
+ *
+ * Entries without a report are recorded as {@link UnverifiedSheet} rather
+ * than counted as green.
+ */
+export function aggregateSheetReports(
+  entries: ReadonlyArray<{
+    sheetName: string
+    dataType: string
+    entityCode: string | null
+    /** Post-write report from the batch layer, or null when the adapter
+     *  writes nothing reconcilable (JSON settings blobs etc.). */
+    report: ReconciliationReport | null
+    /** Why the report is absent — required when `report` is null. */
+    unverifiedReason?: string
+  }>,
+): UniversalReconciliationReport {
+  const perSheet: SheetReconciliationResult[] = []
+  const unverified: UnverifiedSheet[] = []
+
+  for (const e of entries) {
+    if (!e.report) {
+      unverified.push({
+        sheetName: e.sheetName,
+        dataType: e.dataType,
+        entityCode: e.entityCode,
+        reason: e.unverifiedReason ?? "adapter returned no reconciliation",
+      })
+      continue
+    }
+    const report = e.report
+    perSheet.push({
+      sheetName: e.sheetName,
+      dataType: e.dataType,
+      entityCode: e.entityCode,
+      verdict: report.verdict,
+      matched: report.matched,
+      driftCount: report.drift.length,
+      missingCount: report.missing.length,
+      extraCount: report.extra.length,
+      topDrift: report.drift.slice(0, 5).map((d) => ({
+        key: d.key,
+        expected: d.expected,
+        actual: d.actual,
+        driftPct: d.driftPct,
+      })),
+      topMissing: report.missing.slice(0, 5),
+      topExtra: report.extra.slice(0, 5),
+    })
+  }
+
+  const verdicts = perSheet.map((s) => s.verdict)
+  const overallVerdict = reduceVerdict(verdicts)
+  return {
+    overallVerdict,
+    perSheet,
+    summary: {
+      totalSheets: perSheet.length,
+      greenSheets: verdicts.filter((v) => v === "green").length,
+      yellowSheets: verdicts.filter((v) => v === "yellow").length,
+      redSheets: verdicts.filter((v) => v === "red").length,
+      unverifiedSheets: unverified.length,
+    },
+    unverified,
+    evidence: "db-readback",
     ok: overallVerdict !== "red",
   }
 }

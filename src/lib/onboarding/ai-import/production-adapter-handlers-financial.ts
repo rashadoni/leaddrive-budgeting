@@ -288,7 +288,11 @@ export function makePlfHandler(
             })),
           })
         }
-        return { rowsInserted: result.metrics.rowsInserted }
+        return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
       },
     } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }
   }
@@ -326,6 +330,34 @@ export function makeBsHandler(
       { preferYear: input.year },
     )
     const companyId = ctx.codeToId.get(input.entityCode)
+    if (!companyId) {
+      // Phase 11.11 (2026-07-29) — BS had NO guard here, unlike PLF above.
+      // Rows were written with `companyId: null`, which degrades
+      // bs-import-batch's company scope to `{}` and archives EVERY company's
+      // balances on that plan for that year. `assertNoCollateralDeletion`
+      // cannot catch it: `footprintLiveCount` is computed from the same
+      // degenerate scope, so the check compares a wipe against itself.
+      //
+      // This BLOCKS rather than skipping (as PLF does): an unresolvable
+      // entity on a balance sheet means the statement is going nowhere, and
+      // silently importing zero balance-sheet rows after a reset reads as
+      // "the balance sheet is empty" rather than "we could not place it".
+      return {
+        summary: `BS sheet "${input.sheetName}": company ${input.entityCode} not in DB`,
+        itemCount: 0,
+        warnings: [
+          `Company "${input.entityCode}" not found in DB for BS sheet "${input.sheetName}"`,
+        ],
+        blocked: {
+          reason:
+            `balance-sheet sheet "${input.sheetName}" resolves to entity ` +
+            `"${input.entityCode}", which does not exist in this organization. ` +
+            `Writing it would attach the rows to no company and clean-slate ` +
+            `every other company's balances for this plan and year.`,
+        },
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
     const rows: BsImportRow[] = []
     const expectedSums = new Map<ReconciliationKey, number>()
     // Phase 2.1 session 1 — per-line metadata so applyToDb can upsert
@@ -443,7 +475,11 @@ export function makeBsHandler(
           // No purge — keep the soft-archived prior version as an undo buffer
           // (see PLF note 2026-06-24).
         })
-        return { rowsInserted: result.metrics.rowsInserted }
+        return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
       },
     } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }
   }
@@ -623,7 +659,11 @@ export function makeCfHandler(
           // No purge — keep the soft-archived prior version as an undo buffer
           // (see PLF note 2026-06-24).
         })
-        return { rowsInserted: result.metrics.rowsInserted }
+        return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
       },
     } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }
   }
@@ -779,7 +819,11 @@ export function makeKpiHandler(
               rows,
               expectedSums,
             })
-            return { rowsInserted: result.metrics.rowsInserted }
+            return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
           },
         } as AdapterRunResult & {
           expectedSums?: Map<ReconciliationKey, number>
@@ -869,7 +913,11 @@ export function makeKpiHandler(
           rows,
           expectedSums,
         })
-        return { rowsInserted: result.metrics.rowsInserted }
+        return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
       },
     } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }
   }

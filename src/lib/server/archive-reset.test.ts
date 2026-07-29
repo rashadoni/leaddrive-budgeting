@@ -19,6 +19,11 @@ function fakePrisma(settings: Record<string, unknown>) {
     counterparty: { updateMany: vi.fn(async () => ({ count: 3 })) },
     operationalFact: { deleteMany: vi.fn(async () => ({ count: 12 })) },
     budgetActual: { deleteMany: vi.fn(async () => ({ count: 4 })) },
+    // Phase 11.6 — sales lines and indicator values used to SURVIVE the
+    // reset: the Sales tab kept rendering the pre-reset dataset and
+    // month/quarter indicator cells kept their pre-reset colour.
+    salesBudgetLine: { deleteMany: vi.fn(async () => ({ count: 6 })) },
+    indicatorValue: { deleteMany: vi.fn(async () => ({ count: 9 })) },
     company: {
       update: vi.fn(async (a: { data: { settings: Record<string, unknown> } }) => {
         updatedSettings = a.data.settings
@@ -47,6 +52,8 @@ describe("resetCompanyImportData", () => {
     expect(tx.counterparty.updateMany).toHaveBeenCalled()
     expect(tx.operationalFact.deleteMany).toHaveBeenCalled() // HARD delete — the tail
     expect(tx.budgetActual.deleteMany).toHaveBeenCalled() // HARD delete — Codex gap
+    expect(tx.salesBudgetLine.deleteMany).toHaveBeenCalled() // Phase 11.6
+    expect(tx.indicatorValue.deleteMany).toHaveBeenCalled() // Phase 11.6
     expect(res.breakdown).toMatchObject({
       budgetLine: 10,
       balanceSheetLine: 5,
@@ -54,9 +61,30 @@ describe("resetCompanyImportData", () => {
       counterparty: 3,
       operationalFact: 12,
       budgetActual: 4,
+      salesBudgetLine: 6,
+      indicatorValue: 9,
       settingsKeys: 1,
     })
-    expect(res.rowsAffected).toBe(10 + 5 + 8 + 3 + 12 + 4 + 1)
+    // SalesBudgetLine has no companyId — scope travels through the
+    // entity-namespaced ProductLine.code.
+    const sblArg = tx.salesBudgetLine.deleteMany.mock.calls[0] as unknown as [
+      { where: Record<string, unknown> },
+    ]
+    expect(sblArg[0].where).toMatchObject({
+      organizationId: "org1",
+      productLine: { code: { startsWith: "AZSEKER_CPC__" } },
+      year: 2025,
+    })
+    // One startsWith covers "2025" | "2025-Q2" | "2025-04".
+    const ivArg = tx.indicatorValue.deleteMany.mock.calls[0] as unknown as [
+      { where: Record<string, unknown> },
+    ]
+    expect(ivArg[0].where).toMatchObject({
+      organizationId: "org1",
+      companyId: "co_1",
+      period: { startsWith: "2025" },
+    })
+    expect(res.rowsAffected).toBe(10 + 5 + 8 + 3 + 12 + 4 + 6 + 9 + 1)
     expect(res.auditEventId).toBe("audit_1")
   })
 
