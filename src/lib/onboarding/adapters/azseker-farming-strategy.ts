@@ -20,6 +20,8 @@
  *   • PPE / Tech / GDX — infrastructure capacity data, separate Phase.
  */
 
+import { numericCellValue } from "../numeric-cell"
+
 export interface ForwardForecastYear {
   /** Calendar year (2026, 2027, ...). */
   year: number
@@ -42,16 +44,21 @@ export interface IcmalParseResult {
   rowsExamined: number
 }
 
-/** Convert a cell value to a number, tolerating string-encoded floats
- *  (with commas or whitespace). Returns 0 on failure. */
+/**
+ * Convert a cell value to a number, tolerating string-encoded floats.
+ * Returns 0 on failure.
+ *
+ * Phase 11.31 — delegates to the one numeric cell parser. The local version
+ * replaced the FIRST comma with a dot, so `"1,234"` (1234) became 1.234 and
+ * `"1,234,56"` became the un-numeric `1.234.56` → 0. Both silent.
+ *
+ * The `?? 0` is retained deliberately: this feeds a forward forecast whose
+ * rows are summed, and returning null would change every caller's shape. It
+ * does still fabricate a real 0.00 from an unreadable cell — tracked as
+ * 11.38, which needs a warnings channel this pure helper does not have.
+ */
 function num(v: unknown): number {
-  if (typeof v === "number" && Number.isFinite(v)) return v
-  if (typeof v === "string") {
-    const cleaned = v.replace(/[\s ]/g, "").replace(",", ".")
-    const n = Number(cleaned)
-    return Number.isFinite(n) ? n : 0
-  }
-  return 0
+  return numericCellValue(v) ?? 0
 }
 
 /** Treat as Revenue row when col 0 is "Revenue" (English) or

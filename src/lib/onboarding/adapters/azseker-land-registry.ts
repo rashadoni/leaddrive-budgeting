@@ -27,6 +27,8 @@
  * names the district (Yevlax / Ağcabədi / Beyləqan / Şəmkir / Füzuli).
  */
 
+import { numericCellValue } from "../numeric-cell"
+
 export interface LandParcel {
   /** Sequence number from S/S column. */
   sequenceNumber: number
@@ -121,13 +123,16 @@ function parseTermRange(
   return { start, end: null }
 }
 
+/**
+ * Phase 11.31 — delegates to the one numeric cell parser.
+ *
+ * The local version replaced the FIRST comma with a dot. This helper reads
+ * parcel AREA (ha) and ANNUAL RENT, both routinely written with a comma in
+ * these registries: `"1,234"` ha became 1.234 ha — a 1000× understatement of
+ * a land holding. The `?? 0` is kept; the fabricated zero is 11.38.
+ */
 function numericOrZero(v: unknown): number {
-  if (typeof v === "number" && Number.isFinite(v)) return v
-  if (typeof v === "string") {
-    const n = Number(v.replace(/\s/g, "").replace(",", "."))
-    return Number.isFinite(n) ? n : 0
-  }
-  return 0
+  return numericCellValue(v) ?? 0
 }
 
 function strOrNull(v: unknown): string | null {

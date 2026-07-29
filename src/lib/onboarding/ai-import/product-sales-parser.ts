@@ -23,6 +23,7 @@
  *
  * Pure: no DB, no LLM, no workbook mutation.
  */
+import { numericCellValue } from "../numeric-cell"
 import type * as XLSXType from "xlsx"
 import {
   resolveProductIdentity,
@@ -74,13 +75,14 @@ function toAoa(
   }) as Aoa
 }
 
+/**
+ * Phase 11.31 — delegates to the one numeric cell parser. The local version
+ * replaced the FIRST comma with a dot, so a sales volume or price written
+ * `"1,234"` was read as 1.234. Already returns null rather than 0 on
+ * failure, so no fabricated zero here.
+ */
 function num(v: unknown): number | null {
-  if (typeof v === "number" && Number.isFinite(v)) return v
-  if (typeof v === "string" && v.trim() !== "") {
-    const n = Number(v.replace(/\s/g, "").replace(",", "."))
-    return Number.isFinite(n) ? n : null
-  }
-  return null
+  return numericCellValue(v)
 }
 
 /**

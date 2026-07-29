@@ -40,6 +40,7 @@
  *     QT/DAS/BO/EDN/AZS → AZSEKER-EDEN (per Phase 7.M Azik confirm
  *     2026-05-19: all farming under Eden Agro).
  */
+import { numericCellValue } from "../numeric-cell"
 import { resolveEntityFromCostCenter } from "../azseker-workbook-mapping"
 
 export interface CapexInitiative {
@@ -79,13 +80,16 @@ export interface CapexParseResult {
 
 const NULL_CODE_TOKENS = new Set(["---", "", "n/a", "N/A"])
 
+/**
+ * Phase 11.31 — delegates to the one numeric cell parser.
+ *
+ * The local version replaced the FIRST comma with a dot, so a CAPEX amount
+ * written `"1,234"` (1234 manat) was booked as 1.234 manat, and `"1,234,56"`
+ * fell through to 0. The `?? 0` is kept: callers sum these into initiative
+ * totals. The fabricated-zero half is 11.38.
+ */
 function numericOrZero(v: unknown): number {
-  if (typeof v === "number" && Number.isFinite(v)) return v
-  if (typeof v === "string") {
-    const n = Number(v.replace(/\s/g, "").replace(",", "."))
-    return Number.isFinite(n) ? n : 0
-  }
-  return 0
+  return numericCellValue(v) ?? 0
 }
 
 function cleanCode(v: unknown): string | null {

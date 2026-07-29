@@ -18,6 +18,7 @@
  *   • Calls `runCashFlowBatch` instead of `runImportBatch`.
  */
 
+import { numericCellValue } from "../numeric-cell"
 import type { PrismaClient, Prisma } from "@prisma/client"
 import type {
   AdapterRunInput,
@@ -572,12 +573,11 @@ export async function runDynamicCfAdapter(
 
     for (const [monthIdx, colIdx] of monthCols) {
       const cellVal = row[colIdx]
-      const raw =
-        typeof cellVal === "number"
-          ? cellVal
-          : typeof cellVal === "string" && cellVal.trim() !== ""
-            ? Number(cellVal.replace(",", "."))
-            : null
+      // Phase 11.31 — the one numeric cell parser. The inline version here
+      // replaced the FIRST comma with a dot, so `"1,234"` (1234) was read as
+      // 1.234 and `"1,234,56"` became NaN, which the `isFinite` guard below
+      // then dropped as if the cell were empty.
+      const raw = numericCellValue(cellVal)
 
       if (raw === null || !Number.isFinite(raw)) continue
       // Explicit bridge zero is evidence. Ordinary movements remain sparse.
