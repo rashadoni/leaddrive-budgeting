@@ -77,15 +77,25 @@ export function makeLandRegistryHandler(
       input.sheetName,
       input.XLSX,
     )
+    // Phase 11.26 — legacy AZSEKER default kept only when this org has it.
     // Per Phase 7.M Azik confirm 2026-05-19: all farming under Eden Agro.
-    const target = input.entityCode ?? "AZSEKER-EDEN"
-    const companyId = ctx.codeToId.get(target)
+    const resolved = resolveSoftSheetEntity(ctx, input.entityCode, "land registry")
+    if ("blocked" in resolved) {
+      return {
+        summary: `Land registry: ${resolved.blocked}`,
+        itemCount: 0,
+        warnings: [...parsed.warnings, resolved.blocked],
+        blocked: { reason: resolved.blocked },
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
+    const { companyId } = resolved
     return {
       summary: `${parsed.parcels.length} land parcels · ${parsed.totalHectares.toFixed(1)} ha`,
       itemCount: parsed.parcels.length,
       warnings: parsed.warnings,
       applyToDb: async (tx: Prisma.TransactionClient) => {
-        if (!companyId || parsed.parcels.length === 0) {
+        if (parsed.parcels.length === 0) {
           return { rowsInserted: 0 }
         }
         const company = await tx.company.findUnique({
@@ -1200,6 +1210,47 @@ export function makeAuditFindingsHandler(
 // drill-down surface (like courtDisputes/auditFindings) and writes NO facts.
 // ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Phase 11.26 (2026-07-29) — resolve the entity for a per-entity SOFT sheet
+ * (land registry, risk register) WITHOUT hardcoding one client's company.
+ *
+ * Both handlers did `input.entityCode ?? "AZSEKER-EDEN"` and then, when the
+ * code resolved to nothing, silently returned `rowsInserted: 0`. For any other
+ * organization that is a guaranteed no-op with a green report — the silent-drop
+ * class 11.3 was opened to close, still live on these two handlers after 11.11
+ * removed the same hardcode from the financial path.
+ *
+ * The legacy default is kept, but only when this org ACTUALLY has that company,
+ * so AZSEKER's existing imports behave exactly as before. Anything else that
+ * cannot be resolved BLOCKS rather than writing nothing quietly.
+ */
+function resolveSoftSheetEntity(
+  ctx: OrgContext,
+  entityCode: string | null | undefined,
+  sheetKind: string,
+): { companyId: string; target: string } | { blocked: string } {
+  const explicit = entityCode ?? null
+  if (explicit) {
+    const id = ctx.codeToId.get(explicit)
+    if (id) return { companyId: id, target: explicit }
+    return {
+      blocked:
+        `${sheetKind}: entity "${explicit}" does not exist in this organization. ` +
+        `Writing nothing and reporting success would hide the whole sheet.`,
+    }
+  }
+  // No entity on the classification. Fall back to the historical AZSEKER
+  // default ONLY if this org has it — never invent another tenant's company.
+  const legacy = ctx.codeToId.get("AZSEKER-EDEN")
+  if (legacy) return { companyId: legacy, target: "AZSEKER-EDEN" }
+  return {
+    blocked:
+      `${sheetKind}: the classifier resolved no entity for this sheet and this ` +
+      `organization has no AZSEKER-EDEN to fall back to. Name the entity in the ` +
+      `sheet map, or split the register per company.`,
+  }
+}
+
 export function makeRiskRegisterHandler(
   prisma: PrismaClient,
   ctxRef: { value: OrgContext | null },
@@ -1212,17 +1263,27 @@ export function makeRiskRegisterHandler(
     const parsed = parseRiskRegister(input.workbook, input.sheetName, input.XLSX)
     // The risk register is per-entity; the classifier resolves the entity from
     // the filename/sheet (e.g. "Top risk - EDEN AGRO" → AZSEKER-EDEN).
-    const target = input.entityCode ?? "AZSEKER-EDEN"
-    const companyId = ctx.codeToId.get(target)
+    // Phase 11.26 — see resolveSoftSheetEntity: an unresolvable entity BLOCKS
+    // instead of quietly writing nothing under a green report.
+    const resolved = resolveSoftSheetEntity(ctx, input.entityCode, "risk register")
+    if ("blocked" in resolved) {
+      return {
+        summary: `Risk register: ${resolved.blocked}`,
+        itemCount: 0,
+        warnings: [...parsed.warnings, resolved.blocked],
+        blocked: { reason: resolved.blocked },
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
+    const { companyId, target } = resolved
     const warnings = [...parsed.warnings]
-    if (!companyId) warnings.push(`Company "${target}" not in org — risk register skipped`)
 
     return {
       summary: `${parsed.risks.length} KRI risk(s) for ${target} — stored for a future KRI indicator (no consumer yet)`,
       itemCount: parsed.risks.length,
       warnings,
       applyToDb: async (tx: Prisma.TransactionClient) => {
-        if (!companyId || parsed.risks.length === 0) return { rowsInserted: 0 }
+        if (parsed.risks.length === 0) return { rowsInserted: 0 }
         const company = await tx.company.findUnique({ where: { id: companyId }, select: { settings: true } })
         const prev = (company?.settings ?? {}) as Record<string, unknown>
         await tx.company.update({
