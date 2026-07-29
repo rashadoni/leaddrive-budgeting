@@ -22,12 +22,18 @@
  *    every sibling company's actuals for the year. See the long note at the
  *    RESET phase below before touching the WHERE clauses.
  *
- * KNOWN GAP (Phase 11.1b, tracked in docs/ROADMAP.md): two BUDGET_ACTUALS
- * sheets for the SAME company and year inside one workbook still clobber each
- * other — they run sequentially in one transaction and the second sheet's
- * reset removes the first sheet's inserts. Company scoping cannot fix that;
- * it needs a per-sheet ownership key (a `source` column on BudgetActual) or
- * an orchestrator-level once-per-scope purge.
+ * CLOSED (Phase 11.1b, 2026-07-29): the reset is additionally scoped by
+ * PROVENANCE via the new `BudgetActual.source` column. `source IS NULL` means
+ * a row an import did not write — legacy, typed in through /budgeting,
+ * auto-sync, snapshot — and the reset no longer touches those. Import rows
+ * carry the batch's `sourceDocument`, which also gives each SHEET its own
+ * rows, so two BUDGET_ACTUALS sheets for the same company and year in one
+ * workbook stop clobbering each other.
+ *
+ * Residual, reported not silent: renaming a sheet between imports changes its
+ * ownership key, so the previous run's rows are no longer reachable by the new
+ * one's reset. The batch counts those and returns them as `orphanedRows` —
+ * see the note at the RESET phase.
  *
  * 4-phase contract (same wording as siblings):
  *
@@ -80,6 +86,14 @@ export interface ActualsImportPlan {
 export interface ActualsImportPhaseMetrics {
   resetDeleted: number
   rowsInserted: number
+  /**
+   * Phase 11.1b — import-written rows inside this batch's own company+date
+   * footprint that belong to a DIFFERENT source document, i.e. a previous
+   * import whose sheet has since been renamed. They are NOT deleted (that
+   * would restore the cross-sheet clobber) and NOT ignored — a stale layer
+   * quietly inflates every actuals total, so the caller must surface it.
+   */
+  orphanedRows: number
 }
 
 export interface ActualsImportResult {
@@ -209,6 +223,32 @@ export async function runActualsBatch(
     return null
   }
 
+  /**
+   * WHERE fragment restricting the reset to rows THIS import owns.
+   *
+   * Phase 11.1b (2026-07-29). Two problems, one root — the reset could not
+   * tell who wrote a row:
+   *
+   *   • It deleted hand-entered actuals along with its own. `BudgetActual`
+   *     has no `deletedAt`, so that loss is unrecoverable. `source IS NULL`
+   *     marks every non-import row (legacy, typed in through /budgeting,
+   *     auto-sync, snapshot) and is now excluded.
+   *   • Two BUDGET_ACTUALS sheets for the same company and year in one
+   *     workbook run sequentially in ONE transaction, so the second sheet's
+   *     reset removed the first sheet's inserts. Company scoping (11.1)
+   *     cannot help — both sheets share the company. Keying on the batch's
+   *     own `sourceDocument` gives each SHEET its own rows.
+   *
+   * A caller with no `sourceDocument` falls back to "any import-written row",
+   * which is still strictly safer than the old behaviour.
+   */
+  let orphanedRows = 0
+
+  const provenanceScope = (): Prisma.BudgetActualWhereInput =>
+    plan.sourceDocument
+      ? { source: plan.sourceDocument }
+      : { source: { not: null } }
+
   const writePhase = async (tx: Prisma.TransactionClient) => {
     // 1. RESET — purge prior actuals within THIS batch's own footprint
     // (planId + derived company scope + caller-controlled date window).
@@ -221,7 +261,7 @@ export async function runActualsBatch(
       const resetWhere: Prisma.BudgetActualWhereInput = {
         organizationId: plan.organizationId,
         planId: plan.planId,
-        AND: [dateCondition, companyScope()],
+        AND: [dateCondition, companyScope(), provenanceScope()],
       }
 
       // Collateral-deletion guard. The count's WHERE is written out
@@ -234,9 +274,31 @@ export async function runActualsBatch(
               where: {
                 organizationId: plan.organizationId,
                 planId: plan.planId,
-                AND: [dateScopeCondition() ?? {}, companyScope()],
+                AND: [dateScopeCondition() ?? {}, companyScope(), provenanceScope()],
               },
             })
+
+      // Phase 11.1b — count import-written rows in this batch's own
+      // company+date footprint that a DIFFERENT source owns. Renaming a sheet
+      // between imports changes its ownership key, so the previous run's rows
+      // become unreachable by this reset. Reporting beats both alternatives:
+      // widening the scope would resurrect the clobber this phase just fixed,
+      // and staying silent would leave a stale layer that quietly inflates
+      // every actuals total.
+      orphanedRows = plan.sourceDocument
+        ? await tx.budgetActual.count({
+            where: {
+              organizationId: plan.organizationId,
+              planId: plan.planId,
+              AND: [
+                dateScopeCondition() ?? {},
+                companyScope(),
+                { source: { not: null } },
+                { NOT: { source: plan.sourceDocument } },
+              ],
+            },
+          })
+        : 0
 
       del = await tx.budgetActual.deleteMany({ where: resetWhere })
 
@@ -264,6 +326,8 @@ export async function runActualsBatch(
       monthIndex: r.monthIndex,
       description: r.description,
       companyId: r.companyId,
+      // Phase 11.1b — provenance + this sheet's ownership key.
+      source: plan.sourceDocument || null,
     }))
     let inserted = 0
     if (payload.length > 0) {
@@ -305,6 +369,7 @@ export async function runActualsBatch(
     metrics: {
       resetDeleted,
       rowsInserted,
+      orphanedRows,
     },
     reconciliation,
   }

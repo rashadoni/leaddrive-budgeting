@@ -64,6 +64,12 @@ interface SheetClassification {
 }
 
 interface PerFileResult {
+  /** Phase 11.5b — years the workbook's own headers declare. */
+  detectedYears?: {
+    years: number[]
+    dominant: number | null
+    multiYear: boolean
+  }
   filename: string
   workbookProfile?: {
     filename?: string
@@ -603,6 +609,7 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   const overSizeCap = totalBytes > MAX_TOTAL_BYTES
   const overCountCap = files.length > MAX_FILES
   const hasConflicts = (previewResult?.conflicts.length ?? 0) > 0
+  const yearMismatch = detectedYearMismatch(previewResult)
   const coaReviewItems =
     previewResult?.perFile.flatMap((f) =>
       (f.semanticCoa?.reviewItems ?? []).map((item) => ({
@@ -1077,6 +1084,28 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
     } finally {
       setIsSavingAliases(false)
     }
+  }
+
+  /**
+   * Phase 11.5b — adopt the year the workbook actually declares.
+   *
+   * The user picks a year before seeing the file. When the preview comes back
+   * saying every uploaded workbook is about a different year, silently
+   * importing the picked one means every adapter's year guard drops every
+   * sheet and the group commits "green" with nothing written. The server now
+   * refuses that outright; this makes the client stop offering it.
+   */
+  function detectedYearMismatch(res: MultiFileApiResponse | null): number | null {
+    if (!res) return null
+    const withYears = res.perFile.filter(
+      (f) => (f.detectedYears?.years.length ?? 0) > 0,
+    )
+    if (withYears.length === 0) return null
+    if (withYears.some((f) => f.detectedYears!.years.includes(year))) return null
+    const all = [
+      ...new Set(withYears.flatMap((f) => f.detectedYears!.years)),
+    ].sort()
+    return all[0] ?? null
   }
 
   async function submit(apply: boolean): Promise<void> {
@@ -1829,6 +1858,22 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
           />
           <span>{t("template.useSaved")}</span>
         </label>
+        {yearMismatch !== null && (
+          <div
+            className="w-full rounded border border-red-400 bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/30 dark:border-red-800 dark:text-red-200"
+            data-testid="year-mismatch"
+          >
+            {t("yearMismatch", { picked: year, detected: yearMismatch })}{" "}
+            <button
+              type="button"
+              className="underline font-medium"
+              onClick={() => setYear(yearMismatch)}
+              data-testid="year-mismatch-fix"
+            >
+              {t("yearMismatchFix", { detected: yearMismatch })}
+            </button>
+          </div>
+        )}
         {previewResult && (
           <button
             type="button"
@@ -1836,6 +1881,9 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
               isProcessing ||
               hasUnresolvedCoaReviews ||
               hasStaleSheetFixes ||
+              // Phase 11.5b — the server refuses this apply anyway; don't
+              // offer a button whose only outcome is a 4xx.
+              (yearMismatch !== null && !forceOverride) ||
               (hasConflicts && !forceOverride && !allConflictsResolved)
             }
             onClick={() => submit(true)}

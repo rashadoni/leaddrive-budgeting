@@ -77,6 +77,10 @@ import {
   type EntityInferenceSource,
 } from "./entity-inference"
 import {
+  detectWorkbookYears,
+  type WorkbookYearDetection,
+} from "./workbook-year"
+import {
   detectFileType,
   type FileType,
   type FileTypeResult,
@@ -270,6 +274,14 @@ export interface PerFileResult {
     mappings: Array<AdapterSemanticCoaMapping & { sheetName: string }>
     reviewItems: Array<AdapterSemanticCoaReviewItem & { sheetName: string }>
   }
+  /**
+   * Phase 11.5b (2026-07-29) — which year(s) this workbook's headers say it
+   * is about, detected deterministically before any LLM call. Lets the UI
+   * pre-fill the year it actually sees and refuse an apply that contradicts
+   * it, instead of letting every adapter's year guard drop every sheet at
+   * zero rows and commit "green" with nothing written.
+   */
+  detectedYears: WorkbookYearDetection
   /** Set when a non-recoverable error stopped this file from being
    *  classified/parsed. The group it belongs to is treated as skipped. */
   error: string | null
@@ -1057,6 +1069,16 @@ export async function runMultiFileImport(
             },
           }
         : {}),
+      // Phase 11.5b — deterministic, LLM-free, runs on the raw headers.
+      // Guarded: a malformed workbook must not sink the whole preview, and
+      // "no year found" simply means the UI cannot pre-fill.
+      detectedYears: (() => {
+        try {
+          return detectWorkbookYears(f.workbook, deps.XLSX)
+        } catch {
+          return { years: [], dominant: null, counts: {}, multiYear: false }
+        }
+      })(),
       error: cr.error,
       llmUsage: cr.usage,
     }
@@ -1317,6 +1339,57 @@ export async function runMultiFileImport(
         ...warnings,
         ...reasons,
         `Routing safety gate — ${reasons.length} issue(s); aborted before any DB write.`,
+      ],
+    }
+  }
+
+  // ── Phase 11.5b: year gate ──────────────────────────────────────
+  // Refuse to apply when NO uploaded workbook contains the requested year.
+  // Without this the adapters' per-sheet year guards drop every row, the
+  // group commits "green" with nothing written, and right after a reset that
+  // reads as "my numbers are gone". Files whose year could not be detected
+  // are not evidence either way and never trigger this.
+  const yearEvidence = perFile.filter((f) => f.detectedYears.years.length > 0)
+  if (
+    !input.dryRun &&
+    !input.forceOverride &&
+    yearEvidence.length > 0 &&
+    !yearEvidence.some((f) => f.detectedYears.years.includes(input.year))
+  ) {
+    const seen = [
+      ...new Set(yearEvidence.flatMap((f) => f.detectedYears.years)),
+    ].sort()
+    const detail = yearEvidence
+      .map((f) => `${f.filename}: ${f.detectedYears.years.join(", ")}`)
+      .join("; ")
+    return {
+      perFile,
+      conflicts,
+      perGroup: [],
+      overallVerdict: "red",
+      llmUsage: aggLlmUsage,
+      durationMs: Date.now() - t0,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      parseMetrics,
+      completeness: {
+        complete: false,
+        filesWithErrors: perFile
+          .filter((f) => f.error !== null)
+          .map((f) => f.filename),
+        unclassifiedFiles: [],
+        groupsNotCommitted: [
+          {
+            fileType: "*",
+            filenames: input.files.map((f) => f.filename),
+            reason: `Year gate — requested ${input.year}, workbooks contain ${seen.join(", ")}`,
+          },
+        ],
+      },
+      warnings: [
+        ...warnings,
+        `Year gate — you asked to import ${input.year}, but no uploaded workbook ` +
+          `contains ${input.year}. Detected: ${detail}. Aborted before any DB write. ` +
+          `Re-run with year=${seen[0]}, or pass forceOverride if the headers are wrong.`,
       ],
     }
   }

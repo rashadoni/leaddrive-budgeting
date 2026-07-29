@@ -3322,6 +3322,8 @@
       "reviewBadge": "review"
     },
     "multi": {
+      "yearMismatch": "The uploaded workbook(s) are about {detected}, but the selected import year is {picked}. Importing would write nothing.",
+      "yearMismatchFix": "Switch to {detected}",
       "yearLabel": "Import year",
       "yearHint": "Must match the year you cleared in Reset",
       "dropZone": {

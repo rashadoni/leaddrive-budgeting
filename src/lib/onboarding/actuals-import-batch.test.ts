@@ -103,6 +103,8 @@ describe("runActualsBatch", () => {
         { OR: [{ expenseDate: { startsWith: "2026" } }] },
         // both rows carry companyId null → org-wide bucket only
         { companyId: null },
+        // Phase 11.1b — this sheet's own rows only; never hand-entered ones.
+        { source: "test.xlsx" },
       ],
     })
     // WRITE: payload shape correct
@@ -122,7 +124,7 @@ describe("runActualsBatch", () => {
       lineType: "expense",
     })
     // Metrics propagated
-    expect(result.metrics).toEqual({ resetDeleted: 3, rowsInserted: 2 })
+    expect(result.metrics).toEqual({ resetDeleted: 3, rowsInserted: 2, orphanedRows: 3 })
     // Reconciliation report present
     expect(result.reconciliation).toBeDefined()
   })
@@ -142,7 +144,11 @@ describe("runActualsBatch", () => {
     expect(resetWhere(deleteMany)).toEqual({
       organizationId: "org_1",
       planId: "plan_1",
-      AND: [{ expenseDate: { in: ["2026-03-15"] } }, { companyId: null }],
+      AND: [
+        { expenseDate: { in: ["2026-03-15"] } },
+        { companyId: null },
+        { source: "test.xlsx" },
+      ],
     })
   })
 
@@ -188,10 +194,11 @@ describe("runActualsBatch", () => {
       AND: [
         { OR: [{ expenseDate: { startsWith: "2026" } }] },
         { companyId: { in: [] } },
+        { source: "test.xlsx" },
       ],
     })
     expect(createMany).not.toHaveBeenCalled()
-    expect(result.metrics).toEqual({ resetDeleted: 0, rowsInserted: 0 })
+    expect(result.metrics).toEqual({ resetDeleted: 0, rowsInserted: 0, orphanedRows: 0 })
   })
 
   describe("Phase 11.1 — company-scoped reset (derive-delete-from-write)", () => {
@@ -219,10 +226,12 @@ describe("runActualsBatch", () => {
         AND: [
           { OR: [{ expenseDate: { startsWith: "2026" } }] },
           { companyId: { in: ["co_a", "co_b"] } },
+          { source: "test.xlsx" },
         ],
       })
-      // The guard counted the footprint independently before deleting.
-      expect(count).toHaveBeenCalledOnce()
+      // Two independent counts: the collateral guard's footprint, and the
+      // Phase 11.1b orphan probe for rows owned by another source document.
+      expect(count).toHaveBeenCalledTimes(2)
     })
 
     it("mixes named companies and the org-wide (null) bucket under one OR", async () => {
@@ -246,6 +255,7 @@ describe("runActualsBatch", () => {
         AND: [
           { OR: [{ expenseDate: { startsWith: "2026" } }] },
           { OR: [{ companyId: { in: ["co_a"] } }, { companyId: null }] },
+          { source: "test.xlsx" },
         ],
       })
     })
@@ -382,5 +392,96 @@ describe("runActualsBatch", () => {
     expect(result.reconciliation.verdict).toBe("green")
     expect(result.reconciliation.matched).toBe(1)
     expect(result.reconciliation.drift).toEqual([])
+  })
+
+  describe("Phase 11.1b — provenance-scoped reset", () => {
+    it("never touches rows an import did not write", async () => {
+      // BudgetActual has no deletedAt, so deleting a hand-entered actual is
+      // unrecoverable. `source IS NULL` marks legacy rows, rows typed in
+      // through /budgeting, auto-sync output and snapshots.
+      const { prisma, deleteMany } = buildPrismaStub({ deleteCount: 2 })
+      await runActualsBatch(prisma, {
+        organizationId: "org_1",
+        planId: "plan_1",
+        label: "test",
+        actorUserId: "u1",
+        sourceDocument: "budget-actuals-sheet:ACTUALS CPC",
+        dateScope: ["2026"],
+        rows: [row("Cat1", 100, "2026-03-15", 2, { companyId: "co_a" })],
+        expectedSums: new Map(),
+      })
+      const w = resetWhere(deleteMany) as { AND: Array<Record<string, unknown>> }
+      expect(w.AND).toContainEqual({
+        source: "budget-actuals-sheet:ACTUALS CPC",
+      })
+    })
+
+    it("gives each SHEET its own rows, so two sheets stop clobbering", async () => {
+      // Two BUDGET_ACTUALS sheets for the same company and year run
+      // sequentially in ONE transaction. Company scoping cannot separate them
+      // — they share the company — so before this the second sheet's reset
+      // deleted the first sheet's inserts and only the last survived.
+      const { prisma, deleteMany, createMany } = buildPrismaStub({
+        deleteCount: 0,
+        createCount: 1,
+      })
+      const base = {
+        organizationId: "org_1",
+        planId: "plan_1",
+        label: "test",
+        actorUserId: "u1",
+        dateScope: ["2026"],
+        rows: [row("Cat1", 100, "2026-03-15", 2, { companyId: "co_a" })],
+        expectedSums: new Map(),
+      }
+      await runActualsBatch(prisma, { ...base, sourceDocument: "sheet-A" })
+      await runActualsBatch(prisma, { ...base, sourceDocument: "sheet-B" })
+
+      const a = resetWhere(deleteMany) as { AND: Array<Record<string, unknown>> }
+      const [second] = deleteMany.mock.calls[1] as unknown as [
+        { where: { AND: Array<Record<string, unknown>> } },
+      ]
+      expect(a.AND).toContainEqual({ source: "sheet-A" })
+      expect(second.where.AND).toContainEqual({ source: "sheet-B" })
+      // Both sheets wrote; neither reset could reach the other's rows.
+      expect(createMany).toHaveBeenCalledTimes(2)
+    })
+
+    it("stamps the source on every inserted row", async () => {
+      const { prisma, createMany } = buildPrismaStub({ createCount: 1 })
+      await runActualsBatch(prisma, {
+        organizationId: "org_1",
+        planId: "plan_1",
+        label: "test",
+        actorUserId: "u1",
+        sourceDocument: "sheet-A",
+        dateScope: ["2026"],
+        rows: [row("Cat1", 100, "2026-03-15", 2, { companyId: "co_a" })],
+        expectedSums: new Map(),
+      })
+      const [arg] = createMany.mock.calls[0] as unknown as [
+        { data: Array<Record<string, unknown>> },
+      ]
+      expect(arg.data[0]).toMatchObject({ source: "sheet-A" })
+    })
+
+    it("REPORTS rows left behind by a renamed sheet instead of hiding them", async () => {
+      // Renaming a sheet changes its ownership key, so the previous run's
+      // rows are unreachable by this reset. Widening the scope would restore
+      // the clobber; staying silent would leave a stale layer inflating every
+      // actuals total. So: counted and returned.
+      const { prisma } = buildPrismaStub({ deleteCount: 1, footprintCount: 7 })
+      const r = await runActualsBatch(prisma, {
+        organizationId: "org_1",
+        planId: "plan_1",
+        label: "test",
+        actorUserId: "u1",
+        sourceDocument: "sheet-renamed",
+        dateScope: ["2026"],
+        rows: [row("Cat1", 100, "2026-03-15", 2, { companyId: "co_a" })],
+        expectedSums: new Map(),
+      })
+      expect(r.metrics.orphanedRows).toBe(7)
+    })
   })
 })

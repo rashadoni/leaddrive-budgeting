@@ -3322,6 +3322,8 @@
       "reviewBadge": "baxış"
     },
     "multi": {
+      "yearMismatch": "Yüklənmiş kitablar {detected} ilinə aiddir, seçilmiş idxal ili isə {picked}. İdxal heç nə yazmayacaq.",
+      "yearMismatchFix": "{detected} ilinə keç",
       "yearLabel": "İdxal ili",
       "yearHint": "Sıfırlamada təmizlədiyiniz illə eyni olmalıdır",
       "dropZone": {
