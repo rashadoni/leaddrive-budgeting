@@ -38,6 +38,7 @@ import { runCashFlowBatch, type CfImportRow } from "../cf-import-batch"
 import { runKpiBatch, type KpiImportRow } from "../kpi-import-batch"
 import { assertNoCollateralDeletion } from "../collateral-guard"
 import { buildReconKey, type ReconciliationKey } from "../reconciliation"
+import { buildSourceCell } from "../source-cell"
 import {
   createCoACache,
   preWarmCoACache,
@@ -140,7 +141,13 @@ export function makePlfHandler(
           planId: ctx.planId,
           // Placeholder — overwritten in applyToDb via resolveOrCreateAccountId.
           accountId: "",
-          sourceCell: `multi-import#${input.sheetName}!${line.code}#${lineOrdinal}@${period}`,
+          sourceCell: buildSourceCell({
+            channel: "multi-import",
+            sheetName: input.sheetName,
+            code: line.code,
+            ordinal: lineOrdinal,
+            period,
+          }),
         })
         const key = buildReconKey(input.entityCode, line.code, period)
         expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
@@ -426,7 +433,13 @@ export function makeBsHandler(
           year: input.year,
           month,
           amount,
-          sourceCell: `multi-import#${input.sheetName}!${line.code}#${lineOrdinal}@${period}`,
+          sourceCell: buildSourceCell({
+            channel: "multi-import",
+            sheetName: input.sheetName,
+            code: line.code,
+            ordinal: lineOrdinal,
+            period,
+          }),
         })
         const key = buildReconKey(
           ctx.planId,

@@ -71,6 +71,41 @@ UNION ALL
 SELECT 'cash_flow_entries', count(*) FROM (
   SELECT 1 FROM cash_flow_entries WHERE "deletedAt" IS NULL
   GROUP BY "sourceId","year","month","accountId" HAVING count(*)>1) b;
+
+\echo ''
+\echo '--- Phase 11.8b: which rows carry an ORDINAL-BEARING source key? ---'
+\echo '--- (new format ...!CODE#<n>@YYYY-MM identifies a CELL;           ---'
+\echo '---  old format ...!CODE@YYYY-MM identifies only an ACCOUNT CODE) ---'
+SELECT
+  CASE WHEN "sourceDocument" ~ '#[0-9]+@[0-9]{4}-[0-9]{2}$'
+       THEN 'new (ordinal)' ELSE 'legacy (no ordinal)' END AS key_format,
+  count(*) AS rows,
+  count(DISTINCT "planId") AS plans
+FROM budget_lines
+WHERE "deletedAt" IS NULL AND "sourceDocument" IS NOT NULL
+GROUP BY 1 ORDER BY 1;
+
+\echo ''
+\echo '--- violations AMONG ordinal-bearing keys only (must be 0) ---'
+SELECT count(*) AS dup_groups, coalesce(sum(n) - count(*), 0) AS excess_rows
+FROM (
+  SELECT count(*) AS n FROM budget_lines
+  WHERE "deletedAt" IS NULL AND "sourceDocument" IS NOT NULL
+    AND "sourceDocument" ~ '#[0-9]+@[0-9]{4}-[0-9]{2}$'
+  GROUP BY "planId", "sourceDocument" HAVING count(*) > 1
+) v;
+
+\echo ''
+\echo '--- DRY RUN: can the 11.8b index actually be created? (rolled back) ---'
+\echo '--- proves creatability instead of inferring it from a zero count  ---'
+BEGIN;
+CREATE UNIQUE INDEX "dryrun_budget_lines_plan_source_cell_key"
+  ON "budget_lines" ("planId", "sourceDocument")
+  WHERE "deletedAt" IS NULL
+    AND "sourceDocument" IS NOT NULL
+    AND "sourceDocument" ~ '#[0-9]+@[0-9]{4}-[0-9]{2}$';
+SELECT 'index creatable' AS dry_run_result;
+ROLLBACK;
 SQL
 
 echo

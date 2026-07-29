@@ -536,6 +536,17 @@ model BudgetLine {
   // xlsx cell that contributed. Typically `filename.xlsx#sheet!cell_ref`
   // for direct xlsx imports, or `cli:import-X.ts` for CLI-driven loads.
   // Nullable for backward compat with pre-Phase-A budget lines.
+  //
+  // Phase 11.8b (2026-07-29) — a PARTIAL UNIQUE index enforces one live row per
+  // (planId, sourceDocument), but only for keys in the ordinal-bearing format
+  // `...!<code>#<n>@<YYYY-MM>`. It is a raw index in migration
+  // `20260729190000_budget_line_source_cell_unique`, not `@@unique`, because
+  // Prisma cannot express a predicate — and the predicate is the whole point:
+  // legacy keys were `...!<code>@<period>`, keyed on the ACCOUNT CODE, so a
+  // workbook listing one code on several rows produced one key for several
+  // genuinely different rows. Those rows are real data, not duplicates, and are
+  // excluded until a re-import gives them an ordinal — at which point they come
+  // under the index on their own, with no further migration.
   sourceDocument String?
 
   @@index([organizationId])
