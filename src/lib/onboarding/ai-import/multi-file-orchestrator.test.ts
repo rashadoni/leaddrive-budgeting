@@ -24,6 +24,7 @@ import { REPORTING_PACK_SHEET_MAP } from "./reporting-pack-sheet-map"
 import { HOLDING_ENTITY_SENTINEL, type SheetMap } from "./sheet-routing"
 import type { PrismaClient } from "@prisma/client"
 import { buildReconKey, reconcile } from "../reconciliation"
+import * as realXLSX from "xlsx"
 
 // ─── Stubs ──────────────────────────────────────────────────────────────
 
@@ -2189,3 +2190,112 @@ describe("runMultiFileImport — Phase 11.13 persisted evidence", () => {
     expect(created).toHaveLength(0)
   })
 })
+// ─── Phase 11.5b — year gate ────────────────────────────────────────────
+//
+// Phase 11.5 made the year an explicit choice, which stops it being wrong by
+// accident. This stops it being wrong on purpose-ish: pick 2026, upload a 2025
+// workbook, and every adapter's year guard drops every sheet at zero rows
+// while the group commits "green" with nothing written.
+describe("runMultiFileImport — Phase 11.5b year gate", () => {
+  function run(opts: {
+    sheetYear: number
+    requestedYear: number
+    dryRun?: boolean
+    forceOverride?: boolean
+  }) {
+    const prisma = stubPrisma({ companies: [{ id: "c1", code: "AZSEKER-CPC" }] })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "PLF prefix",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "BS prefix",
+        },
+      ],
+    ])
+    // Real xlsx sheets so the deterministic year detector has headers to read.
+    const XLSXreal = realXLSX
+    const book = XLSXreal.utils.book_new()
+    for (const name of ["PLF CPC", "BS CPC"]) {
+      XLSXreal.utils.book_append_sheet(
+        book,
+        XLSXreal.utils.aoa_to_sheet([
+          [
+            "P&L",
+            ...Array.from({ length: 12 }, (_, m) =>
+              new Date(Date.UTC(opts.sheetYear, m, 1)),
+            ),
+          ],
+          ["PLF.01", 1, 2, 3],
+        ]),
+        name,
+      )
+    }
+    return runMultiFileImport(
+      {
+        files: [{ filename: "Guvven Fin.xlsx", workbook: book }],
+        organizationId: "org1",
+        year: opts.requestedYear,
+        dryRun: opts.dryRun,
+        forceOverride: opts.forceOverride,
+      },
+      {
+        prisma,
+        anthropicClient: client,
+        model: "claude-test",
+        registry: buildRegistryWith({ PLF: plfHandler(2), BS: plfHandler(1) }),
+        XLSX: XLSXreal,
+      },
+    )
+  }
+
+  it("reports the year it detected in the workbook", async () => {
+    const r = await run({ sheetYear: 2026, requestedYear: 2026 })
+    expect(r.perFile[0].detectedYears.dominant).toBe(2026)
+  })
+
+  it("ABORTS an apply whose year appears in no uploaded workbook", async () => {
+    const r = await run({ sheetYear: 2025, requestedYear: 2026 })
+    expect(r.overallVerdict).toBe("red")
+    expect(r.perGroup).toEqual([])
+    expect(r.completeness.complete).toBe(false)
+    expect(r.warnings.join(" ")).toMatch(/Year gate/)
+    // Aborted BEFORE any transaction opened.
+    expect(r.warnings.join(" ")).toMatch(/before any DB write/)
+    expect(prismaTxCalls(r)).toBe(0)
+  })
+
+  it("allows the apply when the requested year IS present", async () => {
+    const r = await run({ sheetYear: 2026, requestedYear: 2026 })
+    expect(r.warnings.join(" ")).not.toMatch(/Year gate/)
+    expect(r.perGroup.length).toBeGreaterThan(0)
+  })
+
+  it("never gates a dry run — a preview writes nothing", async () => {
+    const r = await run({ sheetYear: 2025, requestedYear: 2026, dryRun: true })
+    expect(r.warnings.join(" ")).not.toMatch(/Year gate/)
+  })
+
+  it("forceOverride lets the owner proceed when the headers are wrong", async () => {
+    const r = await run({
+      sheetYear: 2025,
+      requestedYear: 2026,
+      forceOverride: true,
+    })
+    expect(r.warnings.join(" ")).not.toMatch(/Year gate/)
+  })
+})
+
+/** perGroup is empty on an aborted run, so "no tx opened" is asserted via it. */
+function prismaTxCalls(r: { perGroup: unknown[] }): number {
+  return r.perGroup.length
+}
