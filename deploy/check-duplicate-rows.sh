@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+#
+# Phase 11.8b pre-flight — READ-ONLY duplicate-row check on the financial tables.
+#
+#   bash deploy/check-duplicate-rows.sh
+#
+# Context — and a correction
+# ──────────────────────────
+# The Phase 11 audit proposed `@@unique([planId, companyId, accountId,
+# monthIndex])` on `BudgetLine` as the last-resort backstop against
+# double-import. Measuring production on 2026-07-29 showed that key is WRONG:
+# 376 groups violate it, and 268 of them differ only by AMOUNT, with identical
+# department, subtype and notes. Those are legitimate — since Phase 2.1 made
+# `accountId` the FK, several distinct source lines in the workbook collapse
+# onto the same account in the same month by design. That constraint would
+# reject real data.
+#
+# The real natural key is `(planId, sourceDocument)`: `sourceDocument` carries
+# the adapter's `sourceCell`, i.e. the workbook cell a row came from, so one DB
+# row per source cell is exactly the invariant an import should hold. On
+# production that key had 16 violating groups / 19 excess rows — a genuine
+# double-write signature, small enough to inspect by hand.
+#
+# The constraint is NOT shipped: dropping 19 financial rows changes reported
+# numbers, which is an owner decision, not a migration's. This script makes the
+# state visible so that decision can be made on evidence.
+#
+# `sourceDocument IS NULL` rows (legacy + hand-entered) are excluded — they
+# never had a source cell and cannot violate a key derived from one.
+#
+# SAFETY: strictly SELECT. Safe on production at any time.
+
+set -euo pipefail
+
+PROD_HOST="root@46.225.60.142"
+APP_DIR="/opt/budgetpro"
+
+echo "→ Checking financial tables for duplicate rows…"
+
+ssh "$PROD_HOST" "bash -lc 'cd \"$APP_DIR\" \
+  && set -a && . ./.env.production && set +a \
+  && docker compose --env-file .env.production exec -T db \
+     psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=1'" <<'SQL'
+\echo '--- BudgetLine: violations of the REAL key (planId, sourceDocument) ---'
+SELECT count(*) AS dup_groups, coalesce(sum(n) - count(*), 0) AS excess_rows
+FROM (
+  SELECT count(*) AS n
+  FROM budget_lines
+  WHERE "deletedAt" IS NULL AND "sourceDocument" IS NOT NULL
+  GROUP BY "planId", "sourceDocument"
+  HAVING count(*) > 1
+) d;
+
+\echo ''
+\echo '--- the offending groups, with the amounts involved ---'
+SELECT b."planId", b."sourceDocument", count(*) AS rows,
+       array_agg(b."plannedAmount" ORDER BY b.id) AS amounts
+FROM budget_lines b
+WHERE b."deletedAt" IS NULL AND b."sourceDocument" IS NOT NULL
+GROUP BY 1, 2
+HAVING count(*) > 1
+ORDER BY count(*) DESC
+LIMIT 40;
+
+\echo ''
+\echo '--- BalanceSheetLine / CashFlowEntry (expected: clean) ---'
+SELECT 'balance_sheet_lines' AS tbl, count(*) AS dup_groups FROM (
+  SELECT 1 FROM balance_sheet_lines WHERE "deletedAt" IS NULL
+  GROUP BY "planId","companyId","accountId","year","month" HAVING count(*)>1) a
+UNION ALL
+SELECT 'cash_flow_entries', count(*) FROM (
+  SELECT 1 FROM cash_flow_entries WHERE "deletedAt" IS NULL
+  GROUP BY "sourceId","year","month","accountId" HAVING count(*)>1) b;
+SQL
+
+echo
+echo "Zero groups → the (planId, sourceDocument) unique index can be added."
+echo "Any groups  → each is one workbook cell that produced more than one row."
+echo "              Deciding which copy survives changes reported numbers, so"
+echo "              that is an owner call — the constraint stays unshipped."

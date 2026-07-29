@@ -104,7 +104,17 @@ export function makePlfHandler(
       string,
       { code: string; name: string; accountType: string }
     >()
+    // Phase 11.8b (2026-07-29) — the ORDINAL is part of the source-cell key.
+    //
+    // `sourceCell` was `#<sheet>!<code>@<period>`, i.e. keyed on the ACCOUNT
+    // CODE. A workbook that lists the same code on several rows — measured on
+    // production: PLF.07.02.04 appears up to three times in the 2025 PLF sheet
+    // — produced one identical key for genuinely different rows. That made
+    // `sourceDocument` unusable as a natural key and left BudgetLine with no
+    // way to state "one row per source cell" in the database.
+    let lineOrdinal = -1
     for (const line of parsed.lines) {
+      lineOrdinal += 1
       if (!accountSpecs.has(line.code)) {
         accountSpecs.set(line.code, {
           code: line.code,
@@ -130,7 +140,7 @@ export function makePlfHandler(
           planId: ctx.planId,
           // Placeholder — overwritten in applyToDb via resolveOrCreateAccountId.
           accountId: "",
-          sourceCell: `multi-import#${input.sheetName}!${line.code}@${period}`,
+          sourceCell: `multi-import#${input.sheetName}!${line.code}#${lineOrdinal}@${period}`,
         })
         const key = buildReconKey(input.entityCode, line.code, period)
         expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
@@ -367,7 +377,17 @@ export function makeBsHandler(
       string,
       { code: string; name: string; accountType: string }
     >()
+    // Phase 11.8b (2026-07-29) — the ORDINAL is part of the source-cell key.
+    //
+    // `sourceCell` was `#<sheet>!<code>@<period>`, i.e. keyed on the ACCOUNT
+    // CODE. A workbook that lists the same code on several rows — measured on
+    // production: PLF.07.02.04 appears up to three times in the 2025 PLF sheet
+    // — produced one identical key for genuinely different rows. That made
+    // `sourceDocument` unusable as a natural key and left BudgetLine with no
+    // way to state "one row per source cell" in the database.
+    let lineOrdinal = -1
     for (const line of parsed.lines) {
+      lineOrdinal += 1
       if (!accountSpecs.has(line.code)) {
         accountSpecs.set(line.code, {
           code: line.code,
@@ -393,7 +413,7 @@ export function makeBsHandler(
           year: input.year,
           month,
           amount,
-          sourceCell: `multi-import#${input.sheetName}!${line.code}@${period}`,
+          sourceCell: `multi-import#${input.sheetName}!${line.code}#${lineOrdinal}@${period}`,
         })
         const key = buildReconKey(
           ctx.planId,
