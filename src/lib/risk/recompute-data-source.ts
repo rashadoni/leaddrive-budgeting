@@ -202,7 +202,12 @@ export function createPrismaDataSource(
             month: targetMonth,
             // Decouple plan: terminal reads ACTUAL plans only (no-op until a
             // budget plan exists; all existing plans default kind="actual").
-            plan: { kind: "actual" },
+            // Phase 11.4 — `plan.deletedAt: null` is REQUIRED here. Soft-deleting a
+            // plan from the UI marks only the plan row; its BudgetLine /
+            // BalanceSheetLine children stay live, so without this filter a
+            // "deleted" plan keeps feeding the terminal — and a re-import that
+            // creates a fresh plan gets SUMMED with the deleted one.
+            plan: { kind: "actual", deletedAt: null },
             deletedAt: null,
           },
           select: {
@@ -358,7 +363,12 @@ export function createPrismaDataSource(
           // separate forward-budget plan (kind="budget") never double-counts
           // into realized indicators. All pre-existing plans default to
           // kind="actual", so this is a no-op until a budget plan is created.
-          plan: { year: period.year, kind: "actual" },
+          // Phase 11.4 — `plan.deletedAt: null` is REQUIRED here. Soft-deleting a
+          // plan from the UI marks only the plan row; its BudgetLine /
+          // BalanceSheetLine children stay live, so without this filter a
+          // "deleted" plan keeps feeding the terminal — and a re-import that
+          // creates a fresh plan gets SUMMED with the deleted one.
+          plan: { year: period.year, kind: "actual", deletedAt: null },
           // Coalesce-in-filter: a row matches the period month if its
           // monthIndex is in range, OR (monthIndex null) its legacy
           // sortOrder is in range. Mirrors the `monthIndex ?? sortOrder`

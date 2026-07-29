@@ -26,6 +26,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { resolveImportPlan } from "@/lib/onboarding/resolve-plan"
 import * as XLSX from "xlsx"
 import { Prisma } from "@prisma/client"
 // rls-scan-ignore: onboarding budget import (maxDuration 60). Commits a bulk
@@ -288,25 +289,20 @@ export async function POST(request: NextRequest) {
   try {
     result = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
-        const planName = `Imported ${year} Budget`
-        let plan = await tx.budgetPlan.findFirst({
-          where: { organizationId: orgId, year, name: planName, deletedAt: null },
-          select: { id: true },
+        // Phase 11.4 — resolve by (org, year, kind), never by name. A name
+        // lookup could not see the plan the other import paths create, so a
+        // year could end up split across two live `kind="actual"` plans that
+        // the risk engine then summed. See lib/onboarding/resolve-plan.ts.
+        const resolved = await resolveImportPlan(tx, {
+          organizationId: orgId,
+          year,
+          kind: "actual",
+          name: `Imported ${year} Budget`,
+          periodType: "yearly",
+          status: "active",
         })
-        let planCreated = false
-        if (!plan) {
-          plan = await tx.budgetPlan.create({
-            data: {
-              organizationId: orgId,
-              name: planName,
-              year,
-              periodType: "yearly",
-              status: "active",
-            },
-            select: { id: true },
-          })
-          planCreated = true
-        }
+        const plan = { id: resolved.id }
+        const planCreated = resolved.created
 
         const del = await tx.budgetLine.deleteMany({
           where: {

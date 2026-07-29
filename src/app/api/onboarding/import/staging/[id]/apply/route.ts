@@ -27,6 +27,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveImportPlan } from '@/lib/onboarding/resolve-plan';
 import * as XLSX from 'xlsx';
 import { Prisma } from '@prisma/client';
 // rls-scan-ignore: staged single-sheet apply (maxDuration 60). Commits the
@@ -568,24 +569,20 @@ export async function POST(
         });
         if (claim.count !== 1) throw new Error('STAGING_RACE');
 
-        // Plan lookup-or-create. Per-org plan, year-scoped.
-        const planName = `AI-Imported ${targetYear} Budget`;
-        let plan = await tx.budgetPlan.findFirst({
-          where: { organizationId: orgIdLocal, year: targetYear, name: planName, deletedAt: null },
-          select: { id: true },
+        // Phase 11.4 — resolve by (org, year, kind), never by name. The
+        // old `findFirst({ name: 'AI-Imported <year> Budget' })` could not
+        // see the plan the AI Auto Import path creates under a different
+        // name, so importing one year through both tabs produced two live
+        // `kind="actual"` plans and the risk engine — which filters on kind
+        // with no planId — summed both, doubling every number.
+        const plan = await resolveImportPlan(tx, {
+          organizationId: orgIdLocal,
+          year: targetYear,
+          kind: 'actual',
+          name: `AI-Imported ${targetYear} Budget`,
+          periodType: 'yearly',
+          status: 'active',
         });
-        if (!plan) {
-          plan = await tx.budgetPlan.create({
-            data: {
-              organizationId: orgIdLocal,
-              name: planName,
-              year: targetYear,
-              periodType: 'yearly',
-              status: 'active',
-            },
-            select: { id: true },
-          });
-        }
 
         // Delete prior lines scoped to this (org, plan, company) triple.
         const del = await tx.budgetLine.deleteMany({

@@ -457,6 +457,13 @@ model BudgetPlan {
   budgetAssumptions     BudgetAssumption[]
 
   @@index([organizationId])
+  // Phase 11.4 (2026-07-29) — the UNIQUE backstop lives in
+  // prisma/migrations/20260729120000_budget_plan_unique_per_year_kind as a
+  // PARTIAL index (`WHERE "deletedAt" IS NULL`), which Prisma's schema
+  // language cannot express. Do NOT replace it with a plain @@unique: that
+  // would also constrain soft-deleted plans, which may legitimately repeat a
+  // (year, kind) a live plan now occupies. Application-side resolution is
+  // src/lib/onboarding/resolve-plan.ts — every import path must call it.
   @@map("budget_plans")
 }
 

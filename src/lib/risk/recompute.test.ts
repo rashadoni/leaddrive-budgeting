@@ -901,7 +901,10 @@ describe('createPrismaDataSource.listBudgetLines — month filter math (monthInd
     });
     expect(findMany).toHaveBeenCalledTimes(1);
     const where = findMany.mock.calls[0][0].where;
-    expect(where.plan).toEqual({ year: 2026, kind: "actual" });
+    // Phase 11.4 — `deletedAt: null` on the PLAN: soft-deleting a plan
+    // leaves its BudgetLine children live, so without it a "deleted" plan
+    // keeps feeding the terminal and gets summed with its replacement.
+    expect(where.plan).toEqual({ year: 2026, kind: "actual", deletedAt: null });
     // monthIndex is the canonical month source; sortOrder is the legacy
     // fallback only when monthIndex is null.
     expect(where.OR).toEqual([
@@ -950,7 +953,10 @@ describe('createPrismaDataSource.listBudgetLines — month filter math (monthInd
       period: parsePeriod('2026'),
     });
     const where = findMany.mock.calls[0][0].where;
-    expect(where.plan).toEqual({ year: 2026, kind: "actual" });
+    // Phase 11.4 — `deletedAt: null` on the PLAN: soft-deleting a plan
+    // leaves its BudgetLine children live, so without it a "deleted" plan
+    // keeps feeding the terminal and gets summed with its replacement.
+    expect(where.plan).toEqual({ year: 2026, kind: "actual", deletedAt: null });
     expect(where.OR).toBeUndefined();
     expect(where.sortOrder).toBeUndefined();
   });

@@ -8,6 +8,7 @@ import { logBudgetPlanCreate } from "@/lib/audit/import-helpers"
 // Phase 5.2 Stage 2 Tier 3 (2026-05-21) — RLS wrap for budget_plans reads/writes.
 import { withOrgScope } from "@/lib/db/with-org-scope"
 import { getLogger } from "@/lib/log"
+import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
 const log = getLogger("api:budgeting:plans")
@@ -416,6 +417,36 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ success: true, data: plan, auditStale }, { status: 201 })
 }
 
+/**
+ * Phase 11.4 (2026-07-29) — recompute after a plan soft-delete.
+ *
+ * Deleting a plan marks only the plan row; its BudgetLine / BalanceSheetLine
+ * children stay live. The risk readers now exclude soft-deleted plans
+ * (`plan: { deletedAt: null }`), so the data correctly stops flowing — but
+ * `IndicatorValue` is PRECOMPUTED, so without this call the terminal keeps
+ * rendering numbers derived from a plan the user just deleted, until some
+ * unrelated import happens to fire a recompute.
+ *
+ * Best-effort and never fatal: the delete itself already succeeded and must
+ * not be reported as failed because a downstream recompute did.
+ */
+async function recomputeAfterPlanDelete(orgId: string, years: number[]) {
+  if (years.length === 0) return
+  try {
+    const companies = await prisma.company.findMany({
+      where: { organizationId: orgId },
+      select: { id: true },
+    })
+    if (companies.length === 0) return
+    const affected = years.flatMap((year) =>
+      companies.map((c) => ({ companyId: c.id, year })),
+    )
+    await runRecomputeForCompanies(prisma, orgId, affected)
+  } catch {
+    // Non-fatal — see jsdoc.
+  }
+}
+
 export async function DELETE(req: NextRequest) {
   // Bulk destructive operation — admin only (reset / deleteAll clears org data)
   const session = await requireRole(req, "admin")
@@ -433,18 +464,31 @@ export async function DELETE(req: NextRequest) {
   // everything back. A background cleanup job physically removes plans whose
   // `deletedAt` is older than 30 days.
   if (deleteAll && !planId) {
+    const years = await withOrgScope(orgId, async (tx) =>
+      tx.budgetPlan.findMany({
+        where: { organizationId: orgId, deletedAt: null },
+        select: { year: true },
+      })
+    )
     const result = await withOrgScope(orgId, async (tx) =>
       tx.budgetPlan.updateMany({
         where: { organizationId: orgId, deletedAt: null },
         data: { deletedAt: new Date(), deletedBy: userId },
       })
     )
+    await recomputeAfterPlanDelete(orgId, [...new Set(years.map((y) => y.year))])
     return NextResponse.json({ success: true, deletedPlans: result.count, deletedAll: true })
   }
 
   // DELETE single plan
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
+  const target = await withOrgScope(orgId, async (tx) =>
+    tx.budgetPlan.findFirst({
+      where: { id: planId, organizationId: orgId, deletedAt: null },
+      select: { year: true },
+    })
+  )
   const result = await withOrgScope(orgId, async (tx) =>
     tx.budgetPlan.updateMany({
       where: { id: planId, organizationId: orgId, deletedAt: null },
@@ -454,6 +498,8 @@ export async function DELETE(req: NextRequest) {
   if (result.count === 0) {
     return NextResponse.json({ error: "Plan not found or already deleted" }, { status: 404 })
   }
+
+  await recomputeAfterPlanDelete(orgId, target ? [target.year] : [])
 
   return NextResponse.json({ success: true, deletedPlan: planId, deletedAll: false })
 }

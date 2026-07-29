@@ -160,7 +160,8 @@ export async function POST(req: NextRequest) {
         deletedAt: null,
         lineType: rule.lineType,
         subType: rule.subType,
-        plan: { kind: "actual" },
+        // Phase 11.4 — exclude soft-deleted plans; their child rows stay live.
+        plan: { kind: "actual", deletedAt: null },
       },
       select: { amount: true, account: { select: { code: true, name: true } } },
     })
