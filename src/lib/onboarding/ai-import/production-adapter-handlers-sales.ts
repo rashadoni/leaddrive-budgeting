@@ -124,6 +124,14 @@ export function makeProductSalesHandler(
           // Replace THIS company+role+period only. Hard delete (not archive):
           // @@unique(companyId, role, name, period) would collide with a
           // re-inserted same-named row. Mirrors the register handler.
+          //
+          // Phase 11.22 — this split is DERIVED from a product-sales sheet and
+          // must never outrank the dedicated counterparty REGISTER, which
+          // writes the same (company, role, period) key with its own
+          // delete-then-insert inside the SAME transaction. APPLY_ORDER puts
+          // `sales-products` (2.65) ahead of `compliance-register` (2.7) so
+          // the register lands last and wins. It used to be 2.8 — i.e. this
+          // handler ran last and silently destroyed the register's rows.
           await tx.counterparty.deleteMany({
             where: {
               organizationId: ctx.organizationId,

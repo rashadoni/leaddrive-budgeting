@@ -173,12 +173,32 @@ const APPLY_ORDER: Record<FileType, number> = {
   // Phase 11.12 — product sales need companies seeded and (for the
   // revenue-account link) the CoA that main-financial creates, so they
   // apply after it alongside the other soft buckets.
-  "sales-products": 2.8,
+  //
+  // Phase 11.22 (2026-07-29) — but BEFORE compliance-register (2.7), and
+  // that ordering is a CORRECTNESS contract, not a preference.
+  //
+  // Both write `Counterparty(org, company, role, period)` with a
+  // delete-then-insert, and the orchestrator runs a group's handlers
+  // sequentially inside ONE transaction. So whichever runs last wins
+  // outright. At 2.8 the product-sales handler ran last, meaning a customer
+  // split DERIVED from a product-sales sheet silently overwrote the dedicated
+  // "Top 10 customers" REGISTER — the less authoritative source destroying
+  // the authoritative one.
+  //
+  // Derived must never overwrite source, so this moves ahead of the register.
+  // `apply-order-counterparty.test.ts` pins it; do not renumber without
+  // reading that test.
+  "sales-products": 2.65,
   "capex-plan": 3,
   "land-registry": 4,
   "forward-forecast": 5,
   unknown: 99,
 }
+
+/** Phase 11.22 — exported for `apply-order-counterparty.test.ts`, which pins
+ *  the ordering that keeps the authoritative counterparty register from being
+ *  overwritten by the derived product-sales split. */
+export const APPLY_ORDER_FOR_TEST: Record<FileType, number> = APPLY_ORDER
 
 // ──────────────────────────────────────────────────────────────────────
 // Public types
