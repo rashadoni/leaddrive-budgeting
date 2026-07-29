@@ -647,15 +647,15 @@ T-1 reconciliation tolerance · T-2 the 80% coverage abstention gate · T-3 Conf
 
 ---
 
-> **⚠ PHASE-NUMBER COLLISION — needs an owner decision.**
-> Two independent bodies of work both claimed **Phase 11**:
-> *Import round-trip integrity* (2026-07-29, merged to `main`, referenced as `Phase 11.x`
-> in 54 source files) and *Sequential Web Security Verification* (2026-07-21, which was
-> still uncommitted in the working tree and therefore invisible to the later session).
-> Both sections are preserved below **verbatim** — nothing was renumbered, because the
-> security phase is older and may be referenced by in-flight work not visible here.
-> Renaming the import phase to 12 costs a mechanical sweep of 54 code comments;
-> renaming the security phase costs its task IDs only. Owner picks.
+> **Phase-number collision, resolved 2026-07-29 (owner decision).**
+> *Sequential Web Security Verification* (2026-07-21) and *Import round-trip
+> integrity* (2026-07-29) both claimed Phase 11 — the security phase was
+> still uncommitted in the working tree, so it was invisible to the later
+> session. Owner chose to renumber the **security** phase to **12**: its
+> number appears only in its own task IDs (`docs/security/*` never cites it),
+> whereas the import phase is referenced as `Phase 11.x` in 54 source files.
+> Task IDs `11.0`–`11.13` in that section became `12.0`–`12.13`; the `A01`–`A13`
+> control codes, which the security documents DO use, are untouched.
 
 ## Phase 11: Import round-trip integrity (NEW 2026-07-29, owner-requested audit)
 
@@ -751,7 +751,7 @@ Recorded so this phase is not mistaken for "the import is broken". It is not; th
 5. **Are there `IndicatorValue` rows with granular periods** (`period LIKE '%-%'`)? If yes, 11.7 is mandatory; if no, granular recompute can be deferred to deletion-on-reset only.
 6. **Is .docx ingestion wanted at all?** No parser exists (no `mammoth`/`docx`/`officeparser` in `package.json`; every input is `accept=".xlsx"`), so the three `AzerSheker_*.docx` files have no path. If that narrative belongs in `Company.settings.strategicDescription` it is separate work; if it keeps arriving via the `Təsvir` sheet, nothing to build.
 
-## Phase 11: Sequential Web Security Verification (NEW 2026-07-21)
+## Phase 12: Sequential Web Security Verification (NEW 2026-07-21, renumbered from 11 on 2026-07-29)
 
 **Standard:** `docs/security/SECURITY_AUDIT_STANDARD.ru.md`
 **BudgetPro register:** `docs/security/BUDGETPRO_SECURITY_AUDIT_REGISTER.md`
@@ -763,21 +763,21 @@ Old roadmap checkmarks are treated as hypotheses until the new control produces
 a repeatable negative test. No production brute force, injection, SSRF,
 cross-tenant mutation, load test or restore exercise is implied by this phase.
 
-- ✅ **11.0** Publish reusable standard, report template, BudgetPro register,
+- ✅ **12.0** Publish reusable standard, report template, BudgetPro register,
   safe-test rules, status vocabulary and owner gates.
-- 🟡 **11.1 / A01** Brute-force login protection — static audit started, then paused by owner 2026-07-21 before the report/dynamic test; no fix made and A02 not started.
-- ⬜ **11.2 / A02** Credential stuffing, password policy and MFA.
-- ⬜ **11.3 / A03** Secret/key exposure.
-- ⬜ **11.4 / A04** IDOR/BOLA object authorization.
-- ⬜ **11.5 / A05** Broken function-level access control / RBAC.
-- ⬜ **11.6 / A06** SQL/command/template/formula/CSV injection.
-- ⬜ **11.7 / A07** Webhook/callback authenticity and replay protection.
-- ⬜ **11.8 / A08** Malicious dependency / supply-chain controls.
-- ⬜ **11.9 / A09** Outdated dependencies, CVEs and EOL components.
-- ⬜ **11.10 / A10** Session theft, fixation, revocation, CSRF/XSS path and TLS.
-- ⬜ **11.11 / A11** SSRF and server-side URL fetching.
-- ⬜ **11.12 / A12** Post-compromise containment, immutable backups and restore.
-- ⬜ **11.13 / A13** Consolidated residual-risk report and 30/60/90-day plan.
+- 🟡 **12.1 / A01** Brute-force login protection — static audit started, then paused by owner 2026-07-21 before the report/dynamic test; no fix made and A02 not started.
+- ⬜ **12.2 / A02** Credential stuffing, password policy and MFA.
+- ⬜ **12.3 / A03** Secret/key exposure.
+- ⬜ **12.4 / A04** IDOR/BOLA object authorization.
+- ⬜ **12.5 / A05** Broken function-level access control / RBAC.
+- ⬜ **12.6 / A06** SQL/command/template/formula/CSV injection.
+- ⬜ **12.7 / A07** Webhook/callback authenticity and replay protection.
+- ⬜ **12.8 / A08** Malicious dependency / supply-chain controls.
+- ⬜ **12.9 / A09** Outdated dependencies, CVEs and EOL components.
+- ⬜ **12.10 / A10** Session theft, fixation, revocation, CSRF/XSS path and TLS.
+- ⬜ **12.11 / A11** SSRF and server-side URL fetching.
+- ⬜ **12.12 / A12** Post-compromise containment, immutable backups and restore.
+- ⬜ **12.13 / A13** Consolidated residual-risk report and 30/60/90-day plan.
 
 **Current gate:** A01 is `NOT_TESTED` and awaits explicit owner permission for
 read-only code/config inspection plus safe local/staging tests. All later
