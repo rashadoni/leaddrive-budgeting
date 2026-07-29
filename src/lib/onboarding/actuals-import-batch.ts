@@ -55,7 +55,9 @@ import {
 
 export interface ActualsImportRow {
   category: string
-  /** Always positive (caller has already taken Math.abs()). */
+  /** DB convention: a charge is POSITIVE, a reversal NEGATIVE. Phase 11.15
+   *  removed the caller's blanket `Math.abs()`, which turned every credit
+   *  note into a charge; the file's own convention is inferred instead. */
   amount: number
   /** ISO `YYYY-MM-DD`. */
   date: string

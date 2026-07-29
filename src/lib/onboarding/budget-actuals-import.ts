@@ -32,6 +32,10 @@
  * resolution + audit events.
  */
 import type * as XLSX from "xlsx"
+import {
+  resolveCostSigns,
+  type CostSignDecision,
+} from "./ai-import/cost-sign"
 
 export interface ParsedActualRow {
   /** 1-based row number in the workbook (matches Excel UI). */
@@ -64,6 +68,10 @@ export interface ImportRowWarning {
 }
 
 export interface ImportParseResult {
+  /** Phase 11.15 — which cost-sign convention the FILE was found to use, and
+   *  whether expense amounts were flipped to the DB's charge-positive
+   *  convention as a result. */
+  signConvention?: CostSignDecision
   rows: ParsedActualRow[]
   errors: ImportRowError[]
   warnings: ImportRowWarning[]
@@ -220,15 +228,37 @@ export function parseBudgetActualsWorkbook(
     }
 
     const rawAmount = cells[colIdx.amount]
-    const amountNum =
-      typeof rawAmount === "number"
-        ? rawAmount
-        : Number(String(rawAmount ?? "").replace(/[^\d.\-]/g, ""))
-    if (!Number.isFinite(amountNum) || amountNum === 0) {
-      errors.push({ rowNumber, reason: "Invalid or zero amount", category })
+    let amountNum: number
+    if (typeof rawAmount === "number") {
+      amountNum = rawAmount
+    } else {
+      // Strip currency symbols/spaces, then require what remains to actually
+      // BE a number. Phase 11.15: the old code did `Number(stripped)` and
+      // relied on the later `=== 0` check to catch junk — but "abc" strips to
+      // "" and `Number("")` is 0, not NaN. Now that an explicit 0 is
+      // legitimate data, that shortcut would have let garbage land silently
+      // as a zero. Emptiness and non-numeric shapes are rejected explicitly.
+      const stripped = String(rawAmount ?? "").replace(/[^\d.\-]/g, "")
+      amountNum = /^-?\d*\.?\d+$/.test(stripped) ? Number(stripped) : NaN
+    }
+    if (!Number.isFinite(amountNum)) {
+      errors.push({ rowNumber, reason: "Invalid amount", category })
       continue
     }
-    const amount = Math.abs(amountNum)
+    // Phase 11.15 (2026-07-29) — an explicit 0 is DATA, not an error.
+    // It used to be rejected alongside unparseable cells, so a genuine zero
+    // both vanished from the import and showed up in the error list as a
+    // parse failure. In a phase whose premise is "every number, down to the
+    // last zero", dropping the zeros was the one thing that could not stand.
+    //
+    // The sign is kept RAW here; the file's cost convention is inferred after
+    // the loop and applied in pass 2. `Math.abs()` used to run on this line,
+    // which turned every credit note and reversal into a CHARGE: a -500
+    // correction landed as +500 and inflated the actual instead of reducing
+    // it. Removing abs alone would not be right either — a sheet that stores
+    // expenses negative would then flip every actual negative, which is the
+    // same convention trap Phase 11.9 closed for the P&L parsers.
+    const amount = amountNum
 
     const dateIso = parseDateCell(cells[colIdx.date])
     if (!dateIso) {
@@ -293,5 +323,27 @@ export function parseBudgetActualsWorkbook(
     })
   }
 
-  return { rows, errors, warnings }
+  // ── Pass 2: apply the INFERRED cost-sign convention ──────────────────
+  // `BudgetActual.actualAmount` follows the DB convention: a charge is
+  // positive, a reversal negative. Which direction the FILE uses is inferred
+  // from its own expense rows rather than assumed, exactly as in
+  // azseker-plf.ts (Phase 11.9b). Revenue rows are never flipped.
+  const expenseRawAnnuals = rows
+    .filter((r) => r.lineType === "expense")
+    .map((r) => r.amount)
+  const signDecision = resolveCostSigns([], expenseRawAnnuals)
+  if (signDecision.flipExpense) {
+    for (const r of rows) {
+      if (r.lineType === "expense") r.amount = -r.amount
+    }
+  }
+  if (signDecision.blockedReason) {
+    warnings.push({
+      rowNumber: 0,
+      message: `BLOCKED: ${signDecision.blockedReason}`,
+      category: "",
+    })
+  }
+
+  return { rows, errors, warnings, signConvention: signDecision }
 }

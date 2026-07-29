@@ -83,7 +83,10 @@ describe("parseBudgetActualsWorkbook", () => {
     expect(result.rows[0].category).toBe("Valid")
   })
 
-  it("rejects rows with non-finite or zero amount", () => {
+  it("rejects an unparseable amount but KEEPS an explicit zero", () => {
+    // Phase 11.15 — a 0 in the sheet is data. It used to be rejected
+    // alongside unparseable cells, so a genuine zero both vanished from the
+    // import and appeared in the error list as a parse failure.
     const wb = buildWorkbook([
       ["category", "amount", "date"],
       ["Cat1", 0, "2026-01-01"],
@@ -91,9 +94,41 @@ describe("parseBudgetActualsWorkbook", () => {
       ["Cat3", 100, "2026-01-03"],
     ])
     const result = parseBudgetActualsWorkbook(wb, XLSX)
-    expect(result.errors).toHaveLength(2)
-    expect(result.errors.map((e) => e.rowNumber)).toEqual([2, 3])
-    expect(result.rows).toHaveLength(1)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0].reason).toMatch(/Invalid amount/)
+    expect(result.rows).toHaveLength(2)
+    expect(result.rows.find((r) => r.category === "Cat1")?.amount).toBe(0)
+  })
+
+  describe("Phase 11.15 — credit notes and the file's sign convention", () => {
+    it("keeps a reversal NEGATIVE in a charge-positive file", () => {
+      // Math.abs() used to run on every amount, turning a -500 correction
+      // into a +500 charge — it inflated the actual instead of reducing it.
+      const wb = buildWorkbook([
+        ["category", "amount", "date"],
+        ["Cat1", 1000, "2026-01-01"],
+        ["Cat2", 800, "2026-01-02"],
+        ["Cat3", -500, "2026-01-03"],
+      ])
+      const result = parseBudgetActualsWorkbook(wb, XLSX)
+      expect(result.signConvention?.expenseConvention).toBe("positive_costs")
+      expect(result.rows.map((r) => r.amount)).toEqual([1000, 800, -500])
+    })
+
+    it("normalizes a charge-negative file, and its reversal stays a credit", () => {
+      // A sheet storing expenses negative must land charge-positive in the
+      // DB. Simply dropping Math.abs() would have flipped every actual
+      // negative — the same convention trap Phase 11.9 closed for the P&L.
+      const wb = buildWorkbook([
+        ["category", "amount", "date"],
+        ["Cat1", -1000, "2026-01-01"],
+        ["Cat2", -800, "2026-01-02"],
+        ["Cat3", 500, "2026-01-03"],
+      ])
+      const result = parseBudgetActualsWorkbook(wb, XLSX)
+      expect(result.signConvention?.expenseConvention).toBe("negative_costs")
+      expect(result.rows.map((r) => r.amount)).toEqual([1000, 800, -500])
+    })
   })
 
   it("rejects rows with malformed date", () => {
