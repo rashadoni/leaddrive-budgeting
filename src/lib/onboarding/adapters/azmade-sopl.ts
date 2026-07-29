@@ -53,6 +53,7 @@
  */
 
 import type * as XLSX from 'xlsx';
+import { numericCellValue } from '../numeric-cell';
 import type { SignClassification } from '../ai-mapper/sign-infer';
 
 export type AccountType =
@@ -467,14 +468,12 @@ export function mapColumns(headerRow: unknown[]): ColumnMap | null {
 }
 
 export function toNumberOrNull(v: unknown): number | null {
-  if (v === null || v === undefined || v === '') return null;
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
-  if (typeof v === 'string') {
-    // xlsx sometimes stringifies numerics when cell format is irregular.
-    const n = Number(v.replace(/,/g, '.'));
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
+  // Phase 11.31 (2026-07-29) — delegates to the canonical parser. This used
+  // to replace EVERY comma with a dot, so the ordinary "1,234,56" became
+  // "1.234.56" → NaN → null, and applier.ts then coerced that null to a
+  // silent zero. It is exported and reused by azseker-plf.ts and
+  // consolidated-plf-split.ts, so the bug reached the P&L path too.
+  return numericCellValue(v);
 }
 
 function toTrimmedString(v: unknown): string {

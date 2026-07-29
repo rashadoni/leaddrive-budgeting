@@ -22,6 +22,7 @@
  */
 
 import type * as XLSX from 'xlsx';
+import { numericCellValue, parseNumericCell } from '../numeric-cell';
 import {
   accountTypeFromCode,
   dedupeParentRollups,
@@ -316,18 +317,17 @@ export function detectProposalYear(
   return [...years][0];
 }
 
-/** Coerce arbitrary cell value to number, treating strings/null as 0 fallback
- *  is unsafe — instead we return null for non-numeric, caller decides. */
+/**
+ * Coerce a cell to a number, or null when it holds no usable one — the caller
+ * decides what an absent value means.
+ *
+ * Phase 11.31 (2026-07-29) — delegates to the canonical parser. The local
+ * version called bare `Number(trimmed)`, so any grouped or European-decimal
+ * cell ("1 234,56", "1.234,56") returned null and the one call site below
+ * turned that null into a silent ZERO.
+ */
 function toNumberOrNull(v: unknown): number | null {
-  if (v === null || v === undefined || v === '') return null;
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
-  if (typeof v === 'string') {
-    const trimmed = v.trim();
-    if (trimmed === '') return null;
-    const n = Number(trimmed);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
+  return numericCellValue(v);
 }
 
 function toTrimmedString(v: unknown): string {
@@ -701,10 +701,29 @@ export function applyProposal(
     // tie-out below intentionally uses rawAnnual, so it is unaffected.
     const perMonthRaw: number[] = [];
     let rawAnnual = 0;
+    let unreadableCell = false;
     for (const monthCol of monthCols) {
-      const v = toNumberOrNull(row[monthCol]) ?? 0;
+      // Phase 11.31 — an UNPARSEABLE cell is not a zero. `?? 0` used to
+      // fabricate one, so a cell the parser could not read silently became a
+      // real 0.00 in the P&L, indistinguishable from a genuine zero and
+      // invisible in the warnings. Absent stays 0 (a blank month legitimately
+      // contributes nothing); unreadable is reported and the row is skipped.
+      const parsed = parseNumericCell(row[monthCol]);
+      if (parsed.value === null && parsed.reason) {
+        warnings.push({
+          row: r + 1,
+          reason: `code "${code}": unreadable amount — ${parsed.reason}`,
+        });
+        unreadableCell = true;
+        break;
+      }
+      const v = parsed.value ?? 0;
       rawAnnual += v;
       perMonthRaw.push(v);
+    }
+    if (unreadableCell) {
+      skipped += 1;
+      continue;
     }
 
     if (rawAnnual === 0 && perMonthRaw.every((v) => v === 0)) {
