@@ -8,6 +8,8 @@
 #
 #   bash deploy/smoke-test.sh https://budget.fo.az
 #   bash deploy/smoke-test.sh http://<vm-ip>          # pre-TLS
+#   bash deploy/smoke-test.sh --via-prod              # from a host with no
+#                                                     # route to the public URL
 #
 # What it checks (all UNauthenticated — no secrets needed):
 #   1. App is serving           GET /login                 -> 200
@@ -30,9 +32,39 @@
 
 set -u
 
+# --via-prod: run these same checks ON the production host, against its own
+# nginx at http://localhost.
+#
+# Why this mode exists
+# ────────────────────
+# The external URL is not reachable from every machine that needs to verify a
+# deploy — the dev server has no DNS for budget.fo.az and no outbound 443 to
+# it, so `bash deploy/smoke-test.sh https://budget.fo.az` there reports eight
+# DOWN and proves nothing about the auth gates. That is an honest result and
+# a useless one.
+#
+# The host itself can always answer, so the script is piped over ssh and run
+# there. Same file, same logic, no second copy to drift.
+#
+# WHAT THIS DOES NOT COVER — it is a weaker check than the external one, and
+# passing it is not the same claim:
+#   • no DNS resolution, no TLS, no external firewall path;
+#   • it enters nginx on :80 from inside, so an nginx rule that only applies
+#     to the public listener is not exercised.
+# It DOES cover what was actually unverified: the application's auth gates and
+# nginx's routing to them. Run the external form as well when you can.
+if [ "${1:-}" = "--via-prod" ]; then
+  PROD_HOST="${PROD_HOST:-root@46.225.60.142}"
+  echo "Running smoke-test ON ${PROD_HOST} against http://localhost"
+  echo "  (weaker than the external run: no DNS, no TLS, no public firewall path)"
+  echo
+  exec ssh "$PROD_HOST" 'bash -s -- http://localhost' < "$0"
+fi
+
 BASE_URL="${1:-${SMOKE_BASE_URL:-}}"
 if [ -z "$BASE_URL" ]; then
   echo "usage: bash deploy/smoke-test.sh <base-url>   (e.g. https://budget.fo.az)" >&2
+  echo "       bash deploy/smoke-test.sh --via-prod   (run it on the prod host)" >&2
   echo "       or set SMOKE_BASE_URL" >&2
   exit 2
 fi
