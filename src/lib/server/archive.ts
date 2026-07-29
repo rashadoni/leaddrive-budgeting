@@ -28,6 +28,7 @@
 import type { PrismaClient } from "@prisma/client"
 import { logAuditEvent } from "@/lib/audit/log"
 import { archiveStamp, restoreStamp } from "./soft-delete"
+import { slugifyProductLabel } from "@/lib/onboarding/ai-import/product-identity"
 
 export type ArchiveEntityKind =
   | "BudgetLine"
@@ -40,6 +41,25 @@ export type ArchiveEntityKind =
  * the "tails" no per-table archive touches). ORG-level `forwardForecast` is NOT
  * here: it lives on Organization.settings, so a per-company reset leaves it.
  */
+/**
+ * Phase 11.6 (2026-07-29) — per-company scope for `SalesBudgetLine`.
+ *
+ * That table carries neither `companyId` nor `deletedAt`, so a company-scoped
+ * WHERE cannot reach it directly and it survived every "delete all import
+ * data" — the Sales tab kept rendering the pre-reset dataset while the reset
+ * preview showed six confident numbers that did not include it.
+ *
+ * `ProductLine.code` IS entity-namespaced (`product-identity.ts` builds
+ * `${slugify(entityCode)}__${slug}`, e.g. `AZSEKER_EDEN__WHEAT`), so the
+ * company dimension is recoverable from the relation without a migration —
+ * the same trick `cashFlowEntry` uses with its `"<code>::"` sourceId prefix.
+ */
+function salesLineCompanyScope(companyCode: string) {
+  return {
+    productLine: { code: { startsWith: `${slugifyProductLabel(companyCode)}__` } },
+  }
+}
+
 export const IMPORT_SETTINGS_KEYS = [
   "courtDisputes", // LEGAL_CASES
   "auditFindings", // AUDIT_FINDINGS
@@ -518,6 +538,29 @@ export async function previewCompanyImportReset(args: {
     if (args.year) baWhere.plan = { year: args.year }
     breakdown.budgetActual = await args.prisma.budgetActual.count({ where: baWhere as never })
 
+    // Phase 11.6 — the preview MUST count exactly what the reset deletes.
+    // It previously reported six tables while the reset also had a settings
+    // tail and, after this phase, sales lines and indicator values: a user
+    // reading "6 numbers" concluded the entity would be empty, then watched
+    // the Sales tab keep rendering the pre-reset dataset.
+    const sblWhere: Record<string, unknown> = {
+      organizationId: args.organizationId,
+      ...salesLineCompanyScope(company.code),
+    }
+    if (args.year) sblWhere.year = args.year
+    breakdown.salesBudgetLine = await args.prisma.salesBudgetLine.count({
+      where: sblWhere as never,
+    })
+
+    const ivWhere: Record<string, unknown> = {
+      organizationId: args.organizationId,
+      companyId: company.id,
+    }
+    if (args.year) ivWhere.period = { startsWith: String(args.year) }
+    breakdown.indicatorValue = await args.prisma.indicatorValue.count({
+      where: ivWhere as never,
+    })
+
     const settings = (company.settings as Record<string, unknown> | null) ?? {}
     breakdown.settingsKeys = IMPORT_SETTINGS_KEYS.filter((k) => k in settings).length
 
@@ -646,6 +689,48 @@ export async function resetCompanyImportData(
     const baWhere: Record<string, unknown> = { organizationId: orgId, companyId }
     if (scope.year) baWhere.plan = { year: scope.year }
     breakdown.budgetActual = (await tx.budgetActual.deleteMany({ where: baWhere as never })).count
+
+    // 2c. HARD-delete SalesBudgetLine (no soft-delete column) for THIS
+    //     company's products. See salesLineCompanyScope() for why the scope
+    //     goes through the entity-namespaced ProductLine.code.
+    //
+    //     `ProductLine` itself is deliberately NOT deleted: it is master data
+    //     like ChartOfAccount (which no path deletes either), a re-import
+    //     upserts it back, and it is referenced by CostComponent / COGS* /
+    //     TradeSku whose rows would cascade away with it. After this reset it
+    //     simply carries no sales lines, so it renders nothing.
+    const sblWhere: Record<string, unknown> = {
+      organizationId: orgId,
+      ...salesLineCompanyScope(companyCode),
+    }
+    if (scope.year) sblWhere.year = scope.year
+    breakdown.salesBudgetLine = (
+      await tx.salesBudgetLine.deleteMany({ where: sblWhere as never })
+    ).count
+
+    // 2d. HARD-delete IndicatorValue for this company (all granularities).
+    //     Without this, month- and quarter-granular rows survive the reset
+    //     carrying their pre-reset value AND their pre-reset status colour:
+    //     the terminal keeps painting numbers derived from data that no
+    //     longer exists. Post-reset recompute only fans out over YEAR
+    //     periods, so it cannot clean these up either — deleting them here,
+    //     inside the same transaction, is both cheaper and more honest.
+    //     `period` is a string: "2026" | "2026-Q2" | "2026-04", so a single
+    //     `startsWith` covers all three shapes for a year.
+    const ivWhere: Record<string, unknown> = {
+      organizationId: orgId,
+      companyId,
+    }
+    if (scope.year) ivWhere.period = { startsWith: String(scope.year) }
+    breakdown.indicatorValue = (
+      await tx.indicatorValue.deleteMany({ where: ivWhere as never })
+    ).count
+
+    // NOTE (Phase 11.6): `SalesForecast` is intentionally NOT reset here. It
+    // is keyed by (organizationId, departmentId, year, month) and carries no
+    // company dimension at all, so there is no correct way to scope it to one
+    // company — deleting it would wipe the whole organization's forecast.
+    // Giving it a company scope needs a schema change; tracked as 11.6b.
 
     // 3. Clear import-derived Company.settings keys (the settings tail).
     const settings = { ...((company.settings as Record<string, unknown>) ?? {}) }
