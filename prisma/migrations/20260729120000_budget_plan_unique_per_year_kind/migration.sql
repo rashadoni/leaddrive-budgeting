@@ -24,8 +24,8 @@
 -- is deliberate: silently merging two plans' financial rows is not a decision a
 -- migration gets to make. Find them with
 --
---   SELECT organization_id, year, kind, count(*), array_agg(id), array_agg(name)
---   FROM budget_plans WHERE deleted_at IS NULL
+--   SELECT "organizationId", year, kind, count(*), array_agg(id), array_agg(name)
+--   FROM budget_plans WHERE "deletedAt" IS NULL
 --   GROUP BY 1,2,3 HAVING count(*) > 1;
 --
 -- then decide per group which plan is canonical (normally the OLDEST — it is
@@ -41,11 +41,16 @@ BEGIN
   SELECT count(*), coalesce(string_agg(detail, '; '), '')
     INTO dupe_count, dupe_detail
   FROM (
+    -- Column names are camelCase and MUST stay quoted: Postgres folds
+    -- unquoted identifiers to lower case, so `organizationId` would be looked
+    -- up as `organizationid` and the migration would die on "column does not
+    -- exist" instead of doing its job. `year` and `kind` are genuinely
+    -- lower-case in the schema.
     SELECT format('org=%s year=%s kind=%s plans=[%s]',
-                  organization_id, year, kind, string_agg(name, ' | ')) AS detail
+                  "organizationId", year, kind, string_agg(name, ' | ')) AS detail
     FROM budget_plans
-    WHERE deleted_at IS NULL
-    GROUP BY organization_id, year, kind
+    WHERE "deletedAt" IS NULL
+    GROUP BY "organizationId", year, kind
     HAVING count(*) > 1
   ) d;
 
