@@ -3315,7 +3315,7 @@
     "tabs": {
       "ariaLabel": "AI Import mode",
       "single": "1 file",
-      "multi": "Multiple files",
+      "multi": "Multiple files (AI)",
       "newBadge": "new",
       "universal": "Any file (AI)",
       "multisheet": "Multi-sheet (AI)",
@@ -3599,7 +3599,7 @@
           "verdict": "Verdict"
         }
       },
-      "writeDisabled": "Writing from this screen is disabled. To import, open the “Any file (AI)” tab (column-mapping review + reconcile) or “Multiple files”."
+      "writeDisabled": "Writing from this screen is disabled. To import, open the “Any file (AI)” tab (column-mapping review + reconcile) or “Multiple files (AI)” — the full AI classifier that routes every sheet."
     }
   },
   "alertHistory": {
