@@ -288,7 +288,11 @@ export function makePlfHandler(
             })),
           })
         }
-        return { rowsInserted: result.metrics.rowsInserted }
+        return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
       },
     } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }
   }
@@ -443,7 +447,11 @@ export function makeBsHandler(
           // No purge — keep the soft-archived prior version as an undo buffer
           // (see PLF note 2026-06-24).
         })
-        return { rowsInserted: result.metrics.rowsInserted }
+        return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
       },
     } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }
   }
@@ -623,7 +631,11 @@ export function makeCfHandler(
           // No purge — keep the soft-archived prior version as an undo buffer
           // (see PLF note 2026-06-24).
         })
-        return { rowsInserted: result.metrics.rowsInserted }
+        return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
       },
     } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }
   }
@@ -779,7 +791,11 @@ export function makeKpiHandler(
               rows,
               expectedSums,
             })
-            return { rowsInserted: result.metrics.rowsInserted }
+            return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
           },
         } as AdapterRunResult & {
           expectedSums?: Map<ReconciliationKey, number>
@@ -869,7 +885,11 @@ export function makeKpiHandler(
           rows,
           expectedSums,
         })
-        return { rowsInserted: result.metrics.rowsInserted }
+        return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
       },
     } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }
   }

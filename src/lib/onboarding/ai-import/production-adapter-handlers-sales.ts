@@ -144,7 +144,11 @@ export function makeProductSalesHandler(
             })),
           })
         }
-        return { rowsInserted: result.metrics.rowsInserted }
+        return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
       },
     } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }
   }

@@ -149,12 +149,30 @@ type SafetyReceipt = {
   reconciliation: {
     verdict: MultiFileImportResult["overallVerdict"]
     conflicts: number
+    /**
+     * Phase 11.2 (2026-07-29) — what the verdict above is actually made of.
+     * A verdict with `sheetsVerified: 0` is NOT proof of anything, and the
+     * receipt has to say so: before this phase every verdict was a
+     * parse-time self-compare (expected vs expected, green by construction)
+     * that was being read as a database reconciliation.
+     */
+    evidence: {
+      /** Sheets whose sums were re-queried from the DB after the write. */
+      sheetsVerified: number
+      /** Sheets that carry no reconcilable sums (settings JSON, zero rows). */
+      sheetsUnverified: number
+      unverifiedSheetNames: string[]
+      /** True only when every committed group produced a DB re-read. */
+      allCommittedGroupsVerified: boolean
+    }
     groups: Array<{
       fileType: string
       verdict: string
       committed: boolean
       rows: number
       skipReason: string | null
+      /** "db-readback" | "parse-self-check" | null (group never ran). */
+      evidence: string | null
     }>
   }
   recompute: {
@@ -259,6 +277,7 @@ function buildSafetyReceipt(
         "derived_summary",
     }))
 
+  const committedGroups = result.perGroup.filter((g) => g.committed)
   const recomputeStatus: SafetyReceipt["recompute"]["status"] = !opts.shouldApply
     ? "not_run"
     : result.recompute.failed > 0
@@ -302,12 +321,33 @@ function buildSafetyReceipt(
     reconciliation: {
       verdict: result.overallVerdict,
       conflicts: result.conflicts.length,
+      evidence: {
+        sheetsVerified: committedGroups.reduce(
+          (n, g) => n + (g.reconciliation?.perSheet.length ?? 0),
+          0,
+        ),
+        sheetsUnverified: committedGroups.reduce(
+          (n, g) => n + (g.reconciliation?.unverified?.length ?? 0),
+          0,
+        ),
+        unverifiedSheetNames: committedGroups.flatMap((g) =>
+          (g.reconciliation?.unverified ?? []).map((u) => u.sheetName),
+        ),
+        allCommittedGroupsVerified:
+          committedGroups.length > 0 &&
+          committedGroups.every(
+            (g) =>
+              g.reconciliation?.evidence === "db-readback" &&
+              (g.reconciliation?.perSheet.length ?? 0) > 0,
+          ),
+      },
       groups: result.perGroup.map((group) => ({
         fileType: group.fileType,
         verdict: group.verdict,
         committed: group.committed,
         rows: group.totalRowsInserted,
         skipReason: group.skipReason,
+        evidence: group.reconciliation?.evidence ?? null,
       })),
     },
     recompute: {

@@ -94,12 +94,16 @@ import type {
 } from "./adapter-registry"
 import {
   reconcileAllSheets,
+  aggregateSheetReports,
   decideAction,
   type UniversalReconciliationReport,
   type SheetReconciliationInput,
 } from "./universal-reconciler"
 import type { LLMUsage } from "@/lib/llm/types"
-import type { ReconciliationKey } from "../reconciliation"
+import type {
+  ReconciliationKey,
+  ReconciliationReport,
+} from "../reconciliation"
 import { clearDataPendingBanners } from "../clear-data-pending-banner"
 import {
   runRecomputeForCompanies,
@@ -1289,17 +1293,25 @@ export async function runMultiFileImport(
       continue
     }
 
-    // Pre-write reconciliation (parse-only — expected vs expected).
-    // The same trick the single-file orchestrator uses to flag adapter
-    // sums that are internally inconsistent.
-    const dryInputs: SheetReconciliationInput[] = groupRecords.map((r) => ({
+    // Pre-write SELF-CHECK (parse-only — expected vs expected).
+    //
+    // Phase 11.2 (2026-07-29) — naming this honestly, because it was being
+    // read as a reconciliation result. Comparing `expectedSums` with itself
+    // can only ever return green: it proves the adapter's own sums are
+    // internally consistent and NOTHING about what reaches the database.
+    // The real proof is the post-write DB re-read assembled after the commit
+    // loop below. Do not present this value to a user as "reconciliation".
+    const selfCheckInputs: SheetReconciliationInput[] = groupRecords.map((r) => ({
       sheetName: `${r.filename}::${r.classification.sheetName}`,
       dataType: r.classification.dataType,
       entityCode: writeEntity(r),
       expectedSums: r.expectedSums,
       actualSums: r.expectedSums,
     }))
-    const dryReconciliation = reconcileAllSheets(dryInputs)
+    const dryReconciliation: UniversalReconciliationReport = {
+      ...reconcileAllSheets(selfCheckInputs),
+      evidence: "parse-self-check",
+    }
 
     if (
       dryReconciliation.overallVerdict === "red" ||
@@ -1342,6 +1354,15 @@ export async function runMultiFileImport(
     let groupCommitError: string | null = null
     /** Company codes the adapters resolved themselves (cross-entity registers). */
     const adapterTouchedCodes = new Set<string>()
+    /**
+     * Phase 11.2 — per-record post-write reconciliation, straight from the
+     * batch layer's in-transaction DB re-read. `null` = adapter produced no
+     * reconcilable sums.
+     */
+    const batchReports = new Map<
+      (typeof groupRecords)[number],
+      ReconciliationReport | null
+    >()
     try {
       await deps.prisma.$transaction(async (tx) => {
         for (const r of groupRecords) {
@@ -1351,6 +1372,11 @@ export async function runMultiFileImport(
           for (const code of applied.touchedCompanyCodes ?? []) {
             adapterTouchedCodes.add(code)
           }
+          // Phase 11.2 — capture the batch layer's post-write DB re-read.
+          // `undefined` means this adapter writes nothing reconcilable (a
+          // JSON blob on Company.settings) OR parsed zero rows; both are
+          // recorded as `unverified` below rather than counted as green.
+          batchReports.set(r, applied.reconciliation ?? null)
         }
 
         // Companies that just received data are no longer "awaiting data" —
@@ -1363,9 +1389,21 @@ export async function runMultiFileImport(
             .filter((c): c is string => !!c),
         )
 
-        // Post-write reconciliation (inside the tx so re-reads see
-        // uncommitted writes). Use the supplied actualSums reader if
-        // any; else fall back to expected=actual (adapter-validated).
+        // ── Post-write reconciliation (still inside the tx, so every
+        // re-read observes this group's uncommitted writes) ──────────
+        //
+        // Phase 11.2 (2026-07-29). Until now this whole block was gated on
+        // `deps.readActualSums`, which NO production route ever passed — so
+        // `postReconciliation` stayed equal to the parse-time self-check and
+        // the abort branch below was dead code. Missing rows, doubled rows
+        // and rows the previous import failed to archive were all invisible,
+        // under a green tick.
+        //
+        // The evidence now comes from the batch layer itself: every batch
+        // function re-queries the rows it just wrote and reconciles them
+        // against the parsed expectations. `deps.readActualSums`, when
+        // supplied, still overrides — it is the seam tests use to force a
+        // specific post-write state.
         if (deps.readActualSums) {
           const postInputs: SheetReconciliationInput[] = []
           for (const r of groupRecords) {
@@ -1384,17 +1422,38 @@ export async function runMultiFileImport(
               actualSums: actual,
             })
           }
-          postReconciliation = reconcileAllSheets(postInputs)
-          const action = decideAction(postReconciliation, {
-            allowYellow: input.allowYellow,
-          })
-          if (action === "abort") {
-            // Throwing inside the tx callback rolls back the entire
-            // group — finance never sees a half-state.
-            throw new Error(
-              `Post-write reconciliation rejected (verdict=${postReconciliation.overallVerdict})`,
-            )
+          postReconciliation = {
+            ...reconcileAllSheets(postInputs),
+            evidence: "db-readback",
           }
+        } else {
+          postReconciliation = aggregateSheetReports(
+            groupRecords
+              .filter((r) => r.adapterResult)
+              .map((r) => ({
+                sheetName: `${r.filename}::${r.classification.sheetName}`,
+                dataType: r.classification.dataType,
+                entityCode: writeEntity(r),
+                report: batchReports.get(r) ?? null,
+                unverifiedReason:
+                  "adapter wrote no reconcilable sums (settings JSON or zero parsed rows)",
+              })),
+          )
+        }
+
+        const action = decideAction(postReconciliation, {
+          allowYellow: input.allowYellow,
+        })
+        if (action === "abort") {
+          // Throwing inside the tx callback rolls back the entire
+          // group — finance never sees a half-state.
+          throw new Error(
+            `Post-write reconciliation rejected (verdict=${postReconciliation.overallVerdict}` +
+              `, drifted sheets=${postReconciliation.perSheet
+                .filter((s) => s.verdict !== "green")
+                .map((s) => s.sheetName)
+                .join(", ")})`,
+          )
         }
         // Interactive-tx timeout bumped from Prisma's 5s default: the main-
         // financial group writes PLF+BS+CF for EVERY entity PLUS in-tx
@@ -1412,6 +1471,23 @@ export async function runMultiFileImport(
         totalRowsInserted,
         skipReason: null,
       })
+
+      // Phase 11.2 — a green verdict over ZERO verified sheets is not proof,
+      // and it is the shape most likely to be misread as one. Say so out
+      // loud rather than letting the summary imply everything was checked.
+      const unverifiedCount = postReconciliation.unverified?.length ?? 0
+      if (unverifiedCount > 0) {
+        const names = (postReconciliation.unverified ?? [])
+          .map((u) => u.sheetName)
+          .join(", ")
+        warnings.push(
+          postReconciliation.perSheet.length === 0
+            ? `Group "${fileType}" committed with NO post-write verification — ` +
+              `all ${unverifiedCount} sheet(s) write data that carries no reconcilable sums (${names})`
+            : `Group "${fileType}": ${postReconciliation.perSheet.length} sheet(s) verified against the database, ` +
+              `${unverifiedCount} not verifiable (${names})`,
+        )
+      }
 
       // Track touched companies for the single recompute pass.
       for (const r of groupRecords) {

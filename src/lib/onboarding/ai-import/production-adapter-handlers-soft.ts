@@ -653,7 +653,11 @@ export function makeOpsFactsHandler(
           rows,
           expectedSums,
         })
-        return { rowsInserted: result.metrics.rowsInserted }
+        return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
       },
     }
   }
@@ -760,7 +764,11 @@ export function makeBudgetActualsHandler(
           rows,
           expectedSums,
         })
-        return { rowsInserted: result.metrics.rowsInserted }
+        return {
+          rowsInserted: result.metrics.rowsInserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
       },
     }
   }
@@ -848,7 +856,11 @@ export function makeSalesForecastHandler(
           rows,
           expectedSums,
         })
-        return { rowsInserted: result.metrics.rowsUpserted }
+        return {
+          rowsInserted: result.metrics.rowsUpserted,
+          // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
       },
     }
   }
