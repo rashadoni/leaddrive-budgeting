@@ -22,7 +22,7 @@ vi.mock('./recompute', async (importOriginal) => {
   };
 });
 
-import { runRecomputeForCompanies } from './recompute-trigger';
+import { runRecomputeForCompanies, expandYearPeriods } from './recompute-trigger';
 import { recomputeIndicator } from './recompute';
 
 const mockedRecompute = vi.mocked(recomputeIndicator);
@@ -1105,3 +1105,36 @@ describe('runRecomputeForCompanies', () => {
     });
   });
 });
+
+// ─── Phase 11.7 — period granularity ────────────────────────────────────
+describe("expandYearPeriods", () => {
+  it("defaults to the year alone — the period the HeatMap reads", () => {
+    expect(expandYearPeriods(2026)).toEqual(["2026"])
+    expect(expandYearPeriods(2026, "year")).toEqual(["2026"])
+  })
+
+  it("expands to year + 4 quarters + 12 months, year FIRST", () => {
+    // Year first is deliberate: an interrupted run still leaves the headline
+    // cells correct.
+    const periods = expandYearPeriods(2026, "year+quarter+month")
+    expect(periods).toHaveLength(17)
+    expect(periods[0]).toBe("2026")
+    expect(periods.slice(1, 5)).toEqual([
+      "2026-Q1",
+      "2026-Q2",
+      "2026-Q3",
+      "2026-Q4",
+    ])
+    expect(periods[5]).toBe("2026-01")
+    expect(periods[16]).toBe("2026-12")
+  })
+
+  it("zero-pads months so the shape matches IndicatorValue.period", () => {
+    // "2026-1" would never match a stored "2026-01" row, so the stale cell
+    // would survive while the recompute reported success.
+    const periods = expandYearPeriods(2026, "year+quarter+month")
+    expect(periods).toContain("2026-01")
+    expect(periods).toContain("2026-09")
+    expect(periods).not.toContain("2026-1")
+  })
+})

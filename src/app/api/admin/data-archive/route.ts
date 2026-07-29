@@ -296,7 +296,13 @@ export async function POST(request: NextRequest) {
             )
         const affected = years.map((y) => ({ companyId: target.id, year: y }))
         if (affected.length > 0) {
-          const r = await runRecomputeForCompanies(prisma, orgId, affected)
+          // Phase 11.7 — the reset now deletes month/quarter IndicatorValue
+          // rows (11.6), so the follow-up recompute must be able to rebuild
+          // them; a year-only fan-out would leave those cells permanently
+          // empty rather than recomputed.
+          const r = await runRecomputeForCompanies(prisma, orgId, affected, {}, {
+            granularity: "year+quarter+month",
+          })
           rc = r.ok ?? 0
         }
       } catch (err) {

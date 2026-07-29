@@ -1663,6 +1663,13 @@ export async function runMultiFileImport(
             recomputeLog.error(label, {
               err: err instanceof Error ? err.message : String(err),
             }),
+          start: (msg) => recomputeLog.info(msg),
+        },
+        {
+          // Phase 11.7 — an import writes MONTHLY rows, so refreshing only
+          // the year period left every month/quarter indicator cell showing
+          // its pre-import value and pre-import status colour indefinitely.
+          granularity: "year+quarter+month",
         },
       )
       recompute = {
@@ -1670,6 +1677,15 @@ export async function runMultiFileImport(
         unknown: r.unknown,
         failed: r.failed,
         targets: r.targets,
+      }
+      // No silent caps: if the granular fan-out was too large it fell back to
+      // year-only, and the user must know month/quarter cells are stale.
+      if (r.granularityDowngraded) {
+        warnings.push(
+          "Recompute ran over YEAR periods only — the month/quarter fan-out " +
+            "exceeded the safety ceiling. Month and quarter indicator cells " +
+            "still hold their pre-import values; run the offline recompute worker.",
+        )
       }
     } catch (err) {
       // Recompute failure is observable but non-fatal — the writes
