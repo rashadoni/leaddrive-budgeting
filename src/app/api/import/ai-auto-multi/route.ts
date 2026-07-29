@@ -74,6 +74,7 @@ import { detectStaleSiblingRows } from "@/lib/onboarding/ai-import/stale-sibling
 import { detectProductSalesShape } from "@/lib/onboarding/ai-import/product-sales-parser"
 import { logAuditEvent } from "@/lib/audit/log"
 import { importConsolidatedHoldingBs } from "@/lib/onboarding/adapters/azseker-consolidated-bs-import"
+import { detectWorkbookUnitScale } from "@/lib/onboarding/unit-scale"
 import type { SheetMap, SheetMapEntry } from "@/lib/onboarding/ai-import/sheet-routing"
 import type { SheetClassification } from "@/lib/onboarding/ai-import/sheet-classifier"
 import {
@@ -1150,11 +1151,30 @@ export async function POST(request: NextRequest) {
           raw: true,
           defval: null,
         }) as unknown[][]
+        // Phase 11.37 — read the money unit off the workbook rather than
+        // assuming ×1000. The declaration lives on a SIBLING sheet in this
+        // pack (`CONS PL_1!A1` = "AZN thousand"), which is why the scan takes
+        // the whole workbook and not just the BS tab.
+        const unitScan = detectWorkbookUnitScale(
+          f.workbook.SheetNames.map((name) => ({
+            name,
+            rows: XLSX.utils.sheet_to_json(f.workbook.Sheets[name]!, {
+              header: 1,
+              raw: true,
+              blankrows: false,
+            }) as unknown[][],
+          })),
+          ["BS"],
+        )
+        if (unitScan.conflict) {
+          consolidatedBsWarnings.push(`${f.filename}: ${unitScan.conflict} — using the assumed factor`)
+        }
         const res = await importConsolidatedHoldingBs(prisma, {
           worksheetRows: rows,
           organizationId: orgId,
           holdingCompanyCode,
           actorUserId: session.userId,
+          detectedUnit: unitScan.scale,
         })
         consolidatedBsWarnings.push(...res.warnings)
         log.info("consolidated holding BS imported", {

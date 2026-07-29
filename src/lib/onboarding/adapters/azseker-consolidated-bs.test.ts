@@ -140,10 +140,44 @@ describe("parseConsolidatedBs — scale plausibility", () => {
     )
   }
 
-  it("stays quiet when the totals land in the expected band", () => {
+  it("raises no BAND complaint when the totals land in the expected range", () => {
     // assets 100 × 1000 (sheet) × 1000 (factor) = ₼100M — normal for this holding.
     const r = parseConsolidatedBs(scaled(1000))
-    expect(r.scaleWarnings).toEqual([])
+    expect(r.scaleWarnings.join(" ")).not.toMatch(/Outside the expected/)
+  })
+
+  it("says so when the factor was ASSUMED — 11.37", () => {
+    // No unit passed in means nothing in the workbook declared one. An assumed
+    // multiplier must be visible; it is the input the Σ-leaves guard cannot check.
+    const r = parseConsolidatedBs(scaled(1000))
+    expect(r.scaleWarnings.join(" ")).toMatch(/money unit not declared/)
+  })
+
+  it("records the unit when the workbook DECLARED it — 11.37", () => {
+    const r = parseConsolidatedBs(scaled(1000), {
+      factor: 1000,
+      label: "AZN thousand",
+      source: "CONS PL_1!A1",
+    })
+    const joined = r.scaleWarnings.join(" ")
+    expect(joined).toMatch(/unit read from the workbook: CONS PL_1!A1 "AZN thousand"/)
+    expect(joined).not.toMatch(/money unit not declared/)
+  })
+
+  it("APPLIES the declared factor over the assumed one — 11.37", () => {
+    // Same sheet, declared as millions: every amount must be 1000× the ×1000 read.
+    const assumed = parseConsolidatedBs(scaled(1000))
+    const declared = parseConsolidatedBs(scaled(1000), {
+      factor: 1_000_000,
+      label: "AZN million",
+      source: "BS!A1",
+    })
+    const ym = assumed.months[0]
+    expect(declared.officialTotals.get(ym)!.asset).toBeCloseTo(
+      assumed.officialTotals.get(ym)!.asset * 1000,
+      2,
+    )
+    expect(declared.scaleWarnings.join(" ")).toMatch(/OVERRIDES the assumed ×1000/)
   })
 
   it("WARNS when the result is implausibly small — the factor is likely wrong", () => {
@@ -151,7 +185,11 @@ describe("parseConsolidatedBs — scale plausibility", () => {
     // is exactly why this needed its own signal.
     const r = parseConsolidatedBs(fixture())
     expect(r.scaleWarnings.length).toBeGreaterThan(0)
-    expect(r.scaleWarnings.join(" ")).toMatch(/CONFIRM the sheet's units/)
+    const joined = r.scaleWarnings.join(" ")
+    expect(joined).toMatch(/Outside the expected ₼1M-₼100B band/)
+    // And it must name WHICH factor produced it — assumed here, since no
+    // declaration was passed in.
+    expect(joined).toMatch(/an ASSUMED factor/)
   })
 
   it("WARNS when the result is implausibly large", () => {
@@ -160,7 +198,12 @@ describe("parseConsolidatedBs — scale plausibility", () => {
   })
 
   it("never THROWS on a scale problem — only the owner can confirm units", () => {
-    // Refusing the import on a heuristic would block a legitimate one.
+    // Refusing the import on a heuristic would block a legitimate one. 11.37
+    // kept this: the band is calibrated on ONE client's size, and a holding
+    // whose balance sheet genuinely totals ₼400K is a small company, not a
+    // scaling error. Undeclared AND implausible still warns rather than
+    // refusing.
     expect(() => parseConsolidatedBs(fixture())).not.toThrow()
+    expect(() => parseConsolidatedBs(fixture(), null)).not.toThrow()
   })
 })
