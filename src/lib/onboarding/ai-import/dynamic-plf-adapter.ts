@@ -249,6 +249,10 @@ export async function runDynamicPlfAdapter(
         `Dynamic detection LLM error (hint: ${cacheKeyHint}): ${msg}`,
         "Sheet not imported — upload again once API is available.",
       ],
+      // Phase 11.3 — a hard failure, NOT an empty sheet. Without this the
+      // zero-row return passed the orchestrator's success filter and
+      // committed green with no data.
+      blocked: { reason: `dynamic PLF detection failed (LLM error): ${msg}` },
       applyToDb: async () => ({ rowsInserted: 0 }),
     }
   }
@@ -264,6 +268,12 @@ export async function runDynamicPlfAdapter(
         cacheHit ? "(cache hit — no LLM cost)" : "(cache miss — LLM called)",
         `Low confidence (${proposal.overallConfidence.toFixed(2)} < 0.50) — no rows imported. Review sheet "${input.sheetName}" manually.`,
       ],
+      // Phase 11.3 — a hard failure, NOT an empty sheet. Without this the
+      // zero-row return passed the orchestrator's success filter and
+      // committed green with no data.
+      blocked: {
+        reason: `dynamic PLF detection confidence ${proposal.overallConfidence.toFixed(2)} < 0.50 — refusing to guess the layout`,
+      },
       applyToDb: async () => ({ rowsInserted: 0 }),
     }
   }
@@ -279,6 +289,10 @@ export async function runDynamicPlfAdapter(
         cacheHit ? "(cache hit)" : "(cache miss — LLM called)",
         `Column mapping incomplete: ${colsResult.reason}`,
       ],
+      // Phase 11.3 — a hard failure, NOT an empty sheet.
+      blocked: {
+        reason: `dynamic PLF column mapping incomplete: ${colsResult.reason}`,
+      },
       applyToDb: async () => ({ rowsInserted: 0 }),
     }
   }

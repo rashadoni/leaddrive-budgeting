@@ -328,6 +328,33 @@ export interface MultiFileImportResult {
   }
   /** Dry-run benchmark counters. These are informational and never drive writes. */
   parseMetrics: MultiFileParseMetrics
+  /**
+   * Phase 11.3 (2026-07-29) — did everything the user handed over actually
+   * land? `overallVerdict` answers "are the numbers that landed correct";
+   * this answers the different and equally important question "did any of
+   * them fail to land at all".
+   *
+   * They were previously conflated, so a run where one file failed
+   * classification, or a whole group was skipped, still reported
+   * `overallVerdict: "green"` and the route replied `ok: true` /
+   * `applied_complete`. Immediately after a reset that reads as "your
+   * numbers imported fine" when they are simply gone.
+   */
+  completeness: {
+    /** True only when every uploaded file was classified, every sheet was
+     *  routed, and every group committed. */
+    complete: boolean
+    /** Files whose classification failed outright. */
+    filesWithErrors: string[]
+    /** Files whose type could not be determined — never auto-applied. */
+    unclassifiedFiles: string[]
+    /** Groups that did not commit, with the reason. */
+    groupsNotCommitted: Array<{
+      fileType: string
+      filenames: string[]
+      reason: string
+    }>
+  }
   /** Non-fatal issues observed. */
   warnings: string[]
 }
@@ -669,7 +696,12 @@ async function parseFileSheets(
         adapterResult: ar,
         expectedSums,
         skippedReason: null,
-        blockedReason: null,
+        // Phase 11.3 — an adapter that reports `blocked` could not do its
+        // job; its rows will NOT reach the DB. Route it into the pre-write
+        // safety gate instead of letting a zero-row "success" commit green.
+        blockedReason: ar.blocked
+          ? `${filename} / "${cls.sheetName}" (${cls.dataType}): ${ar.blocked.reason}`
+          : null,
         effectivePlanKind,
         effectiveEntityCode,
       })
@@ -694,7 +726,14 @@ async function parseFileSheets(
         adapterResult: null,
         expectedSums: new Map(),
         skippedReason: `Adapter threw: ${msg}`,
-        blockedReason: null,
+        // Phase 11.3 — a parse exception means this sheet's numbers are
+        // going nowhere. Previously it left `blockedReason: null`, so the
+        // record was silently dropped from the group and the REST of the
+        // group committed green: the user was told the import succeeded
+        // while one sheet's data had vanished. It is now a hard block —
+        // the whole import aborts before any transaction opens, which is
+        // the only safe outcome after a reset.
+        blockedReason: `${filename} / "${cls.sheetName}" (${cls.dataType}) failed to parse: ${msg}`,
       })
       warnings.push(
         `${filename}: sheet "${cls.sheetName}" parse error — ${msg}`,
@@ -716,6 +755,48 @@ function aggregateVerdict(
     if (g.verdict === "yellow" && worst === "green") worst = "yellow"
   }
   return worst
+}
+
+/**
+ * Phase 11.3 — did every uploaded file's data actually reach the database?
+ *
+ * Deliberately separate from `aggregateVerdict`: that one answers "are the
+ * numbers that landed correct", this one answers "did any fail to land at
+ * all". A run can be green on the first and incomplete on the second, and
+ * conflating them is what let a failed file exit under `ok: true`.
+ *
+ * In dry-run nothing is meant to commit, so an uncommitted group is the
+ * expected outcome and is not counted as incompleteness.
+ */
+function buildCompleteness(
+  perFile: ReadonlyArray<PerFileResult>,
+  perGroup: ReadonlyArray<PerGroupResult>,
+  dryRun: boolean,
+): MultiFileImportResult["completeness"] {
+  const filesWithErrors = perFile
+    .filter((f) => f.error !== null)
+    .map((f) => f.filename)
+  const unclassifiedFiles = perGroup
+    .filter((g) => g.fileType === "unknown")
+    .flatMap((g) => g.filenames)
+  const groupsNotCommitted = dryRun
+    ? []
+    : perGroup
+        .filter((g) => !g.committed && g.fileType !== "unknown")
+        .map((g) => ({
+          fileType: g.fileType,
+          filenames: g.filenames,
+          reason: g.skipReason ?? `verdict=${g.verdict}`,
+        }))
+  return {
+    complete:
+      filesWithErrors.length === 0 &&
+      unclassifiedFiles.length === 0 &&
+      groupsNotCommitted.length === 0,
+    filesWithErrors,
+    unclassifiedFiles,
+    groupsNotCommitted,
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -1203,6 +1284,23 @@ export async function runMultiFileImport(
       durationMs: Date.now() - t0,
       recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
       parseMetrics,
+      // Phase 11.3 — a pre-write abort writes NOTHING, so the run is
+      // incomplete by definition; buildCompleteness() would otherwise see an
+      // empty perGroup and call it complete.
+      completeness: {
+        complete: false,
+        filesWithErrors: perFile
+          .filter((f) => f.error !== null)
+          .map((f) => f.filename),
+        unclassifiedFiles: [],
+        groupsNotCommitted: [
+          {
+            fileType: "*",
+            filenames: input.files.map((f) => f.filename),
+            reason: `Routing safety gate — ${reasons.length} issue(s); aborted before any DB write`,
+          },
+        ],
+      },
       warnings: [
         ...warnings,
         ...reasons,
@@ -1223,6 +1321,20 @@ export async function runMultiFileImport(
       durationMs: Date.now() - t0,
       recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
       parseMetrics,
+      completeness: {
+        complete: false,
+        filesWithErrors: perFile
+          .filter((f) => f.error !== null)
+          .map((f) => f.filename),
+        unclassifiedFiles: [],
+        groupsNotCommitted: [
+          {
+            fileType: "*",
+            filenames: input.files.map((f) => f.filename),
+            reason: `Cross-file conflict gate — ${conflicts.length} cell(s) disagree across files; aborted before any DB write`,
+          },
+        ],
+      },
       warnings: [
         ...warnings,
         `Cross-file conflict gate — ${conflicts.length} cell(s) disagree across files; aborted before any DB write`,
@@ -1576,6 +1688,7 @@ export async function runMultiFileImport(
     durationMs: Date.now() - t0,
     recompute,
     parseMetrics,
+    completeness: buildCompleteness(perFile, perGroup, input.dryRun === true),
     warnings,
   }
 }

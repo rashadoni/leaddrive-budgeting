@@ -224,6 +224,18 @@ interface MultiFileApiResponse {
   }
   durationMs: number
   recompute: { ok: number; unknown: number; failed: number; targets: number }
+  /** Phase 11.3 — did every uploaded file's data actually land? Separate
+   *  from `overallVerdict`, which only says whether what landed is correct. */
+  completeness?: {
+    complete: boolean
+    filesWithErrors: string[]
+    unclassifiedFiles: string[]
+    groupsNotCommitted: Array<{
+      fileType: string
+      filenames: string[]
+      reason: string
+    }>
+  }
   warnings: string[]
   error?: string
   templateUsage?: {
@@ -1229,6 +1241,75 @@ export function MultiFileForm() {
     return values.length > max
       ? `${shown} +${values.length - max}`
       : shown
+  }
+
+  /**
+   * Phase 11.3 (2026-07-29) — render `warnings`.
+   *
+   * The orchestrator has always emitted the reason a sheet was dropped, a
+   * year was mismatched or a group was skipped, and this screen never showed
+   * any of it: `warnings` was referenced exactly once, inside
+   * buildDoctorContext, so the text only existed in the Import Doctor
+   * payload. The user saw a verdict badge and nothing else.
+   */
+  function renderWarnings(warnings: string[]) {
+    if (!warnings || warnings.length === 0) return null
+    return (
+      <details
+        className="border rounded p-3 text-sm bg-amber-50 border-amber-300 dark:bg-amber-950/30 dark:border-amber-800"
+        data-testid="apply-warnings"
+        open={warnings.length <= 5}
+      >
+        <summary className="font-medium cursor-pointer">
+          ⚠️ {t("result.warningsTitle", { n: warnings.length })}
+        </summary>
+        <ul className="mt-2 space-y-1 list-disc list-inside">
+          {warnings.map((w, i) => (
+            <li key={i} className="break-words">
+              {w}
+            </li>
+          ))}
+        </ul>
+      </details>
+    )
+  }
+
+  /**
+   * Phase 11.3 — say plainly when part of the upload never reached the
+   * database. This is the case that used to exit as `ok: true` /
+   * `applied_complete`, which right after a reset reads as "imported fine"
+   * while the numbers are missing.
+   */
+  function renderIncompleteness(res: MultiFileApiResponse) {
+    const c = res.completeness
+    if (!c || c.complete) return null
+    const lines: string[] = [
+      ...c.filesWithErrors.map((f) => t("result.incompleteFileError", { f })),
+      ...c.unclassifiedFiles.map((f) =>
+        t("result.incompleteUnclassified", { f }),
+      ),
+      ...c.groupsNotCommitted.map((g) =>
+        t("result.incompleteGroup", {
+          g: g.fileType,
+          reason: g.reason,
+        }),
+      ),
+    ]
+    return (
+      <div
+        className="border rounded p-3 text-sm bg-red-50 border-red-400 dark:bg-red-950/30 dark:border-red-800"
+        data-testid="apply-incomplete"
+      >
+        <div className="font-semibold">🔴 {t("result.incompleteTitle")}</div>
+        <ul className="mt-2 space-y-1 list-disc list-inside">
+          {lines.map((l, i) => (
+            <li key={i} className="break-words">
+              {l}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
   }
 
   function renderSafetyReceipt(
@@ -2629,6 +2710,8 @@ export function MultiFileForm() {
           </h3>
           {applyResult.safetyReceipt &&
             renderSafetyReceipt(applyResult.safetyReceipt, "applied")}
+          {renderIncompleteness(applyResult)}
+          {renderWarnings(applyResult.warnings)}
           {applyResult.perGroup.map((g) => (
             <div
               key={g.fileType}

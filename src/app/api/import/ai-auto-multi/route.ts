@@ -118,6 +118,14 @@ type SafetyReceiptStatus =
   | "blocked"
   | "preview_ready"
   | "applied_complete"
+  /**
+   * Phase 11.3 (2026-07-29) — writes committed, but at least one uploaded
+   * file never reached the database (classification failed, file type
+   * unknown, or a group did not commit). Previously these runs reported
+   * `applied_complete` with `ok: true`: right after a reset that reads as
+   * "your numbers imported fine" when they are simply missing.
+   */
+  | "applied_incomplete"
   | "applied_recompute_pending"
   | "applied_recompute_failed"
   | "applied_no_writes"
@@ -295,11 +303,13 @@ function buildSafetyReceipt(
         ? "preview_ready"
         : committedRows === 0
           ? "applied_no_writes"
-          : recomputeStatus === "failed"
-            ? "applied_recompute_failed"
-            : recomputeStatus === "pending" || recomputeStatus === "not_run"
-              ? "applied_recompute_pending"
-              : "applied_complete"
+          : !result.completeness.complete
+            ? "applied_incomplete"
+            : recomputeStatus === "failed"
+              ? "applied_recompute_failed"
+              : recomputeStatus === "pending" || recomputeStatus === "not_run"
+                ? "applied_recompute_pending"
+                : "applied_complete"
 
   return {
     mode: opts.shouldApply ? "applied" : "preview",
@@ -1286,8 +1296,13 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Normal path ─────────────────────────────────────────────────
+  // Phase 11.3 — `ok` is the client's headline signal, so it must not stay
+  // true when part of the upload never landed. An apply that dropped a file
+  // (classification failure, unknown type, uncommitted group) answers 409
+  // with the specifics in `result.completeness`, not 200/ok:true.
+  const applyIncomplete = shouldApply && !result.completeness.complete
   return NextResponse.json({
-    ok: true,
+    ok: !applyIncomplete,
     mode: shouldApply ? ("applied" as const) : ("preview" as const),
     ...result,
     sheetImpactsByFilename: Object.fromEntries(sheetImpactsByFilename),
@@ -1299,5 +1314,5 @@ export async function POST(request: NextRequest) {
     buColumnSplits,
     productSalesSheets,
     durationMs: Date.now() - t0,
-  })
+  }, applyIncomplete ? { status: 409 } : undefined)
 }

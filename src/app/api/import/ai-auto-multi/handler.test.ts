@@ -153,6 +153,19 @@ function defaultOrchResult() {
       planRelevantSheetsWithEntity: 0,
       missingEntitySheets: 0,
     },
+    // Phase 11.3 — the orchestrator now reports whether every uploaded file
+    // actually landed. Default the stub to a complete run; individual tests
+    // override it to exercise the `applied_incomplete` / 409 path.
+    completeness: {
+      complete: true,
+      filesWithErrors: [] as string[],
+      unclassifiedFiles: [] as string[],
+      groupsNotCommitted: [] as Array<{
+        fileType: string
+        filenames: string[]
+        reason: string
+      }>,
+    },
     warnings: [],
   }
 }
@@ -502,5 +515,103 @@ describe("POST /api/import/ai-auto-multi", () => {
     await POST(makeMultipartRequest({ fileCount: 1 }) as never)
     const call = orchestratorMock.runMultiFileImport.mock.calls[0]
     expect(call[0].dryRun).toBe(true)
+  })
+
+  // ── Phase 11.3 — a partial import must not exit ok:true ──────────────
+  it("answers 409 / applied_incomplete when a file never landed", async () => {
+    // Classification failed on one of the uploaded files. Before Phase 11.3
+    // the run still reported ok:true / applied_complete, which right after a
+    // reset reads as "your numbers imported fine" while they are missing.
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    const orchResult = defaultOrchResult()
+    orchResult.perGroup[0].committed = true
+    orchResult.perGroup[0].totalRowsInserted = 12
+    orchResult.perGroup[0].skipReason = null
+    orchResult.completeness = {
+      complete: false,
+      filesWithErrors: ["Reporting 2026.xlsx"],
+      unclassifiedFiles: [],
+      groupsNotCommitted: [],
+    }
+    orchestratorMock.runMultiFileImport.mockResolvedValue(orchResult)
+
+    const res = await POST(
+      makeMultipartRequest({ fileCount: 1, apply: "1" }) as never,
+    )
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as {
+      ok: boolean
+      safetyReceipt: { status: string }
+      completeness: { filesWithErrors: string[] }
+    }
+    expect(body.ok).toBe(false)
+    expect(body.safetyReceipt.status).toBe("applied_incomplete")
+    // The specifics travel with the refusal so the user can act on it.
+    expect(body.completeness.filesWithErrors).toEqual(["Reporting 2026.xlsx"])
+  })
+
+  it("answers 409 when a whole group failed to commit", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    const orchResult = defaultOrchResult()
+    orchResult.perGroup[0].committed = true
+    orchResult.perGroup[0].totalRowsInserted = 5
+    orchResult.perGroup[0].skipReason = null
+    orchResult.completeness = {
+      complete: false,
+      filesWithErrors: [],
+      unclassifiedFiles: [],
+      groupsNotCommitted: [
+        {
+          fileType: "kpi-only",
+          filenames: ["Farming strategy - Guvven.xlsx"],
+          reason: "Group commit failed: synthetic",
+        },
+      ],
+    }
+    orchestratorMock.runMultiFileImport.mockResolvedValue(orchResult)
+
+    const res = await POST(
+      makeMultipartRequest({ fileCount: 1, apply: "1" }) as never,
+    )
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { safetyReceipt: { status: string } }
+    expect(body.safetyReceipt.status).toBe("applied_incomplete")
+  })
+
+  it("keeps 200 / ok:true when the apply really was complete", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    const orchResult = defaultOrchResult()
+    orchResult.perGroup[0].committed = true
+    orchResult.perGroup[0].totalRowsInserted = 7
+    orchResult.perGroup[0].skipReason = null
+    orchestratorMock.runMultiFileImport.mockResolvedValue(orchResult)
+
+    const res = await POST(
+      makeMultipartRequest({ fileCount: 1, apply: "1" }) as never,
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      ok: boolean
+      safetyReceipt: { status: string }
+    }
+    expect(body.ok).toBe(true)
+    expect(body.safetyReceipt.status).not.toBe("applied_incomplete")
+  })
+
+  it("does not call a PREVIEW incomplete — dry runs commit nothing by design", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    const orchResult = defaultOrchResult()
+    orchResult.completeness = {
+      complete: false,
+      filesWithErrors: ["x.xlsx"],
+      unclassifiedFiles: [],
+      groupsNotCommitted: [],
+    }
+    orchestratorMock.runMultiFileImport.mockResolvedValue(orchResult)
+
+    const res = await POST(makeMultipartRequest({ fileCount: 1 }) as never)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { ok: boolean }
+    expect(body.ok).toBe(true)
   })
 })

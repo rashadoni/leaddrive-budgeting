@@ -3535,6 +3535,11 @@
       "result": {
         "title": "Apply result",
         "fileCount": "{n} files",
+        "warningsTitle": "{n} warning(s) from the import",
+        "incompleteTitle": "Part of this upload did NOT reach the database",
+        "incompleteFileError": "{f} — could not be classified; nothing from this file was imported",
+        "incompleteUnclassified": "{f} — file type unknown; skipped, manual review required",
+        "incompleteGroup": "Group \"{g}\" did not commit — {reason}",
         "rowsWritten": "{n} rows written",
         "skipped": "skipped",
         "recomputeLine": "Recompute: {ok}/{total} OK",

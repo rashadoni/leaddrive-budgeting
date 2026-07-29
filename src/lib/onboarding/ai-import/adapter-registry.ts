@@ -99,6 +99,22 @@ export interface AdapterRunResult {
     mappings: AdapterSemanticCoaMapping[]
     reviewItems: AdapterSemanticCoaReviewItem[]
   }
+  /**
+   * Set when the adapter could not do its job and the sheet's data will NOT
+   * reach the database — as opposed to legitimately having nothing to write.
+   *
+   * Phase 11.3 (2026-07-29) — the dynamic adapters used to signal an LLM
+   * failure, a sub-0.5 confidence score or a failed column resolution by
+   * returning `itemCount: 0` with an empty `applyToDb`. That is
+   * indistinguishable from "this sheet correctly contains no rows", so the
+   * record passed the orchestrator's success filter, was reconciled against
+   * itself and committed green with zero rows. After a reset that reads as
+   * "the numbers are gone" under a green tick.
+   *
+   * Setting this routes the sheet into the pre-write safety gate, which
+   * aborts the whole import BEFORE any transaction opens.
+   */
+  blocked?: { reason: string }
   /** Apply step — invoked by orchestrator AFTER reconciliation passes. */
   applyToDb: (
     /**
