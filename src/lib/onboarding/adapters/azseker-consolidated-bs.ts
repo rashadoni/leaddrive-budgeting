@@ -21,17 +21,27 @@
 export type BsSection = "asset" | "equity" | "liability"
 
 /**
- * Phase 11.18 (2026-07-29) — the thousands→manat factor, named rather than
- * inlined.
+ * Phase 11.18 — the thousands→manat factor, named rather than inlined.
  *
- * This is an ASSUMPTION about the source sheet, not a measurement, and the
- * reconciliation guard below cannot verify it: that guard compares Σ(leaves)
- * against the sheet's own subtotal cell, and BOTH sides pass through this
- * factor, so it is scale-invariant and stays green for any value. A
- * plausibility band on the resulting totals is emitted as a warning instead —
- * see `scaleWarnings`.
+ * CONFIRMED 2026-07-29 against the real `Reporting 2026.xlsx`. It was an
+ * assumption; it is now a measurement, on two independent readings:
  *
- * Confirming the units is an owner question about the file (ROADMAP 11.18).
+ *  1. `CONS PL_1!A1` of the same workbook is labelled verbatim **"AZN
+ *     thousand"** — the summary blocks of this pack are denominated in
+ *     thousands, and `BS` is one of them (same "Consolidated ..." title row,
+ *     same three-column month layout).
+ *  2. The same workbook carries `BS Actual`, the per-account balance sheet in
+ *     RAW MANAT: ASSETS at 2026-04 = 134,864,500.55. The consolidated `BS` tab
+ *     reads 253,320.38 for that month. Read as manat that would make the whole
+ *     group ₼253K — 533× SMALLER than the detail of a single scope inside it,
+ *     which is impossible. Read as thousands it is ₼253.3M against a ₼134.9M
+ *     component, which is the expected relation.
+ *
+ * The reconciliation guard below still cannot verify the factor — it compares
+ * Σ(leaves) against the sheet's own subtotal cell and BOTH sides pass through
+ * it, so it is scale-invariant and stays green for any value. That is why the
+ * plausibility band is still emitted (`scaleWarnings`): it is the only thing
+ * standing between a future file in units and a 1000× balance sheet.
  */
 export const UNIT_SCALE = 1000
 
