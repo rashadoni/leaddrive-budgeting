@@ -741,9 +741,9 @@ After two over-claims were caught by hand, a 16-agent pass re-read every Phase 1
 
 | # | Follow-up | Status |
 |---|-----------|--------|
-| 11.33 | Five handlers still AZSEKER-only: CAPEX (silent `continue`, no warning), SALES, AUDIT_FINDINGS, LEGAL_CASES, INFO_SUMMARY/forward-forecast. CAPEX is the dangerous one — green summary, zero rows. | ⬜ |
+| 11.33 | Five handlers still AZSEKER-only: CAPEX (silent `continue`, no warning), SALES, AUDIT_FINDINGS, LEGAL_CASES, INFO_SUMMARY/forward-forecast. CAPEX is the dangerous one — green summary, zero rows. | 🟡 **CAPEX done** — unresolved codes now collected, warned per company, counted out of the summary, and `blocked` when nothing resolves (`capex-entity.test.ts`). SALES / AUDIT_FINDINGS / LEGAL_CASES / INFO_SUMMARY still AZSEKER-only. |
 | 11.34 | `ImportBatchReport` needs a reader (a route or admin page), and `/api/import/reporting-pack` needs the period-lock gate the other two mutation paths got. | ⬜ |
-| 11.35 | `icmal-budget.ts` `annual: Math.abs(v)` is live on the BudgetLine write path. Convention-independent, so not 11.9's corruption — but it silently flips genuinely negative rows, including contra-revenue. | ⬜ |
+| 11.35 | `icmal-budget.ts` `annual: Math.abs(v)` is live on the BudgetLine write path. Convention-independent, so not 11.9's corruption — but it silently flips genuinely negative rows, including contra-revenue. | ✅ **done** — two-pass parse: raw annuals collected, then `resolveCostSigns` classifies COGS and expenses **independently**; revenue never flipped, so contra-revenue nets down. Verdict reaches `blocked` in the handler (the wiring 11.9b omitted). 7 tests. |
 
 ### Sweep backlog — ranks 7-31, NOT started (2026-07-29)
 

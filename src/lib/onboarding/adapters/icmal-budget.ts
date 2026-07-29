@@ -24,6 +24,8 @@
  * pipeline (makeForwardForecastHandler) and any ad-hoc reload use it.
  */
 
+import { resolveCostSigns } from "../ai-import/cost-sign"
+
 export const ICMAL_HOLDING_SENTINEL = "AZSEKER"
 
 export type IcmalLineType = "revenue" | "cogs" | "expense"
@@ -32,7 +34,11 @@ export interface IcmalBudgetLine {
   group: string
   label: string
   lineType: IcmalLineType
-  /** Positive magnitude (abs of the signed İcmal value). */
+  /**
+   * Annual total in the DB convention: costs POSITIVE (a charge), negative
+   * only for a genuine reversal; revenue positive, negative for a return.
+   * Phase 11.35 — was `Math.abs(...)`, which erased both reversal cases.
+   */
   annual: number
   companyCode: string
   coaCode: string
@@ -153,6 +159,14 @@ export interface ParseIcmalBudgetResult {
   excluded: { group: string; label: string; amount: number }[]
   yearColumn: number
   groupColumn: number
+  /** Phase 11.35 — how each cost section's sign convention was read. */
+  signNotes: string[]
+  /**
+   * Non-null when a cost section's convention could not be established. The
+   * caller MUST surface it as `blocked`: importing anyway would guess the sign
+   * of every cost in the statement.
+   */
+  signBlockedReason: string | null
 }
 
 /**
@@ -171,7 +185,8 @@ export function parseIcmalBudgetLines(
   const groupCol = findIcmalGroupColumn(aoa)
   const lines: IcmalBudgetLine[] = []
   const excluded: { group: string; label: string; amount: number }[] = []
-  if (yearCol < 0 || groupCol < 0) return { lines, excluded, yearColumn: yearCol, groupColumn: groupCol }
+  if (yearCol < 0 || groupCol < 0)
+    return { lines, excluded, yearColumn: yearCol, groupColumn: groupCol, signNotes: [], signBlockedReason: null }
 
   // İcmal layout: Group column (detected), label = Group+1, value = [yearCol].
   const GROUP_COL = groupCol
@@ -188,7 +203,13 @@ export function parseIcmalBudgetLines(
         group: g,
         label: l,
         lineType: GROUP_MAP[g],
-        annual: Math.abs(v),
+        // Phase 11.35 (2026-07-29) — RAW in pass 1; the cost-sign convention
+        // is inferred after the loop. `Math.abs(v)` used to run here, which is
+        // convention-independent and therefore silently flipped any genuinely
+        // negative row — including revenue, so a contra-revenue entry (a
+        // return, a correction) landed POSITIVE and inflated the very figure
+        // it should reduce.
+        annual: v,
         companyCode: PRODUCT_COMPANY[l] ?? ICMAL_HOLDING_SENTINEL,
         coaCode: coaCodeFor(g, l, false),
       })
@@ -197,7 +218,8 @@ export function parseIcmalBudgetLines(
         group: g,
         label: l,
         lineType: "revenue", // other income
-        annual: Math.abs(v),
+        // Phase 11.35 — raw; revenue is never flipped (see pass 2).
+        annual: v,
         companyCode: SUBSIDY_GROUPS[g],
         coaCode: coaCodeFor(g, l, true),
         isSubsidy: true,
@@ -214,9 +236,37 @@ export function parseIcmalBudgetLines(
   // write into the kind="budget" plan).
   const distinctGroups = new Set(lines.filter((l) => !l.isSubsidy).map((l) => l.group))
   if (distinctGroups.size < 2) {
-    return { lines: [], excluded, yearColumn: yearCol, groupColumn: groupCol }
+    return { lines: [], excluded, yearColumn: yearCol, groupColumn: groupCol, signNotes: [], signBlockedReason: null }
   }
-  return { lines, excluded, yearColumn: yearCol, groupColumn: groupCol }
+
+  // ── Pass 2: apply the INFERRED cost-sign convention (Phase 11.35) ──────
+  // The DB convention is charge-positive / reversal-negative. Which direction
+  // the FILE uses is inferred from its own cost rows rather than assumed,
+  // exactly as in azseker-plf.ts (11.9b). COGS and expenses are classified
+  // INDEPENDENTLY — a workbook can store one negative and the other positive.
+  // Revenue is never flipped: a negative revenue row is a return, and it must
+  // net the revenue DOWN rather than be added to it.
+  const sign = resolveCostSigns(
+    lines.filter((l) => l.lineType === "cogs").map((l) => l.annual),
+    lines.filter((l) => l.lineType === "expense").map((l) => l.annual),
+  )
+  for (const l of lines) {
+    if (l.lineType === "cogs" && sign.flipCogs) l.annual = -l.annual
+    else if (l.lineType === "expense" && sign.flipExpense) l.annual = -l.annual
+  }
+
+  return {
+    lines,
+    excluded,
+    yearColumn: yearCol,
+    groupColumn: groupCol,
+    signNotes: sign.notes,
+    // Surfaced by the caller as `blocked`. A mixed-sign cost section means the
+    // importer would be guessing the sign of every cost in the statement —
+    // 11.9b shipped this verdict once and never wired it to the field the
+    // gate reads, so it is wired here explicitly.
+    signBlockedReason: sign.blockedReason,
+  }
 }
 
 /**
