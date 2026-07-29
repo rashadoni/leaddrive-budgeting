@@ -96,20 +96,19 @@ FROM (
 ) v;
 
 \echo ''
-\echo '--- DRY RUN: can the 11.8b index actually be created? (rolled back) ---'
-\echo '--- proves creatability instead of inferring it from a zero count  ---'
-BEGIN;
-CREATE UNIQUE INDEX "dryrun_budget_lines_plan_source_cell_key"
-  ON "budget_lines" ("planId", "sourceDocument")
-  WHERE "deletedAt" IS NULL
-    AND "sourceDocument" IS NOT NULL
-    AND "sourceDocument" ~ '#[0-9]+@[0-9]{4}-[0-9]{2}$';
-SELECT 'index creatable' AS dry_run_result;
-ROLLBACK;
+\echo '--- 11.8b index: is it actually present, and with the right predicate? ---'
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE tablename = 'budget_lines'
+  AND indexname = 'budget_lines_plan_source_cell_key';
 SQL
 
 echo
-echo "Zero groups → the (planId, sourceDocument) unique index can be added."
-echo "Any groups  → each is one workbook cell that produced more than one row."
-echo "              Deciding which copy survives changes reported numbers, so"
-echo "              that is an owner call — the constraint stays unshipped."
+echo "The 11.8b index SHIPPED 2026-07-29 and is enforced for ordinal-bearing"
+echo "keys only, so read the blocks above as:"
+echo "  legacy-format groups → expected. Real data under a key that cannot"
+echo "                         distinguish it; excluded by the index predicate."
+echo "                         They join the index on their own after re-import."
+echo "  ordinal-key groups   → must be 0. Anything here is a genuine double-write"
+echo "                         that got in before the index, or the index is gone."
+echo "  index row missing    → the constraint is NOT in place. Investigate."
