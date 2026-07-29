@@ -67,6 +67,11 @@ export async function importConsolidatedHoldingBs(
   // 1. Parse + money guard (throws if Σ leaves ≠ official subtotal cells).
   const parsed = parseConsolidatedBs(worksheetRows)
   const warnings: string[] = []
+  // Phase 11.18 — the parser's scale-plausibility notes must reach the import
+  // report, not die inside the parser. A wrong thousands→manat factor moves
+  // the whole balance sheet by three orders of magnitude while every internal
+  // cross-foot still ties, so this is the ONLY signal that it happened.
+  for (const w of parsed.scaleWarnings) warnings.push(`SCALE: ${w}`)
 
   // 2. Resolve the holding company.
   const holding = await prisma.company.findFirst({

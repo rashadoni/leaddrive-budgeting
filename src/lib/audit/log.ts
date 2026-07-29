@@ -463,6 +463,19 @@ export type AuditEventInput =
         accountCode: string;
         /** Account name (snapshot — name may change later). */
         accountName: string;
+        /**
+         * Phase 11.20 — which column moved. Absent means `role` (the only
+         * field this event carried before `accountType` became
+         * reclassifiable).
+         */
+        field?: 'role' | 'accountType';
+        /**
+         * True when the change relocates the account between the P&L and the
+         * balance sheet. That is the version a reviewer actually needs to
+         * find later: both statements change and neither total looks wrong
+         * afterwards.
+         */
+        crossStatement?: boolean;
         /** Prior role value (null = no override / Prisma default). */
         from: string | null;
         /** New role value (null = "clear override"). */

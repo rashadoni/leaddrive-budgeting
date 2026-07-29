@@ -331,3 +331,110 @@ describe("PUT — coa_role_change audit emission (Turn LXXXXIV)", () => {
     expect(body.auditStale).toBeUndefined()
   })
 })
+
+// ─── Phase 11.20 — accountType is reclassifiable ────────────────────────
+//
+// It was written once by the importer and frozen forever: auto-created
+// accounts took `defaultAccountType` (falling back to "expense" when
+// unknown) and re-import deliberately never overwrites it. A mis-typed
+// account therefore put its number in the wrong statement section
+// permanently, even when the amount was correct — and the importer's own
+// comment promised an admin override that only ever exposed `role`.
+describe("PUT /api/budgeting/chart-of-accounts/[id] — accountType", () => {
+  function priorIs(accountType: string) {
+    prismaMock.chartOfAccount.findFirst.mockResolvedValue({
+      code: "601-01",
+      name: "Sales — Goods",
+      role: "revenue",
+      accountType,
+    })
+  }
+
+  it("reclassifies WITHIN the P&L without extra confirmation", async () => {
+    // expense↔cogs reshuffles P&L subtotals but keeps the number in the same
+    // statement, so it needs no special acknowledgement.
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
+    priorIs("expense")
+    const res = await PUT(
+      makeRequest(`/api/budgeting/chart-of-accounts/${ACCOUNT_ID}`, {
+        method: "PUT",
+        json: { accountType: "cogs" },
+      }) as never,
+      stubParams(ACCOUNT_ID),
+    )
+    expect(res.status).toBe(200)
+    expect(prismaMock.chartOfAccount.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { accountType: "cogs" } }),
+    )
+  })
+
+  it("REFUSES a P&L → balance-sheet move without confirmCrossStatement", async () => {
+    // expense→asset relocates the number out of the P&L entirely; both
+    // statements change and neither total looks wrong afterwards, so it must
+    // be deliberate rather than a typo in a PUT body.
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
+    priorIs("expense")
+    const res = await PUT(
+      makeRequest(`/api/budgeting/chart-of-accounts/${ACCOUNT_ID}`, {
+        method: "PUT",
+        json: { accountType: "asset" },
+      }) as never,
+      stubParams(ACCOUNT_ID),
+    )
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { requiresConfirmation: boolean }
+    expect(body.requiresConfirmation).toBe(true)
+    // Refused BEFORE any write.
+    expect(prismaMock.chartOfAccount.updateMany).not.toHaveBeenCalled()
+  })
+
+  it("allows the cross-statement move once confirmed, and audits it as such", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
+    priorIs("expense")
+    const res = await PUT(
+      makeRequest(`/api/budgeting/chart-of-accounts/${ACCOUNT_ID}`, {
+        method: "PUT",
+        json: { accountType: "asset", confirmCrossStatement: true },
+      }) as never,
+      stubParams(ACCOUNT_ID),
+    )
+    expect(res.status).toBe(200)
+    expect(prismaMock.chartOfAccount.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { accountType: "asset" } }),
+    )
+    expect(logAuditEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        event: expect.objectContaining({
+          metadata: expect.objectContaining({
+            field: "accountType",
+            from: "expense",
+            to: "asset",
+            crossStatement: true,
+          }),
+        }),
+      }),
+    )
+  })
+
+  it("rejects a body with neither role nor accountType", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
+    const res = await PUT(makeRequest(`/api/budgeting/chart-of-accounts/${ACCOUNT_ID}`, {
+      method: "PUT",
+      json: {},
+    }) as never, stubParams(ACCOUNT_ID))
+    expect(res.status).toBe(400)
+  })
+
+  it("rejects an unknown accountType", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
+    const res = await PUT(
+      makeRequest(`/api/budgeting/chart-of-accounts/${ACCOUNT_ID}`, {
+        method: "PUT",
+        json: { accountType: "goodwill" },
+      }) as never,
+      stubParams(ACCOUNT_ID),
+    )
+    expect(res.status).toBe(400)
+  })
+})
