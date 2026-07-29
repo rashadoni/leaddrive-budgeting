@@ -33,6 +33,8 @@ import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { runReportingPackImport } from "@/lib/onboarding/adapters/reporting-pack-importer"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
 import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
+import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 export const maxDuration = 300
 
@@ -106,6 +108,26 @@ export async function POST(request: NextRequest) {
   }
   const applyVal = String(form.get("apply") ?? "").toLowerCase()
   const shouldApply = applyVal === "1" || applyVal === "true"
+
+  // ── Period-lock gate (Phase 11.34) ──────────────────────────────
+  // 11.13 put this on /api/import/ai-auto-multi, the other bulk-import
+  // mutation, and left this route without it. Both write the same
+  // BudgetLine / CashFlowEntry rows for a year, so a locked period stayed
+  // rewritable through whichever door had no gate.
+  //
+  // APPLY only: a preview writes nothing, and refusing to LOOK at a closed
+  // year is not what a lock means.
+  if (shouldApply) {
+    const lock = await getActivePeriodLock(prisma, orgId, String(year))
+    if (lock) {
+      return lockedResponse(lock, {
+        prisma,
+        orgId,
+        userId: session.userId ?? null,
+        route: "POST /api/import/reporting-pack",
+      })
+    }
+  }
 
   let wb: XLSX.WorkBook
   try {
