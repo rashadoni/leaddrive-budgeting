@@ -520,7 +520,10 @@ export async function previewCompanyImportReset(args: {
     if (args.year) cfWhere.year = args.year
     breakdown.cashFlowEntry = await args.prisma.cashFlowEntry.count({ where: cfWhere as never })
 
+    // Must mirror the reset's scope exactly, or the blast-radius preview
+    // under-reports what a "clear <year>" will actually archive.
     const cpWhere: Record<string, unknown> = { ...base }
+    if (args.year) cpWhere.period = { startsWith: String(args.year) }
     breakdown.counterparty = await args.prisma.counterparty.count({ where: cpWhere as never })
 
     breakdown.operationalFact = await args.prisma.operationalFact.count({
@@ -724,8 +727,23 @@ export async function resetCompanyImportData(
     if (scope.year) cfWhere.year = scope.year
     breakdown.cashFlowEntry = (await tx.cashFlowEntry.updateMany({ where: cfWhere as never, data: stamp })).count
 
+    // 2026-07-29 — scope by YEAR, like every sibling table above.
+    //
+    // This filtered on `scope.period`, which the reset UI never sends: the
+    // panel posts `year` (ImportDataResetPanel.tsx). So the condition was
+    // always absent and a "clear 2026" archived EVERY year's customer and
+    // supplier snapshot, while the re-import restores only the year it
+    // covers (`period = String(input.year)` in the writers). Combined with
+    // the 30-day physical purge of soft-deleted rows, prior-year
+    // concentration history became permanently unrecoverable rather than
+    // merely hidden.
+    //
+    // `Counterparty.period` is a "YYYY" or "YYYY-MM" string, so a year scope
+    // is a prefix match. An explicit `scope.period` still wins when a caller
+    // genuinely wants one month.
     const cpWhere: Record<string, unknown> = { organizationId: orgId, companyId, deletedAt: null }
     if (scope.period) cpWhere.period = scope.period
+    else if (scope.year) cpWhere.period = { startsWith: String(scope.year) }
     breakdown.counterparty = (await tx.counterparty.updateMany({ where: cpWhere as never, data: stamp })).count
 
     // 2. HARD-delete import-sourced OperationalFact only (no soft-delete column —

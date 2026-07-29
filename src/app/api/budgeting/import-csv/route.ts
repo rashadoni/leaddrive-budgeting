@@ -15,6 +15,7 @@ import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import { deriveMonthIndex } from "@/lib/budgeting/derive-month-index"
 import { withDeprecation } from "@/lib/api-deprecation"
 import { getLogger } from "@/lib/log"
+import { resolveCostSigns } from "@/lib/onboarding/ai-import/cost-sign"
 
 // Phase 8 D4 final (2026-05-29) — structured logger.
 const log = getLogger("api:budgeting:import-csv")
@@ -99,6 +100,9 @@ async function _POST(req: NextRequest) {
 
   let matched = 0
   let unmatched = 0
+  /** Rows held back so the file's sign convention can be inferred from all of
+   *  them before any write. */
+  const staged: Array<Record<string, unknown>> = []
   const errors: Array<{ row: number; error: string }> = []
 
   // Get category mapping if integration exists
@@ -124,27 +128,39 @@ async function _POST(req: NextRequest) {
         continue
       }
 
-      const amount = parseFloat(row.amount || row.Amount || row.sum || row.Sum || "0")
-      if (isNaN(amount) || amount === 0) {
+      // 2026-07-29 — an explicit 0 is DATA, not an error. It used to be
+      // rejected alongside unparseable cells, so a genuine zero both vanished
+      // from the import AND was counted as a failed row.
+      const rawAmount = row.amount || row.Amount || row.sum || row.Sum || ""
+      const amount = parseFloat(rawAmount)
+      if (String(rawAmount).trim() === "" || isNaN(amount)) {
         unmatched++
         errors.push({ row: i + 1, error: "Invalid amount" })
         continue
       }
 
       const expenseDate = row.date || row.Date || null
-      await prisma.budgetActual.create({
-        data: {
-          organizationId: orgId,
-          planId,
-          category,
-          department: row.department || row.Department || null,
-          lineType: row.lineType || row.type || "expense",
-          actualAmount: Math.abs(amount),
-          expenseDate,
-          // Phase 3.1 v1.2 — derive monthIndex for VarianceTab sparkline.
-          monthIndex: deriveMonthIndex(expenseDate),
-          description: row.description || row.Description || row.memo || null,
-        },
+      // Buffered, not written yet: the file's cost-sign convention can only
+      // be inferred once every row has been read. `Math.abs(amount)` used to
+      // run here, turning a -500 credit note into a +500 charge — ADDING to
+      // the actual it should reduce. That is the same defect fixed on the
+      // xlsx path in e217ce91, whose sweep missed this route.
+      staged.push({
+        organizationId: orgId,
+        planId,
+        category,
+        department: row.department || row.Department || null,
+        lineType: row.lineType || row.type || "expense",
+        actualAmount: amount,
+        expenseDate,
+        // Phase 3.1 v1.2 — derive monthIndex for VarianceTab sparkline.
+        monthIndex: deriveMonthIndex(expenseDate),
+        description: row.description || row.Description || row.memo || null,
+        // 2026-07-29 — provenance. Without it these rows read as
+        // hand-entered, and Phase 11.1b's reset deliberately refuses to touch
+        // those, so every CSV re-import accumulated a fresh layer that no UI
+        // path could remove.
+        source: `csv-import:${importRecord.id}`,
       })
       matched++
     } catch (err: unknown) {
@@ -157,11 +173,36 @@ async function _POST(req: NextRequest) {
     }
   }
 
+  // 2026-07-29 — apply the INFERRED cost-sign convention, then write.
+  // Dropping Math.abs alone would have been wrong: a CSV storing expenses
+  // negative would then flip every actual negative. Mirrors the xlsx path
+  // (budget-actuals-import.ts).
+  const expenseRaw = staged
+    .filter((r) => r.lineType === "expense")
+    .map((r) => r.actualAmount as number)
+  const signDecision = resolveCostSigns([], expenseRaw)
+  if (signDecision.flipExpense) {
+    for (const r of staged) {
+      if (r.lineType === "expense") r.actualAmount = -(r.actualAmount as number)
+    }
+  }
+  if (staged.length > 0) {
+    await prisma.budgetActual.createMany({ data: staged as never })
+  }
+
   // Update import record (scoped to org for defense-in-depth)
   await prisma.accountingImport.updateMany({
     where: { id: importRecord.id, organizationId: orgId },
     data: {
-      status: errors.length === rows.length ? "failed" : errors.length > 0 ? "completed" : "completed",
+      // `errors.length > 0 ? "completed" : "completed"` — both arms were
+      // identical, so a partial failure was indistinguishable from a clean
+      // run in the import history.
+      status:
+        errors.length === rows.length
+          ? "failed"
+          : errors.length > 0
+            ? "partial"
+            : "completed",
       matchedRows: matched,
       unmatchedRows: unmatched,
       errors: errors.length > 0 ? errors : undefined,
