@@ -25,7 +25,7 @@ function stubCtx(): OrgContext {
       ["AZSEKER-EDEN", "co_eden"],
     ]),
     planId: "plan_1",
-    azsekerCompanies: [],
+    orgCompanies: [],
     deptLabelToId: new Map(),
   } as unknown as OrgContext
 }

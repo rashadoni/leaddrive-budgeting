@@ -13,7 +13,7 @@ function ctx(): OrgContext {
     year: 2025,
     codeToId: new Map([["AZSEKER-AZSF", "co_azsf"], ["AZSEKER-CPC", "co_cpc"]]),
     planId: "p",
-    azsekerCompanies: [],
+    orgCompanies: [],
     deptLabelToId: new Map(),
   } as unknown as OrgContext
 }

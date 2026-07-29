@@ -22,7 +22,9 @@ export interface OrgContext {
   /** Resolved BudgetPlan id for this org+year. */
   planId: string
   /** Cached AZSEKER-* company id list for sales-target resolution. */
-  azsekerCompanies: Array<{ id: string; code: string }>
+  /** Phase 11.11 — every non-archived company in the org (was: only
+   *  `AZSEKER*`, which made the writer blind to every other entity). */
+  orgCompanies: Array<{ id: string; code: string }>
   // Phase 7.M Tier 7 (Phase 4) — revenue-generating BudgetDepartments for
   // SALES_FORECAST handler. Lower-cased label → id map matches the
   // /api/budgeting/sales-forecast/import resolution shape.
@@ -52,12 +54,28 @@ export async function resolveOrgContext(
   // empty budget plan and mis-routed financial imports into it.
   kind: "actual" | "budget" = "actual",
 ): Promise<OrgContext> {
-  const azsekerCompanies = await prisma.company.findMany({
-    where: { organizationId, code: { startsWith: "AZSEKER" } },
+  // Phase 11.11 (2026-07-29) — load EVERY company in the organization, not
+  // just `AZSEKER*`.
+  //
+  // The classifier is handed every company in the org, but this writer-side
+  // map was filtered to one hardcoded code prefix. Anything else resolved to
+  // `undefined`: for PLF that is a silent sheet skip (0 rows, green report);
+  // for BS it was worse — no guard, so rows were written with
+  // `companyId: null`, which degraded `bs-import-batch`'s company scope to
+  // `{}` and archived EVERY company's balances on that plan for that year.
+  // The collateral guard could not catch it either, because
+  // `footprintLiveCount` was computed from the same degenerate scope.
+  //
+  // This is a hard prerequisite for the ~60-company wire-up (ROADMAP 7.B):
+  // ATL-*, SPARK-MAIN, ZTP-MAIN and AAC-MAIN already live in this org and
+  // are already offered to the classifier — the writer just could not see
+  // them. Archived companies stay excluded: an import must not resurrect one.
+  const orgCompanies = await prisma.company.findMany({
+    where: { organizationId, status: { not: "archived" } },
     select: { id: true, code: true },
   })
   const codeToId = new Map<string, string>(
-    azsekerCompanies.map((c: { id: string; code: string }) => [c.code, c.id]),
+    orgCompanies.map((c: { id: string; code: string }) => [c.code, c.id]),
   )
   const planName = `Azərşəkər ${year} ${kind === "budget" ? "Budget" : "Actuals"}`
   // Prefer the data-holding plan of this kind (oldest = the canonical one).
@@ -106,7 +124,7 @@ export async function resolveOrgContext(
     year,
     codeToId,
     planId: plan.id,
-    azsekerCompanies,
+    orgCompanies,
     deptLabelToId,
     coaByCode,
   }
