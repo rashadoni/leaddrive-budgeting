@@ -27,6 +27,8 @@ export interface AuditAgg {
   observation_open: number
   findings: AuditFinding[]
 }
+import type { CompanyMatcher } from "./soft-entity-match"
+
 export interface AuditParseResult {
   byCompany: Record<string, AuditAgg>
   warnings: string[]
@@ -45,9 +47,17 @@ function severityBucket(raw: string): string {
 /** Map an audit "Şirkət" cell → company code. Mirrors the .mjs COMPANY_MAP
  *  ("Azərşəkər"→AZSF, "CPC MMC"→CPC) with a normalized fallback for the other
  *  AzerSheker entities; unmapped → null (skipped, never guessed). */
-export function mapAuditCompany(raw: string): string | null {
+export function mapAuditCompany(raw: string, matcher?: CompanyMatcher): string | null {
   const n = raw.trim().toLowerCase()
   if (!n) return null
+  if (matcher) {
+    // Phase 11.33 — resolve against the ORG's companies. A cell naming two of
+    // them is NOT attributed to whichever pattern came first: the "Şirkət"
+    // column holds one owner per finding, so two hits means the cell is not
+    // the signal it was assumed to be, and the caller reports it.
+    const { codes } = matcher(raw)
+    return codes.length === 1 ? codes[0] : null
+  }
   if (n.includes("cpc")) return "AZSEKER-CPC"
   if (n.includes("eden")) return "AZSEKER-EDEN"
   if (n.includes("promalt") || n.includes("pro malt")) return "AZSEKER-PROMALT"
@@ -132,6 +142,8 @@ export function parseAuditFindings(
   workbook: XLSXType.WorkBook,
   sheetName: string,
   XLSX: typeof XLSXType,
+  /** Phase 11.33 — org-derived matcher. Absent → legacy AzerSheker patterns. */
+  matcher?: CompanyMatcher,
 ): AuditParseResult {
   const ws = workbook.Sheets[sheetName]
   if (!ws) return { byCompany: {}, warnings: [`Sheet "${sheetName}" not found`] }
@@ -148,7 +160,7 @@ export function parseAuditFindings(
     const severityRaw = String(r[col.severity] ?? "").trim()
     const companyRaw = String(r[col.company] ?? "").trim()
     if (!severityRaw || !companyRaw) continue
-    const code = mapAuditCompany(companyRaw)
+    const code = mapAuditCompany(companyRaw, matcher)
     if (!code) {
       unmapped.add(companyRaw)
       continue

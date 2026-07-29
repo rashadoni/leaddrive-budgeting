@@ -780,9 +780,24 @@ export function makeKpiHandler(
       //                  date=`<year>-12-31` (Phase 7.M Tier 6)
       // We detect which sales parser to invoke based on sheet name.
       const sheetLower = input.sheetName.toLowerCase()
-      const edenId = ctx.codeToId.get("AZSEKER-EDEN")
-      const cpcId = ctx.codeToId.get("AZSEKER-CPC")
-      const promaltId = ctx.codeToId.get("AZSEKER-PROMALT")
+      // Phase 11.33 — an entity the CLASSIFIER resolved wins over the
+      // AzerSheker sheet-name routing below. That routing encodes one client's
+      // org chart (farming→EDEN, production→CPC), so for any other org every
+      // branch missed and the sheet was skipped with a warning. The sheet
+      // SHAPE parsers below are still AzerSheker-specific — this only fixes
+      // where their output is written, which is the part that was guessable.
+      const classifiedId = input.entityCode
+        ? ctx.codeToId.get(input.entityCode)
+        : undefined
+      if (input.entityCode && !classifiedId) {
+        warnings.push(
+          `SALES sheet "${input.sheetName}": classifier resolved entity ` +
+            `"${input.entityCode}", which is not a company in this organization`,
+        )
+      }
+      const edenId = classifiedId ?? ctx.codeToId.get("AZSEKER-EDEN")
+      const cpcId = classifiedId ?? ctx.codeToId.get("AZSEKER-CPC")
+      const promaltId = classifiedId ?? ctx.codeToId.get("AZSEKER-PROMALT")
 
       // Phase 7.M Tier 6 — "Sales plan" sheet from Farming strategy.xlsx.
       // Branched FIRST so it doesn't fall through to the generic

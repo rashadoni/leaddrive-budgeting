@@ -22,6 +22,8 @@ export interface CourtCase {
   status: string
   closed: boolean
 }
+import type { CompanyMatcher } from "./soft-entity-match"
+
 export interface CourtCaseAgg {
   total: number
   open: number
@@ -57,8 +59,23 @@ const CLOSED_KEYWORDS = [
 ]
 const ENTITY_RE = /azərşəkər|cpc|eden|malt|promalt/i
 
-export function attributeCompanies(claimant: string, defendant: string): string[] {
+/**
+ * Phase 11.33 — attribute a case to companies.
+ *
+ * `matcher` resolves against the ORG's own companies (see
+ * `soft-entity-match.ts`). Omitting it keeps the historical AzerSheker-only
+ * behaviour, which is what the pure-parser tests exercise.
+ *
+ * Multiple codes are legitimate here and are NOT an ambiguity: a case can name
+ * two group companies, one as claimant and one as defendant.
+ */
+export function attributeCompanies(
+  claimant: string,
+  defendant: string,
+  matcher?: CompanyMatcher,
+): string[] {
   const text = `${claimant} || ${defendant}`
+  if (matcher) return matcher(text).codes
   const codes = new Set<string>()
   for (const { pattern, code } of COMPANY_MATCHERS) if (pattern.test(text)) codes.add(code)
   return [...codes]
@@ -74,6 +91,8 @@ export function parseCourtDisputes(
   workbook: XLSXType.WorkBook,
   sheetName: string,
   XLSX: typeof XLSXType,
+  /** Phase 11.33 — org-derived matcher. Absent → legacy AzerSheker patterns. */
+  matcher?: CompanyMatcher,
 ): CourtDisputesParseResult {
   const ws = workbook.Sheets[sheetName]
   if (!ws) return { byCompany: {}, warnings: [`Sheet "${sheetName}" not found`] }
@@ -81,11 +100,22 @@ export function parseCourtDisputes(
   // Header occupies the first rows; case data starts at row index 3.
   const dataRows = aoa.slice(3).filter((r) => r && r[0] !== "" && r[0] != null)
   const byCompany: Record<string, CourtCaseAgg> = {}
+  let unattributable = 0
+  const unattributableSamples: string[] = []
   for (const r of dataRows) {
     const cells = r.map((c) => (c == null ? "" : String(c).trim()))
     const [, date, court, claimant, defendant, disputeType, caseDesc, , , status] = cells
-    const codes = attributeCompanies(claimant ?? "", defendant ?? "")
-    if (codes.length === 0) continue
+    const codes = attributeCompanies(claimant ?? "", defendant ?? "", matcher)
+    if (codes.length === 0) {
+      // Phase 11.33 — this was a bare `continue`. An unattributable case is
+      // now COUNTED, so a register that resolves to nothing reports the size
+      // of what it dropped instead of importing silently as zero cases.
+      unattributable += 1
+      if (unattributableSamples.length < 5 && (claimant || defendant)) {
+        unattributableSamples.push(`${claimant || "—"} / ${defendant || "—"}`)
+      }
+      continue
+    }
     const closed = isClosed(status ?? "")
     const isDefendant = ENTITY_RE.test(defendant ?? "")
     const isPlaintiff = ENTITY_RE.test(claimant ?? "")
@@ -116,6 +146,15 @@ export function parseCourtDisputes(
     }
   }
   const warnings: string[] = []
+  if (unattributable > 0) {
+    warnings.push(
+      `${unattributable} of ${dataRows.length} court cases on "${sheetName}" named no company ` +
+        `known to this organization and were dropped` +
+        (unattributableSamples.length
+          ? ` (e.g. ${unattributableSamples.join("; ")})`
+          : ""),
+    )
+  }
   if (Object.keys(byCompany).length === 0) warnings.push(`No attributable court cases on "${sheetName}"`)
   return { byCompany, warnings }
 }

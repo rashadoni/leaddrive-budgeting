@@ -24,7 +24,10 @@ export interface OrgContext {
   /** Cached AZSEKER-* company id list for sales-target resolution. */
   /** Phase 11.11 — every non-archived company in the org (was: only
    *  `AZSEKER*`, which made the writer blind to every other entity). */
-  orgCompanies: Array<{ id: string; code: string }>
+  /** Phase 11.33 — `name` added: the cross-entity soft registers (audit
+   *  findings, court cases) name the company in a CELL, so resolving them
+   *  needs the registered name, not just the code. */
+  orgCompanies: Array<{ id: string; code: string; name: string | null }>
   // Phase 7.M Tier 7 (Phase 4) — revenue-generating BudgetDepartments for
   // SALES_FORECAST handler. Lower-cased label → id map matches the
   // /api/budgeting/sales-forecast/import resolution shape.
@@ -72,7 +75,7 @@ export async function resolveOrgContext(
   // them. Archived companies stay excluded: an import must not resurrect one.
   const orgCompanies = await prisma.company.findMany({
     where: { organizationId, status: { not: "archived" } },
-    select: { id: true, code: true },
+    select: { id: true, code: true, name: true },
   })
   const codeToId = new Map<string, string>(
     orgCompanies.map((c: { id: string; code: string }) => [c.code, c.id]),
