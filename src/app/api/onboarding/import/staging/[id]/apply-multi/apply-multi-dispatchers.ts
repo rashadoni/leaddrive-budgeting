@@ -48,6 +48,13 @@ export interface BsPerSheetResult {
     leavesTouched: number
     warnings: number
     error?: string
+    /**
+     * Phase 11.21 — months of this year left holding another source's
+     * balances. Emitted since `9e6072f9` but never declared here, so no
+     * consumer could read it without an `as` cast: a reported field nobody
+     * can type is only half-reported.
+     */
+    staleMonths?: string
   }
 
 export async function runKpiDispatcher({
@@ -314,29 +321,46 @@ export async function runBsDispatcher({
         // Per-company clean-slate (Codex re-review 2026-06-20): scope by
         // companyId — `accountCode` was dropped from BalanceSheetLine (Phase
         // 2.1), and the previous code-scoped delete also left rows unscoped to
-        // a company. Clear THIS company's BS rows for the sheet's months, then
-        // re-insert. `codesInSheet` retained only for the warning/leaf count.
+        // a company. `codesInSheet` retained only for the warning/leaf count.
         void codesInSheet;
+
+        // Phase 11.21 (2026-07-29) — clean what THIS SHEET wrote, not what
+        // this file happens to still contain.
+        //
+        // The old window was built from the NEW file's months, so a corrected
+        // re-import covering FEWER months left the dropped ones holding the
+        // previous import's balances. Widening it to the whole year was not an
+        // option either: two BS sheets covering different months of one year
+        // would then delete each other's rows (the 11.1b clobber in a new
+        // place). `sourceDocument` resolves both — it identifies the SHEET, so
+        // the delete can span the year without reaching a sibling's rows.
+        //
+        // The `null` branch is what makes this safe to deploy: every row
+        // written BEFORE the column existed carries null and is still cleaned
+        // by the old month window, so the first re-import after the migration
+        // neither double-counts legacy rows nor wipes months this sheet never
+        // owned.
+        const bsSourceDocument = `apply-multi:${sheetName}`
         await tx.balanceSheetLine.deleteMany({
           where: {
             organizationId: orgIdLocal,
             planId: bsPlanId!,
             companyId: company.id,
             year: targetYear,
-            month: { in: monthsInSheet },
+            OR: [
+              { sourceDocument: bsSourceDocument },
+              { sourceDocument: null, month: { in: monthsInSheet } },
+            ],
           },
         })
-        // Phase 11.21 (2026-07-29) — report what this sheet did NOT cover.
+
+        // Phase 11.21 — what remains is now genuinely ANOTHER source's.
         //
-        // The window above is built from the NEW file's months only, so a
-        // corrected re-import covering FEWER months leaves the dropped ones
-        // holding their previous values. Widening it to the whole year is not
-        // the fix: two BS sheets covering different months of the same year
-        // would then clobber each other, which is the 11.1b defect in a new
-        // place. `BalanceSheetLine` has no per-sheet provenance column to
-        // scope by (unlike `BudgetActual.source`), so until it gains one the
-        // honest move is to name the residue rather than silently leave it.
-        // The rows are soft-deletable, so this is stale-not-lost.
+        // This sheet's own rows are gone whatever months they covered, so a
+        // month still holding data belongs to a different sheet or to an
+        // untagged import predating this column. Worth naming — that is the
+        // 11.1b cross-sheet overlap made visible — but it is no longer this
+        // re-import leaving its own residue behind.
         const staleBsMonths = await tx.balanceSheetLine.findMany({
           where: {
             organizationId: orgIdLocal,
@@ -352,7 +376,8 @@ export async function runBsDispatcher({
         if (staleBsMonths.length > 0) {
           bsStaleMonthWarning =
             `months ${staleBsMonths.map((m) => m.month).sort((a, b) => a - b).join(", ")} ` +
-            `are NOT in this sheet and keep their previous import's balances`
+            `hold balances from ANOTHER source (a sibling sheet, or an import predating ` +
+            `per-sheet provenance) and were left untouched`
         }
         // Ensure CoA entries exist for each BS code (prefixed by
         // entity to avoid cross-entity overwrite, same pattern as
@@ -368,6 +393,7 @@ export async function runBsDispatcher({
           year: number
           month: number
           amount: number
+          sourceDocument: string
         }> = []
         for (const line of parsed.lines) {
           const codeKey = `${entityCode}-${line.code}`
@@ -408,6 +434,7 @@ export async function runBsDispatcher({
               year: Number(yStr),
               month: Number(mStr),
               amount,
+              sourceDocument: bsSourceDocument,
             })
           }
         }

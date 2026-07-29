@@ -1038,6 +1038,18 @@ model BalanceSheetLine {
   month          Int
   amount         Float           @default(0)
   notes          String?
+  /// Phase 11.21 (2026-07-29) — per-sheet provenance, the column this table
+  /// lacked. A re-import can only clean exactly what the SAME source wrote
+  /// once it can identify those rows: without this the apply-multi dispatcher
+  /// had to build its delete window from the months present in the NEW file,
+  /// so a corrected re-import covering fewer months left the dropped ones
+  /// holding the previous import's balances. Widening the window to the whole
+  /// year is not an option — two sheets covering different months of one year
+  /// would delete each other's rows.
+  /// Nullable: rows written before this column exists carry null and keep the
+  /// old month-window behaviour, so the first re-import after the migration
+  /// cannot double-count them.
+  sourceDocument String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   // Phase 7.M Step 4 (2026-05-18) — soft-delete for self-service archive.
@@ -1051,6 +1063,7 @@ model BalanceSheetLine {
   @@index([companyId])
   @@index([companyId, year, month])
   @@index([organizationId, deletedAt])
+  @@index([planId, companyId, sourceDocument])
   @@map("balance_sheet_lines")
 }
 
