@@ -52,6 +52,10 @@
 import type * as XLSX from "xlsx"
 import { toNumberOrNull } from "./azmade-sopl"
 import {
+  resolveCostSigns,
+  type CostSignDecision,
+} from "../ai-import/cost-sign"
+import {
   classifyCashFlowCode,
   selectLeafMostCashFlowBridgeCodes,
   type CashFlowStoredActivity,
@@ -87,6 +91,17 @@ export interface PlfParseResult {
   sheetName: string
   lines: ParsedPlfLine[]
   warnings: PlfParseWarning[]
+  /**
+   * Phase 11.9b (2026-07-29) — which cost-sign convention the FILE was found
+   * to use, and whether the values above were flipped as a result. Absent on
+   * the early-return error paths, which parse nothing.
+   *
+   * This used to be an unconditional `-raw` on every cogs/expense cell. It is
+   * correct for AZSEKER's own workbooks (costs stored negative), which is
+   * exactly why it stayed invisible — a debit-convention file (SAP/1C export)
+   * had every cost sign flipped, turning gross profit into revenue PLUS cost.
+   */
+  signConvention?: CostSignDecision
 }
 
 export interface CfParseResult {
@@ -215,6 +230,9 @@ export function parsePlfPlSheet(
   const { row: headerRowIdx, monthCols } = header
 
   const lines: ParsedPlfLine[] = []
+  // Phase 11.9b — raw per-row annuals feeding the cost-sign classifier.
+  const cogsRawAnnuals: number[] = []
+  const expenseRawAnnuals: number[] = []
   const warnings: PlfParseWarning[] = []
 
   for (let r = headerRowIdx + 1; r < aoa.length; r++) {
@@ -229,30 +247,57 @@ export function parsePlfPlSheet(
     const labelRaw = row[1]
     const label = typeof labelRaw === "string" ? labelRaw.trim() : code
 
+    // Phase 11.9b (2026-07-29) — pass 1 keeps RAW values. The cogs/expense
+    // sign convention is INFERRED from the file after this loop and applied
+    // in pass 2, instead of being assumed here.
+    //
+    // The original note still holds for AZSEKER's own files: this source
+    // stores cogs/expense NEGATIVE (additive convention: gross_margin =
+    // revenue + cogs in the sheet), and negating — not abs() — is what makes
+    // a provision reversal (positive in Excel) land as negative expense
+    // rather than inflating the charge. What changed is that this is no
+    // longer ASSUMED: a debit-convention file (SAP/1C export) would have had
+    // every cost sign flipped, turning gross profit into revenue PLUS cost.
+    // Revenue rows are never flipped (negative revenue = returns, which net
+    // correctly).
     const perMonth: number[] = []
-    let totalAnnual = 0
+    let rawAnnual = 0
     let allZero = true
-    // CXLIX sign normalization: source xlsx stores cogs/expense as NEGATIVE
-    // (additive convention: gross_margin = revenue + cogs in the sheet).
-    // The risk resolver expects positive amounts for charges, negative for
-    // reversals. Negate (not abs) so provision reversals (positive in Excel)
-    // correctly land as negative expense in DB — abs would inflate their sum.
-    // Revenue rows kept as-is (negative revenue = returns that net correctly).
-    const normalizeSign = accountType === "cogs" || accountType === "expense"
     for (let m = 0; m < 12; m++) {
-      const v = toNumberOrNull(row[monthCols[m]])
-      const raw = v ?? 0
-      const num = normalizeSign ? -raw : raw
-      perMonth.push(num)
-      totalAnnual += num
-      if (num !== 0) allZero = false
+      const raw = toNumberOrNull(row[monthCols[m]]) ?? 0
+      perMonth.push(raw)
+      rawAnnual += raw
+      if (raw !== 0) allZero = false
     }
     if (allZero) continue
 
-    lines.push({ code, label, accountType, perMonth, totalAnnual })
+    if (accountType === "cogs") cogsRawAnnuals.push(rawAnnual)
+    else if (accountType === "expense") expenseRawAnnuals.push(rawAnnual)
+
+    lines.push({ code, label, accountType, perMonth, totalAnnual: rawAnnual })
   }
 
-  return { sheetName, lines, warnings }
+  // ── Pass 2: apply the INFERRED cost-sign convention ────────────────────
+  const signDecision = resolveCostSigns(cogsRawAnnuals, expenseRawAnnuals)
+  for (const line of lines) {
+    const flip =
+      line.accountType === "cogs"
+        ? signDecision.flipCogs
+        : line.accountType === "expense"
+          ? signDecision.flipExpense
+          : false
+    if (!flip) continue
+    for (let m = 0; m < 12; m++) line.perMonth[m] = -line.perMonth[m]
+    line.totalAnnual = -line.totalAnnual
+  }
+  // `warnings` is a row-level PROBLEM channel — callers treat an empty list as
+  // "clean parse" — so the routine verdict travels on the result instead, and
+  // only a genuinely blocking one is raised as a warning.
+  if (signDecision.blockedReason) {
+    warnings.push({ row: 0, reason: `BLOCKED: ${signDecision.blockedReason}` })
+  }
+
+  return { sheetName, lines, warnings, signConvention: signDecision }
 }
 
 /** Parse CF_X sheet → ParsedCfLine[] (only leaves).

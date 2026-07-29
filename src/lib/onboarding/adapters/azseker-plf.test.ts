@@ -266,3 +266,59 @@ describe("parsePlfEbitdaSubtotalAllYears", () => {
     expect(parsePlfEbitdaSubtotalAllYears(wb, "NOPE", XLSX)).toEqual([])
   })
 })
+// ─── Phase 11.9b — cost sign is inferred from the file, not assumed ──────
+describe("parsePlfPlSheet — cost-sign inference", () => {
+  const rows = (cogs: number, expense: number) => [
+    [],
+    [null, "P&L", null, ...MONTH_DATES, null, 2026],
+    [],
+    ["PLF.01.01.01", "Revenue", null, ...Array(12).fill(30)],
+    ["PLF.02.01.01", "Wheat Costs", null, ...Array(12).fill(cogs)],
+    ["PLF.05.15.01", "Depreciation", null, ...Array(12).fill(expense)],
+  ]
+
+  it("flips a NEGATIVE-convention file — AZSEKER's own shape, unchanged behaviour", () => {
+    const r = parsePlfPlSheet(makeWorkbook("PL_X", rows(-25, -5)), "PL_X", XLSX)
+    expect(r.signConvention?.cogsConvention).toBe("negative_costs")
+    // -25 × 12 = -300 raw → flipped to +300, exactly as before this change.
+    expect(r.lines.find((l) => l.accountType === "cogs")?.totalAnnual).toBe(300)
+    expect(r.lines.find((l) => l.accountType === "expense")?.totalAnnual).toBe(60)
+    // Revenue is never flipped.
+    expect(r.lines.find((l) => l.accountType === "revenue")?.totalAnnual).toBe(360)
+  })
+
+  it("does NOT flip a debit-convention file (SAP / 1C export)", () => {
+    // The corruption case: negating an already-positive cost turns gross
+    // profit into revenue PLUS cost.
+    const r = parsePlfPlSheet(makeWorkbook("PL_X", rows(25, 5)), "PL_X", XLSX)
+    expect(r.signConvention?.cogsConvention).toBe("positive_costs")
+    expect(r.lines.find((l) => l.accountType === "cogs")?.totalAnnual).toBe(300)
+    expect(r.lines.find((l) => l.accountType === "expense")?.totalAnnual).toBe(60)
+  })
+
+  it("keeps `warnings` a PROBLEM channel — a routine verdict is not a warning", () => {
+    // Callers treat an empty warnings list as "clean parse"; the verdict
+    // travels on the result instead.
+    const r = parsePlfPlSheet(makeWorkbook("PL_X", rows(-25, -5)), "PL_X", XLSX)
+    expect(r.warnings).toEqual([])
+    expect(r.signConvention).toBeDefined()
+  })
+
+  it("raises a BLOCKED warning when the convention is ambiguous", () => {
+    const r = parsePlfPlSheet(
+      makeWorkbook("PL_X", [
+        [],
+        [null, "P&L", null, ...MONTH_DATES, null, 2026],
+        [],
+        ["PLF.02.01.01", "Cost A", null, ...Array(12).fill(25)],
+        ["PLF.02.01.02", "Cost B", null, ...Array(12).fill(-25)],
+        ["PLF.02.01.03", "Cost C", null, ...Array(12).fill(24)],
+        ["PLF.02.01.04", "Cost D", null, ...Array(12).fill(-24)],
+      ]),
+      "PL_X",
+      XLSX,
+    )
+    expect(r.signConvention?.cogsConvention).toBe("ambiguous")
+    expect(r.warnings.some((w) => w.reason.startsWith("BLOCKED:"))).toBe(true)
+  })
+})
