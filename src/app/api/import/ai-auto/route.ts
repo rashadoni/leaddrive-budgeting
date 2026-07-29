@@ -40,6 +40,7 @@
  * Phase 7.M import pipeline.
  */
 import { NextRequest, NextResponse } from "next/server"
+import { currentBakuYearNumber } from "@/lib/risk/periods"
 import * as XLSX from "xlsx"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
@@ -126,8 +127,11 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     )
   }
-  const yearStr = (form.get("year") as string | null) ?? "2026"
-  const year = Number(yearStr) || new Date().getFullYear()
+  // Phase 11.5 (2026-07-29) — was a hardcoded "2026" fallback, which would
+  // quietly misfile every 2027 upload. Default from the org's timezone.
+  const yearStr =
+    (form.get("year") as string | null) ?? String(currentBakuYearNumber())
+  const year = Number(yearStr) || currentBakuYearNumber()
   const applyVal = String(form.get("apply") ?? "").toLowerCase()
   const shouldApply = applyVal === "1" || applyVal === "true"
 

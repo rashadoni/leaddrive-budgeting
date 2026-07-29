@@ -519,9 +519,38 @@ function dataTypeChipClass(dt: string): string {
   }
 }
 
-export function MultiFileForm() {
+/**
+ * Selectable import years. Spans a few years back so a prior-year re-import
+ * stays possible after 1 January — the exact case that used to be impossible
+ * when the year came from the browser clock (Phase 11.5).
+ */
+const YEAR_OPTIONS: number[] = (() => {
+  const now = new Date().getFullYear()
+  const out: number[] = []
+  for (let y = now + 1; y >= now - 4; y--) out.push(y)
+  return out
+})()
+
+export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   const t = useTranslations("adminAiImport.multi")
   const locale = useLocale()
+  /**
+   * Phase 11.5 (2026-07-29) — the target year is an EXPLICIT, user-visible
+   * choice.
+   *
+   * This component used to render with no props (its three sibling tabs each
+   * received one), so `?year=` never reached the only tab that writes, and
+   * the year went to the server as `new Date().getFullYear()` — the
+   * BROWSER's calendar year. The reset panel carries its own independent
+   * year, so the two could disagree silently. Any sheet for a different year
+   * is then dropped by the adapters' year guards at zero rows, and the group
+   * commits "green" with nothing written. After 1 January that made
+   * re-importing the prior year through this tab structurally impossible,
+   * with the data already erased.
+   */
+  const [year, setYear] = useState<number>(
+    initialYear ?? new Date().getFullYear(),
+  )
   const [files, setFiles] = useState<File[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [previewResult, setPreviewResult] =
@@ -1066,7 +1095,7 @@ export function MultiFileForm() {
     try {
       const form = new FormData()
       for (const f of files) form.append("files", f)
-      form.append("year", String(new Date().getFullYear()))
+      form.append("year", String(year))
       form.append("useTemplate", useTemplates ? "1" : "0")
       if (apply) form.append("apply", "1")
       if (forceOverride) form.append("forceOverride", "1")
@@ -1677,6 +1706,29 @@ export function MultiFileForm() {
           </div>
         )}
       </div>
+
+      {/* Phase 11.5 — explicit target year. Must match the year the reset
+          panel cleared; a mismatch means the adapters silently drop every
+          sheet and the group commits with zero rows. */}
+      <label className="flex items-center gap-2 text-sm">
+        <span className="font-medium">{t("yearLabel")}</span>
+        <select
+          data-testid="multi-year"
+          className="border rounded px-2 py-1 bg-background"
+          value={year}
+          onChange={(e) => setYear(Number(e.target.value))}
+          disabled={isProcessing}
+        >
+          {YEAR_OPTIONS.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-muted-foreground">
+          {t("yearHint")}
+        </span>
+      </label>
 
       {/* Drop zone */}
       <div

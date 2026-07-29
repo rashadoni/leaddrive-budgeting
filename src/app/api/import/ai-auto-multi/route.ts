@@ -33,6 +33,7 @@
  * org budget; 429 if exceeded.
  */
 import { NextRequest, NextResponse } from "next/server"
+import { currentBakuYearNumber } from "@/lib/risk/periods"
 import * as XLSX from "xlsx"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
@@ -443,8 +444,13 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const yearStr = (form.get("year") as string | null) ?? String(new Date().getFullYear())
-  const year = Number(yearStr) || new Date().getFullYear()
+  // Phase 11.5 (2026-07-29) — default from the ORG's timezone, not the
+  // server process clock. `new Date().getFullYear()` on a UTC host rolls the
+  // default over ~4 hours before Baku does, so an import run in the first
+  // hours of 1 January silently targeted the wrong year.
+  const yearStr =
+    (form.get("year") as string | null) ?? String(currentBakuYearNumber())
+  const year = Number(yearStr) || currentBakuYearNumber()
   if (!Number.isInteger(year) || year < 2020 || year > 2050) {
     return NextResponse.json(
       { ok: false, error: "Field 'year' must be an integer 2020-2050" },

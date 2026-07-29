@@ -3322,6 +3322,8 @@
       "reviewBadge": "baxış"
     },
     "multi": {
+      "yearLabel": "İdxal ili",
+      "yearHint": "Sıfırlamada təmizlədiyiniz illə eyni olmalıdır",
       "dropZone": {
         "empty": "1-{max} xlsx faylını buraya çəkin və ya seçmək üçün klikləyin",
         "limits": "Maksimum {max} fayl, cəmi {mb} MB"

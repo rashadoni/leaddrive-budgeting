@@ -3322,6 +3322,8 @@
       "reviewBadge": "review"
     },
     "multi": {
+      "yearLabel": "Import year",
+      "yearHint": "Must match the year you cleared in Reset",
       "dropZone": {
         "empty": "Drop 1-{max} xlsx files here, or click to choose",
         "limits": "Max {max} files, {mb} MB total"

@@ -1171,4 +1171,63 @@ describe("MultiFileForm", () => {
     expect(screen.getByTestId("file-row-0")).toBeTruthy()
     expect(screen.queryByTestId("file-row-1")).toBeNull()
   })
+
+  // ── Phase 11.5 — the target year is explicit, never the browser clock ──
+  describe("Phase 11.5 — explicit import year", () => {
+    function previewResponse() {
+      return {
+        ok: true,
+        mode: "preview",
+        perFile: [],
+        conflicts: [],
+        perGroup: [],
+        overallVerdict: "green",
+        llmUsage: { inputTokens: 1, outputTokens: 1, modelName: "x" },
+        durationMs: 1,
+        recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+        warnings: [],
+      }
+    }
+
+    it("sends initialYear, not the browser's calendar year", async () => {
+      // The regression: this component rendered with no props while its
+      // three sibling tabs each received one, so `?year=` never reached the
+      // only tab that writes and the year was `new Date().getFullYear()`.
+      mockFetchOnce(200, previewResponse())
+      render(<MultiFileForm initialYear={2025} />)
+      fireEvent.change(screen.getByTestId("multi-file-input"), {
+        target: { files: [makeFakeFile("a.xlsx")] },
+      })
+      fireEvent.click(screen.getByTestId("btn-analyze"))
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+      expect((init.body as FormData).get("year")).toBe("2025")
+    })
+
+    it("sends the year the user picked", async () => {
+      mockFetchOnce(200, previewResponse())
+      render(<MultiFileForm initialYear={2026} />)
+      fireEvent.change(screen.getByTestId("multi-year"), {
+        target: { value: "2024" },
+      })
+      fireEvent.change(screen.getByTestId("multi-file-input"), {
+        target: { files: [makeFakeFile("a.xlsx")] },
+      })
+      fireEvent.click(screen.getByTestId("btn-analyze"))
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+      expect((init.body as FormData).get("year")).toBe("2024")
+    })
+
+    it("offers prior years so a post-January re-import stays possible", async () => {
+      // After 1 January the old clock-derived year made re-importing the
+      // previous year structurally impossible — with the data already erased.
+      render(<MultiFileForm initialYear={2026} />)
+      const select = screen.getByTestId("multi-year") as HTMLSelectElement
+      const values = Array.from(select.options).map((o) => Number(o.value))
+      const now = new Date().getFullYear()
+      expect(values).toContain(now - 1)
+      expect(values).toContain(now - 2)
+    })
+  })
 })
