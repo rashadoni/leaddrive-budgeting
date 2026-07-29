@@ -118,3 +118,49 @@ describe("consolidatedAccountCode", () => {
     )
   })
 })
+
+// ─── Phase 11.18 — the scale assumption is no longer silent ─────────────
+//
+// The ×1000 thousands→manat factor is an ASSUMPTION about the sheet, and the
+// reconciliation guard cannot verify it: that guard compares Σ(leaves) with
+// the sheet's own subtotal cell, and BOTH sides pass through the factor, so it
+// is scale-invariant by construction and stays green for any multiplier.
+describe("parseConsolidatedBs — scale plausibility", () => {
+  /** The canonical fixture with every numeric cell scaled by `k`. */
+  function scaled(k: number): unknown[][] {
+    return fixture().map((row) =>
+      Array.isArray(row)
+        ? row.map((cell, idx) =>
+            // col 2 of the date row is an Excel serial, never an amount.
+            typeof cell === "number" && !(idx === 2 && cell === 46023)
+              ? cell * k
+              : cell,
+          )
+        : row,
+    )
+  }
+
+  it("stays quiet when the totals land in the expected band", () => {
+    // assets 100 × 1000 (sheet) × 1000 (factor) = ₼100M — normal for this holding.
+    const r = parseConsolidatedBs(scaled(1000))
+    expect(r.scaleWarnings).toEqual([])
+  })
+
+  it("WARNS when the result is implausibly small — the factor is likely wrong", () => {
+    // assets 100 × 1000 = ₼100k. Every internal cross-foot still ties, which
+    // is exactly why this needed its own signal.
+    const r = parseConsolidatedBs(fixture())
+    expect(r.scaleWarnings.length).toBeGreaterThan(0)
+    expect(r.scaleWarnings.join(" ")).toMatch(/CONFIRM the sheet's units/)
+  })
+
+  it("WARNS when the result is implausibly large", () => {
+    const r = parseConsolidatedBs(scaled(10_000_000))
+    expect(r.scaleWarnings.length).toBeGreaterThan(0)
+  })
+
+  it("never THROWS on a scale problem — only the owner can confirm units", () => {
+    // Refusing the import on a heuristic would block a legitimate one.
+    expect(() => parseConsolidatedBs(fixture())).not.toThrow()
+  })
+})

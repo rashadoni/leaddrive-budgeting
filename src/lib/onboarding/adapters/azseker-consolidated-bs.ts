@@ -20,6 +20,21 @@
 
 export type BsSection = "asset" | "equity" | "liability"
 
+/**
+ * Phase 11.18 (2026-07-29) — the thousands→manat factor, named rather than
+ * inlined.
+ *
+ * This is an ASSUMPTION about the source sheet, not a measurement, and the
+ * reconciliation guard below cannot verify it: that guard compares Σ(leaves)
+ * against the sheet's own subtotal cell, and BOTH sides pass through this
+ * factor, so it is scale-invariant and stays green for any value. A
+ * plausibility band on the resulting totals is emitted as a warning instead —
+ * see `scaleWarnings`.
+ *
+ * Confirming the units is an owner question about the file (ROADMAP 11.18).
+ */
+export const UNIT_SCALE = 1000
+
 export interface ConsolidatedBsLeaf {
   /** Verbatim official line label, e.g. "Property, Plant and Equipment". */
   label: string
@@ -36,6 +51,14 @@ export interface ParsedConsolidatedBs {
   leaves: ConsolidatedBsLeaf[]
   /** Per month, the sheet's own subtotal-cell totals (×1000), for provenance. */
   officialTotals: Map<string, Record<BsSection, number>>
+  /**
+   * Phase 11.18 — non-fatal scale-plausibility notes. Empty means the totals
+   * landed in the expected band after the thousands→manat factor. Non-empty
+   * means CONFIRM the sheet's units: the reconciliation guard below cannot
+   * detect a wrong multiplier, because both sides of its comparison pass
+   * through that multiplier, making it scale-invariant by construction.
+   */
+  scaleWarnings: string[]
 }
 
 /** Section header / intermediate subtotal rows — never stored as leaves. */
@@ -113,7 +136,7 @@ export function parseConsolidatedBs(
     const out = new Map<string, number>()
     for (const [c, ym] of colMonth) {
       const v = row[c]
-      if (typeof v === "number") out.set(ym, v * 1000)
+      if (typeof v === "number") out.set(ym, v * UNIT_SCALE)
     }
     return out
   }
@@ -174,6 +197,39 @@ export function parseConsolidatedBs(
     }
   }
 
+  // 4a. Phase 11.18 (2026-07-29) — SCALE PLAUSIBILITY.
+  //
+  // The ×1000 below is an ASSUMPTION about the source sheet ("figures are in
+  // thousands of manat"), not something measured. The Σ-leaves guard that
+  // follows cannot catch a wrong multiplier: it compares two quantities that
+  // were BOTH scaled by it, so it is scale-invariant by construction and
+  // stays green whether the factor is 1, 1000 or 10^6.
+  //
+  // This check is deliberately a WARNING, not a throw: only the owner can
+  // confirm the sheet's units, and refusing the import on a heuristic would
+  // block a legitimate one. But it must not stay silent — a wrong factor
+  // moves the entire balance sheet by three orders of magnitude while every
+  // internal cross-foot still ties.
+  //
+  // Band chosen from the client's own scale: total assets for this holding
+  // sit in the ₼10^7-10^9 range. A result below ₼1M or above ₼100B means the
+  // multiplier is almost certainly wrong in one direction or the other.
+  const scaleWarnings: string[] = []
+  for (const ym of months) {
+    const assets = officialTotals.get(ym)?.asset
+    if (assets == null || assets === 0) continue
+    const abs = Math.abs(assets)
+    if (abs < 1_000_000 || abs > 100_000_000_000) {
+      scaleWarnings.push(
+        `${ym}: total assets ₼${Math.round(abs).toLocaleString("en-US")} after ` +
+          `applying the ×${UNIT_SCALE} thousands→manat factor. That is outside ` +
+          `the expected ₼1M-₼100B band — CONFIRM the sheet's units before trusting ` +
+          `this balance sheet. The Σ-leaves guard below cannot detect this: it is ` +
+          `scale-invariant.`,
+      )
+    }
+  }
+
   // 4. HARD reconciliation guard — Σ(leaves per section) == subtotal cell, per month.
   for (const ym of months) {
     const official = officialTotals.get(ym)!
@@ -198,7 +254,7 @@ export function parseConsolidatedBs(
     }
   }
 
-  return { months, leaves, officialTotals }
+  return { months, leaves, officialTotals, scaleWarnings }
 }
 
 /** Stable account code for a consolidated leaf (namespace distinct from the
