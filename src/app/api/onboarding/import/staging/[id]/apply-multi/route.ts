@@ -994,10 +994,25 @@ export async function POST(
 
   const kpiTotalFacts = kpiResults.reduce((s, r) => s + r.factsInserted, 0)
   const bsTotalRows = bsResults.reduce((s, r) => s + r.rowsInserted, 0)
+  // Phase 11.32 (2026-07-29) — a dispatcher that FAILED must not be reported
+  // as a clean apply.
+  //
+  // Both dispatchers catch their own errors (budget data is already
+  // committed, so they are deliberately non-fatal) and push an `error` entry.
+  // But this response still said `status: "applied"` with HTTP 200, and the
+  // UI never renders `sectorSheets`/`bsSheets` — so a P2028 timeout showed the
+  // operator a clean success with the operational facts and balance-sheet
+  // rows silently missing. That is the exact class Phase 11.3 was opened to
+  // close, surviving on this legacy route.
+  const dispatcherFailures = [
+    ...kpiResults.filter((r) => "error" in r && r.error),
+    ...bsResults.filter((r) => "error" in r && r.error),
+  ]
   return NextResponse.json(
     {
       stagingId: staging.id,
-      status: "applied",
+      status: dispatcherFailures.length > 0 ? "applied_partial" : "applied",
+      dispatcherFailures: dispatcherFailures.length > 0 ? dispatcherFailures : undefined,
       year: targetYear,
       inserted: totalInserted,
       deleted: totalDeleted,
@@ -1014,6 +1029,8 @@ export async function POST(
       indicatorsStale,
       auditStale,
     },
-    { status: 200 },
+    // 409 so a caller that only checks the status code cannot mistake a
+    // partial apply for a clean one.
+    { status: dispatcherFailures.length > 0 ? 409 : 200 },
   )
 }
