@@ -138,8 +138,14 @@ interface SemanticPlfColumns {
 
 function resolveColumnsWithSemanticFallback(
   columns: ColumnMappingProposal[],
+  /** Phase 11.10 — target year, so a multi-year sheet selects the RIGHT
+   *  12 columns instead of whichever ones happen to come first/last. */
+  targetYear?: number,
 ): { ok: true; columns: SemanticPlfColumns } | { ok: false; reason: string } {
-  const strict = resolveColumns(columns)
+  // `resolveColumns` has supported `preferYear` since Phase C — this caller
+  // simply never passed it, so on a two-year sheet it fell back to the LAST
+  // year present rather than the requested one.
+  const strict = resolveColumns(columns, { preferYear: targetYear })
   if (strict.ok) {
     return {
       ok: true,
@@ -154,12 +160,24 @@ function resolveColumnsWithSemanticFallback(
 
   let labelCol = -1
   const monthCols = new Array<number>(12).fill(-1)
+  /** Phase 11.10 — years seen but rejected, so "this sheet is for another
+   *  year" (a legitimate skip) is distinguishable from "this sheet has no
+   *  usable month columns" (a real mapping failure that blocks). */
+  const droppedYears = new Set<string>()
   for (const c of columns) {
     if (c.role === "label") {
       if (labelCol !== -1) return { ok: false, reason: `Multiple "label" columns` }
       labelCol = c.sourceIndex
     } else if (c.role.startsWith("amount:")) {
       const period = c.role.slice("amount:".length).toLowerCase()
+      // Phase 11.10 — same rule as the strict resolver above: a role that
+      // declares a different year is not a candidate. Year-less roles stay
+      // eligible (plenty of single-year sheets just say "jan".."dec").
+      const declaredYear = period.match(/20\d{2}/)?.[0]
+      if (declaredYear && targetYear && Number(declaredYear) !== targetYear) {
+        droppedYears.add(declaredYear)
+        continue
+      }
       const monthToken = period.replace(/20\d{2}/g, "").trim()
       const monthIdx = MONTH_INDEX[monthToken]
       if (monthIdx !== undefined && monthCols[monthIdx] === -1) {
@@ -168,7 +186,15 @@ function resolveColumnsWithSemanticFallback(
     }
   }
   if (labelCol === -1) return { ok: false, reason: strict.reason }
-  if (monthCols.some((col) => col === -1)) return { ok: false, reason: strict.reason }
+  if (monthCols.some((col) => col === -1)) {
+    if (droppedYears.size > 0) {
+      return {
+        ok: false,
+        reason: `YEAR_MISMATCH:${[...droppedYears].sort().join(",")}`,
+      }
+    }
+    return { ok: false, reason: strict.reason }
+  }
   return {
     ok: true,
     columns: {
@@ -280,8 +306,22 @@ export async function runDynamicPlfAdapter(
   }
 
   // ── 4. Resolve column positions from proposal roles ───────────────────────
-  const colsResult = resolveColumnsWithSemanticFallback(proposal.columns)
+  const colsResult = resolveColumnsWithSemanticFallback(proposal.columns, input.year)
   if (!colsResult.ok) {
+    // Phase 11.10 — a sheet whose month columns all belong to ANOTHER year is
+    // a legitimate skip (a workbook may ship one tab per year), not a mapping
+    // failure. Skipping quietly keeps it out of the blocking gate.
+    if (colsResult.reason.startsWith("YEAR_MISMATCH:")) {
+      const otherYears = colsResult.reason.slice("YEAR_MISMATCH:".length)
+      return {
+        summary: `Dynamic PLF: sheet "${input.sheetName}" carries ${otherYears} columns, not ${input.year} — skipped`,
+        itemCount: 0,
+        warnings: [
+          `Dynamic PLF: every month column on sheet "${input.sheetName}" belongs to ${otherYears}, but the import year is ${input.year} — skipped. Re-run the import with year=${otherYears.split(",")[0]} to load it.`,
+        ],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
     return {
       summary: `Dynamic PLF: column resolution failed — ${colsResult.reason}`,
       itemCount: 0,

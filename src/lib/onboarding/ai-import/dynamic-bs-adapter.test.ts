@@ -472,4 +472,49 @@ describe("runDynamicBsAdapter", () => {
     expect(rowsInserted).toBe(0)
     expect(runBalanceSheetBatch).not.toHaveBeenCalled()
   })
+
+  // ── Phase 11.10 — two-year sheet must select the REQUESTED year ─────────
+  it("picks the requested year's columns on a TWO-YEAR sheet", async () => {
+    // The reporting-pack shape: Jan-Dec 2025 followed by Jan-Dec 2026, which
+    // the mapper prompt explicitly tells the LLM to emit as 24 roles. The
+    // resolver used to strip the year and take the FIRST column per month.
+    //
+    // This fixture discriminates: the 2025 block comes FIRST in the array but
+    // points at empty columns, while the 2026 block points at the columns
+    // that actually hold data. First-match-wins therefore yields 0 rows;
+    // correct year selection yields real ones.
+    const twoYear = buildProposal(0.9)
+    const amountCols = twoYear.columns.filter((c) => c.role.startsWith("amount:"))
+    twoYear.columns = [
+      ...twoYear.columns.filter((c) => !c.role.startsWith("amount:")),
+      // buildProposal's roles already carry a year, so strip it before
+      // re-stamping — otherwise both blocks end up labelled the same.
+      ...amountCols.map((c, i) => ({
+        ...c,
+        role: `${c.role.replace(/20\d{2}/, "")}2025` as `amount:${string}`,
+        sourceIndex: 900 + i, // empty — nothing is stored this far right
+      })),
+      ...amountCols.map((c) => ({
+        ...c,
+        role: `${c.role.replace(/20\d{2}/, "")}2026` as `amount:${string}`,
+      })),
+    ]
+    vi.mocked(extractMapperInput).mockReturnValue(MOCK_MAPPER_INPUT)
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: twoYear,
+      cacheHit: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    const result = await runDynamicBsAdapter(
+      makeFakeInput({ year: 2026 }),
+      "plan_1",
+      FAKE_PRISMA,
+    )
+
+    // 2026 columns exist, so this is NOT the year-mismatch skip...
+    expect(result.warnings.some((w) => w.includes("belongs to 2025"))).toBe(false)
+    // ...and the rows read come from the 2026 block, not the empty 2025 one.
+    expect(result.itemCount).toBeGreaterThan(0)
+  })
 })
