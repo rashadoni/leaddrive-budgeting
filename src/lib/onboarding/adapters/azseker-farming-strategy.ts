@@ -20,7 +20,7 @@
  *   • PPE / Tech / GDX — infrastructure capacity data, separate Phase.
  */
 
-import { numericCellValue } from "../numeric-cell"
+import { parseNumericCell } from "../numeric-cell"
 
 export interface ForwardForecastYear {
   /** Calendar year (2026, 2027, ...). */
@@ -45,20 +45,50 @@ export interface IcmalParseResult {
 }
 
 /**
- * Convert a cell value to a number, tolerating string-encoded floats.
- * Returns 0 on failure.
+ * Convert a cell value to a number. Returns 0 on failure.
  *
  * Phase 11.31 — delegates to the one numeric cell parser. The local version
  * replaced the FIRST comma with a dot, so `"1,234"` (1234) became 1.234 and
- * `"1,234,56"` became the un-numeric `1.234.56` → 0. Both silent.
+ * `"1,234,56"` became the un-numeric `1.234.56` → 0.
  *
- * The `?? 0` is retained deliberately: this feeds a forward forecast whose
- * rows are summed, and returning null would change every caller's shape. It
- * does still fabricate a real 0.00 from an unreadable cell — tracked as
- * 11.38, which needs a warnings channel this pure helper does not have.
+ * The `?? 0` stays: these rows are summed into a forward forecast, and a null
+ * would change every caller's shape. But a 0 here is worse than a wrong
+ * number — the caller SKIPS zeros as "no revenue for this business unit", so
+ * an unreadable cell removes the unit from the forecast rather than showing
+ * anything wrong. Hence 11.38.
  */
-function num(v: unknown): number {
-  return numericCellValue(v) ?? 0
+/**
+ * Phase 11.38 (2026-07-29) — report the cells this returns 0 for.
+ *
+ * The parse became correct in 11.31; the `?? 0` kept the other half of the
+ * defect: an unreadable cell and a real 0.00 reach the caller as the same
+ * number. `parseNumericCell` already says WHY it failed — this drops that
+ * reason into the adapter's warnings instead of discarding it.
+ *
+ * An EMPTY cell is not reported: absent is not invalid, and warning on every
+ * blank would bury the cells that matter. The ambiguous verdict IS reported —
+ * a single separator before exactly three digits ("1,234") is 1234 under
+ * grouping and 1.234 under a decimal reading, and a flag nobody surfaces is
+ * the same as no flag.
+ */
+export interface NumericWarnCtx {
+  warnings: string[]
+  /** 0-based row index; reported +1 to match the spreadsheet. */
+  row: number
+  /** What the cell was being read as, e.g. "revenue". */
+  field: string
+}
+
+function num(v: unknown, ctx?: NumericWarnCtx): number {
+  const parsed = parseNumericCell(v)
+  if (ctx && parsed.reason) {
+    ctx.warnings.push(
+      parsed.value === null
+        ? `Row ${ctx.row + 1}: ${ctx.field} — ${parsed.reason}; read as 0`
+        : `Row ${ctx.row + 1}: ${ctx.field} — ${parsed.reason}`,
+    )
+  }
+  return parsed.value ?? 0
 }
 
 /** Treat as Revenue row when col 0 is "Revenue" (English) or
@@ -166,7 +196,7 @@ export function parseIcmalFromAoa(aoa: unknown[][]): IcmalParseResult {
     const bu = typeof row[1] === "string" ? row[1].trim() : ""
     if (!bu) continue
     for (const [col, year] of yearCols.entries()) {
-      const val = num(row[col])
+      const val = num(row[col], { warnings, row: r, field: `revenue ${year}` })
       if (val === 0) continue
       const buMap = yearData.get(year)!
       buMap.set(bu, (buMap.get(bu) ?? 0) + val)
@@ -369,7 +399,7 @@ export function parseSalesPlanFromAoa(aoa: unknown[][]): SalesPlanParseResult {
       continue
     }
     for (const { col, year } of yearCols) {
-      const v = num(row[col])
+      const v = num(row[col], { warnings, row: r, field: `volume ${year}` })
       if (v === 0) continue // skip zero-volume cells to avoid noise
       facts.push({
         year,

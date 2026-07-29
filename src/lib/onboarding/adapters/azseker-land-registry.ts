@@ -27,7 +27,7 @@
  * names the district (Yevlax / Ağcabədi / Beyləqan / Şəmkir / Füzuli).
  */
 
-import { numericCellValue } from "../numeric-cell"
+import { parseNumericCell } from "../numeric-cell"
 
 export interface LandParcel {
   /** Sequence number from S/S column. */
@@ -129,11 +129,46 @@ function parseTermRange(
  * The local version replaced the FIRST comma with a dot. This helper reads
  * parcel AREA (ha) and ANNUAL RENT, both routinely written with a comma in
  * these registries: `"1,234"` ha became 1.234 ha — a 1000× understatement of
- * a land holding. The `?? 0` is kept; the fabricated zero is 11.38.
+ * a land holding.
  */
-function numericOrZero(v: unknown): number {
-  return numericCellValue(v) ?? 0
+/**
+ * Phase 11.38 (2026-07-29) — report the cells this returns 0 for.
+ *
+ * The parse itself became correct in 11.31, but the `?? 0` kept the other
+ * half of the defect: a cell holding unreadable text and a cell holding a
+ * real 0.00 arrive at the caller as the same number. `parseNumericCell`
+ * already says WHY it failed; this drops that reason into the adapter's
+ * warnings instead of discarding it.
+ *
+ * An EMPTY cell is not reported — absent is not invalid, and warning on every
+ * blank would bury the cells that matter. `parseNumericCell` distinguishes
+ * the two: it returns a `reason` only for a non-empty cell it could not read.
+ *
+ * The ambiguous verdict is reported too. A single separator before exactly
+ * three digits ("1,234") is 1234 under grouping and 1.234 under a decimal
+ * reading; the parser picks grouping and flags it, and a flag nobody surfaces
+ * is the same as no flag.
+ */
+export interface NumericWarnCtx {
+  warnings: string[]
+  /** 0-based row index; reported +1 to match the spreadsheet. */
+  row: number
+  /** What the cell was being read as, e.g. "annual rent". */
+  field: string
 }
+
+function numericOrZero(v: unknown, ctx?: NumericWarnCtx): number {
+  const parsed = parseNumericCell(v)
+  if (ctx && parsed.reason) {
+    ctx.warnings.push(
+      parsed.value === null
+        ? `Row ${ctx.row + 1}: ${ctx.field} — ${parsed.reason}; read as 0`
+        : `Row ${ctx.row + 1}: ${ctx.field} — ${parsed.reason}`,
+    )
+  }
+  return parsed.value ?? 0
+}
+
 
 function strOrNull(v: unknown): string | null {
   if (typeof v !== "string") return null
@@ -188,7 +223,7 @@ export function parseLandRegistryFromAoa(
         : parseInt(String(seqRaw).trim(), 10) || 0
     if (!seq) continue
 
-    const hectares = numericOrZero(row[7])
+    const hectares = numericOrZero(row[7], { warnings, row: r, field: "hectares" })
     if (hectares === 0) {
       warnings.push(`Row ${r + 1}: zero hectares — skipped`)
       continue
@@ -204,7 +239,7 @@ export function parseLandRegistryFromAoa(
       lessor: typeof row[4] === "string" ? row[4].trim() : "",
       previousOwner: strOrNull(row[5]),
       hectares,
-      annualRentAzn: numericOrZero(row[8]),
+      annualRentAzn: numericOrZero(row[8], { warnings, row: r, field: "annual rent" }),
       termDescription: term,
       leaseStart,
       leaseEnd,
