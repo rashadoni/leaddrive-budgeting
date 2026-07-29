@@ -101,7 +101,10 @@ export async function POST(request: NextRequest) {
           deletedAt: null,
           lineType: "revenue",
           monthIndex: { not: null },
-          plan: { year, kind: "budget" },
+          // 2026-07-29 (11.30) — the row-level deletedAt above does not
+          // cover the PLAN; without this a soft-deleted plan inflates the
+          // trade budget pool, plan-daily and pacing figures.
+          plan: { year, kind: "budget", deletedAt: null },
         },
         _sum: { plannedAmount: true },
       })

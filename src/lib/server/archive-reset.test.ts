@@ -55,6 +55,18 @@ describe("resetCompanyImportData", () => {
     expect(tx.budgetActual.deleteMany).toHaveBeenCalled() // HARD delete — Codex gap
     expect(tx.salesBudgetLine.deleteMany).toHaveBeenCalled() // Phase 11.6
     expect(tx.indicatorValue.deleteMany).toHaveBeenCalled() // Phase 11.6
+    // 2026-07-29 — Counterparty must be YEAR-scoped like its siblings. It
+    // filtered on `scope.period`, which the reset UI never sends, so a
+    // "clear 2025" archived every year's snapshot while the re-import
+    // restores only 2025 — and the 30-day purge then made that permanent.
+    const cpArg = tx.counterparty.updateMany.mock.calls[0] as unknown as [
+      { where: Record<string, unknown> },
+    ]
+    expect(cpArg[0].where).toMatchObject({
+      organizationId: "org1",
+      companyId: "co_1",
+      period: { startsWith: "2025" },
+    })
     expect(res.breakdown).toMatchObject({
       budgetLine: 10,
       balanceSheetLine: 5,

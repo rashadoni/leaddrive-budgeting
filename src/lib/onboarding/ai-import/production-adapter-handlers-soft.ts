@@ -497,13 +497,23 @@ export function makeCompaniesHandler(prisma: PrismaClient): AdapterHandler {
               organizationId: input.organizationId,
               code: r.code,
               name: r.name,
-              industryCode: r.industry,
+              // 2026-07-29 — was `industryCode`, which exists NOWHERE in the
+              // schema (`Company`'s scalar is `industry`, an FK on
+              // Industry.code). Prisma rejects unknown arguments, so this
+              // threw on the first level-1 upsert and failed the whole
+              // company-setup group — which APPLY_ORDER runs FIRST, so every
+              // financial file then landed against an entity tree that was
+              // never created. `tsc` could not catch it: the
+              // XOR<Create, UncheckedCreate> union suppresses excess-property
+              // checks, and the unit test asserted only level/parentCompanyId
+              // on a vi.fn() stub that accepts anything.
+              industry: r.industry,
               level: 1,
               isActive: true,
             },
             update: {
               name: r.name,
-              industryCode: r.industry,
+              industry: r.industry,
             },
           })
           inserted++
@@ -540,14 +550,14 @@ export function makeCompaniesHandler(prisma: PrismaClient): AdapterHandler {
                 parentCompanyId: parentId,
                 code: r.code,
                 name: r.name,
-                industryCode: r.industry,
+                industry: r.industry,
                 level: 2,
                 isActive: true,
               },
               update: {
                 parentCompanyId: parentId,
                 name: r.name,
-                industryCode: r.industry,
+                industry: r.industry,
               },
             })
             inserted++

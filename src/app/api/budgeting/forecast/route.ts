@@ -76,7 +76,9 @@ export async function POST(req: NextRequest) {
   }
   const ownedPlans = await withOrgScope(orgId, async (tx) =>
     tx.budgetPlan.findMany({
-      where: { id: { in: uniquePlanIds }, organizationId: orgId },
+      // 2026-07-29 (11.30) — a soft-deleted planId must not pass the
+      // ownership gate and go on to clear the status/period-lock checks.
+      where: { id: { in: uniquePlanIds }, organizationId: orgId, deletedAt: null },
       select: { id: true, status: true, periodType: true, year: true, month: true, quarter: true },
     })
   )
