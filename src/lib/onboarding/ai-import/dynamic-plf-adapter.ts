@@ -37,6 +37,7 @@ import { getOrCreateProposal } from "../ai-mapper/proposal-cache"
 import { resolveColumns, detectProposalYear } from "../ai-mapper/applier"
 import type { ColumnMappingProposal } from "../ai-mapper/types"
 import { runImportBatch, type ImportBatchRow } from "../import-batch"
+import { resolveCostSigns } from "./cost-sign"
 import { buildReconKey, type ReconciliationKey } from "../reconciliation"
 import {
   findApprovedSemanticCoaDecision,
@@ -370,6 +371,14 @@ export async function runDynamicPlfAdapter(
   // ── 8. Extract rows ───────────────────────────────────────────────────────
   const rows: ImportBatchRow[] = []
   const expectedSums = new Map<ReconciliationKey, number>()
+  // Phase 11.9 — cost-sign inference state (see pass 2 below).
+  const cogsRawAnnuals: number[] = []
+  const expenseRawAnnuals: number[] = []
+  const costRowSpans: Array<{
+    from: number
+    to: number
+    accountType: "cogs" | "expense"
+  }> = []
   const lineLabelByCode = new Map<string, string>()
   const semanticAccounts = await loadSemanticCoaAccounts(
     prisma,
@@ -520,12 +529,16 @@ export async function runDynamicPlfAdapter(
     }
     if (!accountType) continue // net-profit or unrecognised prefix — skip
 
-    // Sign convention: COGS and expense values are stored as positive in DB.
-    // The Excel may store them as negative — negate so they become positive.
-    // If they're ALREADY positive (e.g. reversal rows), negation makes them
-    // negative, which correctly reduces the annual total (same as azseker-plf.ts).
-    const normalizeSign = accountType === "cogs" || accountType === "expense"
+    // Phase 11.9 — sign is INFERRED from the file, not assumed. Pass 1 keeps
+    // RAW values and records each cost row's raw annual; the convention is
+    // classified after the loop and applied in pass 2. An unconditional
+    // `-raw` here silently corrupted any debit-convention file (SAP / 1C
+    // export): negating an already-positive cost turns gross profit into
+    // revenue PLUS cost.
+    const isCostRow = accountType === "cogs" || accountType === "expense"
     const categoryCode = `${input.entityCode}-${code}`
+    const rowStartIndex = rows.length
+    let rowRawAnnual = 0
 
     for (let m = 0; m < 12; m++) {
       const cellVal = row[monthCols[m]]
@@ -538,7 +551,9 @@ export async function runDynamicPlfAdapter(
 
       if (raw === null || !Number.isFinite(raw) || raw === 0) continue
 
-      const amount = normalizeSign ? -raw : raw
+      // RAW in pass 1 — flipped after the convention is known.
+      const amount = raw
+      rowRawAnnual += raw
       const period = periodScope[m]
 
       rows.push({
@@ -564,6 +579,35 @@ export async function runDynamicPlfAdapter(
       )
       expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
     }
+
+    if (isCostRow && rows.length > rowStartIndex) {
+      costRowSpans.push({
+        from: rowStartIndex,
+        to: rows.length,
+        accountType: accountType as "cogs" | "expense",
+      })
+      if (accountType === "cogs") cogsRawAnnuals.push(rowRawAnnual)
+      else expenseRawAnnuals.push(rowRawAnnual)
+    }
+  }
+
+  // ── 8b. Pass 2 — apply the INFERRED cost-sign convention ──────────────────
+  const signDecision = resolveCostSigns(cogsRawAnnuals, expenseRawAnnuals)
+  for (const span of costRowSpans) {
+    const flip =
+      span.accountType === "cogs"
+        ? signDecision.flipCogs
+        : signDecision.flipExpense
+    if (!flip) continue
+    for (let i = span.from; i < span.to; i++) {
+      const r = rows[i]
+      const key = buildReconKey(input.entityCode!, r.category, r.period)
+      // Keep the expected-sum map in lockstep with the row it describes,
+      // otherwise the post-write reconciliation (Phase 11.2) would compare
+      // flipped DB rows against unflipped expectations and report red.
+      expectedSums.set(key, (expectedSums.get(key) ?? 0) - 2 * r.plannedAmount)
+      r.plannedAmount = -r.plannedAmount
+    }
   }
 
   // ── 9. Assemble result ────────────────────────────────────────────────────
@@ -581,6 +625,9 @@ export async function runDynamicPlfAdapter(
         ]
       : []),
     ...yearWarnings,
+    // Phase 11.9 — always state which convention was inferred. A silent
+    // correct flip and a silent wrong flip look identical in the output.
+    ...signDecision.notes.map((n) => `Cost sign — ${n}`),
   ]
 
   // Expose expectedSums for orchestrator cross-file conflict detection
@@ -596,6 +643,12 @@ export async function runDynamicPlfAdapter(
       mappings: semanticCoaMappings,
       reviewItems: semanticCoaReviewItems,
     },
+    // Phase 11.9 — an ambiguous cost-sign convention BLOCKS. Guessing the
+    // sign of every cost in a statement is not a call the importer gets to
+    // make quietly, and the pre-write gate aborts before any transaction.
+    ...(signDecision.blockedReason
+      ? { blocked: { reason: signDecision.blockedReason } }
+      : {}),
     ...extra,
     applyToDb: async (tx: Prisma.TransactionClient) => {
       if (rows.length === 0) return { rowsInserted: 0 }
