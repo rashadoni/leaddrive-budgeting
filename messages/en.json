@@ -3599,7 +3599,7 @@
           "verdict": "Verdict"
         }
       },
-      "writeDisabled": "Writing from this screen is disabled. To import, open the “Any file (AI)” tab (column-mapping review + reconcile) or “Several files”."
+      "writeDisabled": "Writing from this screen is disabled. To import, open the “Any file (AI)” tab (column-mapping review + reconcile) or “Multiple files”."
     }
   },
   "alertHistory": {

@@ -15,6 +15,10 @@ const { prismaMock, archiveRowsMock, restoreRowsMock, resetMock, orphanSweepMock
       cashFlowEntry: { count: vi.fn() },
       company: { findMany: vi.fn(), findFirst: vi.fn() },
       indicatorValue: { findMany: vi.fn() },
+      // Phase 11.39 — the period-lock gate reads Organization.lockedPeriods on
+      // BOTH reset paths now (year-scoped via getActivePeriodLock, all-years
+      // directly), so the mock must answer.
+      organization: { findUnique: vi.fn() },
     },
     archiveRowsMock: vi.fn(),
     restoreRowsMock: vi.fn(),
@@ -70,7 +74,16 @@ beforeEach(() => {
   orphanSweepMock.mockResolvedValue({ rowsAffected: 0, auditEventId: null })
   recomputeMock.mockResolvedValue({ ok: 3 })
   prismaMock.indicatorValue.findMany.mockResolvedValue([])
+  // Default: no locked periods — pre-11.39 behaviour for every existing test.
+  prismaMock.organization.findUnique.mockResolvedValue({ lockedPeriods: [] })
 })
+
+const LOCK_2025 = {
+  period: "2025",
+  lockedAt: "2026-07-01T00:00:00.000Z",
+  lockedBy: "cfo",
+  reason: "signed year",
+}
 
 describe("POST /api/admin/data-archive", () => {
   it("400s when confirmCode does not match the scope", async () => {
@@ -320,5 +333,55 @@ describe("POST /api/admin/data-archive — AllImportData multi-company reset", (
     expect(res.status).toBe(207)
     expect(body.ok).toBe(false)
     expect(body.companiesReset).toBe(1) // only CPC
+  })
+
+  // ── Phase 11.39 — the all-years reset no longer bypasses the period lock ──
+  //
+  // The gate ran only `if (year)`, and the UI's year field is optional with
+  // "blank = all years". So the WIDER operation had the WEAKER check: an
+  // all-years reset covers every locked period by definition and sailed
+  // through, while a single-year reset of the same data was refused.
+  describe("period lock on reset (11.39)", () => {
+    const resetBody = (extra: Record<string, unknown>) => ({
+      mode: "archive",
+      entityKind: "AllImportData",
+      companyCodes: ["AZSEKER-CPC", "AZSEKER-EDEN"],
+      confirmCode: "ALL",
+      ...extra,
+    })
+
+    beforeEach(() => {
+      prismaMock.company.findMany.mockResolvedValue([
+        { id: "c1", code: "AZSEKER-CPC" },
+        { id: "c2", code: "AZSEKER-EDEN" },
+      ])
+    })
+
+    it("REFUSES an all-years reset while ANY period lock is active", async () => {
+      prismaMock.organization.findUnique.mockResolvedValue({ lockedPeriods: [LOCK_2025] })
+      const res = await POST(req(resetBody({})))
+      expect(res.status).toBe(423)
+      expect(resetMock).not.toHaveBeenCalled()
+    })
+
+    it("still allows an all-years reset when no locks exist", async () => {
+      const res = await POST(req(resetBody({})))
+      expect(res.status).toBe(200)
+      expect(resetMock).toHaveBeenCalled()
+    })
+
+    it("year-scoped reset of a LOCKED year is refused (the precise gate)", async () => {
+      prismaMock.organization.findUnique.mockResolvedValue({ lockedPeriods: [LOCK_2025] })
+      const res = await POST(req(resetBody({ year: 2025 })))
+      expect(res.status).toBe(423)
+      expect(resetMock).not.toHaveBeenCalled()
+    })
+
+    it("year-scoped reset of an UNLOCKED year passes even while another year is locked", async () => {
+      prismaMock.organization.findUnique.mockResolvedValue({ lockedPeriods: [LOCK_2025] })
+      const res = await POST(req(resetBody({ year: 2026 })))
+      expect(res.status).toBe(200)
+      expect(resetMock).toHaveBeenCalled()
+    })
   })
 })
