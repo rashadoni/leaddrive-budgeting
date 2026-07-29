@@ -137,6 +137,12 @@ describe("POST /api/budgeting/cash-flow/generate — happy path", () => {
     expect(planArg.where.organizationId).toBe(ORG_ID)
     expect(planArg.where.year).toBe(2025)
     expect(planArg.where.isRolling).toBe(false)
+    // 2026-07-29 (11.30) — and NOT soft-deleted. Deleting a plan marks only
+    // the plan row; its children keep deletedAt null, and the partial unique
+    // index deliberately lets a soft-deleted plan share (year, kind) with a
+    // live one. Regenerating across both projects the same (company, month)
+    // twice — the double-count 11.4 closed, re-entered through this route.
+    expect(planArg.where.deletedAt).toBeNull()
   })
 
   it("skips months that already carry actual CF (forecast fills only the gaps)", async () => {

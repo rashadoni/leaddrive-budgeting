@@ -21,7 +21,9 @@ export async function GET(req: NextRequest) {
   return withOrgScope(orgId, async (tx) => {
   // Get actual amounts
   const budgetActuals = await tx.budgetActual.findMany({
-    where: { organizationId: orgId, plan: { year } },
+    // 2026-07-29 (11.30) — a soft-deleted plan's actuals would otherwise be
+    // summed alongside its live replacement's.
+    where: { organizationId: orgId, plan: { year, deletedAt: null } },
     select: { lineType: true, actualAmount: true, expenseDate: true, department: true },
   })
 

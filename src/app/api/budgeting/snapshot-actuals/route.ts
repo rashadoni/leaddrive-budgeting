@@ -54,8 +54,11 @@ export async function POST(req: NextRequest) {
       async (tx) => {
     // Find plans to process — needed for the lock check below.
     const plans = planId
-      ? await tx.budgetPlan.findMany({ where: { id: planId, organizationId: orgId } })
-      : await tx.budgetPlan.findMany({ where: { organizationId: orgId, status: { in: ["draft", "approved"] } } })
+      // 2026-07-29 (11.30) — never snapshot INTO a soft-deleted plan: it
+      // would write brand-new BudgetActual rows against a plan the user
+      // believes is gone.
+      ? await tx.budgetPlan.findMany({ where: { id: planId, organizationId: orgId, deletedAt: null } })
+      : await tx.budgetPlan.findMany({ where: { organizationId: orgId, status: { in: ["draft", "approved"] }, deletedAt: null } })
 
     // Phase 7.G Turn LXIX (Phase 4.2 bulk-mutation gate). snapshot-actuals
     // writes actuals at `targetMonth` for each plan — a mutation into the

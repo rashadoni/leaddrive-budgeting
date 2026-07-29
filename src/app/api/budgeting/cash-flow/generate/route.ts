@@ -50,7 +50,11 @@ export async function POST(req: NextRequest) {
   // OR if any plan's narrower period (Q/M) is locked.
   // Load plans BEFORE deleteMany so a 423 doesn't leak an incomplete state.
   const plans = await tx.budgetPlan.findMany({
-    where: { organizationId: orgId, year, isRolling: false },
+    // 2026-07-29 (11.30) — exclude soft-deleted plans. Deleting a plan
+    // marks only the plan row; its children keep deletedAt null. Regenerating
+    // cash flow across a deleted plan AND its live replacement projects the
+    // same (company, month) twice — the double-count 11.4 closed, re-entered.
+    where: { organizationId: orgId, year, isRolling: false, deletedAt: null },
   })
   const yearKey = String(year)
   const planPeriodKeys: string[] = plans.map((p: { periodType: string | null; year: number; month: number | null; quarter: number | null }) =>
