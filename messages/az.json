@@ -3315,7 +3315,7 @@
     "tabs": {
       "ariaLabel": "AI İmport rejimi",
       "single": "1 fayl",
-      "multi": "Bir neçə fayl",
+      "multi": "Bir neçə fayl (AI)",
       "newBadge": "yeni",
       "universal": "İstənilən fayl (AI)",
       "multisheet": "Çox vərəqli (AI)",
@@ -3599,7 +3599,7 @@
           "verdict": "Verdict"
         }
       },
-      "writeDisabled": "Bu ekrandan yazı söndürülüb. İdxal üçün «İstənilən fayl (AI)» (sütun uyğunlaşdırması + üzləşdirmə) və ya «Bir neçə fayl» tabını açın."
+      "writeDisabled": "Bu ekrandan yazı söndürülüb. İdxal üçün «İstənilən fayl (AI)» (sütun uyğunlaşdırması + üzləşdirmə) və ya «Bir neçə fayl (AI)» tabını açın — bütün vərəqləri yönləndirən tam AI klassifikatoru."
     }
   },
   "alertHistory": {
