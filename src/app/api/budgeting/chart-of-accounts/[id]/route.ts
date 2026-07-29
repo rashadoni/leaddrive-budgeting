@@ -45,11 +45,54 @@ const CoARoleSchema = z.enum([
   "tax_costs", "non_operating", "tax", "unknown",
 ])
 
+/**
+ * Phase 11.20 (2026-07-29) — `accountType` is now reclassifiable.
+ *
+ * It was written once by the importer and frozen forever: every auto-created
+ * account took `defaultAccountType` (falling back to "expense" when unknown)
+ * and `upsert-chart-of-account.ts` deliberately does not overwrite it on
+ * re-import. Its own comment promised "the admin override UI lets a finance
+ * reviewer reclassify" — but that surface only ever exposed `role`. A
+ * mis-typed account therefore put its number in the wrong statement section
+ * permanently, even when the amount was perfectly correct, and no re-import
+ * could repair it.
+ *
+ * Mirrors the importer's own set (imported, not re-declared, so the two
+ * cannot drift).
+ */
+const AccountTypeSchema = z.enum([
+  "revenue",
+  "expense",
+  "cogs",
+  "asset",
+  "liability",
+  "equity",
+])
+
+/** Which statement an account type belongs to. A move WITHIN a statement
+ *  (revenue↔cogs) reshuffles P&L subtotals; a move ACROSS statements
+ *  (expense→asset) relocates the number entirely and silently changes both
+ *  the P&L and the balance sheet, so it needs an explicit acknowledgement. */
+const STATEMENT_OF: Record<string, "pnl" | "bs"> = {
+  revenue: "pnl",
+  expense: "pnl",
+  cogs: "pnl",
+  asset: "bs",
+  liability: "bs",
+  equity: "bs",
+}
+
 const updateBodySchema = z
   .object({
-    role: CoARoleSchema.nullable(),
+    role: CoARoleSchema.nullable().optional(),
+    accountType: AccountTypeSchema.optional(),
+    /** Required to move an account between the P&L and the balance sheet. */
+    confirmCrossStatement: z.boolean().optional(),
   })
   .strict()
+  .refine((b) => b.role !== undefined || b.accountType !== undefined, {
+    message: "Provide at least one of `role` or `accountType`",
+  })
 
 export async function PUT(
   req: NextRequest,
@@ -97,10 +140,34 @@ export async function PUT(
     // Cross-tenant guard via composite where (rejects sibling-org reads).
     const prior = await tx.chartOfAccount.findFirst({
       where: { id, organizationId: orgId },
-      select: { code: true, name: true, role: true },
+      select: { code: true, name: true, role: true, accountType: true },
     })
     if (!prior) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 })
+    }
+
+    // Phase 11.20 — refuse a silent cross-statement move. Reclassifying
+    // expense→asset relocates the number out of the P&L and into the balance
+    // sheet; both statements change and neither total is wrong-looking
+    // afterwards, so it must be deliberate rather than a typo in a PUT body.
+    if (
+      parsed.accountType !== undefined &&
+      parsed.accountType !== prior.accountType &&
+      STATEMENT_OF[parsed.accountType] !== STATEMENT_OF[prior.accountType] &&
+      !parsed.confirmCrossStatement
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            `Reclassifying "${prior.code}" from ${prior.accountType} to ` +
+            `${parsed.accountType} moves it between the P&L and the balance ` +
+            `sheet. Re-send with confirmCrossStatement: true to proceed.`,
+          from: prior.accountType,
+          to: parsed.accountType,
+          requiresConfirmation: true,
+        },
+        { status: 409 },
+      )
     }
 
     // Cross-tenant guard: composite where-clause rejects sibling-org rewrites.
@@ -108,7 +175,12 @@ export async function PUT(
     // letting us return 404 cleanly without try/catch.
     const result = await tx.chartOfAccount.updateMany({
       where: { id, organizationId: orgId },
-      data: { role: parsed.role },
+      data: {
+        ...(parsed.role !== undefined ? { role: parsed.role } : {}),
+        ...(parsed.accountType !== undefined
+          ? { accountType: parsed.accountType }
+          : {}),
+      },
     })
 
     if (result.count === 0) {
@@ -124,7 +196,34 @@ export async function PUT(
     // (e.g. PUT with the same role); otherwise the audit log fills with
     // identical-from/to noise.
     let auditStale = false
-    if (prior.role !== parsed.role) {
+    if (
+      parsed.accountType !== undefined &&
+      parsed.accountType !== prior.accountType
+    ) {
+      // Separate event from the role change: this one moves money between
+      // statement sections and is what a reviewer will look for later.
+      const typeAudit = await logAuditEvent(tx, {
+        organizationId: orgId,
+        actorUserId: session.userId,
+        event: {
+          action: "coa_role_change",
+          entityType: "ChartOfAccount",
+          entityId: id,
+          metadata: {
+            accountCode: prior.code,
+            accountName: prior.name,
+            field: "accountType",
+            from: prior.accountType,
+            to: parsed.accountType,
+            crossStatement:
+              STATEMENT_OF[parsed.accountType] !== STATEMENT_OF[prior.accountType],
+          },
+        },
+        context: { route: `PUT /api/budgeting/chart-of-accounts/${id}` },
+      })
+      if (!typeAudit.ok) auditStale = true
+    }
+    if (parsed.role !== undefined && prior.role !== parsed.role) {
       const auditResult = await logAuditEvent(tx, {
         organizationId: orgId,
         actorUserId: session.userId,

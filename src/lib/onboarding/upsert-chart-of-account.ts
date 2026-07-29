@@ -52,7 +52,13 @@ export interface ResolveCoAArgs {
   defaultAccountType?: string
 }
 
-const VALID_ACCOUNT_TYPES = new Set([
+/**
+ * Phase 11.20 (2026-07-29) — exported so the admin reclassify route validates
+ * against the SAME set the importer uses. Two copies would drift, and a type
+ * the importer accepts but the API rejects (or vice versa) is a silent
+ * mis-classification waiting to happen.
+ */
+export const VALID_ACCOUNT_TYPES = new Set([
   "revenue",
   "expense",
   "cogs",
