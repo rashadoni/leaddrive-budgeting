@@ -393,7 +393,12 @@ interface DoctorFixResponse {
 }
 
 const MAX_FILES = 10
-const MAX_TOTAL_BYTES = 20 * 1024 * 1024
+// Phase 11 follow-up (2026-07-29) — MUST match the server's cap in
+// src/app/api/import/ai-auto-multi/route.ts. It was 20 MB against the
+// server's 40 MB, so the browser rejected uploads the server would have
+// accepted — including the client's own 26.6 MB `Reporting 2026.xlsx`, with a
+// client-side message that made it look like a hard product limit.
+const MAX_TOTAL_BYTES = 40 * 1024 * 1024
 
 function formatBytes(b: number): string {
   if (b < 1024) return `${b} B`

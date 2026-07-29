@@ -621,6 +621,67 @@ export async function previewCompanyImportReset(args: {
  * the file — which is the point. The caller (route) must trigger a recompute
  * afterwards so stale IndicatorValues fall back to `unknown`.
  */
+/**
+ * Phase 11.6b (2026-07-29) — org-level SalesForecast sweep, whole-holding only.
+ *
+ * `SalesForecast` is keyed `(organizationId, departmentId, year, month)` and
+ * carries NO company dimension — `BudgetDepartment` has none either, so the
+ * company simply does not exist anywhere in that chain. A per-company reset
+ * therefore cannot scope it, and deleting it during one would wipe the whole
+ * organization's forecast on behalf of a single entity.
+ *
+ * The consequence, before this: a stale forecast survived every reset and
+ * every re-import, because the import path only ever upserts the departments
+ * present in the NEW file — a department dropped from the source keeps its old
+ * numbers forever.
+ *
+ * The one case where the scope IS unambiguous is a WHOLE-HOLDING reset: when
+ * every operational company is being cleared, the org's forecast is genuinely
+ * in scope. That is the case this handles, and only that one. Giving forecasts
+ * a real per-company scope needs a schema decision about whether a department
+ * belongs to a company — an owner call, not something to invent here.
+ *
+ * Mirrors `archiveOrgOrphanBudgetLines`: called ONCE after the per-company
+ * loop, and only when every company succeeded, so a partial reset never leaves
+ * org-level rows gone while an entity still holds its data.
+ */
+export async function resetOrgSalesForecast(args: {
+  prisma: PrismaClient
+  actorUserId: string
+  reason?: string
+  organizationId: string
+  year?: number
+}): Promise<{ rowsAffected: number; auditEventId: string | null }> {
+  const { prisma, actorUserId, reason, organizationId, year } = args
+  const where: Record<string, unknown> = { organizationId }
+  if (year) where.year = year
+
+  // Hard delete: SalesForecast has no soft-delete column, same as
+  // OperationalFact and BudgetActual.
+  const del = await prisma.salesForecast.deleteMany({ where: where as never })
+  if (del.count === 0) return { rowsAffected: 0, auditEventId: null }
+
+  const audit = await logAuditEvent(prisma, {
+    organizationId,
+    actorUserId,
+    event: {
+      action: "data_reset",
+      entityType: "Company",
+      entityId: `org-sales-forecast:${year ?? "ALL"}`,
+      metadata: {
+        // Sentinel, matching archiveOrgOrphanBudgetLines: this is an
+        // ORG-level sweep, so there is no company code to record.
+        companyCode: "__ORG_SALES_FORECAST__",
+        year,
+        breakdown: { salesForecast: del.count },
+        rowsAffected: del.count,
+        reason,
+      },
+    },
+  })
+  return { rowsAffected: del.count, auditEventId: audit.ok ? audit.id : null }
+}
+
 export async function resetCompanyImportData(
   args: Omit<ArchiveActionArgs, "scope"> & {
     scope: Omit<ArchiveScope, "entityKind">

@@ -677,6 +677,9 @@ export function createPrismaDataSource(
           value,
           status,
           sparkline: (sparkline ?? []) as Prisma.InputJsonValue,
+          // Phase 11.7b — stamp ONLY when a series was actually computed.
+          // The `[]` first-write default is a placeholder, not a measurement.
+          sparklineComputedAt: sparkline !== undefined ? new Date() : null,
           inputs: inputs as unknown as Prisma.InputJsonValue,
           // Our `ValueSource` string union mirrors the generated Prisma enum
           // `IndicatorValueSource` 1:1 (declared in prisma/schema.prisma).
@@ -706,8 +709,13 @@ export function createPrismaDataSource(
           // disclosed-override → no tier). Recompute always passes a
           // value or null; undefined → null via the `??` coercion.
           confidence: confidence ?? null,
+          // Phase 11.7b — the timestamp travels WITH the series, under the
+          // same condition. A recompute that leaves the sparkline alone must
+          // leave its freshness alone too, or `computedAt`-style lying just
+          // moves to a new column.
           ...(sparkline !== undefined && {
             sparkline: sparkline as Prisma.InputJsonValue,
+            sparklineComputedAt: new Date(),
           }),
           // Stage B5 — lineage is written on EVERY update, and deliberately
           // does NOT follow the sparkline rule above.
