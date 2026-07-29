@@ -231,5 +231,50 @@ describe("POST /api/onboarding/import/analyze", () => {
     expect(body.proposal.columns[0].role).toBe("label") // from template
     expect(runMapper).not.toHaveBeenCalled() // LLM skipped
     expect(recordUsage).not.toHaveBeenCalled() // no tokens spent
+    // Phase 11.27 — `anomalies` must be an ARRAY produced from THIS file's
+    // data, not the hardcoded [] it used to be. A template supplies the
+    // column mapping; it says nothing about the numbers in the new workbook.
+    expect(Array.isArray(body.proposal.anomalies)).toBe(true)
+  })
+
+  it("flags a template override whose code is absent from THIS file", async () => {
+    // The overrides were inferred from the workbook the template was approved
+    // on. Replaying one for a code this sheet never mentions silently types an
+    // account the file does not contain.
+    ;(prisma.organization.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      settings: {
+        importTemplates: {
+          [FIXED_HASH]: [
+            {
+              structureHash: FIXED_HASH,
+              sheetName: "PL",
+              mapping: {
+                columns: [{ sourceIndex: 0, role: "label", confidence: 1, reasoning: "" }],
+                accountTypeOverrides: [
+                  {
+                    code: "NOT-IN-THIS-FILE",
+                    accountType: "expense",
+                    confidence: 0.9,
+                    reasoning: "from the original workbook",
+                  },
+                ],
+              },
+              approvedBy: "u9",
+              approvedAt: "2026-06-20T00:00:00Z",
+              version: 3,
+              sourceFile: "prev.xlsx",
+            },
+          ],
+        },
+      },
+    })
+    const res = await POST(makeReq({ file: xlsx(), sheetName: "PL", companyId: "c1" }))
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    expect(
+      body.proposal.anomalies.some((a: { description: string }) =>
+        a.description.includes("NOT-IN-THIS-FILE"),
+      ),
+    ).toBe(true)
   })
 })
