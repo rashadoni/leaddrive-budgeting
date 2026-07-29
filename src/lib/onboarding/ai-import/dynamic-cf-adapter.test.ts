@@ -588,4 +588,62 @@ describe("runDynamicCfAdapter", () => {
     expect(rowsInserted).toBe(0)
     expect(runCashFlowBatch).not.toHaveBeenCalled()
   })
+
+  // ── Phase 11.19 — per-month reversals keep their direction ───────────────
+  it("a refund month inside an outflow line becomes an INFLOW, not another outflow", async () => {
+    // lineEntryType classified the whole line and Math.abs stripped each
+    // cell's sign, so a refund was recorded as another outflow — adding to
+    // the total it should reduce. The named CF handler never had this bug.
+    vi.mocked(extractMapperInput).mockReturnValue(MOCK_MAPPER_INPUT)
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: buildProposal(0.9),
+      cacheHit: true,
+      usage: { inputTokens: 0, outputTokens: 0, modelName: "m", promptVersion: "v" },
+    })
+    mockBatchOk()
+
+    // Outflow line stored negative (the convention the other fixtures use),
+    // with a single positive month = a supplier refund.
+    const aoa = [
+      ["Code", "Label", ...MONTH_NAMES],
+      ["CF.01.02.01", "Supplier payments", -1000, -1000, 250, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000],
+    ]
+    const input = makeFakeInput({
+      workbook: makeFakeWorkbook(aoa),
+      XLSX: makeFakeXLSX(aoa),
+    })
+    await runDynamicCfAdapter(input, FAKE_PRISMA).then((r) => r.applyToDb(FAKE_TX))
+
+    const rows = vi.mocked(runCashFlowBatch).mock.calls[0][1].rows as any[]
+    const march = rows.find((r: any) => r.month === 3)
+    const jan = rows.find((r: any) => r.month === 1)
+    expect(jan?.entryType).toBe("outflow")
+    expect(march?.entryType).toBe("inflow")
+    expect(march?.amount).toBe(250)
+  })
+
+  it("keeps every month an outflow when the line uses positive magnitudes", async () => {
+    // The mirror convention: an outflow-coded line storing positive
+    // magnitudes must NOT have all 12 months flipped to inflow.
+    vi.mocked(extractMapperInput).mockReturnValue(MOCK_MAPPER_INPUT)
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: buildProposal(0.9),
+      cacheHit: true,
+      usage: { inputTokens: 0, outputTokens: 0, modelName: "m", promptVersion: "v" },
+    })
+    mockBatchOk()
+
+    const aoa = [
+      ["Code", "Label", ...MONTH_NAMES],
+      ["CF.01.02.01", "Supplier payments", ...Array(12).fill(1000)],
+    ]
+    const input = makeFakeInput({
+      workbook: makeFakeWorkbook(aoa),
+      XLSX: makeFakeXLSX(aoa),
+    })
+    await runDynamicCfAdapter(input, FAKE_PRISMA).then((r) => r.applyToDb(FAKE_TX))
+
+    const rows = vi.mocked(runCashFlowBatch).mock.calls[0][1].rows as any[]
+    expect(rows.every((r: any) => r.entryType === "outflow")).toBe(true)
+  })
 })

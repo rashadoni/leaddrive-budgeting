@@ -583,13 +583,36 @@ export async function runDynamicCfAdapter(
       // Explicit bridge zero is evidence. Ordinary movements remain sparse.
       if (raw === 0 && !isBridge) continue
 
-      // CF convention: store absolute value; direction encoded in entryType
+      // CF convention: store absolute value; direction encoded in entryType.
       const amount = Math.abs(raw)
+      // Phase 11.19 (2026-07-29) — honour the PER-MONTH sign on ordinary
+      // lines, not only on bridge rows.
+      //
+      // `lineEntryType` classifies the whole LINE (CF.XX.01 → inflow,
+      // CF.XX.02 → outflow). Applying it to all 12 months while `Math.abs`
+      // strips each cell's sign meant a refund inside an otherwise-outflow
+      // line was recorded as another OUTFLOW — adding to the very total it
+      // should reduce. The named CF handler never had this: it derives the
+      // direction from the signed cell.
+      //
+      // Deriving purely from the sign would be wrong here though, because
+      // this adapter must survive BOTH sheet conventions (outflows stored
+      // negative, or stored as positive magnitudes on outflow-coded lines).
+      // So the comparison is against the LINE'S OWN aggregate sign: a month
+      // that runs counter to its line is a reversal and flips direction;
+      // a month agreeing with its line keeps `lineEntryType`, which is
+      // exactly the previous behaviour for ordinary data.
+      const lineSign = signHintSum >= 0 ? 1 : -1
+      const cellSign = raw >= 0 ? 1 : -1
       const entryType: CfEntryType = isBridge
         ? raw >= 0
           ? "inflow"
           : "outflow"
-        : lineEntryType
+        : cellSign === lineSign
+          ? lineEntryType
+          : lineEntryType === "inflow"
+            ? "outflow"
+            : "inflow"
       const month = monthIdx + 1
       const period = `${effectiveYear}-${String(month).padStart(2, "0")}`
 
