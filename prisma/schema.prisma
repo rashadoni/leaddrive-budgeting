@@ -1324,6 +1324,17 @@ model IndicatorValue {
   value          Float
   status         String // "green"|"amber"|"red"|"unknown"
   sparkline      Json // (number|null)[] — 12-slot trailing-month series; nulls = evaluation gap (Bloomberg "no-tick")
+  /// Phase 11.7b (2026-07-29) — when the SPARKLINE was last recomputed, which
+  /// is not the same question as `computedAt`.
+  ///
+  /// `computedAt` belongs to `value`, and is correctly bumped on every
+  /// recompute. But bulk recomputes deliberately omit `withSparkline` (12x the
+  /// runtime), and the writer therefore leaves an existing `sparkline`
+  /// untouched — correct, since the offline worker owns that column. The
+  /// side effect: freshness infrastructure reading `computedAt` reported a
+  /// genuinely stale 12-slot series as fresh. NULL means "never computed, or
+  /// computed before this column existed".
+  sparklineComputedAt DateTime?
   inputs         Json // snapshot of resolved vars (for audit/drill-down)
   // Phase 7.H F4.v2.1 — provenance stamp inherited from
   // `IndicatorDefinition.defaultValueSource` at upsert time. Drives the

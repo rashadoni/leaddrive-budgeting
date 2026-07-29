@@ -53,6 +53,7 @@ import {
   archiveRows,
   restoreRows,
   resetCompanyImportData,
+  resetOrgSalesForecast,
   archiveOrgOrphanBudgetLines,
 } from "@/lib/server/archive"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
@@ -347,6 +348,30 @@ export async function POST(request: NextRequest) {
     let orphanRowsAffected = 0
     let orphanError: string | null = null
     if (isWholeHolding && failures.length === 0) {
+      // Phase 11.6b — SalesForecast is org-level (no company anywhere in the
+      // department chain), so a per-company reset cannot reach it and a stale
+      // forecast used to survive every reset AND every re-import: the import
+      // only upserts departments present in the NEW file, so a dropped
+      // department kept its old numbers forever. A whole-holding reset is the
+      // one case where the scope is unambiguous.
+      try {
+        const fx = await resetOrgSalesForecast({
+          prisma,
+          actorUserId: session.userId,
+          reason,
+          organizationId: orgId,
+          year: scope.year,
+        })
+        if (fx.rowsAffected > 0) {
+          rowsAffected += fx.rowsAffected
+          breakdown.salesForecast =
+            (breakdown.salesForecast ?? 0) + fx.rowsAffected
+        }
+      } catch (err) {
+        log.error("org sales-forecast reset failed (non-fatal)", {
+          err: err instanceof Error ? err.message : String(err),
+        })
+      }
       try {
         const orphan = await archiveOrgOrphanBudgetLines({
           prisma,

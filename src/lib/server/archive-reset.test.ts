@@ -4,6 +4,7 @@ import {
   resetCompanyImportData,
   archiveOrgOrphanBudgetLines,
   IMPORT_SETTINGS_KEYS,
+  resetOrgSalesForecast,
 } from "./archive"
 
 vi.mock("@/lib/audit/log", () => ({
@@ -192,5 +193,61 @@ describe("archiveOrgOrphanBudgetLines", () => {
     })
     expect(tx.budgetLine.updateMany).not.toHaveBeenCalled()
     expect(res.rowsAffected).toBe(0)
+  })
+})
+
+// ─── Phase 11.6b — org-level SalesForecast sweep ────────────────────────
+describe("resetOrgSalesForecast", () => {
+  function fake(deleteCount: number) {
+    const deleteMany = vi.fn(async () => ({ count: deleteCount }))
+    return {
+      prisma: { salesForecast: { deleteMany } } as never,
+      deleteMany,
+    }
+  }
+
+  it("clears the org's forecast for the year", async () => {
+    // SalesForecast is keyed (org, department, year, month) with NO company
+    // anywhere in the chain, so a per-company reset cannot reach it. Before
+    // this, a stale forecast survived every reset AND every re-import: the
+    // import only upserts departments present in the NEW file, so a dropped
+    // department kept its old numbers forever.
+    const { prisma, deleteMany } = fake(24)
+    const r = await resetOrgSalesForecast({
+      prisma,
+      actorUserId: "u1",
+      organizationId: "org1",
+      year: 2026,
+    })
+    expect(r.rowsAffected).toBe(24)
+    const [arg] = deleteMany.mock.calls[0] as unknown as [
+      { where: Record<string, unknown> },
+    ]
+    expect(arg.where).toEqual({ organizationId: "org1", year: 2026 })
+  })
+
+  it("clears every year when no year is scoped", async () => {
+    const { prisma, deleteMany } = fake(5)
+    await resetOrgSalesForecast({
+      prisma,
+      actorUserId: "u1",
+      organizationId: "org1",
+    })
+    const [arg] = deleteMany.mock.calls[0] as unknown as [
+      { where: Record<string, unknown> },
+    ]
+    expect(arg.where).toEqual({ organizationId: "org1" })
+  })
+
+  it("writes no audit event when nothing was deleted", async () => {
+    // A no-op reset must not litter the audit log with empty data_reset rows.
+    const { prisma } = fake(0)
+    const r = await resetOrgSalesForecast({
+      prisma,
+      actorUserId: "u1",
+      organizationId: "org1",
+      year: 2026,
+    })
+    expect(r).toEqual({ rowsAffected: 0, auditEventId: null })
   })
 })
