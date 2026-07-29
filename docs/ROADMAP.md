@@ -681,7 +681,9 @@ T-1 reconciliation tolerance · T-2 the 80% coverage abstention gate · T-3 Conf
 
 **All 14 tasks landed** across 12 commits — the 5 blockers, the 6 highs, and the 3 mediums. `tsc --noEmit` exit 0 and the full suite green (7395 passed / 0 failed) at every commit.
 
-**Two migrations are written but NOT applied — both deliberately:**
+**Migrations verified against a real database (2026-07-29).** Both were applied to a throwaway `postgres:16` with the full 29-migration chain, not just reviewed. This caught a live defect: the plan-duplicate guard referenced `organization_id` / `deleted_at`, but the columns are the quoted camelCase `"organizationId"` / `"deletedAt"` — Postgres folds unquoted identifiers to lower case, so the guard would have died with `column "organization_id" does not exist`, a misleading failure that looks like a broken migration and would have **masked the very duplicates it exists to find**. Fixed and re-verified end to end: seeding the exact split (`Azərşəkər 2026 Actuals` + `AI-Imported 2026 Budget`, both live, both `kind='actual'`) makes the migration RAISE and name both plans; soft-deleting the loser lets it apply; the index then rejects a second live actual plan, still allows a `budget` plan for the same year, and still allows a soft-deleted row to repeat the live `(year, kind)` — which is exactly why it is a partial index and not a Prisma `@@unique`. `prisma migrate diff` reports **no drift** between `schema.prisma` and the migrated database.
+
+**Two migrations are written but NOT applied to production — both deliberately:**
 - `20260729120000_budget_plan_unique_per_year_kind` **RAISEs while duplicate plans exist.** Run `GET /api/admin/duplicate-plans` first; merging two plans' financial rows is an owner decision, not a silent migration.
 - `20260729130000_import_batch_report` is additive and safe, but ships with the same deploy.
 
