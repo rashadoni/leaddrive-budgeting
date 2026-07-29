@@ -8,6 +8,7 @@
  * are verbatim from the handler; inputs are now explicit args.
  */
 import * as XLSXNS from "xlsx"
+import { resolveImportPlan } from "@/lib/onboarding/resolve-plan"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { getLogger } from "@/lib/log"
@@ -277,24 +278,26 @@ export async function runBsDispatcher({
       }
 
       if (!bsPlanId) {
-        const existing = await prisma.budgetPlan.findFirst({
-          where: { organizationId: orgIdLocal, year: targetYear, name: planName, deletedAt: null },
-          select: { id: true },
+        // 2026-07-29 — 11.4 wired three routes and MISSED this dispatcher.
+        //
+        // It looked the plan up by NAME (`AI-Imported <year> Budget`) and
+        // created one with no `kind`, so it took the schema default
+        // "actual". Production's canonical plan is named
+        // `Azərşəkər <year> Actuals`, and resolveImportPlan deliberately does
+        // not rename an existing plan — so the name lookup missed and this
+        // created a SECOND live kind="actual" plan, carrying real
+        // BalanceSheetLine rows. The risk readers filter on kind with no
+        // planId, so both were summed: the exact double-count 11.4 closed,
+        // still live here.
+        const resolved = await resolveImportPlan(prisma, {
+          organizationId: orgIdLocal,
+          year: targetYear,
+          kind: "actual",
+          name: planName,
+          periodType: "yearly",
+          status: "active",
         })
-        if (existing) bsPlanId = existing.id
-        else {
-          const created = await prisma.budgetPlan.create({
-            data: {
-              organizationId: orgIdLocal,
-              name: planName,
-              year: targetYear,
-              periodType: "yearly",
-              status: "active",
-            },
-            select: { id: true },
-          })
-          bsPlanId = created.id
-        }
+        bsPlanId = resolved.id
       }
 
       let rowsInserted = 0

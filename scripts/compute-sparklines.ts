@@ -160,7 +160,15 @@ async function main() {
       if (!args.dryRun) {
         await prisma.indicatorValue.update({
           where: { id: iv.id },
-          data: { sparkline },
+          data: {
+            sparkline,
+            // 2026-07-29 (11.7b follow-up) — stamp the series' OWN freshness.
+            // This worker is the canonical sparkline refresher named in the
+            // column's migration rationale, and it was the one writer that
+            // never set the timestamp — so the column stayed NULL exactly
+            // where it should have been most accurate.
+            sparklineComputedAt: new Date(),
+          },
         });
         persisted++;
       }

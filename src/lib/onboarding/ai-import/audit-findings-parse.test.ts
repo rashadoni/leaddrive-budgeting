@@ -60,3 +60,74 @@ describe("mapAuditCompany", () => {
     expect(mapAuditCompany("Foo Bar LLC")).toBeNull()
   })
 })
+
+// ─── Phase 11.25 — columns located by label, not by position ────────────
+describe("parseAuditFindings — header detection", () => {
+  const labelled = (rows: unknown[][]): XLSX.WorkBook => {
+    const header = [
+      "No",
+      "Severity",
+      "Struktur",
+      "Company",
+      "Audit",
+      "Plan date",
+      "Management status",
+      "Grouping",
+      "",
+      "Jan status",
+    ]
+    const ws = XLSX.utils.aoa_to_sheet([["Title"], header, ...rows])
+    const book = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(book, ws, "Follow-up")
+    return book
+  }
+
+  it("reads a labelled header and needs no fallback", () => {
+    const r = parseAuditFindings(
+      labelled([row("Major", "Azərşəkər", "davam edir")]),
+      "Follow-up",
+      XLSX,
+    )
+    expect(r.byCompany["AZSEKER-AZSF"]).toMatchObject({ total: 1, major_open: 1 })
+    expect(r.warnings.some((w) => w.includes("legacy position"))).toBe(false)
+  })
+
+  it("still reads correctly when a column is INSERTED", () => {
+    // The whole point. Positionally this shifts severity/company one to the
+    // right; the old parser would have read the inserted column as severity
+    // and the severity as company — silently, with the import reporting
+    // success and AUDIT_* indicators moving.
+    const header = [
+      "No",
+      "NEW COLUMN",
+      "Severity",
+      "Struktur",
+      "Company",
+      "Audit",
+      "Plan date",
+      "Management status",
+      "Grouping",
+      "",
+      "Jan status",
+    ]
+    const shifted = [1, "x", "Major", "HR", "Azərşəkər", "Audit X", "2026-01", "davam edir", "Grp", "", "open"]
+    const ws = XLSX.utils.aoa_to_sheet([["Title"], header, shifted])
+    const book = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(book, ws, "Follow-up")
+
+    const r = parseAuditFindings(book, "Follow-up", XLSX)
+    expect(r.byCompany["AZSEKER-AZSF"]).toMatchObject({ total: 1, major_open: 1 })
+  })
+
+  it("WARNS when it has to fall back to fixed positions", () => {
+    // An unlabelled sheet still parses — behaviour is unchanged — but the
+    // fallback is now visible instead of assumed.
+    const r = parseAuditFindings(
+      wb([row("Major", "Azərşəkər", "davam edir")]),
+      "Follow-up",
+      XLSX,
+    )
+    expect(r.byCompany["AZSEKER-AZSF"]).toMatchObject({ total: 1 })
+    expect(r.warnings.some((w) => w.includes("fixed column positions"))).toBe(true)
+  })
+})
