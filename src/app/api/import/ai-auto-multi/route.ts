@@ -34,6 +34,7 @@
  */
 import { NextRequest, NextResponse } from "next/server"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
+import { acquireImportLock } from "@/lib/onboarding/import-lock"
 import * as XLSX from "xlsx"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
@@ -1001,6 +1002,33 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // ── Mutual exclusion (Phase 11.8) ───────────────────────────────
+  // Only for APPLY. A preview writes nothing, so concurrent previews are
+  // harmless and must not be refused. Every import batch is clean-slate
+  // (archive-in-scope, then insert), so two concurrent applies of the same
+  // scope interleave as: A archives N and inserts N, B archives 0 (A already
+  // did) and inserts N — a full duplicate set. `assertNoCollateralDeletion`
+  // cannot see it (it fires on over-deletion; B under-deleted) and no target
+  // table has a unique constraint that would reject the second copy.
+  const importLock = shouldApply
+    ? await acquireImportLock(orgId, year)
+    : null
+  if (importLock && !importLock.acquired) {
+    await importLock.release()
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Another import is already running for this organization and year. " +
+          "Wait for it to finish before starting a second one — running both " +
+          "would duplicate every row they share.",
+        code: "IMPORT_IN_PROGRESS",
+        scope: importLock.scope,
+      },
+      { status: 409 },
+    )
+  }
+
   // ── Run the orchestrator ────────────────────────────────────────
   let result
   try {
@@ -1033,6 +1061,7 @@ export async function POST(request: NextRequest) {
     // Broad catch (AI classify + DB apply). Never return the raw provider
     // message (can carry billing text); log it server-side and surface a
     // generic admin message + a stable code (AI class when recognized).
+    await importLock?.release()
     const raw = err instanceof Error ? err.message : String(err)
     log.error("multi-file import failed", { err: raw })
     return NextResponse.json(
@@ -1044,6 +1073,11 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     )
   }
+
+  // Phase 11.8 — every DB write is done by the time the orchestrator returns
+  // (its Phase F recompute included), so the lock is released here rather
+  // than being held through response assembly.
+  await importLock?.release()
 
   // ── Record token spend (non-fatal) ──────────────────────────────
   if (result.llmUsage.inputTokens + result.llmUsage.outputTokens > 0) {

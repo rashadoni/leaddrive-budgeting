@@ -28,6 +28,17 @@ const { budgetMock } = vi.hoisted(() => ({
   budgetMock: { checkBudget: vi.fn(), recordUsage: vi.fn() },
 }))
 
+// Phase 11.8 — the apply path takes a Postgres session advisory lock on a
+// dedicated connection. Stub it: these tests assert route behaviour, not
+// locking, and must not open a real connection.
+vi.mock("@/lib/onboarding/import-lock", () => ({
+  acquireImportLock: vi.fn(async () => ({
+    acquired: true,
+    scope: "ai-import:test:2026",
+    release: vi.fn(async () => undefined),
+  })),
+}))
+
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 vi.mock("@/lib/onboarding/ai-import/multi-file-orchestrator", () => orchestratorMock)
