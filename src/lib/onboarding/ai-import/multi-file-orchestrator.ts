@@ -166,6 +166,10 @@ const APPLY_ORDER: Record<FileType, number> = {
   // canonical compliance facts; it only needs companies seeded, so it sits
   // beside the other soft buckets. 2026-07-15.
   "compliance-register": 2.7,
+  // Phase 11.12 — product sales need companies seeded and (for the
+  // revenue-account link) the CoA that main-financial creates, so they
+  // apply after it alongside the other soft buckets.
+  "sales-products": 2.8,
   "capex-plan": 3,
   "land-registry": 4,
   "forward-forecast": 5,
@@ -968,6 +972,7 @@ export async function runMultiFileImport(
           opsFacts: 0,
           budgetActuals: 0,
           salesForecast: 0,
+          salesProducts: 0,
           complianceRegister: 0,
           unknown: 0,
         },

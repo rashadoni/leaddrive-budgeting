@@ -207,6 +207,7 @@ describe("detectFileType", () => {
         cls("m", "OPS_FACTS"),
         cls("n", "BUDGET_ACTUALS"),
         cls("o", "SALES_FORECAST"),
+        cls("p", "SALES_PRODUCTS"),
         cls("l", "UNKNOWN"),
       ],
       "AllShapes.xlsx",
@@ -226,6 +227,7 @@ describe("detectFileType", () => {
       opsFacts: 1,
       budgetActuals: 1,
       salesForecast: 1,
+      salesProducts: 1,
       complianceRegister: 0,
       unknown: 1,
     })
@@ -385,5 +387,37 @@ describe("detectFileType — compliance-register (2026-07-15)", () => {
     )
     expect(r.fileType).toBe("main-financial")
     expect(r.sheetCounts.complianceRegister).toBe(1)
+  })
+
+  // ──────────────────────────────────────────────────────────────────
+  // Phase 11.12 — SALES_PRODUCTS file-type detection
+  // ──────────────────────────────────────────────────────────────────
+
+  it("classifies a product-sales-only file as sales-products", () => {
+    // SALES_PRODUCTS was a classifier dataType with no file-type bucket, so a
+    // standalone product-sales workbook detected as `unknown`, was never
+    // applied, and wrote zero rows — even though its adapter has been
+    // registered all along (production-adapter-registry.ts).
+    const result = detectFileType(
+      [cls("Products 2026", "SALES_PRODUCTS")],
+      "ProductSales.xlsx",
+    )
+    expect(result.fileType).toBe("sales-products")
+    expect(result.sheetCounts.salesProducts).toBe(1)
+  })
+
+  it("lets financial intent dominate — SALES_PRODUCTS + PLF is main-financial", () => {
+    // Same rule every soft bucket follows: mixed with PLF/BS/CF, the file is
+    // a financial workbook that happens to include a sales tab.
+    const result = detectFileType(
+      [
+        cls("PLF", "PLF"),
+        cls("BS", "BS"),
+        cls("CF", "CF"),
+        cls("Products", "SALES_PRODUCTS"),
+      ],
+      "Mixed.xlsx",
+    )
+    expect(result.fileType).toBe("main-financial")
   })
 })
