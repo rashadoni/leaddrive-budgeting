@@ -97,6 +97,7 @@ export async function runKpiDispatcher({
 
       // Idempotent delete-then-insert per (companyId × metric × date).
       // Same-sheet re-applies must produce identical state.
+      const kpiStaleFactNotes: string[] = []
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         for (const code of codes) {
           const companyIdResolved = idByCode.get(code)
@@ -125,6 +126,27 @@ export async function runKpiDispatcher({
               source: "xlsx_import",
             },
           })
+          // Phase 11.21 (2026-07-29) — same residue as the BS dispatcher: the
+          // date window comes from the NEW file, so a corrected re-import
+          // covering fewer dates leaves the dropped ones holding their
+          // previous values. `source: "xlsx_import"` is a channel tag shared
+          // by every xlsx import, not a per-sheet key, so widening the window
+          // would delete a SIBLING sheet's facts. Name the residue instead.
+          const staleFacts = await tx.operationalFact.count({
+            where: {
+              organizationId: orgIdLocal,
+              companyId: companyIdResolved,
+              metric: { in: metricsForThisCompany },
+              date: { notIn: datesForThisCompany },
+              source: "xlsx_import",
+            },
+          })
+          if (staleFacts > 0) {
+            kpiStaleFactNotes.push(
+              `${code}: ${staleFacts} earlier fact(s) for these metrics fall outside ` +
+                `this sheet's dates and keep their previous import's values`,
+            )
+          }
         }
         const rows: Array<{
           organizationId: string
@@ -169,6 +191,10 @@ export async function runKpiDispatcher({
         factsInserted: resolvedFacts.length,
         entitiesTouched,
         warnings: parsed.warnings.length,
+        // Phase 11.21 — facts outside this sheet's date window survive.
+        ...(kpiStaleFactNotes.length > 0
+          ? { staleFacts: kpiStaleFactNotes }
+          : {}),
       })
     }
   } catch (err) {
@@ -272,6 +298,7 @@ export async function runBsDispatcher({
       }
 
       let rowsInserted = 0
+      let bsStaleMonthWarning: string | null = null
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // Idempotent: delete same (planId × accountCode × year ×
         // month) rows for this entity then re-insert.
@@ -296,6 +323,34 @@ export async function runBsDispatcher({
             month: { in: monthsInSheet },
           },
         })
+        // Phase 11.21 (2026-07-29) — report what this sheet did NOT cover.
+        //
+        // The window above is built from the NEW file's months only, so a
+        // corrected re-import covering FEWER months leaves the dropped ones
+        // holding their previous values. Widening it to the whole year is not
+        // the fix: two BS sheets covering different months of the same year
+        // would then clobber each other, which is the 11.1b defect in a new
+        // place. `BalanceSheetLine` has no per-sheet provenance column to
+        // scope by (unlike `BudgetActual.source`), so until it gains one the
+        // honest move is to name the residue rather than silently leave it.
+        // The rows are soft-deletable, so this is stale-not-lost.
+        const staleBsMonths = await tx.balanceSheetLine.findMany({
+          where: {
+            organizationId: orgIdLocal,
+            planId: bsPlanId!,
+            companyId: company.id,
+            year: targetYear,
+            month: { notIn: monthsInSheet },
+            deletedAt: null,
+          },
+          select: { month: true },
+          distinct: ["month"],
+        })
+        if (staleBsMonths.length > 0) {
+          bsStaleMonthWarning =
+            `months ${staleBsMonths.map((m) => m.month).sort((a, b) => a - b).join(", ")} ` +
+            `are NOT in this sheet and keep their previous import's balances`
+        }
         // Ensure CoA entries exist for each BS code (prefixed by
         // entity to avoid cross-entity overwrite, same pattern as
         // PLF import).
@@ -372,6 +427,9 @@ export async function runBsDispatcher({
         rowsInserted,
         leavesTouched: parsed.lines.length,
         warnings: parsed.warnings.length,
+        // Phase 11.21 — months this sheet did not cover keep their previous
+        // import's balances. Named rather than left silent.
+        ...(bsStaleMonthWarning ? { staleMonths: bsStaleMonthWarning } : {}),
       })
       bsTouchedCompanyIds.add(company.id)
     }
