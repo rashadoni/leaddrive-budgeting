@@ -40,6 +40,7 @@
  *     QT/DAS/BO/EDN/AZS → AZSEKER-EDEN (per Phase 7.M Azik confirm
  *     2026-05-19: all farming under Eden Agro).
  */
+import { parseNumericCell } from "../numeric-cell"
 import { resolveEntityFromCostCenter } from "../azseker-workbook-mapping"
 
 export interface CapexInitiative {
@@ -79,13 +80,43 @@ export interface CapexParseResult {
 
 const NULL_CODE_TOKENS = new Set(["---", "", "n/a", "N/A"])
 
-function numericOrZero(v: unknown): number {
-  if (typeof v === "number" && Number.isFinite(v)) return v
-  if (typeof v === "string") {
-    const n = Number(v.replace(/\s/g, "").replace(",", "."))
-    return Number.isFinite(n) ? n : 0
+/**
+ * Phase 11.31 — delegates to the one numeric cell parser. The local version
+ * replaced the FIRST comma with a dot, so a CAPEX amount written `"1,234"`
+ * (1234 manat) was booked as 1.234 manat, and `"1,234,56"` fell through to 0.
+ */
+/**
+ * Phase 11.38 (2026-07-29) — report the cells this returns 0 for.
+ *
+ * The parse became correct in 11.31; the `?? 0` kept the other half of the
+ * defect: an unreadable cell and a real 0.00 reach the caller as the same
+ * number. `parseNumericCell` already says WHY it failed — this drops that
+ * reason into the adapter's warnings instead of discarding it.
+ *
+ * An EMPTY cell is not reported: absent is not invalid, and warning on every
+ * blank would bury the cells that matter. The ambiguous verdict IS reported —
+ * a single separator before exactly three digits ("1,234") is 1234 under
+ * grouping and 1.234 under a decimal reading, and a flag nobody surfaces is
+ * the same as no flag.
+ */
+export interface NumericWarnCtx {
+  warnings: string[]
+  /** 0-based row index; reported +1 to match the spreadsheet. */
+  row: number
+  /** What the cell was being read as, e.g. "CAPEX amount". */
+  field: string
+}
+
+function numericOrZero(v: unknown, ctx?: NumericWarnCtx): number {
+  const parsed = parseNumericCell(v)
+  if (ctx && parsed.reason) {
+    ctx.warnings.push(
+      parsed.value === null
+        ? `Row ${ctx.row + 1}: ${ctx.field} — ${parsed.reason}; read as 0`
+        : `Row ${ctx.row + 1}: ${ctx.field} — ${parsed.reason}`,
+    )
   }
-  return 0
+  return parsed.value ?? 0
 }
 
 function cleanCode(v: unknown): string | null {
@@ -121,8 +152,8 @@ export function parseCapexFarmSheetFromAoa(
     }
     const costCentre = typeof row[8] === "string" ? row[8].trim() : ""
     const companyCode = resolveEntityFromCostCenter(costCentre) ?? "AZSEKER-EDEN"
-    const quantity = numericOrZero(row[9])
-    const amountAzn = numericOrZero(row[11])
+    const quantity = numericOrZero(row[9], { warnings, row: r, field: "quantity" })
+    const amountAzn = numericOrZero(row[11], { warnings, row: r, field: "CAPEX amount" })
     if (amountAzn === 0) {
       warnings.push(
         `Row ${r + 1}: zero amount for "${description.slice(0, 40)}" — included anyway`,
@@ -167,8 +198,8 @@ export function parseCapexCpcSheetFromAoa(
           ? row[4].trim()
           : ""
     if (!description) continue
-    const quantity = numericOrZero(row[5])
-    const amountAzn = numericOrZero(row[10])
+    const quantity = numericOrZero(row[5], { warnings, row: r, field: "quantity" })
+    const amountAzn = numericOrZero(row[10], { warnings, row: r, field: "CAPEX amount" })
     const currency =
       typeof row[8] === "string" && row[8].trim() ? row[8].trim() : "AZN"
     const vatRate = typeof row[11] === "number" ? row[11] : null

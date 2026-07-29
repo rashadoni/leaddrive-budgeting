@@ -2,6 +2,13 @@
 .claude/scheduled_tasks.lock
 data/onboarding-source-registry.json
 
+# Real client workbooks — uploaded for analysis, NEVER committed. Only the
+# `.example.json` registry belongs in git.
+data/*.xlsx
+data/*.xlsm
+data/*.docx
+data/*/
+
 # Dependencies
 node_modules/
 .pnp

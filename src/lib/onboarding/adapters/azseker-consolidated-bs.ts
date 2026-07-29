@@ -18,20 +18,32 @@
  * for 2026-04, all Δ=0 vs the subtotal cells, across all three published months.
  */
 
+import type { UnitScale } from "../unit-scale"
+
 export type BsSection = "asset" | "equity" | "liability"
 
 /**
- * Phase 11.18 (2026-07-29) — the thousands→manat factor, named rather than
- * inlined.
+ * Phase 11.18 — the thousands→manat factor, named rather than inlined.
  *
- * This is an ASSUMPTION about the source sheet, not a measurement, and the
- * reconciliation guard below cannot verify it: that guard compares Σ(leaves)
- * against the sheet's own subtotal cell, and BOTH sides pass through this
- * factor, so it is scale-invariant and stays green for any value. A
- * plausibility band on the resulting totals is emitted as a warning instead —
- * see `scaleWarnings`.
+ * CONFIRMED 2026-07-29 against the real `Reporting 2026.xlsx`. It was an
+ * assumption; it is now a measurement, on two independent readings:
  *
- * Confirming the units is an owner question about the file (ROADMAP 11.18).
+ *  1. `CONS PL_1!A1` of the same workbook is labelled verbatim **"AZN
+ *     thousand"** — the summary blocks of this pack are denominated in
+ *     thousands, and `BS` is one of them (same "Consolidated ..." title row,
+ *     same three-column month layout).
+ *  2. The same workbook carries `BS Actual`, the per-account balance sheet in
+ *     RAW MANAT: ASSETS at 2026-04 = 134,864,500.55. The consolidated `BS` tab
+ *     reads 253,320.38 for that month. Read as manat that would make the whole
+ *     group ₼253K — 533× SMALLER than the detail of a single scope inside it,
+ *     which is impossible. Read as thousands it is ₼253.3M against a ₼134.9M
+ *     component, which is the expected relation.
+ *
+ * The reconciliation guard below still cannot verify the factor — it compares
+ * Σ(leaves) against the sheet's own subtotal cell and BOTH sides pass through
+ * it, so it is scale-invariant and stays green for any value. That is why the
+ * plausibility band is still emitted (`scaleWarnings`): it is the only thing
+ * standing between a future file in units and a 1000× balance sheet.
  */
 export const UNIT_SCALE = 1000
 
@@ -90,7 +102,17 @@ const isSerial = (v: unknown): v is number =>
  */
 export function parseConsolidatedBs(
   rows: ReadonlyArray<ReadonlyArray<unknown>>,
+  /**
+   * Phase 11.37 — the unit READ off the workbook (`detectWorkbookUnitScale`).
+   * Omitted means nothing in the file declared one, and the legacy
+   * `UNIT_SCALE` assumption is used with the plausibility band as the only
+   * guard. See the scale block below.
+   */
+  detectedUnit?: UnitScale | null,
 ): ParsedConsolidatedBs {
+  // The declared factor wins over the constant. 11.18 measured that they
+  // agree for the current file, so this changes nothing for AzerSheker.
+  const unitScale = detectedUnit?.factor ?? UNIT_SCALE
   // 1. Locate the date row (most Excel serials in the first handful of rows).
   let dateRow = -1
   let bestSerials = 0
@@ -136,7 +158,7 @@ export function parseConsolidatedBs(
     const out = new Map<string, number>()
     for (const [c, ym] of colMonth) {
       const v = row[c]
-      if (typeof v === "number") out.set(ym, v * UNIT_SCALE)
+      if (typeof v === "number") out.set(ym, v * unitScale)
     }
     return out
   }
@@ -197,37 +219,67 @@ export function parseConsolidatedBs(
     }
   }
 
-  // 4a. Phase 11.18 (2026-07-29) — SCALE PLAUSIBILITY.
+  // 4a. Phase 11.18 / 11.37 — SCALE.
   //
-  // The ×1000 below is an ASSUMPTION about the source sheet ("figures are in
-  // thousands of manat"), not something measured. The Σ-leaves guard that
-  // follows cannot catch a wrong multiplier: it compares two quantities that
-  // were BOTH scaled by it, so it is scale-invariant by construction and
-  // stays green whether the factor is 1, 1000 or 10^6.
+  // The Σ-leaves guard below cannot police the multiplier: it compares two
+  // quantities that were BOTH scaled by it, so it is scale-invariant by
+  // construction and stays green whether the factor is 1, 1000 or 10^6.
   //
-  // This check is deliberately a WARNING, not a throw: only the owner can
-  // confirm the sheet's units, and refusing the import on a heuristic would
-  // block a legitimate one. But it must not stay silent — a wrong factor
-  // moves the entire balance sheet by three orders of magnitude while every
-  // internal cross-foot still ties.
+  // 11.37 removes the guesswork where the file allows it. When the workbook
+  // DECLARES its unit (`CONS PL_1!A1` = "AZN thousand" in the current pack)
+  // that declaration is used and recorded. When nothing declares one we fall
+  // back to the historical assumption — and then the plausibility band is the
+  // only thing standing between a file in base units and a balance sheet off
+  // by three orders of magnitude.
   //
-  // Band chosen from the client's own scale: total assets for this holding
-  // sit in the ₼10^7-10^9 range. A result below ₼1M or above ₼100B means the
-  // multiplier is almost certainly wrong in one direction or the other.
+  // Band from the client's own scale: total assets for this holding sit in
+  // the 10^7-10^9 manat range. Below 1M or above 100B means the multiplier is
+  // almost certainly wrong in one direction or the other.
   const scaleWarnings: string[] = []
+  if (detectedUnit) {
+    scaleWarnings.push(
+      `unit read from the workbook: ${detectedUnit.source} "${detectedUnit.label}" ` +
+        `→ ×${detectedUnit.factor}` +
+        (detectedUnit.factor === UNIT_SCALE
+          ? ` (matches the assumed factor)`
+          : ` — this OVERRIDES the assumed ×${UNIT_SCALE}`),
+    )
+  }
+  const implausible: string[] = []
   for (const ym of months) {
     const assets = officialTotals.get(ym)?.asset
     if (assets == null || assets === 0) continue
     const abs = Math.abs(assets)
     if (abs < 1_000_000 || abs > 100_000_000_000) {
-      scaleWarnings.push(
-        `${ym}: total assets ₼${Math.round(abs).toLocaleString("en-US")} after ` +
-          `applying the ×${UNIT_SCALE} thousands→manat factor. That is outside ` +
-          `the expected ₼1M-₼100B band — CONFIRM the sheet's units before trusting ` +
-          `this balance sheet. The Σ-leaves guard below cannot detect this: it is ` +
-          `scale-invariant.`,
+      implausible.push(
+        `${ym}: total assets ₼${Math.round(abs).toLocaleString("en-US")} after ×${unitScale}`,
       )
     }
+  }
+  for (const line of implausible) {
+    scaleWarnings.push(
+      `${line}` +
+        (detectedUnit
+          ? `, the unit DECLARED by ${detectedUnit.source}`
+          : `, an ASSUMED factor — nothing in this workbook declares its money unit`) +
+        `. Outside the expected ₼1M-₼100B band — verify the pack. The Σ-leaves guard ` +
+        `cannot detect this: it is scale-invariant.`,
+    )
+  }
+  // 11.37 note — this stays a WARNING even when the unit is undeclared AND the
+  // total looks implausible, which is not where this task started. The band is
+  // calibrated on ONE client ("assets sit in the 10^7-10^9 range"), and a
+  // holding whose balance sheet genuinely totals ₼400K is a small company, not
+  // a scaling error. Refusing those imports would be enforcing this client's
+  // size as a correctness rule. The 11.18 decision — only the owner can
+  // confirm a sheet's units — survives; what 11.37 removes is the GUESSING,
+  // not the owner's judgement.
+  if (!detectedUnit && implausible.length === 0) {
+    scaleWarnings.push(
+      `money unit not declared anywhere in this workbook — applied the assumed ` +
+        `×${UNIT_SCALE}. State it in the sheet (e.g. "AZN thousand" in the top-left ` +
+        `cell) to make this measured rather than assumed.`,
+    )
   }
 
   // 4. HARD reconciliation guard — Σ(leaves per section) == subtotal cell, per month.

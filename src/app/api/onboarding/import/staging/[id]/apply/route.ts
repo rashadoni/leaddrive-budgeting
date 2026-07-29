@@ -414,14 +414,19 @@ export async function POST(
   // BUT does not mutate state. Caller can preview the apply before
   // committing.
   if (dryRun) {
-    const planName = `AI-Imported ${targetYear} Budget`;
+    // 2026-07-29 (11.4 follow-up) — the PREVIEW must read the same plan the
+    // APPLY writes to. Both resolve by (org, year, kind) now; keying the
+    // preview on the plan NAME made the blast-radius panel report on a plan
+    // the apply never touches, so "0 rows will be replaced" could be shown
+    // right before a full replacement.
     const existingPlan = await prisma.budgetPlan.findFirst({
       where: {
         organizationId: orgId,
         year: targetYear,
-        name: planName,
+        kind: "actual",
         deletedAt: null,
       },
+      orderBy: { createdAt: "asc" },
       select: { id: true },
     });
     const wouldBeDeleted = existingPlan

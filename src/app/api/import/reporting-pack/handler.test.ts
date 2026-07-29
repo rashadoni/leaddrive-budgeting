@@ -34,11 +34,22 @@ vi.mock("@/lib/onboarding/adapters/reporting-pack-importer", () => ({
 vi.mock("@/lib/risk/recompute-trigger", () => ({
   runRecomputeForCompanies: vi.fn(async () => ({ ok: 1, unknown: 0, failed: 0, targets: 1 })),
 }))
+// Phase 11.34 — the period-lock gate this route was missing.
+vi.mock("@/lib/budgeting/period-lock", () => ({
+  getActivePeriodLock: vi.fn(async () => null),
+}))
+vi.mock("@/lib/budgeting/period-lock-http", () => ({
+  lockedResponse: vi.fn(
+    () => new Response(JSON.stringify({ error: "period locked" }), { status: 423 }),
+  ),
+}))
 
 import * as XLSX from "xlsx"
 import { requireRole } from "@/lib/api-auth"
 import { runReportingPackImport } from "@/lib/onboarding/adapters/reporting-pack-importer"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
+import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import { POST } from "./route"
 
 const SESSION = { userId: "u1", orgId: "org1", role: "admin" as const }
@@ -157,5 +168,41 @@ describe("POST /api/import/reporting-pack", () => {
     expect(body.ok).toBe(false)
     expect(body.error).toBe("sanitised")
     expect(JSON.stringify(body)).not.toContain("secret")
+  })
+
+  // ── Phase 11.34 — period-lock gate ────────────────────────────────
+  // 11.13 gated /api/import/ai-auto-multi and left this route open. Both
+  // write the same BudgetLine / CashFlowEntry rows for a year, so a signed,
+  // closed period stayed rewritable through whichever door had no gate.
+  describe("period lock", () => {
+    const LOCK = { period: "2026", lockedBy: "cfo", lockedAt: "2026-07-01", reason: "signed" }
+
+    it("REFUSES an apply into a locked year", async () => {
+      ;(getActivePeriodLock as ReturnType<typeof vi.fn>).mockResolvedValueOnce(LOCK)
+      const res = await POST(makeReq({ file: xlsxBlob(), year: "2026", apply: "1" }))
+      expect(res.status).toBe(423)
+      expect(runReportingPackImport).not.toHaveBeenCalled()
+      expect(lockedResponse).toHaveBeenCalledWith(
+        LOCK,
+        expect.objectContaining({ route: "POST /api/import/reporting-pack" }),
+      )
+    })
+
+    it("checks the lock for the YEAR being imported, not the current one", async () => {
+      await POST(makeReq({ file: xlsxBlob(), year: "2024", apply: "1" }))
+      expect(getActivePeriodLock).toHaveBeenCalledWith(expect.anything(), "org1", "2024")
+    })
+
+    it("still allows a PREVIEW of a locked year — a preview writes nothing", async () => {
+      ;(getActivePeriodLock as ReturnType<typeof vi.fn>).mockResolvedValueOnce(LOCK)
+      const res = await POST(makeReq({ file: xlsxBlob(), year: "2026" }))
+      expect(res.status).toBe(200)
+      expect(runReportingPackImport).toHaveBeenCalled()
+    })
+
+    it("does not consult the lock at all on the preview path", async () => {
+      await POST(makeReq({ file: xlsxBlob(), year: "2026" }))
+      expect(getActivePeriodLock).not.toHaveBeenCalled()
+    })
   })
 })

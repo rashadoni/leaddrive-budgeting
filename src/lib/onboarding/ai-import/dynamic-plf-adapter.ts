@@ -20,6 +20,7 @@
  *   New format, next   → $0  (cache hit)
  */
 
+import { numericCellValue } from "../numeric-cell"
 import type { PrismaClient, Prisma } from "@prisma/client"
 import {
   createCoACache,
@@ -582,12 +583,11 @@ export async function runDynamicPlfAdapter(
 
     for (let m = 0; m < 12; m++) {
       const cellVal = row[monthCols[m]]
-      const raw =
-        typeof cellVal === "number"
-          ? cellVal
-          : typeof cellVal === "string" && cellVal.trim() !== ""
-            ? Number(cellVal.replace(",", "."))
-            : null
+      // Phase 11.31 — the one numeric cell parser. The inline version here
+      // replaced the FIRST comma with a dot, so `"1,234"` (1234) was read as
+      // 1.234 and `"1,234,56"` became NaN, which the `isFinite` guard below
+      // then dropped as if the cell were empty.
+      const raw = numericCellValue(cellVal)
 
       if (raw === null || !Number.isFinite(raw) || raw === 0) continue
 

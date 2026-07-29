@@ -23,6 +23,7 @@
  * (one LLM mapper call, cached 24h per template structure-hash).
  */
 import { NextRequest, NextResponse } from "next/server"
+import { detectHeuristicAnomalies } from "@/lib/onboarding/ai-mapper/anomaly-rules"
 import * as XLSX from "xlsx"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
@@ -202,14 +203,55 @@ export async function POST(request: NextRequest) {
   let fromTemplate = false
   if (template) {
     fromTemplate = true
-    proposal = {
+    // Phase 11.27 (2026-07-29) — a reused template supplies the COLUMN
+    // MAPPING; it says nothing about the numbers in THIS file.
+    //
+    // `anomalies: []` was hardcoded here, so a workbook that merely shares a
+    // structure hash with a previously approved one arrived at the reviewer
+    // with a clean bill of health: a -200% margin, an inverted sign, a
+    // duplicated row, a currency mix — none of it surfaced. Green by
+    // construction, and the review step exists precisely to catch these.
+    //
+    // The heuristic rules operate on `mapperInput` (the new file's parsed
+    // data) plus a column mapping, so they run perfectly well here. Only the
+    // LLM's narrative anomalies are unavailable, which is the honest cost of
+    // skipping the LLM call.
+    const templateBase = {
       sourceFile: filename,
       sourceSheet: sheetName,
       columns: template.mapping.columns,
       accountTypeOverrides: template.mapping.accountTypeOverrides ?? [],
-      anomalies: [],
       overallConfidence: 0.95,
       summary: `Reused an approved template for this file shape (v${template.version}, approved ${template.approvedAt.slice(0, 10)}). Review before committing.`,
+    }
+    const heuristic = detectHeuristicAnomalies(mapperInput, templateBase)
+
+    // The overrides were inferred from the ORIGINAL workbook. A code they
+    // name that is absent here means the template has drifted from the file
+    // — replaying it would type an account this sheet never mentions.
+    const sheetCodes = new Set(
+      mapperInput.sampleRows
+        .flat()
+        .filter((c): c is string => typeof c === "string")
+        .map((c) => c.trim())
+        .filter(Boolean),
+    )
+    const staleOverrides = templateBase.accountTypeOverrides.filter(
+      (o) => !sheetCodes.has(o.code),
+    )
+    const driftAnomalies = staleOverrides.map((o) => ({
+      row: 0,
+      category: "category_mismatch" as const,
+      severity: "warning" as const,
+      description:
+        `Approved template overrides code "${o.code}" to ${o.accountType}, but that ` +
+        `code does not appear in this file. The override came from the workbook the ` +
+        `template was approved on — confirm it still applies.`,
+    }))
+
+    proposal = {
+      ...templateBase,
+      anomalies: [...heuristic, ...driftAnomalies],
     }
   } else {
     try {

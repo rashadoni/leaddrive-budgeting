@@ -203,11 +203,43 @@ export function parseReportingPackPlf(
   xlsx: typeof XLSX,
   opts: { preferYear: number; buHeader?: string },
 ): ReportingPackParseResult<ParsedPlfLine> {
-  return parseDetailSheet(workbook, sheetName, xlsx, opts.buHeader ?? "BU", (sheet) => {
+  // Phase 11.36 — classify the cost-sign convention ONCE, over every row of
+  // the sheet, before splitting. The convention belongs to the FILE; running
+  // the classifier per BU let one workbook land two different conventions (an
+  // all-zero BU falls to `no_evidence` → default flip, while a sibling reads
+  // `positive_costs` and does not flip).
+  //
+  // The whole-sheet pass merges the entities — which is precisely the defect
+  // this module exists to fix — but that collapse cannot change a SIGN, and
+  // reusing the canonical parser keeps leaf detection identical to the per-BU
+  // calls rather than duplicating it here.
+  const wholeSheet = parsePlfPlSheet(workbook, sheetName, xlsx, {
+    preferYear: opts.preferYear,
+  })
+  const signOverride = wholeSheet.signConvention
+  const signWarnings: string[] = []
+  if (signOverride) {
+    signWarnings.push(`Cost-sign convention (whole sheet): ${signOverride.notes.join("; ")}`)
+    if (signOverride.blockedReason) {
+      signWarnings.push(`BLOCKED: ${signOverride.blockedReason}`)
+    }
+  } else {
+    // No header row → nothing was classified. Each BU then decides for itself,
+    // which is the pre-11.36 behaviour; say so rather than imply a shared one.
+    signWarnings.push(
+      `Cost-sign convention could not be read from the whole sheet — each BU classified independently`,
+    )
+  }
+
+  const result = parseDetailSheet(workbook, sheetName, xlsx, opts.buHeader ?? "BU", (sheet) => {
     const wb = { SheetNames: [SYNTH_SHEET], Sheets: { [SYNTH_SHEET]: sheet } } as XLSX.WorkBook
-    const res = parsePlfPlSheet(wb, SYNTH_SHEET, xlsx, { preferYear: opts.preferYear })
+    const res = parsePlfPlSheet(wb, SYNTH_SHEET, xlsx, {
+      preferYear: opts.preferYear,
+      signOverride,
+    })
     return { lines: res.lines, warnings: res.warnings.map((w) => w.reason) }
   })
+  return { ...result, warnings: [...signWarnings, ...result.warnings] }
 }
 
 /** Parse a reporting-pack Cash Flow detail sheet (CF Actual / Budget CF). */

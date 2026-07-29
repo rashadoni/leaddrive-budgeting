@@ -49,6 +49,7 @@ import {
   resolveEntityFromCostCenter,
   resolveEntityFromProcessingKpiSheet,
 } from "../azseker-workbook-mapping"
+import { numericCellValue } from "../numeric-cell"
 
 /** One row written to OperationalFact. */
 export interface ParsedKpiFact {
@@ -86,14 +87,16 @@ function excelSerialToDate(cell: unknown): Date | null {
   return d
 }
 
+/**
+ * Phase 11.31 — delegates to the one numeric cell parser.
+ *
+ * The local version stripped EVERY comma, i.e. it hard-coded "comma is a
+ * thousands separator". On a sheet written the other way `"1,5"` (1.5 ha,
+ * 1.5 t/ha) landed as **15** — a 10× area or yield, with no warning. The
+ * shared parser reads the separator off the string's structure instead.
+ */
 function toNumber(cell: unknown): number | null {
-  if (typeof cell === "number" && Number.isFinite(cell)) return cell
-  if (typeof cell === "string") {
-    const trimmed = cell.replace(/[,\s]/g, "")
-    const n = Number(trimmed)
-    if (Number.isFinite(n)) return n
-  }
-  return null
+  return numericCellValue(cell)
 }
 
 /** Header column indices for a Farming KPI sheet. Cols 0..7 are

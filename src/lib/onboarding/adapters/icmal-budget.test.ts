@@ -100,3 +100,83 @@ describe("icmal-budget mapping", () => {
     }
   })
 })
+
+// ─── Phase 11.35 — the sign is INFERRED, not asserted with Math.abs ──────
+//
+// `annual: Math.abs(v)` ran on the BudgetLine write path. It is
+// convention-independent, so it produced the right answer for the current
+// AZSEKER files (costs stored negative) purely by luck, and silently erased
+// two real cases: a debit-convention file (costs stored positive — the typical
+// SAP/1C export) and any genuinely negative row, including a contra-revenue
+// entry that must net revenue DOWN.
+describe("icmal-budget — cost-sign convention", () => {
+  /** The canonical AOA with every cost row's sign flipped (debit convention). */
+  const DEBIT_AOA: unknown[][] = AOA.map((row) =>
+    Array.isArray(row) && (row[1] === "COGS" || row[1] === "OPEX")
+      ? row.map((c, i) => (i >= 3 && typeof c === "number" ? -c : c))
+      : row,
+  )
+
+  it("flips a credit-convention file (costs stored negative) to positive", () => {
+    const { lines } = parseIcmalBudgetLines(AOA, 2026)
+    const cogs = lines.filter((l) => l.lineType === "cogs")
+    expect(cogs.length).toBeGreaterThan(0)
+    expect(cogs.every((l) => l.annual > 0)).toBe(true)
+    expect(lines.find((l) => l.lineType === "cogs" && l.label === "Buğda")!.annual).toBe(300)
+  })
+
+  it("does NOT flip a debit-convention file — Math.abs hid this entirely", () => {
+    // Negating an already-positive cost turns gross profit into revenue PLUS
+    // cost. `Math.abs` returned +300 here too, which is why it looked fine.
+    const { lines } = parseIcmalBudgetLines(DEBIT_AOA, 2026)
+    const cogs = lines.filter((l) => l.lineType === "cogs")
+    expect(cogs.every((l) => l.annual > 0)).toBe(true)
+    expect(lines.find((l) => l.lineType === "cogs" && l.label === "Buğda")!.annual).toBe(300)
+  })
+
+  it("classifies COGS and expenses INDEPENDENTLY", () => {
+    // A workbook may store COGS negative and opex positive. One shared verdict
+    // would corrupt whichever section disagreed with the majority.
+    const mixed = AOA.map((row) =>
+      Array.isArray(row) && row[1] === "OPEX"
+        ? row.map((c, i) => (i >= 3 && typeof c === "number" ? -c : c))
+        : row,
+    )
+    const { lines } = parseIcmalBudgetLines(mixed, 2026)
+    expect(lines.find((l) => l.lineType === "cogs" && l.label === "Buğda")!.annual).toBe(300)
+    expect(lines.find((l) => l.label === "İşçi xərcləri")!.annual).toBe(100)
+  })
+
+  it("keeps a contra-revenue row NEGATIVE so it nets revenue down", () => {
+    // Math.abs turned a return/correction into extra revenue — it ADDED to the
+    // figure it was supposed to reduce.
+    const withReturn: unknown[][] = [
+      ...AOA,
+      [null, "Revenue", "Sair məhsullar", -75, -80],
+    ]
+    const { lines } = parseIcmalBudgetLines(withReturn, 2026)
+    expect(lines.find((l) => l.label === "Sair məhsullar")!.annual).toBe(-75)
+  })
+
+  it("reports the convention it read, per section", () => {
+    const { signNotes } = parseIcmalBudgetLines(AOA, 2026)
+    expect(signNotes.join(" ")).toMatch(/COGS/)
+    expect(signNotes.join(" ")).toMatch(/Expenses/)
+  })
+
+  it("BLOCKS a mixed-sign cost section instead of guessing", () => {
+    // Half the costs positive, half negative, no majority: importing would
+    // guess the sign of every cost in the statement.
+    const ambiguous: unknown[][] = [
+      ...AOA,
+      [null, "COGS", "Qarğıdalı", 300, 320],
+      [null, "COGS", "Pambıq", 200, 210],
+    ]
+    const r = parseIcmalBudgetLines(ambiguous, 2026)
+    expect(r.signBlockedReason).toMatch(/ambiguous/i)
+  })
+
+  it("leaves signBlockedReason null on a clean file", () => {
+    expect(parseIcmalBudgetLines(AOA, 2026).signBlockedReason).toBeNull()
+  })
+})

@@ -32,6 +32,7 @@ import {
   AUDIT_FINDING_METRICS,
 } from "./audit-findings-parse"
 import { parseRiskRegister } from "./risk-register-parse"
+import { buildCompanyMatcher } from "./soft-entity-match"
 import {
   parseIcmalBudgetLines,
   allocateIcmalBudget,
@@ -164,10 +165,48 @@ export function makeCapexHandler(
       }
       arr.push(init)
     }
+    // Phase 11.33 (2026-07-29) — resolve companies BEFORE reporting, and never
+    // skip one silently.
+    //
+    // `applyToDb` did `if (!companyId) continue` with no warning, while the
+    // summary above still announced "N initiatives across M companies". The
+    // codes come from `resolveEntityFromCostCenter(...) ?? "AZSEKER-EDEN"`, so
+    // for any org without those companies EVERY code resolves to nothing:
+    // zero rows written, green summary, no signal. Same class as 11.26, in the
+    // handler 11.26 did not cover.
+    const unresolvedCodes = [...byCompany.keys()].filter(
+      (code) => !ctx.codeToId.get(code),
+    )
+    const resolvedCount = byCompany.size - unresolvedCodes.length
+    const capexWarnings = [...parsed.warnings]
+    for (const code of unresolvedCodes) {
+      capexWarnings.push(
+        `CAPEX: company "${code}" is not in this organization — ` +
+          `${byCompany.get(code)?.length ?? 0} initiative(s) skipped`,
+      )
+    }
+
     return {
-      summary: `${parsed.initiatives.length} CAPEX initiatives across ${byCompany.size} companies`,
+      summary:
+        `${parsed.initiatives.length} CAPEX initiatives across ${resolvedCount} ` +
+        `resolvable compan${resolvedCount === 1 ? "y" : "ies"}` +
+        (unresolvedCodes.length > 0
+          ? ` (${unresolvedCodes.length} unresolved: ${unresolvedCodes.join(", ")})`
+          : ""),
       itemCount: parsed.initiatives.length,
-      warnings: parsed.warnings,
+      warnings: capexWarnings,
+      // Nothing resolvable means the whole sheet would vanish under a green
+      // report — block instead.
+      ...(byCompany.size > 0 && resolvedCount === 0
+        ? {
+            blocked: {
+              reason:
+                `CAPEX: none of the companies in this sheet exist in this ` +
+                `organization (${unresolvedCodes.join(", ")}). Importing would ` +
+                `write nothing and report success.`,
+            },
+          }
+        : {}),
       applyToDb: async (tx: Prisma.TransactionClient) => {
         let total = 0
         for (const [code, initiatives] of byCompany) {
@@ -289,16 +328,69 @@ export function makeForwardForecastHandler(
       input.workbook.Sheets[input.sheetName],
       { header: 1 },
     ) as unknown[][]
+    const icmalBudget = parseIcmalBudgetLines(aoaForBudget, input.year)
     const budgetMonthly = buildIcmalMonthlyRows(
-      allocateIcmalBudget(parseIcmalBudgetLines(aoaForBudget, input.year).lines),
+      allocateIcmalBudget(icmalBudget.lines),
     )
+
+    // Phase 11.35 — the cost-sign verdict must reach the field the apply gate
+    // reads. 11.9b produced the same verdict and left it in a local, so an
+    // ambiguous statement imported silently with a guessed sign.
+    // Phase 11.33 — the İcmal product→company routing table is AzerSheker's
+    // own business configuration (which entity sells beet vs wheat), so it
+    // cannot be derived. What it must not do is fail quietly: for an org
+    // without those companies EVERY line drops, `rowsInserted` is 0 and the
+    // only trace was a `logger.warn` the importing user never sees. Check the
+    // codes BEFORE apply so the verdict reaches the report.
+    const unresolvedBudgetCompanies = [
+      ...new Set(
+        budgetMonthly
+          .map((r) => r.companyCode)
+          .filter((code) => !ctx.codeToId.get(code)),
+      ),
+    ]
+    if (budgetMonthly.length > 0 && unresolvedBudgetCompanies.length > 0) {
+      const resolvable = budgetMonthly.filter((r) => ctx.codeToId.get(r.companyCode)).length
+      if (resolvable === 0) {
+        const reason =
+          `İcmal budget: none of the ${budgetMonthly.length} budget lines resolve to a company ` +
+          `in this organization (needs ${unresolvedBudgetCompanies.join(", ")}). The product→company ` +
+          `routing in icmal-budget.ts is AzerSheker-specific; writing nothing and reporting success ` +
+          `would hide the entire budget.`
+        return {
+          summary: reason,
+          itemCount: 0,
+          warnings: [...parsed.warnings, ...icmalBudget.signNotes],
+          blocked: { reason },
+          applyToDb: async () => ({ rowsInserted: 0 }),
+        }
+      }
+      icmalBudget.signNotes.push(
+        `İcmal budget: ${budgetMonthly.length - resolvable} of ${budgetMonthly.length} lines ` +
+          `route to companies this organization does not have (${unresolvedBudgetCompanies.join(", ")}) ` +
+          `and will be dropped.`,
+      )
+    }
+
+    if (icmalBudget.signBlockedReason && budgetMonthly.length > 0) {
+      return {
+        summary: `İcmal budget: ${icmalBudget.signBlockedReason}`,
+        itemCount: 0,
+        warnings: [...parsed.warnings, ...icmalBudget.signNotes],
+        blocked: { reason: icmalBudget.signBlockedReason },
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
 
     return {
       summary:
         `${parsed.forecast.length} forecast years` +
         (budgetMonthly.length ? ` + İcmal budget (${budgetMonthly.length} monthly lines)` : ""),
       itemCount: parsed.forecast.length,
-      warnings: parsed.warnings,
+      warnings: [
+        ...parsed.warnings,
+        ...(budgetMonthly.length > 0 ? icmalBudget.signNotes : []),
+      ],
       applyToDb: async (tx: Prisma.TransactionClient) => {
         let written = 0
         // (1) forward-forecast → Organization.settings (multi-year outlook).
@@ -1011,7 +1103,16 @@ export function makeLegalCasesHandler(
   void ctxRef
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
     const ctx = await ensureCtx()
-    const parsed = parseCourtDisputes(input.workbook, input.sheetName, input.XLSX)
+    // Phase 11.33 — attribute against THIS org's companies, not a literal
+    // list of AzerSheker's five. A cross-entity register names the company in
+    // a cell, so for any other org the hardcoded patterns matched nothing and
+    // every case was dropped by a bare `continue`.
+    const parsed = parseCourtDisputes(
+      input.workbook,
+      input.sheetName,
+      input.XLSX,
+      buildCompanyMatcher(ctx.orgCompanies),
+    )
     const period = String(input.year)
     const recordDate = new Date(`${period}-12-31T00:00:00.000Z`)
     const warnings = [...parsed.warnings]
@@ -1118,7 +1219,14 @@ export function makeAuditFindingsHandler(
   void ctxRef
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
     const ctx = await ensureCtx()
-    const parsed = parseAuditFindings(input.workbook, input.sheetName, input.XLSX)
+    // Phase 11.33 — see the court-disputes handler: the "Şirkət" cell is
+    // resolved against this org's companies.
+    const parsed = parseAuditFindings(
+      input.workbook,
+      input.sheetName,
+      input.XLSX,
+      buildCompanyMatcher(ctx.orgCompanies),
+    )
     const period = String(input.year)
     const recordDate = new Date(`${period}-12-31T00:00:00.000Z`)
     const warnings = [...parsed.warnings]

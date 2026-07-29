@@ -24,6 +24,7 @@ import {
   consolidatedAccountCode,
   type BsSection,
 } from "./azseker-consolidated-bs"
+import type { UnitScale } from "../unit-scale"
 
 const SECTION_TO_LINETYPE: Record<BsSection, string> = {
   asset: "asset",
@@ -39,6 +40,12 @@ export interface ConsolidatedBsImportInput {
   holdingCompanyCode: string
   actorUserId: string
   sourceDocument?: string
+  /**
+   * Phase 11.37 — the money unit READ off the workbook. Null/absent means the
+   * file declared none, and the parser falls back to the assumed factor (and
+   * refuses outright if that produces implausible totals).
+   */
+  detectedUnit?: UnitScale | null
 }
 
 export interface ConsolidatedBsImportResult {
@@ -62,10 +69,11 @@ export async function importConsolidatedHoldingBs(
     holdingCompanyCode,
     actorUserId,
     sourceDocument = "Reporting 2026.xlsx#BS",
+    detectedUnit = null,
   } = input
 
   // 1. Parse + money guard (throws if Σ leaves ≠ official subtotal cells).
-  const parsed = parseConsolidatedBs(worksheetRows)
+  const parsed = parseConsolidatedBs(worksheetRows, detectedUnit)
   const warnings: string[] = []
   // Phase 11.18 — the parser's scale-plausibility notes must reach the import
   // report, not die inside the parser. A wrong thousands→manat factor moves

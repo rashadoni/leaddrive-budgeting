@@ -541,9 +541,19 @@ export async function POST(
   // "are you sure?" confirmation so wrong-file or wrong-year imports
   // surface BEFORE the destructive delete-then-insert lands.
   if (request.nextUrl.searchParams.get("dryRun") === "true") {
-    const planName = `AI-Imported ${targetYear} Budget`
+    // 2026-07-29 (11.4 follow-up) — the PREVIEW must read the same plan the
+    // APPLY writes to. Both resolve by (org, year, kind) now; keying the
+    // preview on the plan NAME made the blast-radius panel report on a plan
+    // the apply never touches, so "0 rows will be replaced" could be shown
+    // right before a full replacement.
     const existingPlan = await prisma.budgetPlan.findFirst({
-      where: { organizationId: orgIdLocal, year: targetYear, name: planName, deletedAt: null },
+      where: {
+        organizationId: orgIdLocal,
+        year: targetYear,
+        kind: "actual",
+        deletedAt: null,
+      },
+      orderBy: { createdAt: "asc" },
       select: { id: true },
     })
     const currentLines = existingPlan

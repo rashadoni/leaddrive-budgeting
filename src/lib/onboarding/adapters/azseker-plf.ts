@@ -215,7 +215,25 @@ export function parsePlfPlSheet(
   workbook: XLSX.WorkBook,
   sheetName: string,
   xlsx: typeof XLSX,
-  opts?: { preferYear?: number },
+  opts?: {
+    preferYear?: number
+    /**
+     * Phase 11.36 (2026-07-29) — use THIS verdict instead of classifying the
+     * sheet in isolation.
+     *
+     * `reporting-pack-detail.ts` splits one worksheet into a synthetic sheet
+     * per `BU` and calls this parser once per entity. Each call therefore saw
+     * only one entity's rows and could reach a DIFFERENT conclusion about the
+     * same workbook — most sharply when a BU's costs are all zero, which
+     * classifies as `no_evidence` and falls back to the default flip while a
+     * sibling BU reads `positive_costs` and does not flip. One file, two
+     * conventions, no signal.
+     *
+     * The convention is a property of the FILE, so the caller classifies once
+     * over every row and passes the verdict down.
+     */
+    signOverride?: CostSignDecision
+  },
 ): PlfParseResult {
   const sheet = workbook.Sheets[sheetName]
   if (!sheet) {
@@ -278,7 +296,10 @@ export function parsePlfPlSheet(
   }
 
   // ── Pass 2: apply the INFERRED cost-sign convention ────────────────────
-  const signDecision = resolveCostSigns(cogsRawAnnuals, expenseRawAnnuals)
+  // 11.36 — a caller that split this sheet out of a larger one classifies over
+  // the WHOLE sheet and passes the verdict in; only a standalone sheet decides
+  // for itself.
+  const signDecision = opts?.signOverride ?? resolveCostSigns(cogsRawAnnuals, expenseRawAnnuals)
   for (const line of lines) {
     const flip =
       line.accountType === "cogs"
