@@ -133,10 +133,21 @@ export type AuditEventInput =
         companyId: string;
         year: number;
         inserted: number;
-        deleted: number;
+        // Phase 11.13 — these three were emitted as hardcoded zeros by the
+        // AI multi-file path, i.e. they read as measurements and were not.
+        // Optional now, so a caller that cannot measure them omits them
+        // instead of fabricating a number.
+        deleted?: number;
         warnings: number;
-        parentRollupsDropped: number;
-        parentRollupsUnallocated: number;
+        parentRollupsDropped?: number;
+        parentRollupsUnallocated?: number;
+        /** Phase 11.13 — key into `import_batch_reports` for the real
+         *  per-group post-write evidence. */
+        evidenceRunId?: string;
+        /** "db-readback" | "parse-self-check" — what the verdict rests on. */
+        reconciliationEvidence?: string;
+        /** Did every uploaded file's data actually land (Phase 11.3)? */
+        complete?: boolean;
         recompute: { ok: number; unknown: number; failed: number; targets: number };
         // Phase 7.G Turn CXI (Phase 7.B v2 Day 4) — multi-sheet apply
         // emits this same enum value with these optional fields populated.

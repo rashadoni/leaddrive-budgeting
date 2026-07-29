@@ -35,6 +35,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
 import { acquireImportLock } from "@/lib/onboarding/import-lock"
+import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import * as XLSX from "xlsx"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
@@ -1002,6 +1004,25 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // ── Period-lock gate (Phase 11.13) ──────────────────────────────
+  // A signed, closed period must not be silently rewritten by an import.
+  // Every interactive mutation route already gates on this
+  // (assumptions / sales-budget / sales-forecast / cash-flow); the bulk
+  // import path — by far the largest single mutation in the product — did
+  // not, so a reset + re-import could overwrite a locked year while the
+  // audit trail recorded only a routine import.
+  if (shouldApply) {
+    const lock = await getActivePeriodLock(prisma, orgId, String(year))
+    if (lock) {
+      return lockedResponse(lock, {
+        prisma,
+        orgId,
+        userId: session.userId ?? null,
+        route: "POST /api/import/ai-auto-multi",
+      })
+    }
+  }
+
   // ── Mutual exclusion (Phase 11.8) ───────────────────────────────
   // Only for APPLY. A preview writes nothing, so concurrent previews are
   // harmless and must not be refused. Every import batch is clean-slate
@@ -1048,6 +1069,12 @@ export async function POST(request: NextRequest) {
         // Apply only when caller asked explicitly. Default: preview-only
         // (dryRun=true) — matches the 2-step UX shipped in Tier 4.
         dryRun: !shouldApply,
+        // Phase 11.13 — identity for the persisted per-group evidence rows.
+        // Only on apply: a preview commits nothing, so there is nothing to
+        // attest to.
+        ...(shouldApply
+          ? { runId: `ai-multi:${orgId}:${year}:${t0}`, actorUserId: session.userId ?? null }
+          : {}),
       },
       {
         prisma,
@@ -1310,10 +1337,18 @@ export async function POST(request: NextRequest) {
             companyId: anchor?.id ?? "unknown",
             year,
             inserted: totalInserted,
-            deleted: 0,
             warnings: result.warnings.length,
-            parentRollupsDropped: 0,
-            parentRollupsUnallocated: 0,
+            // Phase 11.13 — the audit row used to carry hardcoded
+            // `deleted: 0` / `parentRollupsDropped: 0` /
+            // `parentRollupsUnallocated: 0`, which read as measurements and
+            // were not. Dropped rather than faked; the real per-group
+            // evidence now lives in `import_batch_reports`, keyed by runId.
+            evidenceRunId: `ai-multi:${orgId}:${year}:${t0}`,
+            reconciliationEvidence: safetyReceipt.reconciliation.evidence
+              .allCommittedGroupsVerified
+              ? "db-readback"
+              : "partial-or-unverified",
+            complete: result.completeness.complete,
             recompute: result.recompute,
             multiSheet: true,
             sheetCount: result.perFile.reduce(

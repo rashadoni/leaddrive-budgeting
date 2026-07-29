@@ -181,6 +181,13 @@ const APPLY_ORDER: Record<FileType, number> = {
 // ──────────────────────────────────────────────────────────────────────
 
 export interface MultiFileImportInput {
+  /**
+   * Phase 11.13 — groups this request's per-group `ImportBatchReport` rows.
+   * Omit to skip persistence (tests, callers with no request identity).
+   */
+  runId?: string
+  /** Actor recorded on the persisted report. */
+  actorUserId?: string | null
   files: ReadonlyArray<{
     filename: string
     // Phase 8 D3 (2026-05-28) — tightened to XLSX.WorkBook so the
@@ -1556,6 +1563,31 @@ export async function runMultiFileImport(
                   "adapter wrote no reconcilable sums (settings JSON or zero parsed rows)",
               })),
           )
+        }
+
+        // Phase 11.13 — persist the verdict INSIDE the transaction, so a
+        // report exists if and only if the rows it describes commit. Written
+        // before the abort check on purpose: an aborted group rolls this row
+        // back with everything else, which is the correct outcome — there is
+        // no committed data for it to attest to.
+        if (input.runId) {
+          await tx.importBatchReport.create({
+            data: {
+              organizationId: input.organizationId,
+              runId: input.runId,
+              fileType,
+              filenames,
+              year: input.year,
+              verdict: postReconciliation.overallVerdict,
+              evidence: postReconciliation.evidence ?? "parse-self-check",
+              sheetsVerified: postReconciliation.perSheet.length,
+              sheetsUnverified: postReconciliation.unverified?.length ?? 0,
+              rowsInserted: totalRowsInserted,
+              committed: true,
+              report: postReconciliation as unknown as object,
+              actorUserId: input.actorUserId ?? null,
+            },
+          })
         }
 
         const action = decideAction(postReconciliation, {

@@ -2035,3 +2035,157 @@ describe("runMultiFileImport — Phase 11.2 post-write reconciliation", () => {
     expect(result.perGroup[0].reconciliation?.evidence).toBe("parse-self-check")
   })
 })
+// ─── Phase 11.13 — persisted import evidence ───────────────────────────
+describe("runMultiFileImport — Phase 11.13 persisted evidence", () => {
+  it("writes one ImportBatchReport per group, INSIDE the group transaction", async () => {
+    // Inside the transaction on purpose: a report must exist if and only if
+    // the rows it describes committed. An aborted group rolls the report back
+    // with everything else — there is no committed data for it to attest to.
+    const created: Array<Record<string, unknown>> = []
+    const prisma = stubPrisma({
+      companies: [{ id: "c1", code: "AZSEKER-CPC" }],
+    })
+    ;(prisma as unknown as { $transaction: unknown }).$transaction = vi.fn(
+      async (cb: (tx: unknown) => Promise<void>) => {
+        await cb({
+          company: {
+            findMany: vi.fn(async () => []),
+            update: vi.fn(async () => {}),
+          },
+          importBatchReport: {
+            create: vi.fn(async (a: { data: Record<string, unknown> }) => {
+              created.push(a.data)
+              return { id: "rep_1" }
+            }),
+          },
+        })
+      },
+    )
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "PLF prefix",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "BS prefix",
+        },
+      ],
+    ])
+    await runMultiFileImport(
+      {
+        files: [
+          {
+            filename: "Guvven Fin.xlsx",
+            workbook: {
+              Sheets: {
+                "PLF CPC": { "!ref": "A1:C3" },
+                "BS CPC": { "!ref": "A1:C3" },
+              },
+              SheetNames: ["PLF CPC", "BS CPC"],
+            },
+          },
+        ],
+        organizationId: "org1",
+        year: 2026,
+        runId: "run_abc",
+        actorUserId: "u1",
+      },
+      {
+        prisma,
+        anthropicClient: client,
+        model: "claude-test",
+        registry: buildRegistryWith({ PLF: plfHandler(2), BS: plfHandler(1) }),
+        XLSX: fakeXLSX,
+      },
+    )
+
+    expect(created).toHaveLength(1)
+    expect(created[0]).toMatchObject({
+      organizationId: "org1",
+      runId: "run_abc",
+      fileType: "main-financial",
+      year: 2026,
+      committed: true,
+      actorUserId: "u1",
+    })
+    // The evidence label must survive into the record: a verdict backed by a
+    // real post-write query is not the same claim as a self-compare.
+    expect(created[0].evidence).toBeDefined()
+    expect(created[0].report).toBeDefined()
+  })
+
+  it("persists nothing when no runId is supplied", async () => {
+    const created: Array<Record<string, unknown>> = []
+    const prisma = stubPrisma({
+      companies: [{ id: "c1", code: "AZSEKER-CPC" }],
+    })
+    ;(prisma as unknown as { $transaction: unknown }).$transaction = vi.fn(
+      async (cb: (tx: unknown) => Promise<void>) => {
+        await cb({
+          company: {
+            findMany: vi.fn(async () => []),
+            update: vi.fn(async () => {}),
+          },
+          importBatchReport: {
+            create: vi.fn(async (a: { data: Record<string, unknown> }) => {
+              created.push(a.data)
+              return { id: "rep_1" }
+            }),
+          },
+        })
+      },
+    )
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "PLF prefix",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "BS prefix",
+        },
+      ],
+    ])
+    await runMultiFileImport(
+      {
+        files: [
+          {
+            filename: "Guvven Fin.xlsx",
+            workbook: {
+              Sheets: {
+                "PLF CPC": { "!ref": "A1:C3" },
+                "BS CPC": { "!ref": "A1:C3" },
+              },
+              SheetNames: ["PLF CPC", "BS CPC"],
+            },
+          },
+        ],
+        organizationId: "org1",
+        year: 2026,
+      },
+      {
+        prisma,
+        anthropicClient: client,
+        model: "claude-test",
+        registry: buildRegistryWith({ PLF: plfHandler(2), BS: plfHandler(1) }),
+        XLSX: fakeXLSX,
+      },
+    )
+    expect(created).toHaveLength(0)
+  })
+})
