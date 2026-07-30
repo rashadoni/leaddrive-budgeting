@@ -78,7 +78,9 @@ import {
 } from "./entity-inference"
 import {
   detectWorkbookYears,
+  detectMonthHeaderYears,
   type WorkbookYearDetection,
+  type MonthHeaderYears,
 } from "./workbook-year"
 import {
   detectFileType,
@@ -302,6 +304,15 @@ export interface PerFileResult {
    * zero rows and commit "green" with nothing written.
    */
   detectedYears: WorkbookYearDetection
+  /**
+   * 2026-07-30 — years evidenced by a real MONTH-HEADER SEQUENCE, i.e. what
+   * this file can actually be imported FOR. `detectedYears` above answers the
+   * looser "is this year mentioned anywhere", which on a real workbook is
+   * polluted by money: an amount of 40,000-55,000 AZN falls inside the Excel
+   * date-serial range, so `actual-budget-v1.xlsx` reported fourteen years.
+   * Anything that decides what to WRITE must use this one.
+   */
+  importableYears: MonthHeaderYears
   /** Set when a non-recoverable error stopped this file from being
    *  classified/parsed. The group it belongs to is treated as skipped. */
   error: string | null
@@ -1099,6 +1110,13 @@ export async function runMultiFileImport(
           return { years: [], dominant: null, counts: {}, multiYear: false }
         }
       })(),
+      importableYears: (() => {
+        try {
+          return detectMonthHeaderYears(f.workbook, deps.XLSX)
+        } catch {
+          return { years: [], counts: {} }
+        }
+      })(),
       error: cr.error,
       llmUsage: cr.usage,
     }
@@ -1369,18 +1387,21 @@ export async function runMultiFileImport(
   // group commits "green" with nothing written, and right after a reset that
   // reads as "my numbers are gone". Files whose year could not be detected
   // are not evidence either way and never trigger this.
-  const yearEvidence = perFile.filter((f) => f.detectedYears.years.length > 0)
+  // 2026-07-30 — the gate asks what the file can be IMPORTED for, not what it
+  // mentions. Under the loose scan a workbook "contained" fourteen years, so
+  // the gate matched almost any request and protected nothing.
+  const yearEvidence = perFile.filter((f) => f.importableYears.years.length > 0)
   if (
     !input.dryRun &&
     !input.forceOverride &&
     yearEvidence.length > 0 &&
-    !yearEvidence.some((f) => f.detectedYears.years.includes(input.year))
+    !yearEvidence.some((f) => f.importableYears.years.includes(input.year))
   ) {
     const seen = [
-      ...new Set(yearEvidence.flatMap((f) => f.detectedYears.years)),
+      ...new Set(yearEvidence.flatMap((f) => f.importableYears.years)),
     ].sort()
     const detail = yearEvidence
-      .map((f) => `${f.filename}: ${f.detectedYears.years.join(", ")}`)
+      .map((f) => `${f.filename}: ${f.importableYears.years.join(", ")}`)
       .join("; ")
     return {
       perFile,

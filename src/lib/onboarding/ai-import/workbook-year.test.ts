@@ -8,7 +8,11 @@
  */
 import { describe, it, expect } from "vitest"
 import * as XLSX from "xlsx"
-import { detectWorkbookYears, detectSheetYears } from "./workbook-year"
+import {
+  detectWorkbookYears,
+  detectSheetYears,
+  detectMonthHeaderYears,
+} from "./workbook-year"
 
 function wb(sheets: Record<string, unknown[][]>) {
   const book = XLSX.utils.book_new()
@@ -167,3 +171,72 @@ describe("detectSheetYears", () => {
     expect(perSheet).toEqual(wholeBook)
   })
 })
+
+// ── 2026-07-30 — what the file can be IMPORTED for ────────────────
+//
+// The loose scan answers "is this year mentioned"; deciding what to WRITE
+// needs a stricter question. Measured on actual-budget-v1.xlsx the loose scan
+// reported FOURTEEN years (2015…2035), and the cause was not stray text but
+// MONEY: an amount of 40,000-55,000 AZN sits inside the Excel date-serial
+// range, so a column of figures reads as a column of dates.
+describe("detectMonthHeaderYears", () => {
+  const xlsx = { utils: { sheet_to_json: (s: { aoa: unknown[][] }) => s.aoa } }
+  const book = (aoa: unknown[][]) => ({
+    SheetNames: ["s"],
+    Sheets: { s: { aoa } },
+  })
+  /** Twelve monthly serials starting at Jan of `year`. */
+  const months = (year: number): number[] => {
+    const base = Date.UTC(year, 0, 1)
+    return Array.from({ length: 12 }, (_, m) =>
+      Math.round((Date.UTC(year, m, 1) - Date.UTC(1899, 11, 30)) / 86_400_000),
+    ).map((v, i) => (i === 0 ? Math.round((base - Date.UTC(1899, 11, 30)) / 86_400_000) : v))
+  }
+
+  it("finds the year of a real 12-month header", () => {
+    expect(detectMonthHeaderYears(book([["code", "label", ...months(2026)]]), xlsx).years)
+      .toEqual([2026])
+  })
+
+  it("IGNORES a row of amounts that merely fall in the serial range", () => {
+    // This is the actual production failure: ordinary AZN figures.
+    const amounts = [41_000, 52_300, 47_800, 44_100, 49_900, 43_200]
+    expect(detectMonthHeaderYears(book([["Revenue", ...amounts]]), xlsx).years).toEqual([])
+  })
+
+  it("finds BOTH years of a two-year header", () => {
+    expect(
+      detectMonthHeaderYears(book([["", "", ...months(2025), ...months(2026)]]), xlsx).years,
+    ).toEqual([2025, 2026])
+  })
+
+  it("does not offer a lone comparative column as its own year", () => {
+    // A December-2024 comparative opening a 2025 header: importing "2024"
+    // would write a single month. It is part of the run, not a year the sheet
+    // is about.
+    const dec2024 = Math.round((Date.UTC(2024, 11, 1) - Date.UTC(1899, 11, 30)) / 86_400_000)
+    const res = detectMonthHeaderYears(book([["", dec2024, ...months(2025)]]), xlsx)
+    expect(res.years).toEqual([2025])
+  })
+
+  it("needs at least three consecutive monthly steps", () => {
+    const m = months(2026)
+    // Two dates alone are a coincidence, not a header.
+    expect(detectMonthHeaderYears(book([[m[0], m[1]]]), xlsx).years).toEqual([])
+  })
+
+  it("counts header rows per year, so a caller can weigh the evidence", () => {
+    const res = detectMonthHeaderYears(
+      {
+        SheetNames: ["a", "b"],
+        Sheets: {
+          a: { aoa: [["", ...months(2026)]] },
+          b: { aoa: [["", ...months(2026)]] },
+        },
+      },
+      xlsx,
+    )
+    expect(res.counts[2026]).toBe(2)
+  })
+})
+

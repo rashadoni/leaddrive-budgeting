@@ -30,6 +30,32 @@ const MS_PER_DAY = 86_400_000
 const MIN_YEAR = 2015
 const MAX_YEAR = 2035
 
+/**
+ * 2026-07-30 — years evidenced by a real MONTH-HEADER SEQUENCE.
+ *
+ * Why a second, stricter signal
+ * ─────────────────────────────
+ * The loose scan below answers "does this workbook mention a year", which is
+ * the right question for a pre-fill hint and the wrong one for deciding what
+ * to IMPORT. Measured on `actual-budget-v1.xlsx`: it reported **fourteen**
+ * years (2015…2035). The cause is not stray text — it is MONEY. An amount
+ * between 40,000 and 55,000 AZN sits squarely inside the Excel date-serial
+ * range, so a column of ordinary figures reads as a column of dates.
+ *
+ * A real month header is not a lone number in that range: it is a RUN of
+ * serials marching ~30 days apart. Requiring three consecutive monthly steps
+ * cut fourteen years to three, and attributing each run to the year holding
+ * at least a quarter of its cells cut the last one — a lone December-2024
+ * comparative column inside an otherwise 2025 header — leaving exactly the
+ * 2025 and 2026 the file actually carries.
+ */
+export interface MonthHeaderYears {
+  /** Years carried by a month-header sequence, ascending. */
+  years: number[]
+  /** Header rows per year — how much of the workbook is about each. */
+  counts: Record<number, number>
+}
+
 export interface WorkbookYearDetection {
   /** Every plausible year seen, ascending. */
   years: number[]
@@ -175,4 +201,101 @@ function summarize(counts: Record<number, number>): WorkbookYearDetection {
     }
   }
   return { years, dominant, counts, multiYear: years.length > 1 }
+}
+
+/** Consecutive monthly steps, in days. Feb→Mar is 28; Jul→Aug is 31. */
+const MIN_MONTH_GAP = 26
+const MAX_MONTH_GAP = 32
+/** A run shorter than this is a coincidence, not a header. */
+const MIN_RUN = 3
+/** A year holding less than this share of a run is a comparative column. */
+const MIN_YEAR_SHARE = 0.25
+
+function serialToYear(v: unknown): number | null {
+  if (typeof v !== "number" || !Number.isFinite(v)) return null
+  if (v <= 40_000 || v >= 55_000) return null
+  const y = new Date(EXCEL_EPOCH_MS + v * MS_PER_DAY).getUTCFullYear()
+  return y >= MIN_YEAR && y <= MAX_YEAR ? y : null
+}
+
+/** Years a single row carries as a month-header sequence. */
+function monthHeaderYearsInRow(row: unknown[]): Set<number> {
+  const out = new Set<number>()
+  const serials: number[] = []
+  for (const cell of row) {
+    if (serialToYear(cell) !== null) serials.push(cell as number)
+  }
+  if (serials.length < MIN_RUN) return out
+
+  const flush = (run: number[]): void => {
+    if (run.length < MIN_RUN) return
+    const per = new Map<number, number>()
+    for (const v of run) {
+      const y = serialToYear(v)
+      if (y !== null) per.set(y, (per.get(y) ?? 0) + 1)
+    }
+    // Attribute the run to the year(s) that DOMINATE it. A single
+    // December-2024 cell opening a 2025 header is a comparative period, not a
+    // year the sheet is about — offering it would invite an import that writes
+    // one month.
+    for (const [y, n] of per) {
+      if (n / run.length >= MIN_YEAR_SHARE) out.add(y)
+    }
+  }
+
+  let run: number[] = [serials[0]]
+  for (let i = 1; i < serials.length; i++) {
+    const gap = serials[i] - serials[i - 1]
+    if (gap >= MIN_MONTH_GAP && gap <= MAX_MONTH_GAP) run.push(serials[i])
+    else {
+      flush(run)
+      run = [serials[i]]
+    }
+  }
+  flush(run)
+  return out
+}
+
+/**
+ * Which years does this workbook actually hold DATA for?
+ *
+ * Use this to decide what to import. Use {@link detectWorkbookYears} only for
+ * a soft hint — it answers a looser question and, on a real workbook, answers
+ * it with money mistaken for dates.
+ */
+export function detectMonthHeaderYears(
+  workbook: {
+    SheetNames: string[]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Sheets: Record<string, any>
+  },
+  xlsx: {
+    utils: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sheet_to_json: (sheet: any, opts: any) => any[]
+    }
+  },
+  rowsPerSheet = 12,
+): MonthHeaderYears {
+  const counts: Record<number, number> = {}
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name]
+    if (!sheet) continue
+    let aoa: unknown[][]
+    try {
+      aoa = xlsx.utils.sheet_to_json(sheet, { header: 1, raw: true, blankrows: false })
+    } catch {
+      continue
+    }
+    for (const row of aoa.slice(0, rowsPerSheet)) {
+      if (!Array.isArray(row)) continue
+      for (const y of monthHeaderYearsInRow(row)) {
+        counts[y] = (counts[y] ?? 0) + 1
+      }
+    }
+  }
+  return {
+    years: Object.keys(counts).map(Number).sort((a, b) => a - b),
+    counts,
+  }
 }

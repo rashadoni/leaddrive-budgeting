@@ -65,6 +65,7 @@ interface SheetClassification {
 
 interface PerFileResult {
   /** Phase 11.5b — years the workbook's own headers declare. */
+  importableYears?: { years: number[]; counts: Record<number, number> }
   detectedYears?: {
     years: number[]
     dominant: number | null
@@ -620,9 +621,15 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   const yearMismatch = detectedYearMismatch(previewResult)
   // 2026-07-30 — every year the uploaded workbooks actually contain, from the
   // detection that already feeds the year gate. Empty until the preview runs.
+  // 2026-07-30 — the OFFER uses `importableYears`, not `detectedYears`.
+  // The loose scan counts any year-looking number, and on a real workbook that
+  // is money: an amount of 40,000-55,000 AZN lands inside the Excel
+  // date-serial range, so actual-budget-v1.xlsx offered FOURTEEN years
+  // (2015…2035) instead of the two it holds. `importableYears` requires a real
+  // month-header sequence.
   const detectedYearsAll = [
     ...new Set(
-      (previewResult?.perFile ?? []).flatMap((f) => f.detectedYears?.years ?? []),
+      (previewResult?.perFile ?? []).flatMap((f) => f.importableYears?.years ?? []),
     ),
   ].sort()
   const extraYears = detectedYearsAll.filter((y) => y !== year)
@@ -1113,13 +1120,15 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
    */
   function detectedYearMismatch(res: MultiFileApiResponse | null): number | null {
     if (!res) return null
+    // Same strict signal as the multi-year offer: "is this file about my
+    // year" must not be answered by numbers that merely look like years.
     const withYears = res.perFile.filter(
-      (f) => (f.detectedYears?.years.length ?? 0) > 0,
+      (f) => (f.importableYears?.years.length ?? 0) > 0,
     )
     if (withYears.length === 0) return null
-    if (withYears.some((f) => f.detectedYears!.years.includes(year))) return null
+    if (withYears.some((f) => f.importableYears!.years.includes(year))) return null
     const all = [
-      ...new Set(withYears.flatMap((f) => f.detectedYears!.years)),
+      ...new Set(withYears.flatMap((f) => f.importableYears!.years)),
     ].sort()
     return all[0] ?? null
   }
