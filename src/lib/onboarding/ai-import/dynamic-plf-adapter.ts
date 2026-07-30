@@ -415,6 +415,11 @@ export async function runDynamicPlfAdapter(
   // Phase 11.9 — cost-sign inference state (see pass 2 below).
   const cogsRawAnnuals: number[] = []
   const expenseRawAnnuals: number[] = []
+  // 2026-07-30 — labels ride along so the classifier can drop income lines
+  // filed under a cost section. The next client's chart will not be numbered
+  // PLF.xx, but its labels will still say income / gəlir / доход.
+  const cogsLabels: string[] = []
+  const expenseLabels: string[] = []
   const costRowSpans: Array<{
     from: number
     to: number
@@ -626,13 +631,21 @@ export async function runDynamicPlfAdapter(
         to: rows.length,
         accountType: accountType as "cogs" | "expense",
       })
-      if (accountType === "cogs") cogsRawAnnuals.push(rowRawAnnual)
-      else expenseRawAnnuals.push(rowRawAnnual)
+      if (accountType === "cogs") {
+        cogsRawAnnuals.push(rowRawAnnual)
+        cogsLabels.push(label ?? "")
+      } else {
+        expenseRawAnnuals.push(rowRawAnnual)
+        expenseLabels.push(label ?? "")
+      }
     }
   }
 
   // ── 8b. Pass 2 — apply the INFERRED cost-sign convention ──────────────────
-  const signDecision = resolveCostSigns(cogsRawAnnuals, expenseRawAnnuals)
+  const signDecision = resolveCostSigns(cogsRawAnnuals, expenseRawAnnuals, {
+    cogs: cogsLabels,
+    expense: expenseLabels,
+  })
   for (const span of costRowSpans) {
     const flip =
       span.accountType === "cogs"

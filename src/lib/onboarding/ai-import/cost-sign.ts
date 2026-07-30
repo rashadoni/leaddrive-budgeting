@@ -69,12 +69,80 @@ function describe(section: string, convention: SignConvention): string {
  * convention, so feeding it already-flipped values would just confirm
  * whatever the caller assumed.
  */
+
+/**
+ * 2026-07-30 — is this line INCOME, sitting inside a cost section?
+ *
+ * The defect this closes
+ * ──────────────────────
+ * A chart of accounts routinely files income under a section the mapper
+ * classifies as expense — AzerSheker's `PLF.07` is literally titled "OTHER
+ * OPERATING INCOME/EXPENSES" and holds Subsidies and Interest Income. Those
+ * lines are legitimately POSITIVE while real costs are stored negative, so
+ * feeding them to the sign classifier poisons the very evidence it reasons
+ * over.
+ *
+ * Measured on `actual-budget-v1.xlsx`, entity EDEN: four income leaves worth
+ * ₼3.25M against ₼6.7M of real costs dragged the negative share to 0.673 —
+ * under the 0.70 floor — so the classifier correctly refused to guess and the
+ * routing gate blocked the whole import. The data was never wrong; the
+ * evidence population was.
+ *
+ * This is deliberately about EVIDENCE only. An income line still receives the
+ * section's decision, so its sign keeps behaving exactly as before — a
+ * negative expense IS income, which is what the historical, bit-verified
+ * import produced. What changes is that it no longer VOTES on how costs are
+ * stored.
+ *
+ * Cross-language and prefix-free on purpose: the next client's chart will not
+ * be numbered `PLF.xx`, but its labels will still say income / gəlir / доход.
+ */
+const INCOME_NATURED =
+  /(income|subsid|grant|rebate|reimburse|g[əe]lir|dotasiya|доход|субсид|дотац|возмещ)/i
+
+/**
+ * Words that make an income-looking label an EXPENSE after all. "Income tax"
+ * is the case that matters: it contains "income" and is a cost.
+ */
+const NOT_INCOME = /(tax|vergi|налог|expense|x[əe]rc|расход|cost|maya)/i
+
+export function isIncomeNaturedLabel(label: string | null | undefined): boolean {
+  if (!label) return false
+  return INCOME_NATURED.test(label) && !NOT_INCOME.test(label)
+}
+
+/**
+ * Drop income-natured rows from a sign-evidence population.
+ *
+ * `labels` is positional against `annuals`; a missing label keeps the row (an
+ * unlabelled line is not evidence that it is income).
+ */
+function costEvidenceOnly(
+  annuals: readonly number[],
+  labels: readonly (string | null | undefined)[] | undefined,
+): number[] {
+  if (!labels) return [...annuals]
+  return annuals.filter((_, i) => !isIncomeNaturedLabel(labels[i]))
+}
+
 export function resolveCostSigns(
   cogsRawAnnuals: readonly number[],
   expenseRawAnnuals: readonly number[],
+  /**
+   * 2026-07-30 — row labels, positional against the arrays above. When given,
+   * income-natured lines are excluded from the EVIDENCE (see
+   * {@link isIncomeNaturedLabel}); the resulting decision still applies to
+   * every row. Omitting them keeps the pre-2026-07-30 behaviour exactly.
+   */
+  labels?: {
+    cogs?: readonly (string | null | undefined)[]
+    expense?: readonly (string | null | undefined)[]
+  },
 ): CostSignDecision {
-  const cogs = classifyCostSign([...cogsRawAnnuals])
-  const expense = classifyCostSign([...expenseRawAnnuals])
+  const cogs = classifyCostSign(costEvidenceOnly(cogsRawAnnuals, labels?.cogs))
+  const expense = classifyCostSign(
+    costEvidenceOnly(expenseRawAnnuals, labels?.expense),
+  )
 
   const ambiguous: string[] = []
   if (cogs.convention === "ambiguous") ambiguous.push("COGS")

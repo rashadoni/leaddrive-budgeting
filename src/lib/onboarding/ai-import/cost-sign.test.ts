@@ -8,7 +8,7 @@
  * store costs negative.
  */
 import { describe, it, expect } from "vitest"
-import { resolveCostSigns } from "./cost-sign"
+import { resolveCostSigns, isIncomeNaturedLabel } from "./cost-sign"
 
 describe("resolveCostSigns", () => {
   it("flips a negative-convention file (today's AZSEKER shape)", () => {
@@ -74,3 +74,97 @@ describe("resolveCostSigns", () => {
     expect(d.notes.join(" ")).toMatch(/Expenses: stored POSITIVE/)
   })
 })
+
+// ── 2026-07-30 — income filed under a cost section ────────────────
+//
+// A chart of accounts routinely files income where the mapper sees expense:
+// AzerSheker's PLF.07 is literally titled "OTHER OPERATING INCOME/EXPENSES"
+// and holds Subsidies and Interest Income. Those lines are legitimately
+// POSITIVE while real costs are stored negative, so they poison the very
+// evidence the classifier reasons over.
+//
+// Measured on actual-budget-v1.xlsx, entity EDEN: four income leaves worth
+// ₼3.25M against ₼6.7M of real costs pushed the negative share to 0.673 —
+// under the 0.70 floor — so the classifier refused to guess and the routing
+// gate blocked the entire import. The data was never wrong; the population
+// was.
+describe("isIncomeNaturedLabel", () => {
+  it("recognises the real labels that caused the block", () => {
+    for (const l of [
+      "Subsidies - Farming",
+      "Subsidies - Investment",
+      "Interest Income from Current Accounts & Deposits",
+      "Other Non-Operating Income",
+    ]) {
+      expect(isIncomeNaturedLabel(l), l).toBe(true)
+    }
+  })
+
+  it("works across the three languages the product ships", () => {
+    expect(isIncomeNaturedLabel("Faiz gəliri")).toBe(true)
+    expect(isIncomeNaturedLabel("Прочий доход")).toBe(true)
+    expect(isIncomeNaturedLabel("Субсидия на посев")).toBe(true)
+  })
+
+  it("does NOT strip income TAX — that is a cost", () => {
+    // The trap: the label contains "income" and is an expense.
+    expect(isIncomeNaturedLabel("Income Tax Expense")).toBe(false)
+    expect(isIncomeNaturedLabel("Mənfəət vergisi")).toBe(false)
+    expect(isIncomeNaturedLabel("Налог на доход")).toBe(false)
+  })
+
+  it("leaves ordinary cost lines alone", () => {
+    for (const l of ["Personnel Costs - G&A", "Depreciation - Machinery", "Parking & Washing"]) {
+      expect(isIncomeNaturedLabel(l), l).toBe(false)
+    }
+  })
+
+  it("treats a missing label as NOT income — absence is not evidence", () => {
+    expect(isIncomeNaturedLabel(null)).toBe(false)
+    expect(isIncomeNaturedLabel("")).toBe(false)
+  })
+})
+
+describe("resolveCostSigns — income lines do not vote", () => {
+  // EDEN's real shape, rounded: four income leaves against real costs.
+  const expenses = [-2_950_681, -1_194_785, -1_500_000, -1_000_000, 3_011_174, 124_686, 107_889, 4_203]
+  const labels = [
+    "Depreciation - Machinery & Equipment",
+    "Personnel Costs - G&A",
+    "Rent",
+    "Utilities",
+    "Subsidies - Farming",
+    "Subsidies - Investment",
+    "Interest Income from Current Accounts & Deposits",
+    "Other Non-Operating Income",
+  ]
+
+  it("BLOCKS without labels — the pre-fix behaviour, kept for callers that pass none", () => {
+    const d = resolveCostSigns([], expenses)
+    expect(d.expenseConvention).toBe("ambiguous")
+    expect(d.blockedReason).toMatch(/ambiguous for expenses/)
+  })
+
+  it("resolves cleanly once the income lines are named", () => {
+    const d = resolveCostSigns([], expenses, { expense: labels })
+    expect(d.expenseConvention).toBe("negative_costs")
+    expect(d.blockedReason).toBeNull()
+    expect(d.flipExpense).toBe(true)
+  })
+
+  it("still BLOCKS when the mixture is genuine, not income", () => {
+    // Excluding income must not become "never block": real contra rows of
+    // comparable size are exactly what the gate exists for.
+    const mixed = [-1000, -1000, 900, 950]
+    const plain = ["Rent", "Utilities", "Repairs credit", "Freight credit"]
+    expect(resolveCostSigns([], mixed, { expense: plain }).expenseConvention).toBe("ambiguous")
+  })
+
+  it("does not change a verdict that was already clean", () => {
+    const clean = [-1000, -2000, -3000]
+    const withLabels = resolveCostSigns([], clean, { expense: ["A", "B", "C"] })
+    const without = resolveCostSigns([], clean)
+    expect(withLabels.expenseConvention).toBe(without.expenseConvention)
+  })
+})
+

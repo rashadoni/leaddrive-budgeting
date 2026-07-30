@@ -251,6 +251,8 @@ export function parsePlfPlSheet(
   // Phase 11.9b — raw per-row annuals feeding the cost-sign classifier.
   const cogsRawAnnuals: number[] = []
   const expenseRawAnnuals: number[] = []
+  const cogsLabels: string[] = []
+  const expenseLabels: string[] = []
   const warnings: PlfParseWarning[] = []
 
   for (let r = headerRowIdx + 1; r < aoa.length; r++) {
@@ -289,8 +291,16 @@ export function parsePlfPlSheet(
     }
     if (allZero) continue
 
-    if (accountType === "cogs") cogsRawAnnuals.push(rawAnnual)
-    else if (accountType === "expense") expenseRawAnnuals.push(rawAnnual)
+    // 2026-07-30 — labels travel with the annuals so the sign classifier can
+    // drop income lines filed under a cost section (PLF.07 is titled "OTHER
+    // OPERATING INCOME/EXPENSES" and holds Subsidies + Interest Income).
+    if (accountType === "cogs") {
+      cogsRawAnnuals.push(rawAnnual)
+      cogsLabels.push(label)
+    } else if (accountType === "expense") {
+      expenseRawAnnuals.push(rawAnnual)
+      expenseLabels.push(label)
+    }
 
     lines.push({ code, label, accountType, perMonth, totalAnnual: rawAnnual })
   }
@@ -299,7 +309,12 @@ export function parsePlfPlSheet(
   // 11.36 — a caller that split this sheet out of a larger one classifies over
   // the WHOLE sheet and passes the verdict in; only a standalone sheet decides
   // for itself.
-  const signDecision = opts?.signOverride ?? resolveCostSigns(cogsRawAnnuals, expenseRawAnnuals)
+  const signDecision =
+    opts?.signOverride ??
+    resolveCostSigns(cogsRawAnnuals, expenseRawAnnuals, {
+      cogs: cogsLabels,
+      expense: expenseLabels,
+    })
   for (const line of lines) {
     const flip =
       line.accountType === "cogs"
