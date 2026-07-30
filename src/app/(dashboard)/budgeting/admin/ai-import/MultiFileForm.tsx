@@ -570,6 +570,9 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
     useState<MultiFileApiResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [forceOverride, setForceOverride] = useState(false)
+  // 2026-07-30 — import every year the workbooks contain, not just the picked
+  // one. Off by default: widening the write scope is never implicit.
+  const [importAllYears, setImportAllYears] = useState(false)
   const [useTemplates, setUseTemplates] = useState(true)
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
   const [templateSaveStatus, setTemplateSaveStatus] = useState<string | null>(null)
@@ -615,6 +618,14 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   const overCountCap = files.length > MAX_FILES
   const hasConflicts = (previewResult?.conflicts.length ?? 0) > 0
   const yearMismatch = detectedYearMismatch(previewResult)
+  // 2026-07-30 — every year the uploaded workbooks actually contain, from the
+  // detection that already feeds the year gate. Empty until the preview runs.
+  const detectedYearsAll = [
+    ...new Set(
+      (previewResult?.perFile ?? []).flatMap((f) => f.detectedYears?.years ?? []),
+    ),
+  ].sort()
+  const extraYears = detectedYearsAll.filter((y) => y !== year)
   const coaReviewItems =
     previewResult?.perFile.flatMap((f) =>
       (f.semanticCoa?.reviewItems ?? []).map((item) => ({
@@ -1130,6 +1141,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
       const form = new FormData()
       for (const f of files) form.append("files", f)
       form.append("year", String(year))
+      // 2026-07-30 — multi-year target. Sent only when the operator ticked the
+      // box, so a normal run is byte-identical to what it always sent.
+      if (importAllYears && detectedYearsAll.length > 1) {
+        form.append("years", detectedYearsAll.join(","))
+      }
       form.append("useTemplate", useTemplates ? "1" : "0")
       if (apply) form.append("apply", "1")
       if (forceOverride) form.append("forceOverride", "1")
@@ -1899,6 +1915,44 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
           </button>
         )}
       </div>
+
+      {/* 2026-07-30 — the workbook holds more than the picked year.
+          The detection already existed (it powers the year gate that says
+          "workbooks contain 2025, 2026"); until now the operator could only
+          ACT on one of them, so covering a two-year file meant running the
+          whole flow twice by hand. Opt-in, never implicit: widening what a
+          click writes is the operator's decision. */}
+      {previewResult && extraYears.length > 0 && (
+        <div
+          className="rounded border border-sky-300 bg-sky-50 p-3 text-sm dark:bg-sky-950/30 dark:border-sky-800"
+          data-testid="multi-year-offer"
+          // Machine-readable so the set is assertable without depending on
+          // which locale rendered the sentence.
+          data-years={detectedYearsAll.join(",")}
+        >
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={importAllYears}
+              onChange={(e) => setImportAllYears(e.target.checked)}
+              className="mt-1"
+              data-testid="chk-all-years"
+            />
+            <span>
+              <strong>
+                {t("multiYear.title", { years: detectedYearsAll.join(", ") })}
+              </strong>
+              <br />
+              <span className="text-xs opacity-80">
+                {t("multiYear.hint", {
+                  picked: year,
+                  extra: extraYears.join(", "),
+                })}
+              </span>
+            </span>
+          </label>
+        </div>
+      )}
 
       {/* Error banner — sits right below buttons so it's always visible */}
       {error && (

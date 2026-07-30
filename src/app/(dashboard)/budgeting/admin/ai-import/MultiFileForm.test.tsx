@@ -1287,4 +1287,84 @@ describe("MultiFileForm", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
     expect(screen.queryByTestId("preview-warnings")).toBeNull()
   })
+
+  // ── 2026-07-30 — multi-year import in ONE run ──────────────────────
+  //
+  // The workbook detection already existed (it powers the year gate that says
+  // "workbooks contain 2025, 2026"); the operator could only ACT on one year,
+  // so covering a two-year file meant running the whole flow twice by hand.
+  describe("multi-year", () => {
+    const previewWithYears = (years: number[]) => ({
+      ok: true,
+      mode: "preview",
+      perFile: [
+        {
+          filename: "actual-budget-v1.xlsx",
+          fileTypeResult: {
+            fileType: "main-financial",
+            confidence: 0.95,
+            reasoning: "PLF+BS",
+            sheetCounts: {},
+          },
+          classifications: [],
+          detectedYears: { years, evidence: "header-serials" },
+          error: null,
+        },
+      ],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 1, outputTokens: 1, modelName: "x" },
+      durationMs: 1,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+    })
+
+    async function runPreview(years: number[]) {
+      mockFetchOnce(200, previewWithYears(years))
+      render(<MultiFileForm initialYear={2026} />)
+      fireEvent.change(screen.getByTestId("multi-file-input") as HTMLInputElement, {
+        target: { files: [makeFakeFile("actual-budget-v1.xlsx")] },
+      })
+      fireEvent.click(screen.getByTestId("btn-analyze"))
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    }
+
+    it("offers the extra years the workbook actually contains", async () => {
+      await runPreview([2025, 2026])
+      const offer = await screen.findByTestId("multi-year-offer")
+      expect(offer.getAttribute("data-years")).toBe("2025,2026")
+    })
+
+    it("stays silent when the workbook holds only the picked year", async () => {
+      await runPreview([2026])
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+      expect(screen.queryByTestId("multi-year-offer")).toBeNull()
+    })
+
+    it("sends NO years field unless the operator ticks the box", async () => {
+      await runPreview([2025, 2026])
+      await screen.findByTestId("multi-year-offer")
+      mockFetchOnce(200, { ...previewWithYears([2025, 2026]), mode: "applied" })
+      fireEvent.click(screen.getByTestId("btn-apply"))
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+      const body = (fetchMock.mock.calls[1] as [string, RequestInit])[1]
+        .body as FormData
+      // Widening the write scope must never be implicit.
+      expect(body.get("years")).toBeNull()
+      expect(body.get("year")).toBe("2026")
+    })
+
+    it("sends every detected year once the box is ticked", async () => {
+      await runPreview([2025, 2026])
+      await screen.findByTestId("multi-year-offer")
+      fireEvent.click(screen.getByTestId("chk-all-years"))
+      mockFetchOnce(200, { ...previewWithYears([2025, 2026]), mode: "applied" })
+      fireEvent.click(screen.getByTestId("btn-apply"))
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+      const body = (fetchMock.mock.calls[1] as [string, RequestInit])[1]
+        .body as FormData
+      expect(body.get("years")).toBe("2025,2026")
+    })
+  })
 })
