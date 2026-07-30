@@ -3355,7 +3355,7 @@
     },
     "tabs": {
       "ariaLabel": "AI İmport rejimi",
-      "single": "1 fayl",
+      "single": "1 fayl · yalnız təsnifat",
       "multi": "Bir neçə fayl (AI)",
       "newBadge": "yeni",
       "universal": "İstənilən fayl (AI)",

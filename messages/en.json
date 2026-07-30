@@ -3355,7 +3355,7 @@
     },
     "tabs": {
       "ariaLabel": "AI Import mode",
-      "single": "1 file",
+      "single": "1 file · classify only",
       "multi": "Multiple files (AI)",
       "newBadge": "new",
       "universal": "Any file (AI)",
