@@ -137,6 +137,62 @@ describe("previewCompanyImportReset", () => {
     expect(preview.isWholeHolding).toBe(true)
     expect(preview.orphanBudgetLine).toBe(7)
     expect(preview.breakdown.orphanBudgetLine).toBe(7)
-    expect(prisma.budgetLine.findMany).toHaveBeenCalledTimes(1)
+    // 2026-07-30 — TWO lookups now, and that is the point: mixed plans plus
+    // plans that are themselves soft-deleted. Was 1, pinning the old rule.
+    expect(prisma.budgetLine.findMany).toHaveBeenCalledTimes(2)
+  })
+
+  // ── 2026-07-30 — the preview must promise what the reset will do ──
+  //
+  // Observed live: the panel reported "Orphan P&L: 0" for a year where the
+  // reset was about to archive 1,356 rows sitting in soft-deleted plans. The
+  // sweep had learned about them; this counter had not. A preview that
+  // understates is worse than none — the operator confirms a number that is
+  // not the one executed.
+  it("counts orphans in a SOFT-DELETED plan, matching the sweep", async () => {
+    const prisma = makePrisma()
+    prisma.company.findMany
+      .mockResolvedValueOnce([
+        { id: "c1", code: "A", settings: {} },
+        { id: "c2", code: "B", settings: {} },
+      ])
+      .mockResolvedValueOnce([{ code: "A" }, { code: "B" }])
+    prisma.budgetLine.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1356)
+    prisma.balanceSheetLine.count.mockResolvedValue(0)
+    prisma.cashFlowEntry.count.mockResolvedValue(0)
+    prisma.counterparty.count.mockResolvedValue(0)
+    prisma.operationalFact.count.mockResolvedValue(0)
+    prisma.budgetActual.count.mockResolvedValue(0)
+    // NO mixed plans — the pre-fix rule returned 0 here and hid everything.
+    prisma.budgetLine.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ planId: "plan_q1" }, { planId: "plan_june" }])
+
+    const preview = await previewCompanyImportReset({
+      prisma: prisma as never,
+      organizationId: "org1",
+      companyCodes: ["A", "B"],
+      year: 2026,
+    })
+
+    expect(preview.orphanBudgetLine).toBe(1356)
+    // The second lookup asks specifically for orphans under a DELETED plan.
+    const second = prisma.budgetLine.findMany.mock.calls[1][0] as {
+      where: Record<string, unknown>
+    }
+    expect(second.where).toMatchObject({
+      organizationId: "org1",
+      companyId: null,
+      deletedAt: null,
+      plan: { deletedAt: { not: null }, year: 2026 },
+    })
+    // …and the count covers BOTH plans found that way.
+    const countWhere = prisma.budgetLine.count.mock.calls[2][0] as {
+      where: { planId: { in: string[] } }
+    }
+    expect(countWhere.where.planId.in.sort()).toEqual(["plan_june", "plan_q1"])
   })
 })

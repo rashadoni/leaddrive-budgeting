@@ -446,11 +446,36 @@ async function countOrgOrphanBudgetLines(args: {
     })
   ).map((r) => r.planId)
 
-  if (mixedPlanIds.length === 0) return 0
+  // 2026-07-30 — the PREVIEW must promise what the ACTION will do.
+  //
+  // This counter kept the pre-fix rule (mixed plans only) after
+  // `archiveOrgOrphanBudgetLines` learned to also sweep orphans whose PLAN is
+  // soft-deleted. Observed live: the panel reported "Orphan P&L: 0" for a year
+  // where the reset was about to archive 1,356 rows. A preview that understates
+  // is worse than no preview — the operator confirms a number that is not the
+  // one being executed. Same two-source rule as the sweep, kept in lockstep.
+  const deletedPlanOrphanIds = (
+    await args.prisma.budgetLine.findMany({
+      where: {
+        organizationId: args.organizationId,
+        companyId: null,
+        deletedAt: null,
+        plan: {
+          deletedAt: { not: null },
+          ...(args.year ? { year: args.year } : {}),
+        },
+      } as never,
+      select: { planId: true },
+      distinct: ["planId"],
+    })
+  ).map((r) => r.planId)
+
+  const countPlanIds = [...new Set([...mixedPlanIds, ...deletedPlanOrphanIds])]
+  if (countPlanIds.length === 0) return 0
   const orphanWhere: Record<string, unknown> = {
     organizationId: args.organizationId,
     companyId: null,
-    planId: { in: mixedPlanIds },
+    planId: { in: countPlanIds },
     deletedAt: null,
   }
   if (args.year) orphanWhere.plan = { year: args.year }
