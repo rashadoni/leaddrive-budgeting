@@ -1,4 +1,5 @@
 import { extractJsonFromText } from "@/lib/onboarding/ai-mapper/json-extract"
+import { repairTruncatedJson } from "@/lib/onboarding/ai-mapper/json-repair"
 
 export const IMPORT_DOCTOR_PROMPT_VERSION = "import-doctor-v1"
 
@@ -20,6 +21,13 @@ export type ImportDoctorExplanation = {
   whatToCheck: string[]
   safeNextStep: string
   needsReimport: boolean
+  /**
+   * 2026-07-30 — the model ran out of output budget and the reply was cut off
+   * mid-sentence; `repairTruncatedJson` recovered the fields that arrived.
+   * Surfaced rather than hidden: a partial explanation shown as a whole one is
+   * worse than a short one labelled as partial.
+   */
+  truncated?: true
 }
 
 export type ImportDoctorFixProposal =
@@ -186,11 +194,27 @@ function riskLowMedium(value: unknown): "low" | "medium" {
   throw new Error("Executable Import Doctor fix must be low or medium risk")
 }
 
-function parseJsonObject(text: string): Record<string, unknown> {
-  const parsed = JSON.parse(extractJsonFromText(text)) as unknown
+/**
+ * 2026-07-30 — a reply that ran out of tokens must still explain something.
+ *
+ * `extractJsonFromText` hunts for a `{...}` slice that parses; a reply cut off
+ * mid-sentence has no closing brace anywhere, so it threw
+ * "Unterminated string in JSON at position 1920" (measured on production) and
+ * the operator got a blocked import with no explanation — on the panel whose
+ * entire job is explaining. `repairTruncatedJson` closes what the model left
+ * open so the fields that DID arrive survive; `truncated` is returned rather
+ * than swallowed, because presenting a stump as a complete answer is the
+ * dishonesty this codebase keeps removing.
+ */
+function parseJsonObject(text: string): {
+  record: Record<string, unknown>
+  truncated: boolean
+} {
+  const repaired = repairTruncatedJson(extractJsonFromText(text))
+  const parsed = JSON.parse(repaired.text) as unknown
   const record = asRecord(parsed)
   if (!record) throw new Error("Import Doctor response must be a JSON object")
-  return record
+  return { record, truncated: repaired.repaired }
 }
 
 function stringifyForPrompt(value: unknown): string {
@@ -413,7 +437,11 @@ export async function runImportDoctorExplanation(opts: {
 }> {
   const response = await opts.client.messages.create({
     model: opts.model,
-    max_tokens: 900,
+    // 2026-07-30 — was 900, which truncated the reply mid-sentence on
+    // production. Six prose fields in Azerbaijani/Russian cost far more
+    // tokens per character than English; repairTruncatedJson salvages a cut
+    // reply, but not running out in the first place is the actual fix.
+    max_tokens: 2_000,
     temperature: 0,
     system: EXPLAIN_SYSTEM_PROMPT,
     messages: [
@@ -423,11 +451,12 @@ export async function runImportDoctorExplanation(opts: {
       },
     ],
   })
-  const explanation = validateImportDoctorExplanation(
-    parseJsonObject(extractResponseText(response)),
-  )
+  const { record, truncated } = parseJsonObject(extractResponseText(response))
+  const explanation = validateImportDoctorExplanation(record)
   return {
-    explanation,
+    explanation: truncated
+      ? { ...explanation, truncated: true as const }
+      : explanation,
     usage: {
       inputTokens: response.usage?.input_tokens ?? 0,
       outputTokens: response.usage?.output_tokens ?? 0,
@@ -447,7 +476,8 @@ export async function runImportDoctorFixSuggestion(opts: {
 }> {
   const response = await opts.client.messages.create({
     model: opts.model,
-    max_tokens: 1_100,
+    // 2026-07-30 — raised with the explain cap, same reason.
+    max_tokens: 2_200,
     temperature: 0,
     system: FIX_SYSTEM_PROMPT,
     messages: [
@@ -458,7 +488,7 @@ export async function runImportDoctorFixSuggestion(opts: {
     ],
   })
   const proposal = validateImportDoctorFixProposal(
-    parseJsonObject(extractResponseText(response)),
+    parseJsonObject(extractResponseText(response)).record,
   )
   return {
     proposal,

@@ -1315,12 +1315,12 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
    * buildDoctorContext, so the text only existed in the Import Doctor
    * payload. The user saw a verdict badge and nothing else.
    */
-  function renderWarnings(warnings: string[]) {
+  function renderWarnings(warnings: string[], testId = "apply-warnings") {
     if (!warnings || warnings.length === 0) return null
     return (
       <details
         className="border rounded p-3 text-sm bg-amber-50 border-amber-300 dark:bg-amber-950/30 dark:border-amber-800"
-        data-testid="apply-warnings"
+        data-testid={testId}
         open={warnings.length <= 5}
       >
         <summary className="font-medium cursor-pointer">
@@ -2568,6 +2568,18 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
 
       {previewResult?.safetyReceipt &&
         renderSafetyReceipt(previewResult.safetyReceipt, "preview")}
+
+      {/* 2026-07-30 — show WHY a preview is blocked.
+          `renderWarnings` existed but was wired only to the APPLY result, so a
+          preview aborted by the routing safety gate showed "RED / Blocked" and
+          nothing else: the reasons (BLOCKED / COLLISION / COMPLETENESS /
+          COA_REVIEW, plus every per-sheet skip) were already in the response
+          and no one rendered them. Measured on production 2026-07-29 — the
+          operator met a red verdict with no route to the cause, while the
+          Import Doctor button, the only other path to an explanation, was
+          itself failing on a truncated reply. Nothing new is computed here;
+          text that already existed is finally displayed. */}
+      {previewResult && renderWarnings(previewResult.warnings, "preview-warnings")}
 
       {/* Preview result — 2026-05-27 expanded: per-sheet dataType chip,
           AI confidence bar, and affected-indicators chip list, so the

@@ -1230,4 +1230,61 @@ describe("MultiFileForm", () => {
       expect(values).toContain(now - 2)
     })
   })
+
+  // ── 2026-07-30 — a blocked PREVIEW must say why ───────────────────
+  //
+  // The routing safety gate returns overallVerdict "red" with the reasons in
+  // `warnings`, and the screen rendered them only for the APPLY result. On
+  // production an operator hit a red preview with no route to the cause,
+  // while the Import Doctor button — the only other explanation path — was
+  // itself failing on a truncated reply.
+  it("renders the gate reasons on a BLOCKED preview, not just the verdict", async () => {
+    mockFetchOnce(200, {
+      ok: false,
+      mode: "preview",
+      perFile: [],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "red",
+      llmUsage: { inputTokens: 1, outputTokens: 1, modelName: "x" },
+      durationMs: 10,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [
+        'COMPLETENESS: [AZSEKER-CPC::PLF] has only derived view(s) and no source sheet',
+        "Routing safety gate — 1 issue(s); aborted before any DB write.",
+      ],
+    })
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input") as HTMLInputElement, {
+      target: { files: [makeFakeFile("a.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+
+    const box = await screen.findByTestId("preview-warnings")
+    expect(box.textContent).toContain("COMPLETENESS")
+    expect(box.textContent).toContain("AZSEKER-CPC::PLF")
+    expect(box.textContent).toContain("Routing safety gate")
+  })
+
+  it("shows no warnings box when the preview is clean", async () => {
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "preview",
+      perFile: [],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 1, outputTokens: 1, modelName: "x" },
+      durationMs: 10,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+    })
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input") as HTMLInputElement, {
+      target: { files: [makeFakeFile("a.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    expect(screen.queryByTestId("preview-warnings")).toBeNull()
+  })
 })
