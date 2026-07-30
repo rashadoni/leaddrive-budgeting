@@ -95,27 +95,76 @@ export function detectWorkbookYears(
   for (const name of workbook.SheetNames) {
     const sheet = workbook.Sheets[name]
     if (!sheet) continue
-    let aoa: unknown[][]
-    try {
-      aoa = xlsx.utils.sheet_to_json(sheet, { header: 1, raw: true, blankrows: false })
-    } catch {
-      // A malformed sheet must not sink the whole detection — the caller
-      // treats "no year found" as "cannot pre-fill", never as an error.
-      continue
-    }
-    for (const row of aoa.slice(0, rowsPerSheet)) {
-      if (!Array.isArray(row)) continue
-      // Count each year at most once per row: a 12-month header row would
-      // otherwise outvote every other signal in the workbook 12:1.
-      const seenInRow = new Set<number>()
-      for (const cell of row) {
-        const y = yearFromCell(cell)
-        if (y !== null) seenInRow.add(y)
-      }
-      for (const y of seenInRow) counts[y] = (counts[y] ?? 0) + 1
-    }
+    accumulateSheetYears(counts, sheet, xlsx, rowsPerSheet)
   }
 
+  return summarize(counts)
+}
+
+/**
+ * 2026-07-30 — the same scan, for ONE sheet.
+ *
+ * Extracted so an adapter can ask "is this sheet even about my year?" BEFORE
+ * paying for an LLM call. The zero-row fallback in the financial handlers used
+ * to delegate any empty parse straight to the dynamic detector, so every sheet
+ * belonging to a different year cost one Claude call — and if the detector
+ * came back below its confidence floor it set `blocked`, which the routing
+ * gate turns into a refusal of the WHOLE import. A two-year workbook could
+ * therefore block on the half the operator did not ask for.
+ *
+ * Same logic as the workbook-wide scan, deliberately: two copies of "what year
+ * is this" would drift, and this one decides whether real data is skipped.
+ */
+export function detectSheetYears(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sheet: any,
+  xlsx: {
+    utils: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sheet_to_json: (sheet: any, opts: any) => any[]
+    }
+  },
+  rowsPerSheet = 12,
+): WorkbookYearDetection {
+  const counts: Record<number, number> = {}
+  if (sheet) accumulateSheetYears(counts, sheet, xlsx, rowsPerSheet)
+  return summarize(counts)
+}
+
+function accumulateSheetYears(
+  counts: Record<number, number>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sheet: any,
+  xlsx: {
+    utils: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sheet_to_json: (sheet: any, opts: any) => any[]
+    }
+  },
+  rowsPerSheet: number,
+): void {
+  let aoa: unknown[][]
+  try {
+    aoa = xlsx.utils.sheet_to_json(sheet, { header: 1, raw: true, blankrows: false })
+  } catch {
+    // A malformed sheet must not sink the whole detection — the caller
+    // treats "no year found" as "cannot pre-fill", never as an error.
+    return
+  }
+  for (const row of aoa.slice(0, rowsPerSheet)) {
+    if (!Array.isArray(row)) continue
+    // Count each year at most once per row: a 12-month header row would
+    // otherwise outvote every other signal in the workbook 12:1.
+    const seenInRow = new Set<number>()
+    for (const cell of row) {
+      const y = yearFromCell(cell)
+      if (y !== null) seenInRow.add(y)
+    }
+    for (const y of seenInRow) counts[y] = (counts[y] ?? 0) + 1
+  }
+}
+
+function summarize(counts: Record<number, number>): WorkbookYearDetection {
   const years = Object.keys(counts).map(Number).sort((a, b) => a - b)
   let dominant: number | null = null
   let best = -1
