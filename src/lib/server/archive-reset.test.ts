@@ -149,10 +149,19 @@ describe("resetCompanyImportData", () => {
   })
 })
 
-function fakeOrphanPrisma(mixedPlanIds: string[], sweptCount: number) {
+function fakeOrphanPrisma(
+  mixedPlanIds: string[],
+  sweptCount: number,
+  // 2026-07-30 — orphans living in a SOFT-DELETED plan; the second findMany.
+  deletedPlanIds: string[] = [],
+) {
+  const findMany = vi
+    .fn()
+    .mockResolvedValueOnce(mixedPlanIds.map((planId) => ({ planId })))
+    .mockResolvedValueOnce(deletedPlanIds.map((planId) => ({ planId })))
   const tx = {
     budgetLine: {
-      findMany: vi.fn(async () => mixedPlanIds.map((planId) => ({ planId }))),
+      findMany,
       updateMany: vi.fn(async () => ({ count: sweptCount })),
     },
   }
@@ -196,7 +205,9 @@ describe("archiveOrgOrphanBudgetLines", () => {
     expect(res.auditEventId).toBe("audit_1")
   })
 
-  it("leaves a wholly company-less plan alone (no mixed plans → no sweep)", async () => {
+  it("leaves a wholly company-less LIVE plan alone (no mixed plans → no sweep)", async () => {
+    // Protection kept on purpose: a live plan whose lines carry no company is
+    // a hand-built org-level plan, not import residue.
     const { prisma, tx } = fakeOrphanPrisma([], 0)
     const res = await archiveOrgOrphanBudgetLines({
       prisma,
@@ -205,6 +216,51 @@ describe("archiveOrgOrphanBudgetLines", () => {
     })
     expect(tx.budgetLine.updateMany).not.toHaveBeenCalled()
     expect(res.rowsAffected).toBe(0)
+  })
+
+  // ── 2026-07-30 — residue in a soft-DELETED plan ────────────────────
+  //
+  // Measured on production: plans "Q1" (1017 rows) and "June 2026" (339) held
+  // only `companyId: null` lines, so `mixedPlanIds` never matched them and the
+  // per-company resets could not reach them either — 1,356 live rows no reset
+  // in the UI could remove. The plan is deleted; its rows are residue.
+  it("SWEEPS orphans whose plan is soft-deleted, even with no mixed plans", async () => {
+    const { prisma, tx } = fakeOrphanPrisma([], 1356, ["plan_q1", "plan_june"])
+    const res = await archiveOrgOrphanBudgetLines({
+      prisma,
+      actorUserId: "u1",
+      organizationId: "org1",
+      year: 2026,
+    })
+    const fm = tx.budgetLine.findMany.mock.calls as unknown as Array<
+      [{ where: Record<string, unknown> }]
+    >
+    // The second lookup asks specifically for orphans under a DELETED plan.
+    expect(fm[1][0].where).toMatchObject({
+      organizationId: "org1",
+      companyId: null,
+      deletedAt: null,
+      plan: { deletedAt: { not: null }, year: 2026 },
+    })
+    const um = tx.budgetLine.updateMany.mock.calls as unknown as Array<
+      [{ where: { planId: { in: string[] } } }]
+    >
+    expect(um[0][0].where.planId.in.sort()).toEqual(["plan_june", "plan_q1"])
+    expect(res.rowsAffected).toBe(1356)
+  })
+
+  it("does not double-count a plan that is both mixed and deleted", async () => {
+    const { prisma, tx } = fakeOrphanPrisma(["plan_x"], 5, ["plan_x"])
+    await archiveOrgOrphanBudgetLines({
+      prisma,
+      actorUserId: "u1",
+      organizationId: "org1",
+      year: 2026,
+    })
+    const um = tx.budgetLine.updateMany.mock.calls as unknown as Array<
+      [{ where: { planId: { in: string[] } } }]
+    >
+    expect(um[0][0].where.planId.in).toEqual(["plan_x"])
   })
 })
 
