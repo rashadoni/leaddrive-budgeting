@@ -899,12 +899,45 @@ export async function archiveOrgOrphanBudgetLines(args: {
       })
     ).map((r) => r.planId)
 
+    // 2026-07-30 — orphan lines in a SOFT-DELETED plan were unreachable.
+    //
+    // The `mixedPlanIds` rule above only sweeps plans holding at least one
+    // company-attributed line. Measured on production: plans "Q1" (1017 rows)
+    // and "June 2026" (339) consist ENTIRELY of `companyId: null` lines, so
+    // they matched nothing — and the per-company resets cannot reach them
+    // either, because those filter on a companyId these rows do not have.
+    // 1,356 live rows that no reset offered by the UI could remove.
+    //
+    // They are inert today (their plans are soft-deleted, and 11.4 taught the
+    // risk readers to filter on `plan.deletedAt: null`), which is why nobody
+    // noticed — but residue that harms nothing still makes "the year is
+    // cleared" a false statement, with no way for the operator to find out.
+    //
+    // Restricted to plans that are THEMSELVES soft-deleted. A live plan whose
+    // lines carry no company is deliberately left alone — that is a
+    // hand-built org-level plan, not import residue, and the existing test
+    // pins that protection. A deleted plan's surviving lines are residue by
+    // definition: the plan is gone, the rows should have gone with it.
+    const deletedPlanOrphans = await tx.budgetLine.findMany({
+      where: {
+        organizationId,
+        companyId: null,
+        deletedAt: null,
+        plan: { deletedAt: { not: null }, ...(year ? { year } : {}) },
+      } as never,
+      select: { planId: true },
+      distinct: ["planId"],
+    })
+    const sweepPlanIds = [
+      ...new Set([...mixedPlanIds, ...deletedPlanOrphans.map((r) => r.planId)]),
+    ]
+
     let rowsAffected = 0
-    if (mixedPlanIds.length > 0) {
+    if (sweepPlanIds.length > 0) {
       const orphanWhere: Record<string, unknown> = {
         organizationId,
         companyId: null,
-        planId: { in: mixedPlanIds },
+        planId: { in: sweepPlanIds },
         deletedAt: null,
       }
       if (year) orphanWhere.plan = { year }
