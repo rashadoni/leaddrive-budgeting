@@ -4,8 +4,19 @@
  * choose between single-file (legacy 2-step) and multi-file (new
  * orchestrator) AI import workflows.
  *
- * Defaults to single-file for back-compat. Multi-file mode is
- * positioned as the newer batch-load surface.
+ * 2026-07-30 — the DEFAULT is the multi-file (full AI) tab.
+ *
+ * It used to be "1 file", the one tab that cannot write: after analysing it
+ * shows an amber "writing from this screen is disabled" banner and offers only
+ * Cancel. So the landing tab was a dead end, and the product owner walked into
+ * it twice during a live rehearsal before finding the tab that imports.
+ *
+ * All four surfaces are kept — each answers a real need (classification-only
+ * inspection, the full batch import, single-sheet column-mapping review, and
+ * the staging apply-multi path). What changes is which one you land on and how
+ * plainly each says what it does: the tab that can write is first and default,
+ * and the classify-only tab is labelled as such rather than looking like a
+ * fourth way to import.
  */
 import { useState } from "react"
 import { useTranslations } from "next-intl"
@@ -16,7 +27,7 @@ import { MultiSheetImportForm } from "./MultiSheetImportForm"
 
 export function AIImportTabs({ initialYear }: { initialYear?: number }) {
   const t = useTranslations("adminAiImport")
-  const [mode, setMode] = useState<"single" | "multi" | "universal" | "multisheet">("single")
+  const [mode, setMode] = useState<"single" | "multi" | "universal" | "multisheet">("multi")
   return (
     <div className="space-y-4">
       <div
@@ -25,20 +36,6 @@ export function AIImportTabs({ initialYear }: { initialYear?: number }) {
         className="inline-flex rounded border border-slate-200 bg-slate-50 p-1"
         data-testid="ai-import-guide-tabs"
       >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "single"}
-          onClick={() => setMode("single")}
-          className={`px-3 py-1.5 text-sm rounded font-medium transition ${
-            mode === "single"
-              ? "bg-white text-slate-900 shadow-sm"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-          data-testid="tab-single"
-        >
-          {t("tabs.single")}
-        </button>
         <button
           type="button"
           role="tab"
@@ -55,6 +52,20 @@ export function AIImportTabs({ initialYear }: { initialYear?: number }) {
           <span className="ml-1 inline-block text-[10px] uppercase tracking-wide text-emerald-600 font-semibold">
             {t("tabs.newBadge")}
           </span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "single"}
+          onClick={() => setMode("single")}
+          className={`px-3 py-1.5 text-sm rounded font-medium transition ${
+            mode === "single"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+          data-testid="tab-single"
+        >
+          {t("tabs.single")}
         </button>
         <button
           type="button"

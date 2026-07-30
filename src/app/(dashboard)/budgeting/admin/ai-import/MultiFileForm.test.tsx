@@ -1307,7 +1307,9 @@ describe("MultiFileForm", () => {
             sheetCounts: {},
           },
           classifications: [],
-          detectedYears: { years, evidence: "header-serials" },
+          detectedYears: { years, dominant: years[0], counts: {}, multiYear: years.length > 1 },
+          // 2026-07-30 — the offer reads the STRICT signal.
+          importableYears: { years, counts: {} },
           error: null,
         },
       ],
