@@ -39,6 +39,7 @@ import { runKpiBatch, type KpiImportRow } from "../kpi-import-batch"
 import { assertNoCollateralDeletion } from "../collateral-guard"
 import { buildReconKey, type ReconciliationKey } from "../reconciliation"
 import { buildSourceCell } from "../source-cell"
+import { detectSheetYears } from "./workbook-year"
 import {
   createCoACache,
   preWarmCoACache,
@@ -162,6 +163,38 @@ export function makePlfHandler(
       const sheet = input.workbook.Sheets[input.sheetName]
       const hasData = sheet != null && Object.keys(sheet).length > 1 // >1: !ref alone = empty
       if (hasData) {
+        // 2026-07-30 — a sheet about ANOTHER year is a skip, not a mystery.
+        //
+        // Zero rows used to mean one thing here: "the named parser did not
+        // recognise this layout", so every empty parse went to the paid
+        // dynamic detector. But the overwhelmingly common cause in a
+        // multi-year workbook is far duller — the sheet is simply about a
+        // different year, and the year guard dropped every column.
+        //
+        // Two costs, both measured on `actual-budget-v1.xlsx` (2025 + 2026
+        // side by side): one Claude call per off-year sheet, and — when the
+        // detector came back under its 0.50 confidence floor — a `blocked`
+        // that the routing gate turns into a refusal of the ENTIRE import.
+        // The operator asked for 2026 and got the whole run stopped by the
+        // 2025 half of the same file.
+        //
+        // The header scan already answers this deterministically and for
+        // free, so ask it first. Only a sheet whose headers name NO year, or
+        // name the requested one, is a genuine layout mystery worth an LLM.
+        const sheetYears = detectSheetYears(sheet, input.XLSX)
+        if (
+          sheetYears.years.length > 0 &&
+          !sheetYears.years.includes(input.year)
+        ) {
+          return {
+            summary: `PLF sheet "${input.sheetName}" is about ${sheetYears.years.join(", ")}, not ${input.year} — skipped`,
+            itemCount: 0,
+            warnings: [
+              `Sheet "${input.sheetName}" carries ${sheetYears.years.join(", ")} data, but this run imports ${input.year} — skipped without calling the AI detector. Re-run with year=${sheetYears.years[0]} (or tick "import all detected years") to load it.`,
+            ],
+            applyToDb: async () => ({ rowsInserted: 0 }),
+          }
+        }
         logger.info("PLF format unknown — delegating to dynamic detector", {
           sheetName: input.sheetName,
           entityCode: input.entityCode,
@@ -454,6 +487,38 @@ export function makeBsHandler(
       const sheet = input.workbook.Sheets[input.sheetName]
       const hasData = sheet && Object.keys(sheet).length > 1
       if (hasData) {
+        // 2026-07-30 — a sheet about ANOTHER year is a skip, not a mystery.
+        //
+        // Zero rows used to mean one thing here: "the named parser did not
+        // recognise this layout", so every empty parse went to the paid
+        // dynamic detector. But the overwhelmingly common cause in a
+        // multi-year workbook is far duller — the sheet is simply about a
+        // different year, and the year guard dropped every column.
+        //
+        // Two costs, both measured on `actual-budget-v1.xlsx` (2025 + 2026
+        // side by side): one Claude call per off-year sheet, and — when the
+        // detector came back under its 0.50 confidence floor — a `blocked`
+        // that the routing gate turns into a refusal of the ENTIRE import.
+        // The operator asked for 2026 and got the whole run stopped by the
+        // 2025 half of the same file.
+        //
+        // The header scan already answers this deterministically and for
+        // free, so ask it first. Only a sheet whose headers name NO year, or
+        // name the requested one, is a genuine layout mystery worth an LLM.
+        const sheetYears = detectSheetYears(sheet, input.XLSX)
+        if (
+          sheetYears.years.length > 0 &&
+          !sheetYears.years.includes(input.year)
+        ) {
+          return {
+            summary: `BS sheet "${input.sheetName}" is about ${sheetYears.years.join(", ")}, not ${input.year} — skipped`,
+            itemCount: 0,
+            warnings: [
+              `Sheet "${input.sheetName}" carries ${sheetYears.years.join(", ")} data, but this run imports ${input.year} — skipped without calling the AI detector. Re-run with year=${sheetYears.years[0]} (or tick "import all detected years") to load it.`,
+            ],
+            applyToDb: async () => ({ rowsInserted: 0 }),
+          }
+        }
         logger.info("BS format unknown — delegating to dynamic detector", {
           sheetName: input.sheetName,
           entityCode: input.entityCode,
@@ -645,6 +710,38 @@ export function makeCfHandler(
       const sheet = input.workbook.Sheets[input.sheetName]
       const hasData = sheet && Object.keys(sheet).length > 1
       if (hasData) {
+        // 2026-07-30 — a sheet about ANOTHER year is a skip, not a mystery.
+        //
+        // Zero rows used to mean one thing here: "the named parser did not
+        // recognise this layout", so every empty parse went to the paid
+        // dynamic detector. But the overwhelmingly common cause in a
+        // multi-year workbook is far duller — the sheet is simply about a
+        // different year, and the year guard dropped every column.
+        //
+        // Two costs, both measured on `actual-budget-v1.xlsx` (2025 + 2026
+        // side by side): one Claude call per off-year sheet, and — when the
+        // detector came back under its 0.50 confidence floor — a `blocked`
+        // that the routing gate turns into a refusal of the ENTIRE import.
+        // The operator asked for 2026 and got the whole run stopped by the
+        // 2025 half of the same file.
+        //
+        // The header scan already answers this deterministically and for
+        // free, so ask it first. Only a sheet whose headers name NO year, or
+        // name the requested one, is a genuine layout mystery worth an LLM.
+        const sheetYears = detectSheetYears(sheet, input.XLSX)
+        if (
+          sheetYears.years.length > 0 &&
+          !sheetYears.years.includes(input.year)
+        ) {
+          return {
+            summary: `CF sheet "${input.sheetName}" is about ${sheetYears.years.join(", ")}, not ${input.year} — skipped`,
+            itemCount: 0,
+            warnings: [
+              `Sheet "${input.sheetName}" carries ${sheetYears.years.join(", ")} data, but this run imports ${input.year} — skipped without calling the AI detector. Re-run with year=${sheetYears.years[0]} (or tick "import all detected years") to load it.`,
+            ],
+            applyToDb: async () => ({ rowsInserted: 0 }),
+          }
+        }
         logger.info("CF format unknown — delegating to dynamic detector", {
           sheetName: input.sheetName,
           entityCode: input.entityCode,

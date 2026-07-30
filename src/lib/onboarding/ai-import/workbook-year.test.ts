@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from "vitest"
 import * as XLSX from "xlsx"
-import { detectWorkbookYears } from "./workbook-year"
+import { detectWorkbookYears, detectSheetYears } from "./workbook-year"
 
 function wb(sheets: Record<string, unknown[][]>) {
   const book = XLSX.utils.book_new()
@@ -101,5 +101,69 @@ describe("detectWorkbookYears", () => {
     )
     expect(d.dominant).toBe(2026)
     expect(d.years).not.toContain(2019)
+  })
+
+})
+
+// ── 2026-07-30 — per-sheet scan ────────────────────────────────────
+//
+// Extracted so a financial adapter can ask "is this sheet even about my year?"
+// BEFORE paying for an LLM call: the zero-row fallback used to send every
+// off-year sheet to the dynamic detector, which cost a Claude call each and
+// could return `blocked` — refusing the entire import over the half of a
+// two-year workbook the operator never asked for.
+describe("detectSheetYears", () => {
+  const xlsx = {
+    utils: {
+      sheet_to_json: (sheet: { aoa: unknown[][] }) => sheet.aoa,
+    },
+  }
+  const sheetOf = (aoa: unknown[][]) => ({ aoa })
+
+  it("reads the year off a month-serial header row", () => {
+    // 45658 = 2025-01-01, 45689 = 2025-02-01
+    const res = detectSheetYears(sheetOf([["code", "label", "", 45658, 45689]]), xlsx)
+    expect(res.years).toEqual([2025])
+    expect(res.multiYear).toBe(false)
+  })
+
+  it("reports BOTH years for a two-year sheet", () => {
+    const res = detectSheetYears(
+      sheetOf([["", "", 45658, 46023]]), // 2025-01 and 2026-01
+      xlsx,
+    )
+    expect(res.years).toEqual([2025, 2026])
+    expect(res.multiYear).toBe(true)
+  })
+
+  it("finds nothing on a sheet with no year — the caller must NOT skip it", () => {
+    // This is the genuine "unknown layout" case that still deserves the LLM.
+    const res = detectSheetYears(sheetOf([["Product", "Yes/No"], ["Nişanta", "Yes"]]), xlsx)
+    expect(res.years).toEqual([])
+    expect(res.dominant).toBeNull()
+  })
+
+  it("survives a null sheet and a parser that throws", () => {
+    expect(detectSheetYears(null, xlsx).years).toEqual([])
+    const boom = {
+      utils: {
+        sheet_to_json: () => {
+          throw new Error("corrupt")
+        },
+      },
+    }
+    expect(detectSheetYears(sheetOf([[45658]]), boom).years).toEqual([])
+  })
+
+  it("agrees with the workbook-wide scan on the same content", () => {
+    // Two copies of "what year is this" would drift; the workbook scan is
+    // built from this one, and this pins that they stay the same answer.
+    const aoa = [["", "", 45658, 45689]]
+    const perSheet = detectSheetYears(sheetOf(aoa), xlsx)
+    const wholeBook = detectWorkbookYears(
+      { SheetNames: ["only"], Sheets: { only: sheetOf(aoa) } },
+      xlsx,
+    )
+    expect(perSheet).toEqual(wholeBook)
   })
 })
