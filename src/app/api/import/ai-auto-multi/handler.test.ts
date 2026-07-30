@@ -73,6 +73,9 @@ function makeMultipartRequest(opts: {
   forceOverride?: string
   conflictResolutions?: string
   guidedSheetFixes?: string
+  years?: string
+  yearFrom?: string
+  yearTo?: string
 }): Request {
   const form = new FormData()
   for (let i = 0; i < opts.fileCount; i++) {
@@ -89,6 +92,9 @@ function makeMultipartRequest(opts: {
     form.append("conflictResolutions", opts.conflictResolutions)
   if (opts.guidedSheetFixes)
     form.append("guidedSheetFixes", opts.guidedSheetFixes)
+  if (opts.years) form.append("years", opts.years)
+  if (opts.yearFrom) form.append("yearFrom", opts.yearFrom)
+  if (opts.yearTo) form.append("yearTo", opts.yearTo)
   return new Request("http://localhost/api/import/ai-auto-multi", {
     method: "POST",
     body: form,
@@ -624,5 +630,97 @@ describe("POST /api/import/ai-auto-multi", () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as { ok: boolean }
     expect(body.ok).toBe(true)
+  })
+
+  // ── 2026-07-30 — multi-year target in ONE request ──────────────────
+  //
+  // The year is scalar THROUGH the pipeline (it resolves the plan, bounds the
+  // clean-slate window, drives every adapter's preferYear), so the loop lives
+  // at the route: the existing single-year pipeline runs once per year.
+  describe("multi-year", () => {
+    beforeEach(async () => {
+      orchestratorMock.runMultiFileImport.mockResolvedValue(defaultOrchResult())
+      // The lock mock is module-level and accumulates across the whole file;
+      // clear it so this block asserts ITS calls, not the earlier suites'.
+      const { acquireImportLock } = await import("@/lib/onboarding/import-lock")
+      ;(acquireImportLock as ReturnType<typeof vi.fn>).mockClear()
+    })
+
+    it("runs the pipeline ONCE PER YEAR, ascending", async () => {
+      const res = await POST(
+        makeMultipartRequest({ fileCount: 1, years: "2026,2025", apply: "1" }) as never,
+      )
+      expect(res.status).toBeLessThan(400)
+      expect(orchestratorMock.runMultiFileImport).toHaveBeenCalledTimes(2)
+      const years = orchestratorMock.runMultiFileImport.mock.calls.map(
+        (c) => (c[0] as { year: number }).year,
+      )
+      // Ascending: a later year must not run before the one it may carry
+      // comparatives for.
+      expect(years).toEqual([2025, 2026])
+    })
+
+    it("expands an inclusive range", async () => {
+      await POST(
+        makeMultipartRequest({ fileCount: 1, yearFrom: "2024", yearTo: "2026" }) as never,
+      )
+      const years = orchestratorMock.runMultiFileImport.mock.calls.map(
+        (c) => (c[0] as { year: number }).year,
+      )
+      expect(years).toEqual([2024, 2025, 2026])
+    })
+
+    it("still runs exactly once for a plain single year", async () => {
+      await POST(makeMultipartRequest({ fileCount: 1, year: "2025" }) as never)
+      expect(orchestratorMock.runMultiFileImport).toHaveBeenCalledTimes(1)
+      expect(
+        (orchestratorMock.runMultiFileImport.mock.calls[0][0] as { year: number }).year,
+      ).toBe(2025)
+    })
+
+    it("reports the outcome per year", async () => {
+      const res = await POST(
+        makeMultipartRequest({ fileCount: 1, years: "2025,2026" }) as never,
+      )
+      const body = (await res.json()) as {
+        importYears: number[]
+        perYear: Array<{ year: number; verdict: string }>
+      }
+      expect(body.importYears).toEqual([2025, 2026])
+      expect(body.perYear.map((y) => y.year)).toEqual([2025, 2026])
+    })
+
+    it("gives each year its OWN lock scope", async () => {
+      const { acquireImportLock } = await import("@/lib/onboarding/import-lock")
+      await POST(
+        makeMultipartRequest({ fileCount: 1, years: "2025,2026", apply: "1" }) as never,
+      )
+      // Scoped (org, year): a concurrent import of a DIFFERENT year stays
+      // allowed, exactly as before this change.
+      const lockedYears = (acquireImportLock as ReturnType<typeof vi.fn>).mock.calls.map(
+        (c) => c[1],
+      )
+      expect(lockedYears).toEqual([2025, 2026])
+    })
+
+    it("rejects an inverted range before touching the pipeline", async () => {
+      const res = await POST(
+        makeMultipartRequest({ fileCount: 1, yearFrom: "2026", yearTo: "2024" }) as never,
+      )
+      expect(res.status).toBe(400)
+      expect(orchestratorMock.runMultiFileImport).not.toHaveBeenCalled()
+    })
+
+    it("caps the list rather than running an unbounded number of passes", async () => {
+      const res = await POST(
+        makeMultipartRequest({
+          fileCount: 1,
+          years: "2020,2021,2022,2023,2024,2025,2026",
+        }) as never,
+      )
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toMatch(/At most 6 years/)
+      expect(orchestratorMock.runMultiFileImport).not.toHaveBeenCalled()
+    })
   })
 })

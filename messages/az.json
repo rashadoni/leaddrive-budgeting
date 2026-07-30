@@ -2160,13 +2160,32 @@
       "awaitingData": "məlumat gözlənilir",
       "readinessTitle": "Məlumat hazırlığı {score}% — {tier}",
       "readinessAria": "Məlumat hazırlığı {score} faiz, {tier}",
-      "readinessTier": { "complete": "Tam — bütün məlumat sahələri mövcuddur", "good": "Yaxşı — əksər sahələr əhatə olunub, kiçik boşluqlar var", "partial": "Qismən — bir neçə sahədə boşluq var", "thin": "Zəif — məlumat seyrəkdir, AI səhv edə bilər", "empty": "Boş — real məlumat yoxdur, demo təhlükəsiz deyil" },
+      "readinessTier": {
+        "complete": "Tam — bütün məlumat sahələri mövcuddur",
+        "good": "Yaxşı — əksər sahələr əhatə olunub, kiçik boşluqlar var",
+        "partial": "Qismən — bir neçə sahədə boşluq var",
+        "thin": "Zəif — məlumat seyrəkdir, AI səhv edə bilər",
+        "empty": "Boş — real məlumat yoxdur, demo təhlükəsiz deyil"
+      },
       "compositeTitle": "Kompozit risk {score}/100",
       "compositeAria": "Kompozit risk balı 100-dən {score}",
       "trustStatusAria": "Etibar statusu: {status}",
-      "trustStatus": { "verified": "Yoxlanılıb", "partial": "Qismən yoxlanılıb", "suspicious": "Şübhəli", "pending": "Yoxlama gözləyir" },
-      "riskTag": { "subsidy_dependency": "Subsidiya asılılığı", "non_transparent_structure": "Qeyri-şəffaf struktur", "data_absence": "Məlumat yoxdur" },
-      "riskTagShort": { "subsidy_dependency": "Sub", "non_transparent_structure": "QŞ", "data_absence": "MY" },
+      "trustStatus": {
+        "verified": "Yoxlanılıb",
+        "partial": "Qismən yoxlanılıb",
+        "suspicious": "Şübhəli",
+        "pending": "Yoxlama gözləyir"
+      },
+      "riskTag": {
+        "subsidy_dependency": "Subsidiya asılılığı",
+        "non_transparent_structure": "Qeyri-şəffaf struktur",
+        "data_absence": "Məlumat yoxdur"
+      },
+      "riskTagShort": {
+        "subsidy_dependency": "Sub",
+        "non_transparent_structure": "QŞ",
+        "data_absence": "MY"
+      },
       "unstarAria": "{code} şirkətini seçilmişlərdən çıxar",
       "starAria": "{code} şirkətini seçilmişlərə əlavə et",
       "starredTitle": "Seçilmiş",
@@ -2240,7 +2259,15 @@
       "readinessThin": "Məlumat seyrəkdir — AI Variance Explainer səhv edə bilər. Qırmızı və sarı xanaları istiqamət kimi qəbul edin, təsdiqlənmiş nəticə kimi yox.",
       "readinessPartial": "Bir neçə məlumat sahəsində boşluq var — çatışmayanları görmək üçün hazırlıq göstəricisini yoxlayın.",
       "readinessMissing": "Çatışmır: {areas}",
-      "readinessArea": { "pnl": "P&L büdcə sətirləri", "bs": "balans hesabatı", "counterparties": "qarşı tərəflər", "opKpis": "əməliyyat KPI-ları", "narrative": "strateji təsvir", "indicators": "hesablanmış indikatorlar", "fxTags": "FX valyuta nişanları" },
+      "readinessArea": {
+        "pnl": "P&L büdcə sətirləri",
+        "bs": "balans hesabatı",
+        "counterparties": "qarşı tərəflər",
+        "opKpis": "əməliyyat KPI-ları",
+        "narrative": "strateji təsvir",
+        "indicators": "hesablanmış indikatorlar",
+        "fxTags": "FX valyuta nişanları"
+      },
       "lastRecompute": "Son yenidən hesablama: {date}",
       "updatedFreshness": "{age} yenilənib",
       "freshnessNow": "indicə",
@@ -2787,9 +2814,18 @@
         "empty": "Görünən şirkətlər üçün keyfiyyət işarəsi konfiqurasiya edilməyib. İşarənin olmaması riskin xaricdən yoxlandığını göstərmir.",
         "penalty": "−{penalty} bal",
         "tags": {
-          "subsidy_dependency": { "label": "Subsidiya asılılığı", "description": "Subsidiya və ya tənzimlənən qiymətlərə daxili olaraq qeyd edilmiş məruz qalma" },
-          "non_transparent_structure": { "label": "Qeyri-şəffaf struktur", "description": "Əlaqəli tərəf və ya auditi olmayan bölgü üzrə daxili qeyd" },
-          "data_absence": { "label": "Məlumat çatışmazlığı", "description": "Əsas məlumat örtüyündə daxili qeyd edilmiş boşluq" }
+          "subsidy_dependency": {
+            "label": "Subsidiya asılılığı",
+            "description": "Subsidiya və ya tənzimlənən qiymətlərə daxili olaraq qeyd edilmiş məruz qalma"
+          },
+          "non_transparent_structure": {
+            "label": "Qeyri-şəffaf struktur",
+            "description": "Əlaqəli tərəf və ya auditi olmayan bölgü üzrə daxili qeyd"
+          },
+          "data_absence": {
+            "label": "Məlumat çatışmazlığı",
+            "description": "Əsas məlumat örtüyündə daxili qeyd edilmiş boşluq"
+          }
         }
       },
       "pptx": {
@@ -2813,7 +2849,12 @@
         "trendSubtitle": "Saxlanmış aylıq ballar · seçilmiş dövr {period}",
         "compositeScore": "Mürəkkəb bal",
         "latest": "Son ({period}): {score}/100 · {band}",
-        "bands": { "green": "yaşıl", "amber": "sarı", "red": "qırmızı", "unknown": "naməlum" },
+        "bands": {
+          "green": "yaşıl",
+          "amber": "sarı",
+          "red": "qırmızı",
+          "unknown": "naməlum"
+        },
         "trendBoundary": "0–100 şkalası · cari çəkilər və keyfiyyət cərimələri · boşluqlar interpolasiya edilmir · cari il Bakı vaxtı ilə cari ayda dayanır",
         "noRulesTriggered": "Konfiqurasiya edilmiş qayda işə düşməyib",
         "rankedAlerts": "Critical-first konfiqurasiya edilmiş qayda uyğunluqları ({total})",
@@ -3555,6 +3596,10 @@
         "title": "Addım 3 — İdxal tamamlandı",
         "summary": "{rows} sətir yazıldı · {groups} qrup tətbiq edildi",
         "resetButton": "↩ Yenidən başla (növbəti faylları yüklə)"
+      },
+      "multiYear": {
+        "title": "Bu yükləmədə {years} var",
+        "hint": "Seçilmiş il: {picked}. {extra} ilini də eyni işə salmaq üçün işarələyin — hər il üçün bir keçid, ardıcıl."
       }
     },
     "single": {

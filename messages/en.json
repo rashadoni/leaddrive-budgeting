@@ -2160,13 +2160,32 @@
       "awaitingData": "awaiting data",
       "readinessTitle": "Data readiness {score}% — {tier}",
       "readinessAria": "Data readiness {score} percent, {tier}",
-      "readinessTier": { "complete": "Complete — all data areas present", "good": "Good — most areas covered, minor gaps", "partial": "Partial — multiple areas have gaps", "thin": "Thin — sparse data, AI may hallucinate", "empty": "Empty — no real data, demo unsafe" },
+      "readinessTier": {
+        "complete": "Complete — all data areas present",
+        "good": "Good — most areas covered, minor gaps",
+        "partial": "Partial — multiple areas have gaps",
+        "thin": "Thin — sparse data, AI may hallucinate",
+        "empty": "Empty — no real data, demo unsafe"
+      },
       "compositeTitle": "Composite risk {score}/100",
       "compositeAria": "Composite risk score {score} of 100",
       "trustStatusAria": "Trust status: {status}",
-      "trustStatus": { "verified": "Verified", "partial": "Partially verified", "suspicious": "Suspicious", "pending": "Pending review" },
-      "riskTag": { "subsidy_dependency": "Subsidy dependency", "non_transparent_structure": "Non-transparent structure", "data_absence": "Data absence" },
-      "riskTagShort": { "subsidy_dependency": "Sub", "non_transparent_structure": "Opq", "data_absence": "NoD" },
+      "trustStatus": {
+        "verified": "Verified",
+        "partial": "Partially verified",
+        "suspicious": "Suspicious",
+        "pending": "Pending review"
+      },
+      "riskTag": {
+        "subsidy_dependency": "Subsidy dependency",
+        "non_transparent_structure": "Non-transparent structure",
+        "data_absence": "Data absence"
+      },
+      "riskTagShort": {
+        "subsidy_dependency": "Sub",
+        "non_transparent_structure": "Opq",
+        "data_absence": "NoD"
+      },
       "unstarAria": "Remove {code} from starred companies",
       "starAria": "Add {code} to starred companies",
       "starredTitle": "Starred",
@@ -2240,7 +2259,15 @@
       "readinessThin": "Sparse data — AI Variance Explainer may hallucinate. Treat amber/red cells as directional, not authoritative.",
       "readinessPartial": "Multiple data areas have gaps — review the readiness chip on this entity for what is missing.",
       "readinessMissing": "Missing: {areas}",
-      "readinessArea": { "pnl": "P&L budget lines", "bs": "balance sheet", "counterparties": "counterparties", "opKpis": "operational KPIs", "narrative": "strategic narrative", "indicators": "computed indicators", "fxTags": "FX currency tags" },
+      "readinessArea": {
+        "pnl": "P&L budget lines",
+        "bs": "balance sheet",
+        "counterparties": "counterparties",
+        "opKpis": "operational KPIs",
+        "narrative": "strategic narrative",
+        "indicators": "computed indicators",
+        "fxTags": "FX currency tags"
+      },
       "lastRecompute": "Last recompute: {date}",
       "updatedFreshness": "updated {age}",
       "freshnessNow": "just now",
@@ -2787,9 +2814,18 @@
         "empty": "No qualitative flags are configured for the visible entities. Absence of a flag is not evidence that the risk was externally checked.",
         "penalty": "−{penalty} score",
         "tags": {
-          "subsidy_dependency": { "label": "Subsidy dependency", "description": "Internally configured exposure to subsidies or regulated prices" },
-          "non_transparent_structure": { "label": "Non-transparent structure", "description": "Internally configured related-party or unaudited allocation caveat" },
-          "data_absence": { "label": "Data absence", "description": "Internally configured key-data coverage gap" }
+          "subsidy_dependency": {
+            "label": "Subsidy dependency",
+            "description": "Internally configured exposure to subsidies or regulated prices"
+          },
+          "non_transparent_structure": {
+            "label": "Non-transparent structure",
+            "description": "Internally configured related-party or unaudited allocation caveat"
+          },
+          "data_absence": {
+            "label": "Data absence",
+            "description": "Internally configured key-data coverage gap"
+          }
         }
       },
       "pptx": {
@@ -2813,7 +2849,12 @@
         "trendSubtitle": "Monthly persisted composites · selected period {period}",
         "compositeScore": "Composite score",
         "latest": "Latest ({period}): {score}/100 · {band}",
-        "bands": { "green": "green", "amber": "amber", "red": "red", "unknown": "unknown" },
+        "bands": {
+          "green": "green",
+          "amber": "amber",
+          "red": "red",
+          "unknown": "unknown"
+        },
         "trendBoundary": "0–100 scale · current weights and current qualitative penalties · gaps not interpolated · current year stops at current Baku month",
         "noRulesTriggered": "No configured rule triggered",
         "rankedAlerts": "Critical-first configured-rule matches ({total} total)",
@@ -3555,6 +3596,10 @@
         "title": "Step 3 — Import complete",
         "summary": "{rows} rows written · {groups} group(s) applied",
         "resetButton": "↩ Start over (upload more files)"
+      },
+      "multiYear": {
+        "title": "This upload contains {years}",
+        "hint": "Selected year: {picked}. Tick to import {extra} in the same run — one pipeline pass per year, in order."
       }
     },
     "single": {

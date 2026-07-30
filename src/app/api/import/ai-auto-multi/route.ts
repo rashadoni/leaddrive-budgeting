@@ -35,6 +35,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
 import { acquireImportLock } from "@/lib/onboarding/import-lock"
+import {
+  parseImportYears,
+  worstVerdict,
+  ImportYearsError,
+} from "@/lib/onboarding/ai-import/import-years"
 import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import * as XLSX from "xlsx"
@@ -452,15 +457,38 @@ export async function POST(request: NextRequest) {
   // server process clock. `new Date().getFullYear()` on a UTC host rolls the
   // default over ~4 hours before Baku does, so an import run in the first
   // hours of 1 January silently targeted the wrong year.
-  const yearStr =
-    (form.get("year") as string | null) ?? String(currentBakuYearNumber())
-  const year = Number(yearStr) || currentBakuYearNumber()
-  if (!Number.isInteger(year) || year < 2020 || year > 2050) {
+  //
+  // 2026-07-30 — the target may be MORE THAN ONE year.
+  //
+  // A workbook routinely holds several (`actual-budget-v1.xlsx` carries
+  // PLF Actual 2025 and 2026 side by side), and covering it used to mean
+  // running the entire flow twice by hand. `years` / `yearFrom`+`yearTo`
+  // express the whole target; plain `year` still works and simply yields a
+  // one-element list, so there is ONE code path, not two that can drift.
+  let importYears: number[]
+  try {
+    importYears = parseImportYears({
+      years: form.get("years") as string | null,
+      yearFrom: form.get("yearFrom") as string | null,
+      yearTo: form.get("yearTo") as string | null,
+      year: form.get("year") as string | null,
+      fallbackYear: currentBakuYearNumber(),
+    })
+  } catch (err) {
     return NextResponse.json(
-      { ok: false, error: "Field 'year' must be an integer 2020-2050" },
+      {
+        ok: false,
+        error:
+          err instanceof ImportYearsError
+            ? err.message
+            : "Invalid import year selection",
+      },
       { status: 400 },
     )
   }
+  // Kept for every downstream reference that is genuinely single-year
+  // (lock scope, runId, log lines). The loop below rebinds per iteration.
+  const year = importYears[0]
   const applyVal = String(form.get("apply") ?? "").toLowerCase()
   const shouldApply = applyVal === "1" || applyVal === "true"
   const forceOverride =
@@ -1032,80 +1060,154 @@ export async function POST(request: NextRequest) {
   // did) and inserts N — a full duplicate set. `assertNoCollateralDeletion`
   // cannot see it (it fires on over-deletion; B under-deleted) and no target
   // table has a unique constraint that would reject the second copy.
-  const importLock = shouldApply
-    ? await acquireImportLock(orgId, year)
-    : null
-  if (importLock && !importLock.acquired) {
-    await importLock.release()
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "Another import is already running for this organization and year. " +
-          "Wait for it to finish before starting a second one — running both " +
-          "would duplicate every row they share.",
-        code: "IMPORT_IN_PROGRESS",
-        scope: importLock.scope,
-      },
-      { status: 409 },
+  // 2026-07-30 — ONE pipeline run per requested year, in ascending order.
+  //
+  // The loop lives here, not inside the orchestrator, because `year` is what
+  // resolves the plan, bounds the clean-slate window and drives every
+  // adapter's `preferYear`. Pushing a list down there would put a cross-year
+  // loop inside the very transaction boundary the reset scope depends on.
+  // Each year therefore takes its OWN advisory lock — the lock is scoped
+  // (org, year), so a concurrent import of a DIFFERENT year is still allowed,
+  // exactly as before.
+  //
+  // Sequential on purpose: two years of the same holding touch the same
+  // companies and the same recompute targets, and running them in parallel
+  // would race the clean-slate of one against the insert of the other.
+  const perYear: Array<{
+    year: number
+    verdict: "green" | "yellow" | "red"
+    rowsInserted: number
+    committedGroups: number
+    warnings: number
+  }> = []
+  let result: Awaited<ReturnType<typeof runMultiFileImport>> | null = null
+  const aggregatedWarnings: string[] = []
+  const aggregatedPerGroup: Awaited<
+    ReturnType<typeof runMultiFileImport>
+  >["perGroup"] = []
+  let aggregatedLlmIn = 0
+  let aggregatedLlmOut = 0
+
+  for (const targetYear of importYears) {
+    const importLock = shouldApply
+      ? await acquireImportLock(orgId, targetYear)
+      : null
+    if (importLock && !importLock.acquired) {
+      await importLock.release()
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            `Another import is already running for this organization and ${targetYear}. ` +
+            "Wait for it to finish before starting a second one — running both " +
+            "would duplicate every row they share.",
+          code: "IMPORT_IN_PROGRESS",
+          scope: importLock.scope,
+        },
+        { status: 409 },
+      )
+    }
+
+    let yearResult
+    try {
+      yearResult = await runMultiFileImport(
+        {
+          files,
+          organizationId: orgId,
+          year: targetYear,
+          knownEntityCodes,
+          orgIndustry,
+          holdingCompanyCode,
+          entityAliases,
+          allowYellow,
+          forceOverride,
+          conflictResolutions,
+          semanticCoaMappings,
+          dryRun: !shouldApply,
+          ...(shouldApply
+            ? {
+                runId: `ai-multi:${orgId}:${targetYear}:${t0}`,
+                actorUserId: session.userId ?? null,
+              }
+            : {}),
+        },
+        {
+          prisma,
+          anthropicClient: getAnthropicClient(),
+          model: AI_MODEL,
+          registry: buildProductionAdapterRegistry(prisma),
+          XLSX,
+        },
+      )
+    } catch (err) {
+      await importLock?.release()
+      const raw = err instanceof Error ? err.message : String(err)
+      log.error("multi-file import failed", { err: raw, year: targetYear })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Multi-file import failed. Check the server logs for details.",
+          code: classifyAiError(raw),
+          ...(importYears.length > 1 ? { failedYear: targetYear, perYear } : {}),
+        },
+        { status: 500 },
+      )
+    }
+
+    // Released per year: every DB write for THIS year is done (the
+    // orchestrator's recompute included), and holding it across the next
+    // year's LLM call would block an unrelated import for minutes.
+    await importLock?.release()
+
+    aggregatedLlmIn += yearResult.llmUsage.inputTokens
+    aggregatedLlmOut += yearResult.llmUsage.outputTokens
+    // Prefix only when there is more than one year, so single-year output —
+    // the overwhelmingly common case — reads exactly as it always has.
+    aggregatedWarnings.push(
+      ...(importYears.length > 1
+        ? yearResult.warnings.map((w) => `[${targetYear}] ${w}`)
+        : yearResult.warnings),
     )
+    aggregatedPerGroup.push(...yearResult.perGroup)
+    perYear.push({
+      year: targetYear,
+      verdict: yearResult.overallVerdict,
+      rowsInserted: yearResult.perGroup.reduce(
+        (n, g) => n + (g.totalRowsInserted ?? 0),
+        0,
+      ),
+      committedGroups: yearResult.perGroup.filter((g) => g.committed).length,
+      warnings: yearResult.warnings.length,
+    })
+    result = yearResult
   }
 
-  // ── Run the orchestrator ────────────────────────────────────────
-  let result
-  try {
-    result = await runMultiFileImport(
-      {
-        files,
-        organizationId: orgId,
-        year,
-        knownEntityCodes,
-        orgIndustry,
-        holdingCompanyCode,
-        entityAliases,
-        allowYellow,
-        forceOverride,
-        conflictResolutions,
-        semanticCoaMappings,
-        // Apply only when caller asked explicitly. Default: preview-only
-        // (dryRun=true) — matches the 2-step UX shipped in Tier 4.
-        dryRun: !shouldApply,
-        // Phase 11.13 — identity for the persisted per-group evidence rows.
-        // Only on apply: a preview commits nothing, so there is nothing to
-        // attest to.
-        ...(shouldApply
-          ? { runId: `ai-multi:${orgId}:${year}:${t0}`, actorUserId: session.userId ?? null }
-          : {}),
-      },
-      {
-        prisma,
-        anthropicClient: getAnthropicClient(),
-        model: AI_MODEL,
-        registry: buildProductionAdapterRegistry(prisma),
-        XLSX,
-      },
-    )
-  } catch (err) {
-    // Broad catch (AI classify + DB apply). Never return the raw provider
-    // message (can carry billing text); log it server-side and surface a
-    // generic admin message + a stable code (AI class when recognized).
-    await importLock?.release()
-    const raw = err instanceof Error ? err.message : String(err)
-    log.error("multi-file import failed", { err: raw })
+  if (!result) {
+    // parseImportYears guarantees a non-empty list, so this is unreachable —
+    // asserted rather than assumed, because a silent undefined here would
+    // surface as an opaque crash in response assembly.
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Multi-file import failed. Check the server logs for details.",
-        code: classifyAiError(raw),
-      },
+      { ok: false, error: "No import year was processed" },
       { status: 500 },
     )
   }
 
-  // Phase 11.8 — every DB write is done by the time the orchestrator returns
-  // (its Phase F recompute included), so the lock is released here rather
-  // than being held through response assembly.
-  await importLock?.release()
+  // The response carries the LAST year's per-file classification (identical
+  // across years — same files, same sheets) but the UNION of everything the
+  // run wrote, so nothing a later year did is hidden behind an earlier one.
+  if (importYears.length > 1) {
+    result = {
+      ...result,
+      perGroup: aggregatedPerGroup,
+      warnings: aggregatedWarnings,
+      overallVerdict: worstVerdict(perYear.map((y) => y.verdict)),
+      llmUsage: {
+        ...result.llmUsage,
+        inputTokens: aggregatedLlmIn,
+        outputTokens: aggregatedLlmOut,
+      },
+    }
+  }
 
   // ── Record token spend (non-fatal) ──────────────────────────────
   if (result.llmUsage.inputTokens + result.llmUsage.outputTokens > 0) {
@@ -1405,6 +1507,11 @@ export async function POST(request: NextRequest) {
     templateUsage,
     backlogClosed,
     consolidatedBsWarnings,
+    // 2026-07-30 — per-year outcome. Always present (a single-year run is a
+    // one-element list), so a client never has to branch on "did they use the
+    // multi-year form?" to find out what happened.
+    importYears,
+    perYear,
     budgetPlfSplits,
     buColumnSplits,
     productSalesSheets,
