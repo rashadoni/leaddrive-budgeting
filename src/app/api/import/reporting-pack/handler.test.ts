@@ -38,6 +38,12 @@ vi.mock("@/lib/risk/recompute-trigger", () => ({
 vi.mock("@/lib/budgeting/period-lock", () => ({
   getActivePeriodLock: vi.fn(async () => null),
 }))
+// 11.41 — the apply path now takes a Postgres session advisory lock on its
+// own connection. Stub it: these tests assert route wiring, not locking, and
+// must never open a real connection.
+vi.mock("@/lib/onboarding/import-lock", () => ({
+  acquireImportLock: vi.fn(),
+}))
 vi.mock("@/lib/budgeting/period-lock-http", () => ({
   lockedResponse: vi.fn(
     () => new Response(JSON.stringify({ error: "period locked" }), { status: 423 }),
@@ -50,7 +56,11 @@ import { runReportingPackImport } from "@/lib/onboarding/adapters/reporting-pack
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
 import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+import { acquireImportLock } from "@/lib/onboarding/import-lock"
 import { POST } from "./route"
+
+/** Shared release spy — `vi.clearAllMocks()` resets its recorded calls. */
+const release = vi.fn(async () => undefined)
 
 const SESSION = { userId: "u1", orgId: "org1", role: "admin" as const }
 
@@ -73,6 +83,23 @@ const xlsxBlob = () => new Blob([new Uint8Array([1, 2, 3])], { type: "applicatio
 beforeEach(() => {
   vi.clearAllMocks()
   ;(requireRole as ReturnType<typeof vi.fn>).mockResolvedValue(SESSION)
+  // `clearAllMocks` clears recorded CALLS, not the `…Once` QUEUE. The
+  // "still allows a PREVIEW of a locked year" case queues a
+  // mockResolvedValueOnce(LOCK) that the preview path never consumes —
+  // getActivePeriodLock is not called on a preview — so the stale LOCK leaked
+  // forward and 423'd the first APPLY test declared after it. A landmine the
+  // 11.41 tests were the first to step on. mockReset drains the queue.
+  ;(getActivePeriodLock as ReturnType<typeof vi.fn>).mockReset()
+  ;(getActivePeriodLock as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+  // Derives the scope from the ARGS, so a route that locked the wrong year
+  // cannot pass against a hardcoded string.
+  ;(acquireImportLock as ReturnType<typeof vi.fn>).mockImplementation(
+    async (orgId: string, year: number) => ({
+      acquired: true,
+      scope: `ai-import:${orgId}:${year}`,
+      release,
+    }),
+  )
   ;(runReportingPackImport as ReturnType<typeof vi.fn>).mockImplementation(
     async (input: { mode: string }, deps: { onAfterApply?: (c: string[]) => Promise<void> }) => {
       if (input.mode === "apply" && deps.onAfterApply) await deps.onAfterApply(["AZSEKER-AZSF"])
@@ -150,11 +177,19 @@ describe("POST /api/import/reporting-pack", () => {
     expect(body.totalRowsWritten).toBe(5)
     const call = (runReportingPackImport as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(call.mode).toBe("apply")
-    // entityCode AZSEKER-AZSF → companyId c1, year 2026
+    // entityCode AZSEKER-AZSF → companyId c1, year 2026.
+    // 11.40 — the last two arguments are NEW and their absence was the
+    // defect: the call took the default `granularity: 'year'` while the reset
+    // deletes "YYYY", "YYYY-Qn" and "YYYY-MM" alike, so a reset + re-import
+    // rebuilt one period out of seventeen and left every monthly cell empty.
+    // Updated deliberately, not deleted: pinning the call SHAPE is right, it
+    // was simply pinned two arguments short.
     expect(runRecomputeForCompanies).toHaveBeenCalledWith(
       expect.anything(),
       "org1",
       [{ companyId: "c1", year: 2026 }],
+      {},
+      { granularity: "year+quarter+month" },
     )
   })
 
@@ -203,6 +238,106 @@ describe("POST /api/import/reporting-pack", () => {
     it("does not consult the lock at all on the preview path", async () => {
       await POST(makeReq({ file: xlsxBlob(), year: "2026" }))
       expect(getActivePeriodLock).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── 11.41 — concurrency lock ─────────────────────────────────────
+  // 11.8 gave /api/import/ai-auto-multi a session advisory lock and left this
+  // route without one. Both clean-slate the same BudgetLine / CashFlowEntry
+  // rows for a year, so two concurrent applies leave a full duplicate set —
+  // and cash_flow_entries has no unique constraint to reject the second copy.
+  describe("concurrency lock (11.41)", () => {
+    it("takes the (org, year) import lock before an apply", async () => {
+      const res = await POST(makeReq({ file: xlsxBlob(), year: "2026", apply: "1" }))
+      expect(res.status).toBe(200)
+      expect(acquireImportLock).toHaveBeenCalledWith("org1", 2026)
+    })
+
+    it("locks the YEAR being imported, not the current one", async () => {
+      await POST(makeReq({ file: xlsxBlob(), year: "2024", apply: "1" }))
+      expect(acquireImportLock).toHaveBeenCalledWith("org1", 2024)
+    })
+
+    it("refuses a concurrent apply with 409 IMPORT_IN_PROGRESS", async () => {
+      ;(acquireImportLock as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        acquired: false,
+        scope: "ai-import:org1:2026",
+        release,
+      })
+      const res = await POST(makeReq({ file: xlsxBlob(), year: "2026", apply: "1" }))
+      const body = await res.json()
+      expect(res.status).toBe(409)
+      expect(body.code).toBe("IMPORT_IN_PROGRESS")
+      expect(runReportingPackImport).not.toHaveBeenCalled()
+      // Released even when NOT acquired — release() closes the dedicated pg
+      // client, so skipping it leaks a connection per refusal.
+      expect(release).toHaveBeenCalledTimes(1)
+    })
+
+    it("releases the lock when the import THROWS", async () => {
+      // A session lock held by a dead request blocks every later import of
+      // this (org, year) until the process restarts.
+      ;(runReportingPackImport as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error("boom"),
+      )
+      const res = await POST(makeReq({ file: xlsxBlob(), year: "2026", apply: "1" }))
+      expect(res.status).toBe(500)
+      expect(release).toHaveBeenCalledTimes(1)
+    })
+
+    it("sanitises a lock-acquisition failure instead of throwing out of POST", async () => {
+      // acquireImportLock dials its own pg connection. Outside a try this
+      // escaped the route and Next rendered the raw pg message — which
+      // carries host:port — defeating the sanitising catch entirely.
+      ;(acquireImportLock as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error("connect ECONNREFUSED 10.0.0.5:5432 password=hunter2"),
+      )
+      const res = await POST(makeReq({ file: xlsxBlob(), year: "2026", apply: "1" }))
+      const body = await res.json()
+      expect(res.status).toBe(500)
+      expect(JSON.stringify(body)).not.toContain("hunter2")
+      expect(runReportingPackImport).not.toHaveBeenCalled()
+    })
+
+    it("a failing release does not turn a COMMITTED apply into an error", async () => {
+      // A throw from `finally` DISCARDS the returned response. Unguarded, a
+      // rejecting unlock reported a committed apply as a 500 — and the
+      // operator re-runs the import, producing exactly the duplicate set this
+      // lock exists to prevent.
+      release.mockRejectedValueOnce(new Error("connection terminated"))
+      const res = await POST(makeReq({ file: xlsxBlob(), year: "2026", apply: "1" }))
+      expect(res.status).toBe(200)
+      expect((await res.json()).mode).toBe("applied")
+    })
+
+    it("takes the lock BEFORE the importer runs, not after", async () => {
+      // toHaveBeenCalledWith cannot see ordering: a refactor that acquired
+      // AFTER the write would keep every other assertion green while the lock
+      // protected nothing.
+      await POST(makeReq({ file: xlsxBlob(), year: "2026", apply: "1" }))
+      const lockOrder = (acquireImportLock as ReturnType<typeof vi.fn>).mock
+        .invocationCallOrder[0]
+      const runOrder = (runReportingPackImport as ReturnType<typeof vi.fn>).mock
+        .invocationCallOrder[0]
+      expect(lockOrder).toBeLessThan(runOrder)
+    })
+
+    // Guard — a preview writes nothing, so refusing concurrent previews would
+    // be a regression, not a fix.
+    it("does not take the lock on a preview", async () => {
+      await POST(makeReq({ file: xlsxBlob(), year: "2026" }))
+      expect(acquireImportLock).not.toHaveBeenCalled()
+    })
+
+    // Guard — the 11.34 period gate must stay IN FRONT of the new lock, or a
+    // locked-period refusal would acquire and release for nothing.
+    it("refuses a period-locked apply BEFORE taking the import lock", async () => {
+      ;(getActivePeriodLock as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        period: "2026",
+      })
+      const res = await POST(makeReq({ file: xlsxBlob(), year: "2026", apply: "1" }))
+      expect(res.status).toBe(423)
+      expect(acquireImportLock).not.toHaveBeenCalled()
     })
   })
 })

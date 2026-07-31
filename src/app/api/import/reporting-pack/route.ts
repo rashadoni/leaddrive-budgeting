@@ -35,6 +35,7 @@ import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
 import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+import { acquireImportLock, type ImportLock } from "@/lib/onboarding/import-lock"
 
 export const maxDuration = 300
 
@@ -165,6 +166,53 @@ export async function POST(request: NextRequest) {
   })
   const codeToId = new Map(companies.map((c) => [c.code, c.id]))
 
+  // 11.40 — a recompute that silently downgraded to year-only has to say so
+  // on the screen. The trigger reports it; this route listened to nothing.
+  const recomputeWarnings: string[] = []
+
+  // ── 11.41: mutual exclusion, APPLY only ──────────────────────────
+  // A preview writes nothing, so concurrent previews are harmless and must
+  // not be refused. 11.8 put this lock on /api/import/ai-auto-multi and left
+  // this route without it — and both are clean-slate (archive-in-scope, then
+  // insert) over the SAME BudgetLine / CashFlowEntry rows for a year. Two
+  // concurrent applies interleave as: A archives N and inserts N, B archives
+  // 0 (A already did) and inserts N — a full duplicate set.
+  // `assertNoCollateralDeletion` cannot see it (it fires on OVER-deletion; B
+  // under-deleted) and CashFlowEntry carries no unique constraint that would
+  // reject the second copy.
+  //
+  // Same scope string as ai-auto-multi on purpose: the two routes write the
+  // same rows, so this must also exclude a concurrent AI Auto Import.
+  let importLock: ImportLock | null = null
+  if (shouldApply) {
+    try {
+      importLock = await acquireImportLock(orgId, year)
+    } catch (err) {
+      // The acquire dials its OWN pg connection. Outside a try, a missing DSN
+      // or refused connection threw straight out of POST and Next rendered
+      // the raw pg message — which carries host:port — defeating the whole
+      // point of the sanitising catch below.
+      return NextResponse.json({ ok: false, ...aiErrorBody(err) }, { status: 500 })
+    }
+    if (!importLock.acquired) {
+      // Released even when NOT acquired: release() is what closes the
+      // dedicated client, so skipping it leaks a connection per refusal.
+      await importLock.release()
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            `Another import is already running for this organization and ${year}. ` +
+            "Wait for it to finish before starting a second one — running both " +
+            "would duplicate every row they share.",
+          code: "IMPORT_IN_PROGRESS",
+          scope: importLock.scope,
+        },
+        { status: 409 },
+      )
+    }
+  }
+
   try {
     const result = await runReportingPackImport(
       { workbook: wb, organizationId: orgId, year, mode: shouldApply ? "apply" : "preview" },
@@ -177,14 +225,59 @@ export async function POST(request: NextRequest) {
             .filter((id): id is string => Boolean(id))
             .map((companyId) => ({ companyId, year }))
           if (affected.length > 0) {
-            await runRecomputeForCompanies(prisma, orgId, affected)
+            // 11.40 — this pack is MONTHLY: every detail sheet is account ×
+            // month. The reset deletes "YYYY", "YYYY-Qn" and "YYYY-MM"
+            // IndicatorValue rows alike (`archive.ts:824-831`), but this call
+            // took the default `granularity: 'year'`, so a reset followed by a
+            // reporting-pack re-import rebuilt ONE period out of seventeen and
+            // left every monthly and quarterly cell — and the 12-slot
+            // sparklines that read them — empty. The ai-auto-multi
+            // orchestrator writes the same rows and has always opted in
+            // (`multi-file-orchestrator.ts:1823`); this route simply never did.
+            const rc = await runRecomputeForCompanies(
+              prisma,
+              orgId,
+              affected,
+              {},
+              { granularity: "year+quarter+month" },
+            )
+            // The trigger silently falls back to year-only past its fan-out
+            // ceiling and reports it ONLY through this flag. Swallowing it
+            // would recreate the same empty-cell surprise the fix removes,
+            // just less often.
+            if (rc.granularityDowngraded) {
+              recomputeWarnings.push(
+                "Recompute exceeded the granular fan-out ceiling and fell back to YEAR periods only — monthly and quarterly indicator cells were NOT refreshed by this import.",
+              )
+            }
           }
         },
       },
     )
-    return NextResponse.json({ ok: true, ...result })
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      warnings: [...result.warnings, ...recomputeWarnings],
+    })
   } catch (err) {
     // Sanitised — never leak raw provider/DB internals to the import screen.
     return NextResponse.json({ ok: false, ...aiErrorBody(err) }, { status: 500 })
+  } finally {
+    // Every exit path, the sanitised 500 included: the lock pins a REAL pg
+    // connection (session-scoped), so a missed release leaks it AND blocks
+    // every later import of this (org, year) until the process dies.
+    //
+    // Swallowed deliberately. A throw from `finally` DISCARDS the returned
+    // response, so a rejecting release() would report a COMMITTED apply as a
+    // 500 — and the operator re-runs the import, producing exactly the
+    // duplicate set this lock exists to prevent. The unlock is best-effort
+    // regardless: release() marks itself released first and ends its client
+    // in its own finally, and Postgres drops a session lock when the
+    // connection dies.
+    try {
+      await importLock?.release()
+    } catch {
+      /* best-effort — see above */
+    }
   }
 }
