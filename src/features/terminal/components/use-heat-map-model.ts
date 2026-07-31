@@ -9,6 +9,7 @@
  * Because NO JSX moved, the rendered output (and the visual-baseline snapshot)
  * is byte-identical — this is a pure data/presentation split.
  */
+import { excludeNonScoringCells } from '@/lib/risk/indicator-provenance';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useTerminalStore } from '../store/terminalStore';
@@ -328,7 +329,13 @@ export function useHeatMapModel(period: string | undefined) {
     // Sparse-map mode (no companyIds arg) — rows without scoreable cells
     // are absent from the result; HeatMap's fallback for missing entries
     // shows "—" via `compositeByCompany.get(co.id) ?? null` consumer.
-    const leafById = computeCompositeByCompany(data.cells, undefined, riskTagsByCompanyId);
+    // 11.66 — a CONSTANT indicator must not enter a risk score. Shared helper
+    // with the CompanyTree badge so the two panels of one screen cannot
+    // disagree about a number — the same reason `buildRiskTagsByCompanyId`
+    // exists. `IND_GOV_CLIMATE_SCORE` has no inputs and a formula of literally
+    // `38`, so it fed an immovable amber cell into every company's composite.
+    const scoringCells = excludeNonScoringCells(data.cells, data.indicators);
+    const leafById = computeCompositeByCompany(scoringCells, undefined, riskTagsByCompanyId);
     return deriveParentComposites(data.companies, leafById);
   }, [data, companyTree]);
 

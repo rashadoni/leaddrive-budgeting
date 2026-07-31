@@ -179,8 +179,26 @@ export function ReadinessChip({
   );
 }
 
-export function CompositeMini({ score }: { score: number | null }) {
+/**
+ * 11.66 — the score now says what it is built on.
+ *
+ * After a reset that provably emptied every financial table, this badge still
+ * read «R67» — an average over five indicators out of 104, rendered exactly
+ * like one built on full coverage. The owner's reading was the only available
+ * one: the delete had failed.
+ *
+ * `contributingCount` / `totalCount` were already computed and carried on the
+ * object; the type's own comment even says "for 'X of Y indicators' UX". The
+ * HeatMap has shown them since it was written — but only inside a hover
+ * tooltip, and nobody hovers during a demo. Here they go on the badge itself.
+ */
+export function CompositeMini({
+  composite,
+}: {
+  composite: { score: number | null; contributingCount: number; totalCount: number } | null;
+}) {
   const t = useTranslations('terminal');
+  const score = composite?.score ?? null;
   if (score === null) {
     return null;
   }
@@ -209,6 +227,14 @@ export function CompositeMini({ score }: { score: number | null }) {
           (0–100), not a count or revenue thousand. Bloomberg convention:
           always tag scale + unit. */}
       <span className="opacity-60 mr-px">R</span>{score}
+      {composite && composite.totalCount > 0 && (
+        <span
+          className="ml-1 font-normal opacity-60"
+          data-testid="composite-coverage"
+        >
+          {composite.contributingCount}/{composite.totalCount}
+        </span>
+      )}
     </span>
   );
 }

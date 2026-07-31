@@ -747,6 +747,18 @@ function CompositeBadge({ score }: { score: CompositeScore | null }) {
         {statusShape(bandStatus)}
       </span>
       {score.score}
+      {/* 11.66 — coverage OUT of the tooltip. It was already computed and
+          already shown on hover, and nobody hovers during a demo: the one
+          number that explains why a company scores at all was invisible in
+          the room where it mattered. */}
+      {score.totalCount > 0 && (
+        <span
+          className="ml-1 font-normal opacity-60"
+          data-testid="composite-coverage"
+        >
+          {score.contributingCount}/{score.totalCount}
+        </span>
+      )}
     </span>
   );
 }

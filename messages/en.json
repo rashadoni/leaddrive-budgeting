@@ -2320,7 +2320,11 @@
       "revertToBase": "Return to baseline data",
       "provisionalBadgeAll": "LEGACY · NOT DECISION-GRADE",
       "provisionalBadgeSome": "LEGACY · {count} OF {total} NOT DECISION-GRADE",
-      "provisionalBadgeTooltip": "These values are not reconciled to source and carry no lineage, so they are not certified for decisions. The numbers are unchanged — only the claim about them is. Verify against the source before acting."
+      "provisionalBadgeTooltip": "These values are not reconciled to source and carry no lineage, so they are not certified for decisions. The numbers are unchanged — only the claim about them is. Verify against the source before acting.",
+      "provenance": {
+        "external-feed": "Market / weather / FX feed — not from your reported data, so it stays lit after a reset",
+        "constant": "Placeholder — a fixed number, not a measurement. Excluded from the risk score"
+      }
     },
     "benchmarkBand": {
       "title": "Target range (benchmark)",
