@@ -1422,4 +1422,148 @@ describe("MultiFileForm", () => {
       ).toBe("active"),
     )
   })
+
+  /**
+   * 11.64 — the review area became tabbed so it stops stretching down the page.
+   *
+   * The dangerous version of this change hides a surface that BLOCKS the
+   * apply, leaving the operator with a disabled button and no visible reason —
+   * strictly worse than the endless scroll. Three would have broken outright:
+   * the sole `forceOverride` checkbox lives inside the conflict banner;
+   * `scrollToDoctorProblem` falls back through refs and an unmounted ref is
+   * null; and the warnings block is the ONLY render of the routing-gate
+   * reasons (the exact regression 11.43 closed).
+   *
+   * So only the two purely informational panels are tabbed, they stay MOUNTED
+   * (hidden via CSS, not unmounted), and the tests below pin both halves.
+   */
+  describe("review tabs (11.64)", () => {
+    function previewWithBothPanels(extra: Record<string, unknown> = {}) {
+      return {
+        ok: true,
+        mode: "preview",
+        perFile: [
+          {
+            filename: "book.xlsx",
+            fileTypeResult: {
+              fileType: "main-financial",
+              confidence: 0.9,
+              reasoning: "x",
+              sheetCounts: {},
+            },
+            classifications: [
+              {
+                sheetName: "PLF Actual",
+                dataType: "PLF",
+                confidence: 0.98,
+                entityCode: "AZSEKER-CPC",
+                reasoning: "r",
+                role: "source",
+                planKind: "actual",
+              },
+            ],
+            error: null,
+          },
+        ],
+        conflicts: [],
+        perGroup: [],
+        overallVerdict: "green",
+        llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+        durationMs: 100,
+        recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+        warnings: ["book.xlsx: sheet \"X\" — something worth reading"],
+        buColumnSplits: [
+          {
+            filename: "book.xlsx",
+            sheetName: "PLF Actual",
+            mapping: [
+              {
+                sheetName: "PLF Actual [AZSEKER-CPC]",
+                entityCode: "AZSEKER-CPC",
+                buValue: "CPC",
+                rowCount: 10,
+                action: "write",
+              },
+            ],
+            warnings: [],
+          },
+        ],
+        ...extra,
+      }
+    }
+
+    async function analyse(body: Record<string, unknown>) {
+      mockFetchOnce(200, body)
+      render(<MultiFileForm />)
+      fireEvent.change(screen.getByTestId("multi-file-input"), {
+        target: { files: [makeFakeFile("book.xlsx")] },
+      })
+      fireEvent.click(screen.getByTestId("btn-analyze"))
+      await screen.findByTestId("import-review-tabs")
+    }
+
+    it("keeps BOTH panels mounted, hiding the inactive one with CSS", async () => {
+      // Unmounting would break every getByTestId the rest of this suite runs
+      // against these panels — and would silently null out any ref inside.
+      await analyse(previewWithBothPanels())
+
+      expect(screen.getByTestId("preview-result")).toBeTruthy()
+      expect(screen.getByTestId("bu-routing-grid")).toBeTruthy()
+      // Analysis is the default: after a run the first question is "did it
+      // understand my file".
+      expect(screen.getByTestId("preview-result").className).not.toContain("hidden")
+      expect(screen.getByTestId("bu-routing-grid").className).toContain("hidden")
+    })
+
+    it("swaps which panel is visible when a tab is clicked", async () => {
+      await analyse(previewWithBothPanels())
+
+      fireEvent.click(screen.getByTestId("review-tab-routing"))
+      expect(screen.getByTestId("bu-routing-grid").className).not.toContain("hidden")
+      expect(screen.getByTestId("preview-result").className).toContain("hidden")
+
+      fireEvent.click(screen.getByTestId("review-tab-analysis"))
+      expect(screen.getByTestId("preview-result").className).not.toContain("hidden")
+    })
+
+    it("NEVER hides a surface that blocks or explains a blocked apply", async () => {
+      // The invariant this whole change turns on. A conflict makes the apply
+      // refuse; the banner carries both the per-cell resolutions and the ONLY
+      // forceOverride checkbox, and the warnings block is the sole render of
+      // the routing-gate reasons. Neither may be behind a tab, on EITHER tab.
+      await analyse(
+        previewWithBothPanels({
+          conflicts: [
+            {
+              key: "AZSEKER-CPC::PLF.01::2026-01",
+              occurrences: [
+                { filename: "a.xlsx", value: 1 },
+                { filename: "b.xlsx", value: 2 },
+              ],
+              spread: 1,
+              spreadPct: 0.5,
+            },
+          ],
+          overallVerdict: "red",
+        }),
+      )
+
+      for (const tab of ["review-tab-routing", "review-tab-analysis"]) {
+        fireEvent.click(screen.getByTestId(tab))
+        const conflict = screen.getByTestId("conflict-banner")
+        expect(conflict.className).not.toContain("hidden")
+        // The only way past a conflict.
+        expect(screen.getByTestId("force-override")).toBeTruthy()
+        // The only place the routing-gate reasons are ever rendered (11.43).
+        expect(screen.getByTestId("preview-warnings")).toBeTruthy()
+      }
+    })
+
+    it("counts what each tab holds so nothing hides behind a silent badge", async () => {
+      await analyse(previewWithBothPanels())
+      // 1 classification, 1 split sheet — visible on the tabs themselves.
+      expect(screen.getByTestId("review-tab-analysis").textContent).toContain("1")
+      expect(screen.getByTestId("review-tab-routing").textContent).toContain("1")
+    })
+  })
 })

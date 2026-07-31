@@ -3680,6 +3680,13 @@
         "title": "The import did not go through",
         "reassurance": "Nothing was written to the database — the import is atomic, so a failure leaves your data exactly as it was. You can fix the cause and run it again.",
         "details": "Technical details"
+      },
+      "review": {
+        "ariaLabel": "Import review",
+        "tab": {
+          "analysis": "What the AI read",
+          "routing": "Where it goes"
+        }
       }
     },
     "single": {

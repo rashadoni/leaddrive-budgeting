@@ -250,3 +250,80 @@ export function ImportDoneRedirect({ href = PNL_HREF }: { href?: string }) {
     </div>
   )
 }
+
+export type ReviewTabKey = "analysis" | "routing"
+
+/**
+ * 11.64 — the review area stops being one endless scroll.
+ *
+ * After an analysis the preview rendered every section stacked: 23 guided-fix
+ * rows, a routing grid, a safety receipt, 33 warnings, and 26 per-sheet
+ * analysis cards each carrying up to ten indicator chips. The product owner
+ * could not look over what the AI had decided before pressing Apply without
+ * scrolling past all of it — "не нужно чтоб растягивалась на всю длину".
+ *
+ * ONLY the two purely informational sections move in here. An audit of the
+ * Apply button's `disabled` expression found that everything else either
+ * explains a blocker, offers the only fix for one, or is a `scrollIntoView`
+ * target — and three of those would break outright behind a tab:
+ *
+ *   • the sole `forceOverride` checkbox lives inside the CONFLICT banner, so
+ *     hiding it removes the only way past a conflict;
+ *   • `scrollToDoctorProblem` falls back through
+ *     `errorRef ?? conflictBannerRef ?? doctorPanelRef` — an unmounted ref is
+ *     `null`, so "go to the problem" would navigate to itself;
+ *   • the WARNINGS block is the only render of the routing-safety-gate and
+ *     year-gate reasons. Hiding it recreates 11.43 exactly: a red verdict
+ *     with no route to the cause.
+ *
+ * The caller keeps BOTH panels mounted and hides the inactive one with
+ * `hidden` rather than unmounting it. That preserves every ref, keeps the
+ * existing tests' `getByTestId` working, and still gives the page a fixed
+ * height — the only thing this change was asked to fix.
+ */
+export function ImportReviewTabs({
+  active,
+  onChange,
+  counts,
+}: {
+  active: ReviewTabKey
+  onChange: (key: ReviewTabKey) => void
+  counts: Partial<Record<ReviewTabKey, number>>
+}) {
+  const t = useTranslations("adminAiImport.multi.review")
+  const tabs: ReviewTabKey[] = ["analysis", "routing"]
+  return (
+    <div
+      role="tablist"
+      aria-label={t("ariaLabel")}
+      className="inline-flex rounded border border-slate-200 bg-slate-50 p-1"
+      data-testid="import-review-tabs"
+    >
+      {tabs.map((key) => {
+        const n = counts[key]
+        return (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={active === key}
+            onClick={() => onChange(key)}
+            data-testid={`review-tab-${key}`}
+            className={`px-3 py-1.5 text-sm rounded font-medium transition ${
+              active === key
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            {t(`tab.${key}` as never)}
+            {n !== undefined && n > 0 && (
+              <span className="ml-1.5 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
+                {n}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
