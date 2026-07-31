@@ -438,9 +438,24 @@ async function defaultReadActualSums(
   // (possibly broader) caller `plan.companyIds` would surface a surviving
   // sibling company as a spurious reconciliation "extra".
   const footprintCompanyIds = [...new Set(plan.rows.map((r) => r.companyId))]
+  // 2026-07-31 (11.51) — scope the read-back to the plan(s) this batch wrote.
+  //
+  // The clean-slate above has been plan-scoped since 2026-06-16 (`planFilter`),
+  // deliberately: importing the 2026 ACTUALS must not archive the 2026 BUDGET
+  // plan. But this read-back kept matching on org+company+year only, and the
+  // recon key (`company::account::period`) carries no plan dimension either —
+  // so a budget sheet's verification summed the sibling ACTUALS plan's live
+  // rows straight back in. Every actuals-only account became an `extra`, and
+  // any `extra` is an unconditional red (`reconciliation.ts:152`), which
+  // aborts the whole group.
+  //
+  // Read back exactly what you were allowed to delete: same scope as
+  // `planFilter`, so the two can no longer disagree.
+  const footprintPlanIds = [...new Set(plan.rows.map((r) => r.planId))]
   const rows = await prisma.budgetLine.findMany({
     where: {
       organizationId: plan.organizationId,
+      planId: { in: footprintPlanIds },
       companyId: { in: footprintCompanyIds },
       deletedAt: null,
     },
