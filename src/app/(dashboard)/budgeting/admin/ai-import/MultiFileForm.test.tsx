@@ -1369,4 +1369,57 @@ describe("MultiFileForm", () => {
       expect(body.get("years")).toBe("2025,2026")
     })
   })
+
+  /**
+   * 11.54 / 11.42a — Step 1 must LOOK like it is working.
+   *
+   * The old banner rendered on `isProcessing && previewResult`, and
+   * `submit(false)` nulls `previewResult` before the fetch — so the whole
+   * classification window rendered nothing. Measured on the live production
+   * run: 46 seconds of a page that looked frozen, and the product owner asked
+   * whether it had hung. The component test in ImportFlowGuide.test.tsx pins
+   * the banner itself; this pins that the FORM actually mounts it, which is
+   * the half that was broken.
+   */
+  it("shows a live progress banner while Step 1 runs, before any preview exists", async () => {
+    let resolveFetch: (r: unknown) => void = () => {}
+    fetchMock.mockReturnValueOnce(
+      new Promise((res) => {
+        resolveFetch = res
+      }),
+    )
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("a.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+
+    // In flight: no previewResult yet — exactly the state that used to render
+    // nothing.
+    expect(await screen.findByTestId("import-running-analyze")).toBeTruthy()
+    expect(screen.getByTestId("import-running-elapsed")).toBeTruthy()
+
+    resolveFetch({ ok: true, status: 200, json: async () => ({ perFile: [] }) })
+    await waitFor(() =>
+      expect(screen.queryByTestId("import-running-analyze")).toBeNull(),
+    )
+  })
+
+  it("puts the four-step map in front of the operator, on the current step", async () => {
+    // Before this the first thing on the page was an entity-alias admin panel.
+    render(<MultiFileForm />)
+    expect(screen.getByTestId("import-flow-strip")).toBeTruthy()
+    expect(screen.getByTestId("flow-step-file").getAttribute("data-state")).toBe(
+      "active",
+    )
+
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("a.xlsx")] },
+    })
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("flow-step-analyze").getAttribute("data-state"),
+      ).toBe("active"),
+    )
+  })
 })

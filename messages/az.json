@@ -94,7 +94,7 @@
     "riskTerminal": "Risk Terminal",
     "boardDeck": "Board Deck",
     "onboarding": "Onboardinq",
-    "aiImport": "AI idxal",
+    "aiImport": "Data Import",
     "auditLog": "Audit jurnalı",
     "adminTools": "Admin alətləri",
     "guide": "Bələdçi",
@@ -3511,10 +3511,10 @@
       },
       "routing": {
         "title": "Şirkət yönləndirməsi — {n} split vərəq",
-        "description": "BU-column vərəqləri importdan əvvəl bölündü. Write sətirləri göstərilən şirkətə gedir; elimination/unknown blokları atlanır.",
+        "description": "Bu kitabda bir neçə şirkət tək vərəqdə, biznes-vahid sütunu ilə ayrılıb. «yaz» sətirləri göstərilən şirkətə gedir. Konsolidasiya düzəlişləri (EJE / AJE) qrupdaxili dövriyyəni silir — onlar heç bir şirkətə aid deyil, ona görə idxal olunmur.",
         "write": "yaz",
-        "skipElim": "elimination atla",
-        "skipUnknown": "unknown atla",
+        "skipElim": "atla — konsolidasiya düzəlişi",
+        "skipUnknown": "atla — şirkət tanınmadı",
         "col": {
           "source": "Mənbə vərəqi",
           "bu": "BU dəyəri",
@@ -3556,7 +3556,8 @@
         "none": "yoxdur",
         "openRiskTerminal": "Risk Terminal",
         "openIndicatorHealth": "Indicator Health",
-        "openRollback": "Cleanup / rollback"
+        "openRollback": "Cleanup / rollback",
+        "openPnl": "P&L-i aç"
       },
       "preview": {
         "title": "Faylların analizi",
@@ -3575,7 +3576,45 @@
         "profileMonths": "Aylıq vərəq {n}",
         "profileBu": "BU vərəq {n}",
         "profileElim": "Elim {n}",
-        "profileDuplicates": "Dublikat {n}"
+        "profileDuplicates": "Dublikat {n}",
+        "dataTypeWrites": {
+          "PLF": "Mənfəət və zərər — 12 ay",
+          "BS": "Balans — ay sonuna qalıqlar",
+          "CF": "Pul axını — 12 ay",
+          "KPI_FARMING": "Əkinçilik göstəriciləri — sahə, məhsul, məhsuldarlıq, şəkərlilik",
+          "KPI_PROCESSING": "Emal göstəriciləri — çıxım, güc, giriş və çıxış",
+          "CAPEX": "Əsaslı xərclər planı",
+          "SALES": "Məhsul satışı, ay-ay",
+          "LAND_REGISTRY": "Torpaq reyestri — mülkiyyət və icarə sahəsi",
+          "DESCRIPTIONS": "Biznesin təsviri (sərbəst mətn)",
+          "INFO_SUMMARY": "Heç nə — bu, bölmə başlığıdır",
+          "COMPANIES": "Holdinq strukturu — şirkətlərin özü",
+          "OPS_FACTS": "Əməliyyat göstəriciləri (sərbəst cədvəl)",
+          "BUDGET_ACTUALS": "Faktiki əməliyyatlar, tarixlə",
+          "SALES_PRODUCTS": "Satış planı — məhsul üzrə həcm və qiymət, aylıq",
+          "SALES_FORECAST": "Departament üzrə satış proqnozu, aylıq",
+          "COUNTERPARTY": "Dövriyyəyə görə ən böyük müştərilər və təchizatçılar",
+          "LEGAL_CASES": "Məhkəmə işləri reyestri",
+          "AUDIT_FINDINGS": "Audit tapıntıları reyestri",
+          "RISK_REGISTER": "Risk reyestri (əsas risk göstəriciləri)",
+          "UNKNOWN": "Tanınmadı"
+        },
+        "dataTypeNote": {
+          "CF": "Gələcək pul axını göstəriciləri üçün saxlanılır — hələ heç nə oxumur.",
+          "CAPEX": "Gələcək CAPEX/gəlir nisbəti üçün saxlanılır.",
+          "SALES": "Gələcək müştəri və məhsul strukturu üçün saxlanılır.",
+          "DESCRIPTIONS": "AI icmalını və fərq izahçısını qidalandırır — heç bir göstəriciyə toxunmur.",
+          "INFO_SUMMARY": "Vərəq atlanır — bazaya heç nə yazılmır.",
+          "COMPANIES": "Struktur dəyişikliyi; göstəricilər sonra yenidən hesablanır.",
+          "BUDGET_ACTUALS": "Gələcək plan-fakt təhlili üçün saxlanılır.",
+          "SALES_PRODUCTS": "«Satış» bölməsini qidalandırır. Göstəricilər P&L-i oxuyur, bu cədvəli yox.",
+          "SALES_FORECAST": "Hələ heç bir göstərici proqnozu oxumur.",
+          "COUNTERPARTY": "Müştəri və təchizatçı konsentrasiyasını qidalandırır.",
+          "LEGAL_CASES": "Aktiv məhkəmə işləri göstəricisini qidalandırır.",
+          "AUDIT_FINDINGS": "Auditin bağlanma faizini və açıq əsas tapıntıları qidalandırır.",
+          "RISK_REGISTER": "Tanınır, lakin hələ heç bir göstərici istifadə etmir.",
+          "UNKNOWN": "AI bu vərəqin tipini müəyyən edə bilmədi — idxal olunmayacaq."
+        }
       },
       "result": {
         "title": "Tətbiq nəticəsi",
@@ -3600,6 +3639,42 @@
       "multiYear": {
         "title": "Bu yükləmədə {years} var",
         "hint": "Seçilmiş il: {picked}. {extra} ilini də eyni işə salmaq üçün işarələyin — hər il üçün bir keçid, ardıcıl."
+      },
+      "flow": {
+        "title": "Bu idxal necə işləyir",
+        "intro": "İşlətdiyiniz faylı olduğu kimi atın. AI hər vərəqi oxuyur, nə olduğunu müəyyən edir və rəqəmlərin hara düşəcəyini göstərir — heç nə yazılmadan əvvəl. Siz «Tətbiq et» düyməsinə basmayana qədər bazaya heç nə getmir, və bir yoxlama belə uğursuz olsa, bütün idxal geri qaytarılır.",
+        "step": {
+          "file": {
+            "label": "Fayl",
+            "hint": "Öz faylınız, dəyişdirilmədən. Doldurulacaq şablon yoxdur."
+          },
+          "analyze": {
+            "label": "AI oxuyur",
+            "hint": "Hər vərəq tanınır: mənfəət-zərər, balans, satış və hansı şirkətə aid olduğu."
+          },
+          "verify": {
+            "label": "Yoxlamalar",
+            "hint": "Konfliktlər, tanınmayan şirkətlər və aydın olmayan vərəqlər indi bildirilir, yazıdan sonra yox."
+          },
+          "write": {
+            "label": "Yazı",
+            "hint": "Yazıdan sonra sətirlər bazadan geri oxunur və faylla tutuşdurulur. Hər hansı uyğunsuzluq hər şeyi geri qaytarır."
+          }
+        },
+        "running": {
+          "analyze": "AI vərəqlərinizi oxuyur…",
+          "analyzeHint": "Bir fayl üçün adətən 30–90 saniyə. Bu səhifəni bağlamayın.",
+          "apply": "Bazaya yazılır…",
+          "applyHint": "Hər il üçün bir tam keçid, ardıcıl; sonra rəqəmlər geri oxunub yoxlanır. Bu səhifəni bağlamayın.",
+          "elapsed": "{sec} san keçdi",
+          "slow": "Hələ işləyir — böyük fayl və ya bir neçə il adətindən uzun çəkir."
+        },
+        "previewIsSelfCheck": "Oxunuşun öz-yoxlaması — faylın ardıcıl oxunduğunu təsdiqləyir. Baza ilə tutuşdurma «Tətbiq et»dən sonra baş verir.",
+        "done": {
+          "opening": "P&L {sec} san sonra açılır…",
+          "goNow": "İndi aç",
+          "stay": "Bu qəbzdə qal"
+        }
       }
     },
     "single": {

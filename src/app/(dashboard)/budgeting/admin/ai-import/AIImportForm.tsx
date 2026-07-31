@@ -12,7 +12,8 @@
  * dead flow.
  */
 import { useState, useRef, type DragEvent, type ChangeEvent } from "react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
+import { localizedName } from "@/lib/i18n/localized-name"
 
 interface Classification {
   sheetName: string
@@ -277,6 +278,7 @@ export function AIImportForm({ initialYear }: { initialYear?: number }) {
 
 function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
   const t = useTranslations("adminAiImport.single")
+  const locale = useLocale()
   return (
     <div className="space-y-4">
       <div className="border rounded p-4 bg-muted/20">
@@ -358,7 +360,9 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
                             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[10px] text-slate-700"
                             title={`${ind.code} · ${ind.category}`}
                           >
-                            <span>{ind.nameRu ?? ind.nameEn}</span>
+                            {/* 11.53 — see MultiFileForm: `nameRu ?? nameEn`
+                                answered in Russian on an Azerbaijani page. */}
+                            <span>{localizedName(locale, ind, ind.code)}</span>
                             <span className="font-mono text-[9px] text-slate-700 dark:text-slate-400">
                               {ind.code}
                             </span>
