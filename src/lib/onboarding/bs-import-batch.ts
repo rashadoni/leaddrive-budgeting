@@ -95,6 +95,31 @@ export interface BsImportPlan {
   periodScope: ReadonlyArray<string>
   rows: ReadonlyArray<BsImportRow>
   expectedSums: ReadonlyMap<ReconciliationKey, number>
+  /**
+   * Entity code the caller prefixed onto the recon key's MIDDLE segment,
+   * or undefined when it keyed on the bare CoA code.
+   *
+   * 2026-07-31 (11.51) — this exists because the read-back cannot infer it.
+   * Phase 2.1 session 3 (`0569c8f3`) dropped the `accountCode` COLUMN, which
+   * had stored the prefixed string, and re-pointed the read-back at
+   * `account.code` — the bare code. The P&L branch got the compensating
+   * change in that same commit; this branch did not, so every expected key
+   * (`planId::AZSEKER-CPC-BS.01.01.01::2026-03`) missed every actual key
+   * (`planId::BS.01.01.01::2026-03`) and `reconcile()` returned
+   * matched:0 / missing:N / extra:N ⇒ red for EVERY balance sheet.
+   *
+   * Dropping the prefix from the expected side instead would be wrong twice
+   * over: BS CoA codes are shared org-wide while `planId` is shared too, so
+   * the prefix is the only thing telling two entities' rows apart — and the
+   * same map feeds `detectCrossFileConflicts`, which SUMS colliding keys
+   * (`multi-file-orchestrator.ts:1060`). That would trade a red verdict for
+   * four entities silently added together.
+   *
+   * Declared rather than derived from `companyId`, because the consolidated
+   * holding path also sets `companyId` yet legitimately keys on the bare
+   * `CONS.BS.<slug>` code (`azseker-consolidated-bs-import.ts:173`).
+   */
+  reconAccountPrefix?: string
   purgeArchivedFirst?: boolean
   reconciliationOptions?: ReconciliationOptions
 }
@@ -399,7 +424,14 @@ async function defaultReadActualBsSums(
     ) {
       continue
     }
-    const key = buildReconKey(r.planId, r.account.code, period)
+    // 11.51 — rebuild the middle segment the way the caller built it. See
+    // `BsImportPlan.reconAccountPrefix`: the prefixed form is not stored
+    // anywhere in the DB, so it has to be re-applied here or the two key
+    // spaces can never intersect.
+    const account = plan.reconAccountPrefix
+      ? `${plan.reconAccountPrefix}-${r.account.code}`
+      : r.account.code
+    const key = buildReconKey(r.planId, account, period)
     out.set(key, (out.get(key) ?? 0) + r.amount)
   }
   return out

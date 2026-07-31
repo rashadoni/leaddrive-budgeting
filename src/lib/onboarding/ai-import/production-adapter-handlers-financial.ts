@@ -583,6 +583,14 @@ export function makeBsHandler(
           periodScope: buildPeriodScope(input.year),
           rows: resolvedRows,
           expectedSums,
+          // 11.51 — the expected keys above are built on
+          // `${input.entityCode}-${line.code}` (see the `buildReconKey` call
+          // in the parse loop). The prefix is NOT persisted — the CoA row
+          // carries the bare `line.code` — so the read-back has to be told
+          // to re-apply it, or nothing matches and every BS sheet is red.
+          // Same local the prefix-strip above uses, so the string re-applied
+          // on read is provably the one removed on write.
+          reconAccountPrefix: entityCode,
           // No purge — keep the soft-archived prior version as an undo buffer
           // (see PLF note 2026-06-24).
         })

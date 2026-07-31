@@ -676,6 +676,13 @@ export async function runDynamicBsAdapter(
         periodScope,
         rows: resolvedRows,
         expectedSums,
+        // 11.51 — same prefixed-expected / bare-actual mismatch as the named
+        // BS handler: `accountCode` is built as `${input.entityCode}-${code}`
+        // and keyed on above, but the CoA row is created from the stripped
+        // code, so the read-back must re-apply the prefix.
+        // Same local the prefix-strip above uses, so the string re-applied
+        // on read is provably the one removed on write.
+        reconAccountPrefix: entityCode,
       })
       return {
           rowsInserted: result.metrics.rowsInserted,
