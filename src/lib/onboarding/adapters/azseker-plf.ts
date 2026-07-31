@@ -202,8 +202,15 @@ export function findPlfHeaderRow(
   return null
 }
 
-// Leaf items: numeric like PLF.05.01.01 OR letter-keyed like PLF.05.01.R (G&A rollup lines)
-const LEAF_CODE_RE = /^(PLF|CF)\.\d{2}\.\d{2}\.([0-9]{1,2}|[A-Za-z]{1,2})$/
+// Leaf items: numeric like PLF.05.01.01 OR letter-keyed like PLF.05.01.R (G&A
+// rollup lines). 11.70 — this SHAPE rule is no longer the whole story: it
+// reads depth as leafness, and `PLF.09.01` (three segments, no children
+// anywhere in the sheet) was silently dropped, losing 80,000 AZN of AZSF
+// budget and 34,500 of EDEN actuals. `buildLeafPredicate` keeps every code
+// this rule accepts and additionally rescues the childless ones it rejects.
+// Re-exported so existing importers keep the symbol.
+export { LEAF_CODE_RE } from "./plf-leaf-codes"
+import { LEAF_CODE_RE, buildLeafPredicate } from "./plf-leaf-codes"
 
 /** Parse PL_X or PLF_X sheet → ParsedPlfLine[] (only leaves).
  *
@@ -255,12 +262,22 @@ export function parsePlfPlSheet(
   const expenseLabels: string[] = []
   const warnings: PlfParseWarning[] = []
 
+  // 11.70 — leafness needs the WHOLE sheet, not one row at a time. "Has no
+  // children" cannot be decided from a code in isolation, and deciding it
+  // from the code's depth is what lost `PLF.09.01`.
+  const allCodes: string[] = []
+  for (let r = headerRowIdx + 1; r < aoa.length; r++) {
+    const c = (aoa[r] ?? [])[0]
+    if (typeof c === "string" && c.trim()) allCodes.push(c.trim())
+  }
+  const isLeafCode = buildLeafPredicate(allCodes)
+
   for (let r = headerRowIdx + 1; r < aoa.length; r++) {
     const row = aoa[r] ?? []
     const codeRaw = row[0]
     const code = typeof codeRaw === "string" ? codeRaw.trim() : ""
     if (!code) continue
-    if (!LEAF_CODE_RE.test(code)) continue // only leaves
+    if (!isLeafCode(code)) continue // only leaves
     const accountType = plfAccountType(code)
     if (!accountType) continue
 
