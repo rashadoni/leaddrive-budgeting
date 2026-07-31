@@ -19,6 +19,10 @@ import { useRef, useState, type ChangeEvent, type DragEvent } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { localizedName } from "@/lib/i18n/localized-name"
 import {
+  groupImportWarnings,
+  ACTIONABLE_GROUPS,
+} from "@/lib/onboarding/ai-import/warning-groups"
+import {
   ImportFlowStrip,
   ImportRunningBanner,
   ImportDoneRedirect,
@@ -595,6 +599,10 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   const [runningPhase, setRunningPhase] = useState<"analyze" | "apply" | null>(
     null,
   )
+  // 11.68 — the years this run is actually writing, CAPTURED at submit rather
+  // than derived from current state. The banner must report what went on the
+  // wire, not what the form says now.
+  const [runningYears, setRunningYears] = useState<number[]>([])
   // 11.65 — every review section is a tab, including the ones that explain or
   // fix a blocked apply. `null` means "nothing chosen yet", which is what lets
   // the auto-selection below open the urgent tab after a run without ever
@@ -1262,6 +1270,9 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
     if (files.length === 0) return
     setIsProcessing(true)
     setRunningPhase(apply ? "apply" : "analyze")
+    setRunningYears(
+      importAllYears && detectedYearsAll.length > 1 ? detectedYearsAll : [year],
+    )
     setError(null)
     setDoctorError(null)
     setDoctorStatus(null)
@@ -1478,13 +1489,55 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
         <summary className="font-medium cursor-pointer">
           ⚠️ {t("result.warningsTitle", { n: warnings.length })}
         </summary>
-        <ul className="mt-2 space-y-1 list-disc list-inside">
-          {warnings.map((w, i) => (
-            <li key={i} className="break-words">
-              {w}
-            </li>
-          ))}
-        </ul>
+        {/* 11.69 — grouped by MEANING, not dumped in arrival order.
+            The live run put six identical "this sheet is about another year"
+            lines next to a real structural failure, in English, on an
+            Azerbaijani page: «тут ничего не поймёшь, всё так записано».
+            What must be acted on comes first; every original line is still
+            here verbatim, one click away. */}
+        <div className="mt-2 space-y-2">
+          {groupImportWarnings(warnings).map((g) => {
+            const actionable = ACTIONABLE_GROUPS.has(g.key)
+            return (
+              <details
+                key={g.key}
+                data-testid={`warning-group-${g.key}`}
+                data-actionable={actionable ? "true" : undefined}
+                className={`rounded border px-2 py-1.5 ${
+                  actionable
+                    ? "border-amber-400 bg-amber-100/60"
+                    : "border-amber-200 bg-white/50"
+                }`}
+              >
+                <summary className="cursor-pointer text-xs">
+                  <span className={actionable ? "font-semibold" : "font-medium"}>
+                    {t(
+                      `warnings.group.${g.key}` as never,
+                      { n: g.messages.length } as never,
+                    )}
+                  </span>
+                  {/* The remedy, stated where the problem is — these sheets
+                      load if the multi-year box is ticked. */}
+                  {g.key === "off-year" && g.years.length > 0 && (
+                    <span className="ml-1 opacity-80">
+                      {t(
+                        "warnings.offYearHint" as never,
+                        { years: g.years.join(", ") } as never,
+                      )}
+                    </span>
+                  )}
+                </summary>
+                <ul className="mt-1.5 space-y-1 list-disc list-inside text-[11px]">
+                  {g.messages.map((w, i) => (
+                    <li key={i} className="break-words">
+                      {w}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )
+          })}
+        </div>
       </details>
     )
   }
@@ -2098,11 +2151,23 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
           // which locale rendered the sentence.
           data-years={detectedYearsAll.join(",")}
         >
-          <label className="flex items-start gap-2 cursor-pointer">
+          {/* 11.68 — frozen once the write starts.
+              The request body is assembled at the moment Apply is pressed, so
+              toggling this mid-run changes nothing at all — but it stayed
+              clickable, which reads as "I can still change my mind". The owner
+              hit exactly that: mid-apply the box was live, the year scope was
+              already settled, and the run went out with 2026 alone. A control
+              that pretends to steer a running write is worse than no control. */}
+          <label
+            className={`flex items-start gap-2 ${
+              isProcessing ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+            }`}
+          >
             <input
               type="checkbox"
               checked={importAllYears}
               onChange={(e) => setImportAllYears(e.target.checked)}
+              disabled={isProcessing}
               className="mt-1"
               data-testid="chk-all-years"
             />
@@ -2155,7 +2220,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
           Keyed on the phase so the counter restarts at Step 2 instead of
           carrying Step 1's seconds over. */}
       {runningPhase && (
-        <ImportRunningBanner key={runningPhase} phase={runningPhase} />
+        <ImportRunningBanner
+          key={runningPhase}
+          phase={runningPhase}
+          years={runningYears}
+        />
       )}
 
       {primaryDoctorIssue && (
@@ -2346,6 +2415,22 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
             </div>
           )}
         </div>
+      )}
+
+      {/* 11.67 — the strip sits ABOVE every panel it controls.
+          It used to be declared between the fix panels and the read-only ones,
+          so conflicts / account review / guided fixes rendered ABOVE it while
+          routing / receipt / warnings / analysis rendered BELOW: the tabs
+          appeared to jump from the top of the block to the bottom depending on
+          which one was open. Reported the first time a real preview was driven
+          through them. A tab strip has to be a fixed frame, or it is not a
+          frame at all. */}
+      {effectiveReviewTab && (
+        <ImportReviewTabs
+          tabs={reviewTabDefs}
+          active={effectiveReviewTab}
+          onChange={setReviewTab}
+        />
       )}
 
       {/* Conflict banner */}
@@ -2741,17 +2826,6 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
             ) : null}
           </div>
         </div>
-      )}
-
-      {/* 11.65 — one strip for every review section that has content. The
-          panels below stay MOUNTED and hide with CSS; see the tab model above
-          for why unmounting is not an option here. */}
-      {effectiveReviewTab && (
-        <ImportReviewTabs
-          tabs={reviewTabDefs}
-          active={effectiveReviewTab}
-          onChange={setReviewTab}
-        />
       )}
 
       {previewResult && buRoutingSplits.length > 0 && (
