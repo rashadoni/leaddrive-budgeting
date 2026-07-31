@@ -17,6 +17,14 @@
  */
 import { useRef, useState, type ChangeEvent, type DragEvent } from "react"
 import { useLocale, useTranslations } from "next-intl"
+import { localizedName } from "@/lib/i18n/localized-name"
+import {
+  ImportFlowStrip,
+  ImportRunningBanner,
+  ImportDoneRedirect,
+  PNL_HREF,
+  type FlowStepKey,
+} from "./ImportFlowGuide"
 
 interface ConflictOccurrence {
   filename: string
@@ -565,6 +573,14 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   )
   const [files, setFiles] = useState<File[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
+  // 11.54 — WHICH step is running, not merely that something is.
+  // `isProcessing` alone could not drive a banner: the old one keyed off
+  // `isProcessing && previewResult`, and submitting Step 1 nulls
+  // `previewResult` first, so the 30-90s of AI classification rendered
+  // nothing and read as a hang (11.42a, caught in a live rehearsal).
+  const [runningPhase, setRunningPhase] = useState<"analyze" | "apply" | null>(
+    null,
+  )
   const [previewResult, setPreviewResult] =
     useState<MultiFileApiResponse | null>(null)
   const [applyResult, setApplyResult] =
@@ -633,6 +649,19 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
     ),
   ].sort()
   const extraYears = detectedYearsAll.filter((y) => y !== year)
+  // 11.54 — which of the four plain-language steps the operator is standing on.
+  // Derived, never stored: any other source of truth would drift from the
+  // buttons that actually gate the flow.
+  const currentFlowStep: FlowStepKey =
+    runningPhase === "apply" || applyResult
+      ? "write"
+      : runningPhase === "analyze"
+        ? "analyze"
+        : previewResult
+          ? "verify"
+          : files.length > 0
+            ? "analyze"
+            : "file"
   const coaReviewItems =
     previewResult?.perFile.flatMap((f) =>
       (f.semanticCoa?.reviewItems ?? []).map((item) => ({
@@ -1136,6 +1165,7 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   async function submit(apply: boolean): Promise<void> {
     if (files.length === 0) return
     setIsProcessing(true)
+    setRunningPhase(apply ? "apply" : "analyze")
     setError(null)
     setDoctorError(null)
     setDoctorStatus(null)
@@ -1197,6 +1227,7 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setIsProcessing(false)
+      setRunningPhase(null)
     }
   }
 
@@ -1588,6 +1619,16 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2 text-xs">
+          {/* 11.55 — the payoff link, first and primary. The point of an
+              import is the statement it produces; the receipt used to offer
+              three admin destinations and no way to look at the numbers. */}
+          <a
+            href={PNL_HREF}
+            className="rounded bg-slate-900 px-2.5 py-1 font-semibold text-white hover:bg-slate-800"
+            data-testid="receipt-open-pnl"
+          >
+            {t("receipt.openPnl")}
+          </a>
           <a
             href={receipt.links.riskTerminal}
             className="rounded border border-current/15 bg-white/70 px-2.5 py-1 font-medium hover:bg-white"
@@ -1613,6 +1654,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
 
   return (
     <div className="space-y-6">
+      {/* 11.54 — the map goes first: what this screen does, in four plain
+          sentences, with the current step lit. Before this the operator's
+          first sight was an entity-alias admin panel. */}
+      <ImportFlowStrip current={currentFlowStep} />
+
       <div
         className="rounded-lg border border-slate-200 bg-white p-4 text-sm"
         data-testid="entity-aliases-panel"
@@ -1974,15 +2020,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
         </div>
       )}
 
-      {/* Processing banner — shown while Step 2 is running */}
-      {isProcessing && previewResult && (
-        <div className="rounded border border-emerald-300 bg-emerald-50 text-emerald-800 p-3 text-sm flex items-center gap-2">
-          <svg className="animate-spin h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-          </svg>
-          <span>{t("applying")}</span>
-        </div>
+      {/* 11.54 — live banner for BOTH steps, with an elapsed counter.
+          Keyed on the phase so the counter restarts at Step 2 instead of
+          carrying Step 1's seconds over. */}
+      {runningPhase && (
+        <ImportRunningBanner key={runningPhase} phase={runningPhase} />
       )}
 
       {primaryDoctorIssue && (
@@ -2827,10 +2869,22 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                                 }}
                               />
                             </div>
-                            {/* writes summary */}
-                            <p className="text-[10px] text-slate-500 mt-1.5">
+                            {/* writes summary — 11.53: say it in the reader's
+                                language, and in statement names rather than
+                                table names. The server string is hardcoded
+                                Russian (`datatype-indicator-map.ts`) and reads
+                                like schema ("BudgetLine.plannedAmount"); it
+                                stays as the hover title for whoever is
+                                debugging, but a finance reader gets
+                                "Profit & loss — 12 months". */}
+                            <p
+                              className="text-[10px] text-slate-500 mt-1.5"
+                              title={imp.impact.writes}
+                            >
                               <span className="text-slate-600">{t("preview.writes")}: </span>
-                              {imp.impact.writes}
+                              {t.has(`preview.dataTypeWrites.${imp.dataType}` as never)
+                                ? t(`preview.dataTypeWrites.${imp.dataType}` as never)
+                                : imp.impact.writes}
                             </p>
                             {/* indicator list — humanized: localized name
                                 primary, code as small mono suffix so finance
@@ -2851,7 +2905,13 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                                       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] text-slate-700"
                                       title={`${ind.code} · ${ind.category} · ${ind.matchedInput}`}
                                     >
-                                      <span>{ind.nameRu ?? ind.nameEn}</span>
+                                      {/* 11.53 — was `nameRu ?? nameEn`, so an
+                                          Azerbaijani page named every indicator
+                                          in Russian while `nameAz` sat unused
+                                          in the very same payload. */}
+                                      <span>
+                                        {localizedName(locale, ind, ind.code)}
+                                      </span>
                                       <span className="font-mono text-[9px] text-slate-400">
                                         {ind.code}
                                       </span>
@@ -2860,8 +2920,14 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                                 </div>
                               </div>
                             ) : imp.impact.note ? (
-                              <p className="text-[10px] text-slate-500 italic mt-1.5">
-                                {imp.impact.note}
+                              // 11.53 — same treatment as `writes` above.
+                              <p
+                                className="text-[10px] text-slate-500 italic mt-1.5"
+                                title={imp.impact.note}
+                              >
+                                {t.has(`preview.dataTypeNote.${imp.dataType}` as never)
+                                  ? t(`preview.dataTypeNote.${imp.dataType}` as never)
+                                  : imp.impact.note}
                               </p>
                             ) : null}
                           </li>
@@ -2888,6 +2954,13 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
             {verdictEmoji(applyResult.overallVerdict)} {t("result.title")} ·{" "}
             {applyResult.durationMs}ms
           </h3>
+          {/* 11.55 — a committed import goes on to the numbers it produced.
+              Gated on `committed`, deliberately: a REJECTED import must stay
+              on screen, because its reason is the only thing of value and
+              nothing was written to go and look at. */}
+          {applyResult.perGroup.some((g) => g.committed) && (
+            <ImportDoneRedirect />
+          )}
           {applyResult.safetyReceipt &&
             renderSafetyReceipt(applyResult.safetyReceipt, "applied")}
           {renderIncompleteness(applyResult)}

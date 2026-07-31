@@ -39,7 +39,11 @@ export default function LoginPage() {
       setError(t("invalidCredentials"))
       setLoading(false)
     } else {
-      router.push("/budgeting")
+      // 2026-07-31 (11.55) — land on the P&L, not the generic workspace.
+      // Signing in and being shown a chooser is a wasted click: the profit &
+      // loss statement is what everyone opens first, and on demo day it is
+      // what the client wants to see the moment the session starts.
+      router.push("/budgeting?tab=pnl-report")
     }
   }
 
