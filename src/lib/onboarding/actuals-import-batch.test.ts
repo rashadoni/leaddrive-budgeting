@@ -322,13 +322,80 @@ describe("runActualsBatch", () => {
       const [readArg] = findMany.mock.calls[0] as unknown as [
         { where: Record<string, unknown> },
       ]
+      // 11.57 — the `source` clause is NEW and its absence was the defect.
+      // This assertion pinned the read-back's exact WHERE, which is the right
+      // shape of test; it simply pinned it one predicate short of the reset's.
+      // The reset carries `provenanceScope()` (11.1b) so it can never delete
+      // hand-entered actuals — BudgetActual has no `deletedAt`, so that loss
+      // is unrecoverable. The read did not, so those untouchable rows were
+      // summed into the comparison and reported as drift on a correct import.
+      // Updated deliberately, not deleted: the three predicates here must stay
+      // in lockstep with the three at the reset (`AND: [dateCondition,
+      // companyScope(), provenanceScope()]`).
       expect(readArg.where).toEqual({
         organizationId: "org_1",
         planId: "plan_1",
         AND: [
           { OR: [{ expenseDate: { startsWith: "2026" } }] },
           { companyId: { in: ["co_a"] } },
+          { source: "test.xlsx" },
         ],
+      })
+    })
+
+    it("does not sum a HAND-ENTERED actual the reset is forbidden to delete", async () => {
+      // 11.57, the failure in behavioural terms rather than WHERE shape.
+      // `source: null` marks every non-import row (typed in through
+      // /budgeting, or legacy). The reset skips them by design; the read-back
+      // used to count them, so a correct import drifted and a red verdict
+      // rolled the whole group back.
+      const { prisma, findMany } = buildPrismaStub({
+        existingActuals: [{ category: "Cat1", monthIndex: 2, actualAmount: 100 }],
+        deleteCount: 1,
+      })
+      const res = await runActualsBatch(prisma, {
+        organizationId: "org_1",
+        planId: "plan_1",
+        label: "test",
+        actorUserId: "u1",
+        sourceDocument: "test.xlsx",
+        dateScope: ["2026"],
+        rows: [row("Cat1", 100, "2026-03-15", 2, { companyId: "co_a" })],
+        expectedSums: new Map([[buildReconKey("plan_1", "Cat1", "2"), 100]]),
+      })
+      const [readArg] = findMany.mock.calls[0] as unknown as [
+        { where: { AND: unknown[] } },
+      ]
+      // The predicate that excludes them must be present and must name THIS
+      // import's document — `source: { not: null }` would still sweep in
+      // another import's rows.
+      expect(readArg.where.AND).toContainEqual({ source: "test.xlsx" })
+      expect(res.reconciliation.verdict).toBe("green")
+    })
+
+    it("mirrors the reset's EXPLICIT-DATE branch, not just the year one", async () => {
+      // `dateScopeCondition()` has two branches; the read-back implemented
+      // only the year prefix, so an explicit-date scope read the whole plan
+      // back — the same shape of gap as 11.56 in the KPI batch.
+      const { prisma, findMany } = buildPrismaStub({
+        existingActuals: [],
+        deleteCount: 0,
+      })
+      await runActualsBatch(prisma, {
+        organizationId: "org_1",
+        planId: "plan_1",
+        label: "test",
+        actorUserId: "u1",
+        sourceDocument: "test.xlsx",
+        dateScope: ["2026-03-15"],
+        rows: [row("Cat1", 100, "2026-03-15", 2, { companyId: "co_a" })],
+        expectedSums: new Map([[buildReconKey("plan_1", "Cat1", "2"), 100]]),
+      })
+      const [readArg] = findMany.mock.calls[0] as unknown as [
+        { where: { AND: unknown[] } },
+      ]
+      expect(readArg.where.AND).toContainEqual({
+        expenseDate: { in: ["2026-03-15"] },
       })
     })
   })

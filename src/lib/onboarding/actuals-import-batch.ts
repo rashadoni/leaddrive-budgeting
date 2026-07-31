@@ -418,19 +418,45 @@ async function defaultReadActualSums(
               ],
             }
 
+  // 2026-07-31 (11.57) — read back exactly what the RESET was allowed to
+  // delete, on every dimension. Two gaps, both the same class as 11.51:
+  //
+  //  • PROVENANCE. The reset carries `provenanceScope()` (11.1b) so it can
+  //    never delete hand-entered actuals — `BudgetActual` has no `deletedAt`,
+  //    so that loss would be unrecoverable. The read had no such predicate, so
+  //    those very rows — the ones the delete is forbidden to remove — were
+  //    summed into `actual` and reported as drift on a correct import. No
+  //    exotic setup needed: a plain year scope plus one typed-in actual.
+  //  • DATE SHAPE. The reset resolves `dateScope` in TWO branches
+  //    (`dateScopeCondition`, :214-226): year prefixes, else explicit dates.
+  //    The read only ever implemented the first, so an explicit-date scope
+  //    read the whole plan back.
+  //
+  // Rebuilt here from `plan` rather than shared with the closure above,
+  // matching the existing convention in this file: the count's WHERE is also
+  // written out independently so a future edit to one and not the other is
+  // LOUD rather than silent (see the comment at :270).
+  const explicitDates = plan.dateScope.filter((d) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(d),
+  )
+  const dateCondition: Prisma.BudgetActualWhereInput =
+    yearScope.length > 0
+      ? {
+          OR: yearScope.map((y) => ({
+            expenseDate: { startsWith: String(y) },
+          })),
+        }
+      : explicitDates.length > 0
+        ? { expenseDate: { in: explicitDates } }
+        : {}
+  const provenanceScope: Prisma.BudgetActualWhereInput = plan.sourceDocument
+    ? { source: plan.sourceDocument }
+    : { source: { not: null } }
+
   const filter: Prisma.BudgetActualWhereInput = {
     organizationId: plan.organizationId,
     planId: plan.planId,
-    AND: [
-      yearScope.length > 0
-        ? {
-            OR: yearScope.map((y) => ({
-              expenseDate: { startsWith: String(y) },
-            })),
-          }
-        : {},
-      companyScope,
-    ],
+    AND: [dateCondition, companyScope, provenanceScope],
   }
   const rows = await prisma.budgetActual.findMany({
     where: filter,

@@ -408,6 +408,14 @@ const MAX_FILES = 10
 // accepted — including the client's own 26.6 MB `Reporting 2026.xlsx`, with a
 // client-side message that made it look like a hard product limit.
 const MAX_TOTAL_BYTES = 40 * 1024 * 1024
+// 11.58 — mirror the server's per-count cap (`totalCapFor` in the route). A
+// single file gets the full 64 MB every other import route allows; the 40 MB
+// aggregate applies only from two files up, where ten near-cap files would
+// otherwise reach ~640 MB. Without this the browser refused a 41-63 MB
+// workbook that the classify-only tab had just accepted.
+const MAX_SINGLE_FILE_BYTES = 64 * 1024 * 1024
+const totalCapFor = (fileCount: number): number =>
+  fileCount <= 1 ? MAX_SINGLE_FILE_BYTES : MAX_TOTAL_BYTES
 
 function formatBytes(b: number): string {
   if (b < 1024) return `${b} B`
@@ -553,6 +561,9 @@ const YEAR_OPTIONS: number[] = (() => {
 
 export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   const t = useTranslations("adminAiImport.multi")
+  // 11.58 — the flow namespace also carries the honest label for the
+  // pre-write reconciliation (see `receipt-preview-self-check` below).
+  const tFlow = useTranslations("adminAiImport.multi.flow")
   const locale = useLocale()
   /**
    * Phase 11.5 (2026-07-29) — the target year is an EXPLICIT, user-visible
@@ -631,7 +642,8 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   const doctorPanelRef = useRef<HTMLDivElement>(null)
 
   const totalBytes = files.reduce((s, f) => s + f.size, 0)
-  const overSizeCap = totalBytes > MAX_TOTAL_BYTES
+  const sizeCap = totalCapFor(files.length)
+  const overSizeCap = totalBytes > sizeCap
   const overCountCap = files.length > MAX_FILES
   const hasConflicts = (previewResult?.conflicts.length ?? 0) > 0
   const yearMismatch = detectedYearMismatch(previewResult)
@@ -1508,6 +1520,23 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                 </span>
               )}
             </div>
+            {/* 11.58 — a GREEN here before Apply is green BY CONSTRUCTION.
+                The pre-write pass compares the parsed sums against themselves
+                (`multi-file-orchestrator.ts:1552` marks it
+                `evidence: "parse-self-check"`), so it proves the adapter read
+                the file consistently and NOTHING about the database. Saying
+                "GREEN" unqualified is what let a preview reassure an operator
+                minutes before the real post-write check rejected the same
+                import outright. The database comparison happens after Apply,
+                and only that one is evidence. */}
+            {placement === "preview" && (
+              <p
+                className="mt-1 text-[10px] leading-snug opacity-70"
+                data-testid="receipt-preview-self-check"
+              >
+                {tFlow("previewIsSelfCheck")}
+              </p>
+            )}
           </div>
           <div className="rounded border border-current/10 bg-white/65 p-2.5">
             <div className="text-[10px] uppercase tracking-wide opacity-60">
@@ -2009,14 +2038,32 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
         </div>
       )}
 
-      {/* Error banner — sits right below buttons so it's always visible */}
+      {/* Error banner — sits right below buttons so it's always visible.
+          11.58: it used to print the server string verbatim, so an operator
+          (and, in a rehearsal, a client) read "HTTP 500" or a raw exception
+          and had no idea whether their data was at risk. Now a plain sentence
+          leads, the technical text is kept verbatim behind a disclosure for
+          whoever debugs it, and the one thing the reader actually needs to
+          know — nothing was written — is stated outright. */}
       {error && (
         <div
           ref={errorRef}
-          className="rounded border border-red-300 bg-red-50 text-red-700 p-3 text-sm"
+          className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800"
           data-testid="error-banner"
         >
-          ❌ {error}
+          <p className="font-medium">❌ {t("errorBanner.title")}</p>
+          <p className="mt-1 text-xs">{t("errorBanner.reassurance")}</p>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs opacity-70">
+              {t("errorBanner.details")}
+            </summary>
+            <pre
+              className="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded bg-white/70 p-2 font-mono text-[11px]"
+              data-testid="error-banner-raw"
+            >
+              {error}
+            </pre>
+          </details>
         </div>
       )}
 
@@ -3026,16 +3073,41 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
         </div>
       )}
 
-      {/* Step 3 — shown after successful apply */}
-      {applyResult && applyResult.overallVerdict !== "red" && (
+      {/* Step 3 — shown after an apply that actually WROTE something.
+          11.58: the condition was `overallVerdict !== "red"`, which put a
+          green ✅ "Import complete" box directly above a YELLOW receipt —
+          two contradictory verdicts on one screen — and showed the same ✅
+          for an `applied_no_writes` run that committed nothing at all.
+          Now it requires a committed group, and a yellow verdict is dressed
+          as a caution rather than a success. */}
+      {applyResult &&
+        applyResult.overallVerdict !== "red" &&
+        applyResult.perGroup.some((g) => g.committed) && (
         <div
-          className="rounded-lg border-2 border-emerald-400 bg-emerald-50 p-5 space-y-3"
+          className={`rounded-lg border-2 p-5 space-y-3 ${
+            applyResult.overallVerdict === "yellow"
+              ? "border-amber-400 bg-amber-50"
+              : "border-emerald-400 bg-emerald-50"
+          }`}
           data-testid="step3-done"
+          data-verdict={applyResult.overallVerdict}
         >
           <div className="flex items-center gap-2">
-            <span className="text-2xl">✅</span>
+            <span className="text-2xl">
+              {applyResult.overallVerdict === "yellow" ? "⚠️" : "✅"}
+            </span>
             <div>
-              <p className="font-semibold text-emerald-800">{t("step3.title")}</p>
+              <p
+                className={`font-semibold ${
+                  applyResult.overallVerdict === "yellow"
+                    ? "text-amber-800"
+                    : "text-emerald-800"
+                }`}
+              >
+                {applyResult.overallVerdict === "yellow"
+                  ? t("step3.titleWithWarnings")
+                  : t("step3.title")}
+              </p>
               <p className="text-xs text-emerald-700 mt-0.5">
                 {t("step3.summary", {
                   rows: applyResult.perGroup
