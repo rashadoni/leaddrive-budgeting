@@ -37,7 +37,12 @@ import { runBalanceSheetBatch, type BsImportRow } from "../bs-import-batch"
 import { runCashFlowBatch, type CfImportRow } from "../cf-import-batch"
 import { runKpiBatch, type KpiImportRow } from "../kpi-import-batch"
 import { assertNoCollateralDeletion } from "../collateral-guard"
-import { buildReconKey, type ReconciliationKey } from "../reconciliation"
+import {
+  buildReconKey,
+  mergeReconciliationReports,
+  type ReconciliationKey,
+  type ReconciliationReport,
+} from "../reconciliation"
 import { buildSourceCell } from "../source-cell"
 import { detectSheetYears } from "./workbook-year"
 import {
@@ -294,6 +299,10 @@ export function makePlfHandler(
         // year we cannot parse is left UNTOUCHED rather than deleted-then-not-
         // reinserted. That delete-without-reinsert was the 2026-06-03 footgun that
         // silently dropped EDEN/CPC/AZSF pl_ebitda while MALT survived.
+        // 11.63 — one report per parsed year, merged into the handler's single
+        // return value below. A sheet that writes two row-sets must attest to
+        // both or the receipt describes only half of what landed.
+        const ebitdaReconciliations: ReconciliationReport[] = []
         const ebitdaByYear = parsePlfEbitdaSubtotalAllYears(
           input.workbook,
           input.sheetName,
@@ -313,48 +322,66 @@ export function makePlfHandler(
           // import and is zero in the new one would NOT be cleared, leaving a
           // stale fact that overcounts the year sum. Deleting the full year
           // fixes that while the per-year loop keeps it scoped to parsed years.
-          const yearStart = new Date(Date.UTC(year, 0, 1))
-          const yearEnd = new Date(Date.UTC(year + 1, 0, 1))
-          // Footprint count — written SEPARATELY from the delete WHERE so a
-          // future broadening of the delete trips the guard (non-circular).
-          const ebitdaFootprint = await tx.operationalFact.count({
-            where: {
-              organizationId: ctx.organizationId,
-              companyId,
-              metric: "pl_ebitda",
-              date: { gte: yearStart, lt: yearEnd },
-            },
+          // 11.63 — go through `runKpiBatch` instead of raw delete+create.
+          //
+          // This block used to write its rows with `tx.operationalFact
+          // .deleteMany` + `.createMany` directly. It kept the collateral
+          // guard, so it could not over-delete — but it had NO post-write
+          // reconciliation, and the handler returned only the P&L batch's
+          // report. Measured on production 2026-07-31: 84 `pl_ebitda` facts
+          // committed under a receipt that said GREEN about a different set
+          // of rows entirely. Same silhouette as 11.51 / 11.57 / 11.62 — a
+          // write with no attestation.
+          //
+          // `runKpiBatch` is a drop-in for the semantics this block already
+          // had: `dateScope: [String(year)]` resolves to exactly the
+          // whole-year window (its year-prefix branch), and its reset derives
+          // the company + metric scope from the rows, so the delete stays
+          // `(company, pl_ebitda, that year)`. Crucially it keeps the
+          // full-year delete the comment above argues for — the parser omits
+          // zero months, so narrowing the delete to the parsed dates would
+          // strand a month that WAS nonzero last import.
+          const ebitdaRows: KpiImportRow[] = monthly.map((x) => ({
+            companyId,
+            metric: "pl_ebitda",
+            date: new Date(Date.UTC(year, x.month - 1, 1))
+              .toISOString()
+              .slice(0, 10),
+            value: x.value,
+            unit: "AZN",
+            source: "import:plf-subtotal",
+          }))
+          const ebitdaExpected = new Map<ReconciliationKey, number>()
+          for (const r of ebitdaRows) {
+            const key = buildReconKey(r.companyId, r.metric, r.date)
+            ebitdaExpected.set(key, (ebitdaExpected.get(key) ?? 0) + r.value)
+          }
+          const ebitdaResult = await runKpiBatch(tx, {
+            organizationId: ctx.organizationId,
+            label: `PLF EBITDA subtotal ${input.entityCode} ${year}`,
+            actorUserId: "ai-multi-import",
+            sourceDocument: `multi-import:${input.sheetName}`,
+            companyIds: [companyId],
+            dateScope: [String(year)],
+            rows: ebitdaRows,
+            expectedSums: ebitdaExpected,
           })
-          const ebitdaDeleted = await tx.operationalFact.deleteMany({
-            where: {
-              organizationId: ctx.organizationId,
-              companyId,
-              metric: "pl_ebitda",
-              date: { gte: yearStart, lt: yearEnd },
-            },
-          })
-          assertNoCollateralDeletion({
-            table: "OperationalFact(pl_ebitda)",
-            archivedCount: ebitdaDeleted.count,
-            footprintLiveCount: ebitdaFootprint,
-            footprint: `company=${companyId} year=${year}`,
-          })
-          await tx.operationalFact.createMany({
-            data: monthly.map((x) => ({
-              organizationId: ctx.organizationId,
-              companyId,
-              metric: "pl_ebitda",
-              date: new Date(Date.UTC(year, x.month - 1, 1)),
-              value: x.value,
-              unit: "AZN",
-              source: "import:plf-subtotal",
-            })),
-          })
+          ebitdaReconciliations.push(ebitdaResult.reconciliation)
         }
         return {
+          // Deliberately still the P&L row count. The EBITDA facts are a
+          // DERIVED subtotal of those very rows, and the preview's
+          // "rows to write" is computed from the same expectedSums — counting
+          // them here would make apply disagree with the preview the operator
+          // just approved. What changes in 11.63 is that they are now
+          // VERIFIED, not that they are re-counted.
           rowsInserted: result.metrics.rowsInserted,
           // Phase 11.2 — surface the batch layer's post-write DB re-read.
-          reconciliation: result.reconciliation,
+          // 11.63 — now covering BOTH row-sets this handler writes.
+          reconciliation: mergeReconciliationReports([
+            result.reconciliation,
+            ...ebitdaReconciliations,
+          ]),
         }
       },
     } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }

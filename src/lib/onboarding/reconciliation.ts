@@ -214,3 +214,43 @@ export function buildReconKey(
 ): ReconciliationKey {
   return `${entityCode}::${account}::${period}`
 }
+
+/**
+ * Combine reconciliation reports covering DIFFERENT row-sets written by one
+ * sheet.
+ *
+ * 2026-07-31 (11.63) — the PLF handler writes twice: `BudgetLine` rows through
+ * `runImportBatch`, and `pl_ebitda` OperationalFacts alongside them. The
+ * adapter contract carries ONE report, so the second write's verdict had
+ * nowhere to go and was simply dropped — 84 rows on production, committed
+ * under a green receipt that described only the first set.
+ *
+ * Union, not intersection: each report covers keys the other never claims, so
+ * `missing`/`extra` concatenate rather than cancelling. The verdict is the
+ * WORST of the inputs — a clean P&L must not launder a broken subtotal write.
+ *
+ * Tolerance: reports are only comparable at the same threshold, so this keeps
+ * the strictest one. In practice every caller uses the default.
+ */
+export function mergeReconciliationReports(
+  reports: ReadonlyArray<ReconciliationReport>,
+): ReconciliationReport {
+  if (reports.length === 1) return reports[0]
+  const severity = (v: ReconciliationReport["verdict"]) =>
+    v === "red" ? 2 : v === "yellow" ? 1 : 0
+  let verdict: ReconciliationReport["verdict"] = "green"
+  let matched = 0
+  const drift: ReconciliationDriftLine[] = []
+  const missing: ReconciliationKey[] = []
+  const extra: ReconciliationKey[] = []
+  let toleranceAzn = DEFAULT_TOLERANCE_AZN
+  for (const r of reports) {
+    if (severity(r.verdict) > severity(verdict)) verdict = r.verdict
+    matched += r.matched
+    drift.push(...r.drift)
+    missing.push(...r.missing)
+    extra.push(...r.extra)
+    toleranceAzn = Math.min(toleranceAzn, r.toleranceAzn)
+  }
+  return { matched, drift, missing, extra, verdict, toleranceAzn }
+}
