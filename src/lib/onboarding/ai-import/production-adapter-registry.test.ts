@@ -241,6 +241,156 @@ describe("buildProductionAdapterRegistry", () => {
     )
   })
 
+  // ── 11.63 — the EBITDA subtotal write is now VERIFIED ────────────────
+  // The PLF handler writes twice: BudgetLine rows through runImportBatch, and
+  // pl_ebitda OperationalFacts alongside them. The second write used to go
+  // through raw tx.operationalFact.deleteMany + createMany with NO post-write
+  // reconciliation, and the handler returned only the P&L report — so 84 rows
+  // committed on production 2026-07-31 under a receipt describing a different
+  // set of rows entirely. The other tests mock the subtotal parser to [], so
+  // this path was never driven.
+  it("routes the EBITDA subtotal through runKpiBatch, on the OUTER tx", async () => {
+    ;(parsePlfPlSheet as ReturnType<typeof vi.fn>).mockReturnValue({
+      lines: [
+        {
+          code: "PLF.01.01.01",
+          accountType: "revenue",
+          perMonth: [100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+      ],
+      warnings: [],
+    })
+    ;(parsePlfEbitdaSubtotalAllYears as ReturnType<typeof vi.fn>).mockReturnValueOnce([
+      { year: 2026, monthly: [{ month: 1, value: 55 }, { month: 3, value: 77 }] },
+    ])
+    ;(runImportBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { rowsInserted: 1 },
+      reconciliation: {
+        verdict: "green", matched: 1, drift: [], missing: [], extra: [], toleranceAzn: 0.005,
+      },
+    })
+    const { runKpiBatch } = await import("../kpi-import-batch")
+    ;(runKpiBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { resetDeleted: 0, rowsInserted: 2 },
+      reconciliation: {
+        verdict: "green", matched: 2, drift: [], missing: [], extra: [], toleranceAzn: 0.005,
+      },
+    })
+
+    const prisma = buildPrismaStub({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+      plan: { id: "plan_2026" },
+    })
+    const handler = buildProductionAdapterRegistry(prisma).get("PLF")!
+    const result = await handler({
+      workbook: fakeWorkbook,
+      sheetName: "PLF CPC",
+      entityCode: "AZSEKER-CPC",
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    const fakeTx = {
+      _tx: true,
+      chartOfAccount: {
+        upsert: vi.fn(async (args: { where: { organizationId_code: { code: string } } }) => ({
+          id: `coa_${args.where.organizationId_code.code}`,
+        })),
+      },
+      operationalFact: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async () => ({ count: 0 })),
+      },
+    } as never
+    const apply = await result.applyToDb(fakeTx)
+
+    expect(runKpiBatch).toHaveBeenCalledOnce()
+    const [txArg, plan] = (runKpiBatch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      unknown,
+      {
+        companyIds: string[]
+        dateScope: string[]
+        rows: Array<{ metric: string; date: string; value: number }>
+        expectedSums: Map<string, number>
+      },
+    ]
+    // Outer tx, so the facts roll back with the P&L rows rather than
+    // surviving a group abort.
+    expect(txArg).toBe(fakeTx)
+    expect(plan.companyIds).toEqual(["c_cpc"])
+    // Whole-year window — the parser OMITS zero months, so narrowing the
+    // delete to the parsed dates would strand a month that was nonzero last
+    // import. The year-prefix branch reproduces the old full-year delete.
+    expect(plan.dateScope).toEqual(["2026"])
+    expect(plan.rows.map((r) => r.date)).toEqual(["2026-01-01", "2026-03-01"])
+    expect(plan.rows.every((r) => r.metric === "pl_ebitda")).toBe(true)
+    expect(plan.expectedSums.size).toBe(2)
+
+    // The handler's single report now covers BOTH writes.
+    expect(apply.reconciliation?.matched).toBe(3) // 1 P&L + 2 EBITDA
+    // Row count deliberately unchanged — the subtotal is DERIVED from the P&L
+    // rows, and the preview's "rows to write" comes from the same sums, so
+    // counting it here would make apply disagree with the approved preview.
+    expect(apply.rowsInserted).toBe(1)
+  })
+
+  it("fails the whole sheet when only the EBITDA write is bad", async () => {
+    // The direction that was silently dropped: a clean P&L must not launder a
+    // broken subtotal write into a green receipt.
+    ;(parsePlfPlSheet as ReturnType<typeof vi.fn>).mockReturnValue({
+      lines: [
+        { code: "PLF.01.01.01", accountType: "revenue", perMonth: [100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+      ],
+      warnings: [],
+    })
+    ;(parsePlfEbitdaSubtotalAllYears as ReturnType<typeof vi.fn>).mockReturnValueOnce([
+      { year: 2026, monthly: [{ month: 1, value: 55 }] },
+    ])
+    ;(runImportBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { rowsInserted: 1 },
+      reconciliation: {
+        verdict: "green", matched: 1, drift: [], missing: [], extra: [], toleranceAzn: 0.005,
+      },
+    })
+    const { runKpiBatch } = await import("../kpi-import-batch")
+    ;(runKpiBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { resetDeleted: 0, rowsInserted: 1 },
+      reconciliation: {
+        verdict: "red", matched: 0, drift: [],
+        missing: ["c_cpc::pl_ebitda::2026-01-01"], extra: [], toleranceAzn: 0.005,
+      },
+    })
+
+    const prisma = buildPrismaStub({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+      plan: { id: "plan_2026" },
+    })
+    const handler = buildProductionAdapterRegistry(prisma).get("PLF")!
+    const result = await handler({
+      workbook: fakeWorkbook,
+      sheetName: "PLF CPC",
+      entityCode: "AZSEKER-CPC",
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    const apply = await result.applyToDb({
+      _tx: true,
+      chartOfAccount: {
+        upsert: vi.fn(async (args: { where: { organizationId_code: { code: string } } }) => ({
+          id: `coa_${args.where.organizationId_code.code}`,
+        })),
+      },
+      operationalFact: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async () => ({ count: 0 })),
+      },
+    } as never)
+
+    expect(apply.reconciliation?.verdict).toBe("red")
+    expect(apply.reconciliation?.missing).toContain("c_cpc::pl_ebitda::2026-01-01")
+  })
+
   it("BS handler routes through runBalanceSheetBatch with tx", async () => {
     ;(parseWorkbookBsSheet as ReturnType<typeof vi.fn>).mockReturnValue({
       lines: [
