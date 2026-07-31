@@ -25,6 +25,7 @@ import {
   ImportReviewTabs,
   PNL_HREF,
   type FlowStepKey,
+  type ReviewTabDef,
   type ReviewTabKey,
 } from "./ImportFlowGuide"
 
@@ -594,11 +595,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   const [runningPhase, setRunningPhase] = useState<"analyze" | "apply" | null>(
     null,
   )
-  // 11.64 — which of the two INFORMATIONAL review panels is on screen.
-  // Defaults to the analysis: after a run the operator's first question is
-  // "did it understand my file". Anything that BLOCKS the apply stays outside
-  // these tabs and always visible — see ImportReviewTabs for why.
-  const [reviewTab, setReviewTab] = useState<ReviewTabKey>("analysis")
+  // 11.65 — every review section is a tab, including the ones that explain or
+  // fix a blocked apply. `null` means "nothing chosen yet", which is what lets
+  // the auto-selection below open the urgent tab after a run without ever
+  // overriding a deliberate click.
+  const [reviewTab, setReviewTab] = useState<ReviewTabKey | null>(null)
   const [previewResult, setPreviewResult] =
     useState<MultiFileApiResponse | null>(null)
   const [applyResult, setApplyResult] =
@@ -738,6 +739,60 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
     (previewResult?.conflicts ?? []).every((c) => resolutions[c.key])
   const activeTemplate = previewResult?.templateUsage?.template
   const buRoutingSplits = previewResult?.buColumnSplits ?? []
+
+  // ── 11.65: the review tab model ──────────────────────────────────
+  // Every review section is a tab now, blockers included. That is only safe
+  // because of the two rules below; drop either and this becomes strictly
+  // worse than the endless scroll it replaced.
+  //
+  //  1. A section with no content gets no tab, so the strip never offers an
+  //     empty panel and a count is never a lie.
+  //  2. `blocking` marks the sections that explain or fix something the Apply
+  //     button refuses on. They are styled red AND one of them is opened
+  //     AUTOMATICALLY (see `effectiveReviewTab`) — a blocker behind an
+  //     unchosen tab would leave a disabled button with no visible reason.
+  //
+  // Panels stay MOUNTED and are hidden with CSS, never unmounted: the
+  // conflict banner holds the only `forceOverride` checkbox, the Import
+  // Doctor scrolls to refs inside these sections, and the suite queries
+  // testids in them.
+  const warningCount = previewResult?.warnings.length ?? 0
+  const reviewTabDefs: ReviewTabDef[] = previewResult
+    ? ([
+        previewResult.perFile.length > 0
+          ? {
+              key: "analysis",
+              count: previewResult.perFile.reduce((n, f) => n + f.classifications.length, 0),
+            }
+          : null,
+        guidedFixItems.length > 0
+          ? { key: "fixes", count: guidedFixItems.length, blocking: hasStaleSheetFixes }
+          : null,
+        coaReviewItems.length > 0
+          ? { key: "coa", count: coaReviewItems.length, blocking: hasUnresolvedCoaReviews }
+          : null,
+        hasConflicts
+          ? { key: "conflicts", count: previewResult.conflicts.length, blocking: !allConflictsResolved }
+          : null,
+        buRoutingSplits.length > 0 ? { key: "routing", count: buRoutingSplits.length } : null,
+        previewResult.safetyReceipt ? { key: "receipt" } : null,
+        warningCount > 0 ? { key: "warnings", count: warningCount } : null,
+      ].filter(Boolean) as ReviewTabDef[])
+    : []
+
+  // A deliberate click always wins. Otherwise open the first BLOCKING tab —
+  // "why can't I apply" beats "what did it read" whenever both are on offer.
+  // With nothing blocking, land on the analysis: after a run the operator's
+  // first question is whether the AI understood the file, not what the
+  // warnings say.
+  const effectiveReviewTab: ReviewTabKey | null =
+    (reviewTab && reviewTabDefs.some((d) => d.key === reviewTab) ? reviewTab : null) ??
+    reviewTabDefs.find((d) => d.blocking)?.key ??
+    reviewTabDefs.find((d) => d.key === "analysis")?.key ??
+    reviewTabDefs[0]?.key ??
+    null
+  /** True when this section should be on screen. */
+  const showTab = (key: ReviewTabKey) => effectiveReviewTab === key
   const entityOptions = Array.from(
     new Map(
       [
@@ -1005,9 +1060,31 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   }
 
   function scrollToDoctorProblem(): void {
-    const target =
-      errorRef.current ?? conflictBannerRef.current ?? doctorPanelRef.current
-    target?.scrollIntoView({ behavior: "smooth", block: "center" })
+    // 11.65 — OPEN the tab first. Every section the doctor points at now lives
+    // behind a tab, and `scrollIntoView` on a hidden element does nothing at
+    // all: the button would appear to do nothing, which is exactly the
+    // dead-end this whole screen keeps being fixed for.
+    const code = primaryDoctorIssue?.code
+    const tab: ReviewTabKey | null =
+      code === "cross_file_conflict"
+        ? "conflicts"
+        : code === "coa_review_required"
+          ? "coa"
+          : code === "preview_stale" || code === "routing_uncertain"
+            ? "fixes"
+            : code === "reconciliation_blocked"
+              ? "warnings"
+              : null
+    if (tab && reviewTabDefs.some((d) => d.key === tab)) setReviewTab(tab)
+    // The error banner sits OUTSIDE the tabs, so it stays a valid target;
+    // the conflict banner is only reachable once its tab is open, which the
+    // state update above has queued. Scroll on the next frame so the layout
+    // reflects it.
+    requestAnimationFrame(() => {
+      const target =
+        errorRef.current ?? conflictBannerRef.current ?? doctorPanelRef.current
+      target?.scrollIntoView({ behavior: "smooth", block: "center" })
+    })
   }
 
   function handleFiles(newFiles: FileList | File[]): void {
@@ -2277,6 +2354,7 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
           ref={conflictBannerRef}
           className="rounded border border-red-300 bg-red-50 p-4 space-y-3"
           data-testid="conflict-banner"
+          hidden={!showTab("conflicts")}
         >
           <h3 className="font-semibold text-red-800">
             {t("conflict.title", { n: previewResult.conflicts.length })}
@@ -2383,6 +2461,7 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
         <div
           className="rounded border border-amber-300 bg-amber-50 p-4 space-y-3"
           data-testid="coa-review-banner"
+          hidden={!showTab("coa")}
         >
           <div>
             <h3 className="font-semibold text-amber-900">
@@ -2508,6 +2587,7 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
         <div
           className="rounded border border-violet-200 bg-violet-50 p-4 space-y-3"
           data-testid="guided-fixes-panel"
+          hidden={!showTab("fixes")}
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -2663,31 +2743,22 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
         </div>
       )}
 
-      {/* 11.64 — the two informational panels below share one frame instead of
-          stacking. Both stay MOUNTED and the inactive one is hidden with CSS:
-          unmounting would break every `getByTestId` the suite runs against
-          them, and the pattern must never be extended to a section that can
-          block an apply. */}
-      {previewResult && (buRoutingSplits.length > 0 || previewResult.perFile.length > 0) && (
+      {/* 11.65 — one strip for every review section that has content. The
+          panels below stay MOUNTED and hide with CSS; see the tab model above
+          for why unmounting is not an option here. */}
+      {effectiveReviewTab && (
         <ImportReviewTabs
-          active={reviewTab}
+          tabs={reviewTabDefs}
+          active={effectiveReviewTab}
           onChange={setReviewTab}
-          counts={{
-            analysis: previewResult.perFile.reduce(
-              (n, f) => n + f.classifications.length,
-              0,
-            ),
-            routing: buRoutingSplits.length,
-          }}
         />
       )}
 
       {previewResult && buRoutingSplits.length > 0 && (
         <div
-          className={`rounded border border-cyan-200 bg-cyan-50 p-4 space-y-3 ${
-            reviewTab === "routing" ? "" : "hidden"
-          }`}
+          className="rounded border border-cyan-200 bg-cyan-50 p-4 space-y-3"
           data-testid="bu-routing-grid"
+          hidden={!showTab("routing")}
         >
           <div>
             <h3 className="font-semibold text-cyan-900">
@@ -2756,8 +2827,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
         </div>
       )}
 
-      {previewResult?.safetyReceipt &&
-        renderSafetyReceipt(previewResult.safetyReceipt, "preview")}
+      {previewResult?.safetyReceipt && (
+        <div hidden={!showTab("receipt")}>
+          {renderSafetyReceipt(previewResult.safetyReceipt, "preview")}
+        </div>
+      )}
 
       {/* 2026-07-30 — show WHY a preview is blocked.
           `renderWarnings` existed but was wired only to the APPLY result, so a
@@ -2769,7 +2843,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
           Import Doctor button, the only other path to an explanation, was
           itself failing on a truncated reply. Nothing new is computed here;
           text that already existed is finally displayed. */}
-      {previewResult && renderWarnings(previewResult.warnings, "preview-warnings")}
+      {previewResult && (
+        <div hidden={!showTab("warnings")}>
+          {renderWarnings(previewResult.warnings, "preview-warnings")}
+        </div>
+      )}
 
       {/* Preview result — 2026-05-27 expanded: per-sheet dataType chip,
           AI confidence bar, and affected-indicators chip list, so the
@@ -2777,8 +2855,9 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
           impact before clicking Apply. */}
       {previewResult && previewResult.perFile.length > 0 && (
         <div
-          className={`space-y-3 ${reviewTab === "analysis" ? "" : "hidden"}`}
+          className="space-y-3"
           data-testid="preview-result"
+          hidden={!showTab("analysis")}
         >
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>

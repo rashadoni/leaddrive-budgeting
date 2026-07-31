@@ -3684,8 +3684,13 @@
       "review": {
         "ariaLabel": "İdxal baxışı",
         "tab": {
-          "analysis": "AI nə oxudu",
-          "routing": "Hara gedir"
+          "analysis": "Faylların analizi",
+          "fixes": "Yönləndirmə düzəlişləri",
+          "coa": "Hesab yoxlaması",
+          "conflicts": "Konfliktlər",
+          "routing": "Şirkət yönləndirməsi",
+          "receipt": "Safety receipt",
+          "warnings": "Xəbərdarlıqlar"
         }
       }
     },
