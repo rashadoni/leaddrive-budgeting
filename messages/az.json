@@ -3383,7 +3383,6 @@
         "button": "Addım 2: Qrupları tətbiq et",
         "running": "Tətbiq olunur..."
       },
-      "applying": "Data tətbiq olunur… bu 30-90 saniyə çəkəcək. Səhifəni bağlamayın.",
       "confidence": {
         "high": "yüksək",
         "medium": "orta",
@@ -3634,7 +3633,8 @@
       "step3": {
         "title": "Addım 3 — İdxal tamamlandı",
         "summary": "{rows} sətir yazıldı · {groups} qrup tətbiq edildi",
-        "resetButton": "↩ Yenidən başla (növbəti faylları yüklə)"
+        "resetButton": "↩ Yenidən başla (növbəti faylları yüklə)",
+        "titleWithWarnings": "İdxal edildi, xəbərdarlıqlarla"
       },
       "multiYear": {
         "title": "Bu yükləmədə {years} var",
@@ -3675,6 +3675,11 @@
           "goNow": "İndi aç",
           "stay": "Bu qəbzdə qal"
         }
+      },
+      "errorBanner": {
+        "title": "İdxal baş tutmadı",
+        "reassurance": "Bazaya heç nə yazılmadı — idxal atomikdir, uğursuzluq datanızı olduğu kimi saxlayır. Səbəbi aradan qaldırıb yenidən işlədə bilərsiniz.",
+        "details": "Texniki təfərrüatlar"
       }
     },
     "single": {

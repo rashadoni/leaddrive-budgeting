@@ -93,6 +93,7 @@ import {
 // transactions are disallowed and the LLM + apply can't fit one 5s tx. Every
 // query is orgId-scoped in code; it runs on the BYPASSRLS `prismaAdmin` client.
 import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
+import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 // 300s (not 120) — a real 3-file AI import measured 119.2s end-to-end, i.e.
 // 0.8s under the old ceiling. Multi-file batches legitimately run long; match
@@ -108,6 +109,20 @@ const MAX_FILES = 10
 // comprehensive reporting pack (e.g. AzerSheker Reporting 2026 ≈ 25 MB) now that
 // deterministic routing handles its budget/actual split + derived views.
 const MAX_TOTAL_BYTES = 40 * 1024 * 1024 // 40 MB sum across all files
+
+/**
+ * 11.58 — a SINGLE file gets the same cap as every other import route.
+ *
+ * The 40 MB aggregate above is deliberate and stays: ten files near the
+ * per-file cap would be ~640 MB. But that reasoning does not apply to one
+ * file, and the mismatch was a live trap — a 41-63 MB workbook is accepted by
+ * `/api/import/ai-auto` (which cannot write) and rejected here (the only path
+ * that can), so the operator is told to use this tab and then refused by it.
+ * One file is also the overwhelmingly common case.
+ */
+function totalCapFor(fileCount: number): number {
+  return fileCount <= 1 ? MAX_IMPORT_UPLOAD_BYTES : MAX_TOTAL_BYTES
+}
 const PER_FILE_TOKEN_BUDGET = 35_000 // Phase 7.M Tier 4 measured cost
 
 const RATE_LIMIT = {
@@ -443,11 +458,12 @@ export async function POST(request: NextRequest) {
     )
   }
   const totalBytes = fileEntries.reduce((sum, f) => sum + f.size, 0)
-  if (totalBytes > MAX_TOTAL_BYTES) {
+  const totalCap = totalCapFor(fileEntries.length)
+  if (totalBytes > totalCap) {
     return NextResponse.json(
       {
         ok: false,
-        error: `Total file size ${(totalBytes / 1024 / 1024).toFixed(1)} MB exceeds ${MAX_TOTAL_BYTES / 1024 / 1024} MB cap`,
+        error: `Total file size ${(totalBytes / 1024 / 1024).toFixed(1)} MB exceeds ${totalCap / 1024 / 1024} MB cap`,
       },
       { status: 400 },
     )

@@ -3383,7 +3383,6 @@
         "button": "Step 2: Apply groups",
         "running": "Applying…"
       },
-      "applying": "Applying data… this will take 30-90 seconds. Don't close the page.",
       "confidence": {
         "high": "high",
         "medium": "medium",
@@ -3634,7 +3633,8 @@
       "step3": {
         "title": "Step 3 — Import complete",
         "summary": "{rows} rows written · {groups} group(s) applied",
-        "resetButton": "↩ Start over (upload more files)"
+        "resetButton": "↩ Start over (upload more files)",
+        "titleWithWarnings": "Imported, with warnings"
       },
       "multiYear": {
         "title": "This upload contains {years}",
@@ -3675,6 +3675,11 @@
           "goNow": "Open now",
           "stay": "Stay on this receipt"
         }
+      },
+      "errorBanner": {
+        "title": "The import did not go through",
+        "reassurance": "Nothing was written to the database — the import is atomic, so a failure leaves your data exactly as it was. You can fix the cause and run it again.",
+        "details": "Technical details"
       }
     },
     "single": {

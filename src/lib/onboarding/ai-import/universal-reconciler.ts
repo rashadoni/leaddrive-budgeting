@@ -273,3 +273,80 @@ export function decideAction(report: UniversalReconciliationReport, opts: {
   }
   return "commit"
 }
+
+/** Sheets named in the rejection before it collapses into a count. */
+const MAX_SHEETS_IN_MESSAGE = 6
+/** Sample keys quoted per bucket. `topMissing`/`topExtra` already hold 5. */
+const MAX_KEYS_PER_BUCKET = 3
+
+function fmtAmount(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2)
+}
+
+/**
+ * Explain a rejected post-write reconciliation in numbers, not just names.
+ *
+ * 2026-07-31 (11.58) — the abort message used to read:
+ *
+ *   Post-write reconciliation rejected (verdict=red, drifted sheets=A, B, C)
+ *
+ * That names the sheets and nothing else: no expected value, no actual value,
+ * not one key. When it fired on production it took a four-lens code audit to
+ * learn that the balance-sheet keys were entity-prefixed on one side and bare
+ * on the other (11.51) — a fact the report ALREADY held, in `topMissing` and
+ * `topExtra`, and threw away on the way to the operator. Same class as 11.43:
+ * a verdict with the reason omitted, where the reason was in hand all along.
+ *
+ * The shape is chosen so the two failure modes are told apart at a glance:
+ *   • `matched: 0` with equal missing/extra counts ⇒ the two sides are keying
+ *     on different strings — compare the sample keys, they will differ by a
+ *     prefix or a segment.
+ *   • a non-zero `matched` with drift ⇒ the keys agree and the AMOUNTS do not;
+ *     the expected/actual pair says by how much.
+ *
+ * Pure and bounded: no I/O, capped sheet and key counts, so it is safe to put
+ * in an exception message that ends up in a log line.
+ */
+export function describeReconciliationRejection(
+  report: UniversalReconciliationReport,
+): string {
+  const failed = report.perSheet.filter((s) => s.verdict !== "green")
+  const head = `Post-write reconciliation rejected (verdict=${report.overallVerdict}, ${failed.length} sheet(s) failed)`
+  if (failed.length === 0) return head
+
+  const shown = failed.slice(0, MAX_SHEETS_IN_MESSAGE)
+  const lines = shown.map((s) => {
+    const counts = [
+      `${s.matched} matched`,
+      s.driftCount > 0 ? `${s.driftCount} drifted` : null,
+      s.missingCount > 0 ? `${s.missingCount} missing` : null,
+      s.extraCount > 0 ? `${s.extraCount} extra` : null,
+    ]
+      .filter(Boolean)
+      .join(", ")
+
+    const detail: string[] = []
+    for (const d of s.topDrift.slice(0, MAX_KEYS_PER_BUCKET)) {
+      detail.push(
+        `drift ${d.key}: expected ${fmtAmount(d.expected)}, got ${fmtAmount(d.actual)}`,
+      )
+    }
+    // Missing AND extra together is the signature of a key-space mismatch —
+    // quote one of each so the difference is visible side by side.
+    if (s.topMissing.length > 0) {
+      detail.push(`missing ${s.topMissing.slice(0, MAX_KEYS_PER_BUCKET).join(" | ")}`)
+    }
+    if (s.topExtra.length > 0) {
+      detail.push(`extra ${s.topExtra.slice(0, MAX_KEYS_PER_BUCKET).join(" | ")}`)
+    }
+
+    const suffix = detail.length > 0 ? ` — ${detail.join("; ")}` : ""
+    return `${s.sheetName} (${s.dataType}): ${s.verdict}, ${counts}${suffix}`
+  })
+
+  const more =
+    failed.length > shown.length
+      ? ` (+${failed.length - shown.length} more sheet(s))`
+      : ""
+  return `${head}: ${lines.join(" || ")}${more}`
+}

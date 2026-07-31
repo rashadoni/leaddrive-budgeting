@@ -102,6 +102,7 @@ import {
   reconcileAllSheets,
   aggregateSheetReports,
   decideAction,
+  describeReconciliationRejection,
   type UniversalReconciliationReport,
   type SheetReconciliationInput,
 } from "./universal-reconciler"
@@ -1710,13 +1711,12 @@ export async function runMultiFileImport(
         if (action === "abort") {
           // Throwing inside the tx callback rolls back the entire
           // group — finance never sees a half-state.
-          throw new Error(
-            `Post-write reconciliation rejected (verdict=${postReconciliation.overallVerdict}` +
-              `, drifted sheets=${postReconciliation.perSheet
-                .filter((s) => s.verdict !== "green")
-                .map((s) => s.sheetName)
-                .join(", ")})`,
-          )
+          // 11.58 — say WHY, with numbers. This message used to name the
+          // sheets and nothing else, and when it fired on production it cost
+          // a four-lens code audit to learn the keys were entity-prefixed on
+          // one side and bare on the other — a fact `topMissing`/`topExtra`
+          // already held and this line discarded.
+          throw new Error(describeReconciliationRejection(postReconciliation))
         }
         // Interactive-tx timeout bumped from Prisma's 5s default: the main-
         // financial group writes PLF+BS+CF for EVERY entity PLUS in-tx
