@@ -30,6 +30,7 @@ vi.mock("@/lib/rbac/company-scope", () => ({
 vi.mock("@/lib/risk/esg-materiality", () => ({
   getMateriality: getMaterialityMock,
   getMaterialityNote: vi.fn(() => null),
+  getMaterialityNoteI18n: vi.fn(() => null),
   isMaterialityScoped: isMaterialityScopedMock,
 }))
 

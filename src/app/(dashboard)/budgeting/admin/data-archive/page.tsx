@@ -18,8 +18,9 @@ import { hasRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { DataArchiveForm } from "./DataArchiveForm"
 
-export const metadata = {
-  title: "Archive · Admin · BudgetPro",
+export async function generateMetadata() {
+  const t = await getTranslations("adminDataArchive")
+  return { title: t("metaTitle") }
 }
 
 export default async function DataArchivePage() {

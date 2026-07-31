@@ -27,6 +27,10 @@ import {
   pickDefaultAnalysisSheet,
   type SheetClassificationCandidate,
 } from "./sheet-selection"
+import {
+  asImportTranslator,
+  localizeImportMessage,
+} from "./import-message-i18n"
 
 interface CompanyOpt {
   id: string
@@ -205,6 +209,9 @@ function CompanyOptionList({ companies }: { companies: CompanyOpt[] }) {
 
 export function UniversalImportForm({ preferredYear }: { preferredYear?: number } = {}) {
   const t = useTranslations("adminUniversal")
+  // 11.7x — the rest of this tab is fully translated; the red banner was
+  // printing the API's English sentence verbatim.
+  const tShared = asImportTranslator(useTranslations("adminAiImport.shared"))
   const targetYear =
     preferredYear && Number.isInteger(preferredYear) ? preferredYear : new Date().getFullYear()
   const [companies, setCompanies] = useState<CompanyOpt[]>([])
@@ -678,7 +685,7 @@ export function UniversalImportForm({ preferredYear }: { preferredYear?: number 
 
       {error && (
         <div className="border border-red-500/40 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 rounded p-3 text-sm">
-          ❌ {error}
+          ❌ {localizeImportMessage(tShared, error)}
         </div>
       )}
 

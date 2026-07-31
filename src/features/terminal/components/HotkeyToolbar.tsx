@@ -86,13 +86,16 @@ type HotkeyGroup =
   | "sector"   // agro / commodity / kpi-entry — industry-specific (gated)
   | "ops";     // recompute / help / export — system actions
 
-const GROUP_LABELS: Record<HotkeyGroup, string> = {
-  critical: "Alerts & triage",
-  analysis: "Analysis",
-  social: "Intel & social",
-  workspace: "Workspace",
-  sector: "Sector",
-  ops: "Tools",
+/** i18n key suffix per group — resolved through `terminal.hotkeys.group.*`
+ *  at render time so the palette headers + separator tooltips follow the
+ *  active locale (they used to be hardcoded English). */
+const GROUP_LABEL_KEYS: Record<HotkeyGroup, string> = {
+  critical: "hotkeys.group.critical",
+  analysis: "hotkeys.group.analysis",
+  social: "hotkeys.group.social",
+  workspace: "hotkeys.group.workspace",
+  sector: "hotkeys.group.sector",
+  ops: "hotkeys.group.ops",
 };
 
 interface HotkeyDef {
@@ -454,8 +457,7 @@ export function HotkeyToolbar() {
             key: "agro",
             label: "AGRO",
             icon: Sprout,
-            title:
-              "Open agro dashboard (yield, sugar content, water/fertilizer intensity) · ⌘K: AGRO GO",
+            title: t("hotkeys.agroTitle"),
             group: "sector",
             priority: "pinned",
             action: () => openPopOut("agro-dashboard", activeCompanyCode),
@@ -464,8 +466,7 @@ export function HotkeyToolbar() {
             key: "commodity",
             label: "PRICE",
             icon: Cloud,
-            title:
-              "Open sugar price + weather pop-out (ICE #11 trend + AZ rainfall) · ⌘K: PRICE GO",
+            title: t("hotkeys.priceTitle"),
             group: "sector",
             priority: "pinned",
             action: () => openPopOut("commodity-ticker", activeCompanyCode),
@@ -474,8 +475,7 @@ export function HotkeyToolbar() {
             key: "kpi-entry",
             label: "KPI",
             icon: Pencil,
-            title:
-              "Log an agronomy KPI (yield, sugar content, etc.) for the active company · ⌘K: KPI GO",
+            title: t("hotkeys.kpiTitle"),
             group: "sector",
             priority: "pinned",
             action: () => openPopOut("agronomy-entry", activeCompanyCode),
@@ -614,7 +614,7 @@ export function HotkeyToolbar() {
             {groupChanged && (
               <span
                 aria-hidden="true"
-                title={GROUP_LABELS[h.group]}
+                title={t(GROUP_LABEL_KEYS[h.group])}
                 // Visible vertical divider: 1px border, ~14px tall, gap on both
                 // sides so the cluster boundary is clearly readable against the
                 // dark toolbar background. Hover surfaces the group label as
@@ -671,14 +671,13 @@ export function HotkeyToolbar() {
           className="w-80 max-h-[70vh] overflow-y-auto p-0 bg-[#0A0E27] border-gray-800 text-gray-300 font-mono text-[11px]"
         >
           <div className="px-3 py-2 border-b border-gray-800 text-[10px] uppercase tracking-wider text-gray-500 flex items-center justify-between">
-            <span>Command palette</span>
+            <span>{t("hotkeys.paletteHeader")}</span>
             <span className="text-gray-600">
-              {overflowCount} command{overflowCount === 1 ? "" : "s"}
+              {t("hotkeys.paletteCount", { count: overflowCount })}
             </span>
           </div>
           <div className="px-3 py-1 border-b border-gray-800 text-[9px] text-gray-600 leading-relaxed">
-            Type in the command bar below (⌘K) for fuzzy search — these
-            shortcuts are the click-equivalents.
+            {t("hotkeys.paletteHelp")}
           </div>
           {/* Group the collapsed (post-"import") items by their group label.
               Uses overflowHotkeys (positional) — NOT a priority filter — so the
@@ -692,7 +691,7 @@ export function HotkeyToolbar() {
                 key={`${g}-header`}
                 className="px-3 pt-3 pb-1 text-[9px] uppercase tracking-wider text-gray-600"
               >
-                {GROUP_LABELS[g]}
+                {t(GROUP_LABEL_KEYS[g])}
               </div>,
               ...groupItems.map((h) => {
                 const Icon = h.icon;
@@ -719,7 +718,7 @@ export function HotkeyToolbar() {
             ];
           })}
           <div className="px-3 py-2 border-t border-gray-800 text-[9px] text-gray-600 leading-relaxed">
-            Tip: press <span className="text-gray-400">⌘K</span> anywhere to focus the command bar instead.
+            {t("hotkeys.paletteTip")}
           </div>
         </PopoverContent>
       </Popover>

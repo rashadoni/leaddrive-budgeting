@@ -54,6 +54,19 @@ import { ExpenseForecastTab } from "@/components/expense-forecast-tab"
 import { BudgetDepartmentAccess } from "@/components/budget-department-access"
 import { AIAnalyticsPanel } from "@/components/ai-analytics-panel"
 import { SECTION_LABELS, type Section } from "@/lib/ai/section-meta"
+// The AI panel header names the section the user is looking at. SECTION_LABELS
+// stays the English source of truth for the API contract; the header reuses the
+// sidebar's already-translated nav labels so the two never disagree.
+const AI_SECTION_NAV_KEYS: Record<Section, string> = {
+  "pnl-report": "navPnl",
+  pl: "navPnlPlan",
+  "balance-sheet": "navBalanceSheet",
+  cogs: "navCogs",
+  "cash-flow": "navCashFlow",
+  assumptions: "navAssumptions",
+  workspace: "navWorkspace",
+  forecast: "navForecast",
+}
 import { execPct } from "@/lib/budgeting/exec-pct"
 import { BudgetMarginSummary } from "@/components/budget-margin-summary"
 import { BudgetPnlView } from "@/components/budget-pnl-view"
@@ -154,6 +167,8 @@ const DATA_IMPORT_TABS: ReadonlySet<string> = new Set([
 
 export default function BudgetingPage() {
   const t = useTranslations("budgeting")
+  const tAdmin = useTranslations("adminLanding")
+  const tNav = useTranslations("nav")
   const router = useRouter()
   const searchParams = useSearchParams()
   const { data: plans = [], isLoading: plansLoading } = useBudgetPlans()
@@ -404,15 +419,15 @@ export default function BudgetingPage() {
             <Button
               size="sm"
               onClick={() => router.push(`/budgeting/admin/ai-import?year=${importYear}`)}
-              title="Import Excel data into a budget plan. Creating a plan alone does not create COGS/P&L rows."
+              title={t("headerImportTooltip")}
             >
-              <Upload className="h-4 w-4 mr-1" /> AI idxal
+              <Upload className="h-4 w-4 mr-1" /> {tAdmin("tools.aiImport.title")}
             </Button>
           ) : (
             <Button
               size="sm"
               onClick={() => setShowCreate(true)}
-              title="Creates an empty budget plan. Import data or add rows after creating it."
+              title={t("headerCreatePlanTooltip")}
             >
               <Plus className="h-4 w-4 mr-1" /> {t("createPlan")}
             </Button>
@@ -493,7 +508,7 @@ export default function BudgetingPage() {
             open={aiOpen}
             onClose={() => setAiOpen(false)}
             section={activeTab}
-            sectionLabel={SECTION_LABELS[activeTab as Section]}
+            sectionLabel={tNav(AI_SECTION_NAV_KEYS[activeTab as Section])}
             planId={resolvedPlanId}
             planName={plans.find((p: { id: string; name?: string }) => p.id === resolvedPlanId)?.name ?? null}
             // Phase 7.G — pass the same company filter the visible UI

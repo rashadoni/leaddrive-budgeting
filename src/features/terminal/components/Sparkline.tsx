@@ -19,6 +19,7 @@
  */
 
 import React from "react";
+import { useTranslations } from "next-intl";
 
 export type SparklineStatus = "green" | "amber" | "red" | "unknown" | "missing";
 
@@ -95,6 +96,10 @@ export function Sparkline({
   height: heightOverride,
   ariaLabel,
 }: Props) {
+  // Screen-reader fallbacks used to be hardcoded English ("Sparkline (no
+  // data)"), so an AZ/RU user's screen reader read English mid-sentence on
+  // every caller that omits `ariaLabel`.
+  const t = useTranslations("terminal");
   const width = widthOverride ?? (compact ? COMPACT_WIDTH : NORMAL_WIDTH);
   const height = heightOverride ?? (compact ? COMPACT_HEIGHT : NORMAL_HEIGHT);
   const color = COLORS[status];
@@ -112,7 +117,7 @@ export function Sparkline({
       <svg
         {...sizing}
         role="img"
-        aria-label={ariaLabel ?? "Sparkline (no data)"}
+        aria-label={ariaLabel ?? t("sparkline.ariaNoData")}
       >
         <line
           x1={0}
@@ -145,7 +150,7 @@ export function Sparkline({
         {...sizing}
         role="img"
         aria-label={
-          ariaLabel ?? `Sparkline (flat at ${minV.toFixed(2)})`
+          ariaLabel ?? t("sparkline.ariaFlat", { value: minV.toFixed(2) })
         }
       >
         <line
@@ -188,7 +193,12 @@ export function Sparkline({
       role="img"
       aria-label={
         ariaLabel ??
-        `Sparkline: ${numericPoints.length} of ${data.length} points, range ${minV.toFixed(2)}–${maxV.toFixed(2)}`
+        t("sparkline.ariaSeries", {
+          points: numericPoints.length,
+          total: data.length,
+          min: minV.toFixed(2),
+          max: maxV.toFixed(2),
+        })
       }
     >
       <path

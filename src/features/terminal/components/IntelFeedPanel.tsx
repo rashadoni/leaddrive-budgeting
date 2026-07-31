@@ -121,7 +121,10 @@ export function IntelFeedPanel() {
       const res = await fetch("/api/intel?limit=50", { signal });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? `Fetch failed (${res.status})`);
+        throw new Error(
+          body.error ??
+            t("intelFeedPanel.errFetch", { status: res.status }),
+        );
       }
       const data: IntelFetchResponse = await res.json();
       setItems(data.items);
@@ -131,7 +134,7 @@ export function IntelFeedPanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // Fetch when opened.
   useEffect(() => {
@@ -157,15 +160,24 @@ export function IntelFeedPanel() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? `Refresh failed (${res.status})`);
+        throw new Error(
+          body.error ??
+            t("intelFeedPanel.errRefresh", { status: res.status }),
+        );
       }
       const data: RefreshResponse = await res.json();
       const noticeParts = [
-        `${data.itemsCreated} new`,
-        `${data.itemsSkipped} skipped`,
-        `${data.itemsFetched} hits in ${data.durationMs}ms`,
+        t("intelFeedPanel.refreshCreated", { count: data.itemsCreated }),
+        t("intelFeedPanel.refreshSkipped", { count: data.itemsSkipped }),
+        t("intelFeedPanel.refreshFetched", {
+          count: data.itemsFetched,
+          ms: data.durationMs,
+        }),
       ];
-      if (data.errors.length > 0) noticeParts.push(`⚠ ${data.errors.length} errors`);
+      if (data.errors.length > 0)
+        noticeParts.push(
+          t("intelFeedPanel.refreshErrors", { count: data.errors.length }),
+        );
       setRefreshNotice(noticeParts.join(" · "));
       await fetchItems(ctrl.signal);
     } catch (err) {
@@ -174,7 +186,7 @@ export function IntelFeedPanel() {
     } finally {
       setRefreshing(false);
     }
-  }, [isAdmin, refreshing, fetchItems]);
+  }, [isAdmin, refreshing, fetchItems, t]);
 
   const handlePin = useCallback(
     async (item: IntelItemDTO) => {
@@ -191,7 +203,9 @@ export function IntelFeedPanel() {
         });
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
-          throw new Error(body.error ?? `Pin failed (${res.status})`);
+          throw new Error(
+            body.error ?? t("intelFeedPanel.errPin", { status: res.status }),
+          );
         }
       } catch (err) {
         // Revert + surface error.
@@ -203,7 +217,7 @@ export function IntelFeedPanel() {
         setError(err instanceof Error ? err.message : String(err));
       }
     },
-    [],
+    [t],
   );
 
   const handleDismiss = useCallback(async (item: IntelItemDTO) => {
@@ -216,7 +230,9 @@ export function IntelFeedPanel() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? `Dismiss failed (${res.status})`);
+        throw new Error(
+          body.error ?? t("intelFeedPanel.errDismiss", { status: res.status }),
+        );
       }
     } catch (err) {
       // Revert by re-inserting; preserves order via fetchedAt sort on
@@ -227,7 +243,7 @@ export function IntelFeedPanel() {
       });
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [t]);
 
   // Pinned items float to the top within the list.
   const sortedItems = useMemo(() => {

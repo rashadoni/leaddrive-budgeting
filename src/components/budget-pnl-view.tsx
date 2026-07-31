@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
@@ -28,8 +29,6 @@ import { PnlPerformanceCharts } from "./pnl-performance-charts"
 // Phase 8 D1 (2026-05-29) — pure formatters extracted to a sibling.
 import { fmtNum, fmtCurrency, pctOfRev, varianceStr, varianceClass } from "./budget-pnl-format"
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-
 // Phase 3.3 v1.4 — PnlRow IS a DrillRow with parentCode required.
 // Single source of truth: re-use the base shape, narrow parentCode.
 type PnlRow = DrillRow & { parentCode: string | null }
@@ -51,6 +50,8 @@ interface PnlComparisonPayload {
 }
 
 export function BudgetPnlView({ planId, companyId }: { planId: string; companyId?: string | null }) {
+  const t = useTranslations("budgeting")
+  const MONTHS = t("monthsShort").split(",")
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId
   const userRole = session?.user?.role
@@ -170,8 +171,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       <Card>
         <CardContent className="p-12 text-center text-muted-foreground">
           <BarChart2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">No P&L data available</p>
-          <p className="text-sm mt-1">Import an Excel file to populate the P&L statement.</p>
+          <p className="font-medium">{t("pnlEmptyTitle")}</p>
+          <p className="text-sm mt-1">{t("pnlEmptyDescription")}</p>
         </CardContent>
       </Card>
     )
@@ -335,14 +336,17 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     anyLumpyRow(daRowsInOpex) || anyLumpyRow(daRowsInCogs)
 
   // Waterfall data
+  // `name` stays English — it is the drill key consumed by drillToSection's
+  // lookup table. `label` is what the axis + tooltip render, so it is the
+  // translated one.
   const waterfallData = [
-    { name: "Revenue", value: totalRevenue, fill: "#10b981" },
-    { name: "COGS", value: -totalCogs, fill: "#ef4444" },
-    { name: "Gross Profit", value: grossProfit, fill: "#3b82f6" },
-    { name: "OpEx", value: -totalOpex, fill: "#f59e0b" },
-    { name: "EBITDA", value: ebitda, fill: ebitda >= 0 ? "#8b5cf6" : "#ef4444" },
-    ...(totalBelowEbitda > 0 ? [{ name: "D&A/Tax", value: -totalBelowEbitda, fill: "#94a3b8" }] : []),
-    { name: "Net Profit", value: netProfit, fill: netProfit >= 0 ? "#10b981" : "#ef4444" },
+    { name: "Revenue", label: t("plRevenue"), value: totalRevenue, fill: "#10b981" },
+    { name: "COGS", label: t("cogs"), value: -totalCogs, fill: "#ef4444" },
+    { name: "Gross Profit", label: t("pnlWfGrossProfit"), value: grossProfit, fill: "#3b82f6" },
+    { name: "OpEx", label: t("pnlOpEx"), value: -totalOpex, fill: "#f59e0b" },
+    { name: "EBITDA", label: t("pnlWfEbitda"), value: ebitda, fill: ebitda >= 0 ? "#8b5cf6" : "#ef4444" },
+    ...(totalBelowEbitda > 0 ? [{ name: "D&A/Tax", label: t("pnlDaTaxShort"), value: -totalBelowEbitda, fill: "#94a3b8" }] : []),
+    { name: "Net Profit", label: t("pnlNetProfit"), value: netProfit, fill: netProfit >= 0 ? "#10b981" : "#ef4444" },
   ]
 
   const monthlyPerformance: Record<PnlPerformanceMetric, ReturnType<typeof buildPnlPerformancePoint>[]> = {
@@ -457,7 +461,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           >
             <span
               className="text-[10px] text-muted-foreground/60 mr-2 font-mono"
-              title={`Account code: ${row.accountCode}`}
+              title={t("pnlAccountCodeTooltip", { code: row.accountCode })}
             >
               {row.accountCode}
             </span>
@@ -507,14 +511,14 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           role="button"
           tabIndex={0}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("Revenue") } }}
-          aria-label="Open Revenue section"
+          aria-label={t("pnlOpenSectionAria", { section: t("pnlNetRevenue") })}
         >
           <div className="absolute top-0 right-0 w-20 h-20 bg-indigo-200 dark:bg-indigo-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <TrendingUp className="h-3.5 w-3.5" /> Net Revenue
+            <TrendingUp className="h-3.5 w-3.5" /> {t("pnlNetRevenue")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-indigo-700 dark:text-indigo-300">{fmtNum(totalRevenue)} <span className="text-sm font-normal text-muted-foreground">AZN</span></p>
-          <p className="text-[10px] text-muted-foreground mt-1">Annual budget</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{t("pnlKpiAnnualBudget")}</p>
         </div>
 
         {/* COGS */}
@@ -524,16 +528,16 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           role="button"
           tabIndex={0}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("COGS") } }}
-          aria-label="Open COGS section"
+          aria-label={t("pnlOpenSectionAria", { section: t("cogs") })}
         >
           <div className="absolute top-0 right-0 w-20 h-20 bg-cyan-200 dark:bg-cyan-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-cyan-600 dark:text-cyan-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <TrendingDown className="h-3.5 w-3.5" /> Cost of Goods Sold
+            <TrendingDown className="h-3.5 w-3.5" /> {t("cogsLabel")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-cyan-700 dark:text-cyan-300">{fmtNum(totalCogs)} <span className="text-sm font-normal text-muted-foreground">AZN</span></p>
           <div className="flex items-center gap-1 mt-1">
             <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-medium">{((totalCogs / totalRevenue) * 100).toFixed(1)}%</span>
-            <span className="text-[10px] text-muted-foreground">of revenue</span>
+            <span className="text-[10px] text-muted-foreground">{t("pctOfRevenueLabel")}</span>
           </div>
         </div>
 
@@ -544,11 +548,11 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           role="button"
           tabIndex={0}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("Gross Profit") } }}
-          aria-label="Open Gross Profit row"
+          aria-label={t("pnlOpenSectionAria", { section: t("pnlWfGrossProfit") })}
         >
           <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200 dark:bg-emerald-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <DollarSign className="h-3.5 w-3.5" /> Gross Profit
+            <DollarSign className="h-3.5 w-3.5" /> {t("pnlWfGrossProfit")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-emerald-700 dark:text-emerald-300">{fmtNum(grossProfit)} <span className="text-sm font-normal text-muted-foreground">AZN</span></p>
           <div className="flex items-center gap-1 mt-1">
@@ -564,7 +568,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           role="button"
           tabIndex={0}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("EBITDA") } }}
-          aria-label="Open EBITDA row"
+          aria-label={t("pnlOpenSectionAria", { section: t("pnlWfEbitda") })}
           className={`relative overflow-hidden rounded-xl p-4 cursor-pointer hover:ring-2 transition ${
           ebitda >= 0
             ? "bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 dark:from-purple-950/30 dark:to-purple-900/20 dark:border-purple-800 hover:ring-purple-300"
@@ -576,7 +580,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
             {companyId && (
               <button
                 type="button"
-                aria-label="Reconcile client EBITDA"
+                aria-label={t("pnlReconcileClientEbitda")}
                 onClick={(e) => {
                   // Phase 3.3 v1.2 — stop propagation so the parent
                   // KPI card's drill onClick doesn't fire when the
@@ -600,7 +604,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           </div>
           {clientReconRow && (
             <div className="mt-1.5 flex items-center gap-1.5 text-[10px]">
-              <span className="text-muted-foreground">Client:</span>
+              <span className="text-muted-foreground">{t("pnlClientLabel")}</span>
               <span className="font-medium tabular-nums">
                 {fmtNum(clientReconRow.value)} {clientReconRow.currency}
               </span>
@@ -626,7 +630,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           role="button"
           tabIndex={0}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("Net Profit") } }}
-          aria-label="Open Net Profit row"
+          aria-label={t("pnlOpenSectionAria", { section: t("pnlNetProfit") })}
           className={`relative overflow-hidden rounded-xl p-4 cursor-pointer hover:ring-2 transition ${
           netProfit >= 0
             ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800 hover:ring-emerald-300"
@@ -634,7 +638,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         }`}>
           <div className={`absolute top-0 right-0 w-20 h-20 rounded-full -mr-6 -mt-6 ${netProfit >= 0 ? "bg-emerald-200 dark:bg-emerald-800" : "bg-red-200 dark:bg-red-800"}`} />
           <div className={`flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest mb-2 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-            <Percent className="h-3.5 w-3.5" /> Net Profit
+            <Percent className="h-3.5 w-3.5" /> {t("pnlNetProfit")}
           </div>
           <p className={`text-2xl font-bold tracking-tight ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>
             {netProfit < 0 && "("}{fmtNum(Math.abs(netProfit))}{netProfit < 0 && ")"} <span className="text-sm font-normal text-muted-foreground">AZN</span>
@@ -658,7 +662,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Revenue vs COGS */}
         <div className="lg:col-span-2 rounded-xl border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Revenue vs COGS — Monthly</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-3">{t("pnlChartRevenueVsCogs")}</h3>
           <ResponsiveContainer width="100%" height={280} minWidth={0}>
             <ComposedChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -666,9 +670,9 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
               <Tooltip formatter={((v: number) => fmtCurrency(v) + " AZN") as never} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="Revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="COGS" fill="#ef4444" radius={[4, 4, 0, 0]} />
-              <Line type="monotone" dataKey="Gross Profit" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+              <Bar dataKey="Revenue" name={t("plRevenue")} fill="#10b981" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="COGS" name={t("cogs")} fill="#ef4444" radius={[4, 4, 0, 0]} />
+              <Line type="monotone" dataKey="Gross Profit" name={t("pnlWfGrossProfit")} stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -676,13 +680,13 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         {/* Margin Trends — Turn 38 sub-turn 4: management/bookkeeping toggle */}
         <div className="rounded-xl border bg-card p-4">
           <div className="flex items-center justify-between mb-3 gap-2">
-            <h3 className="text-sm font-semibold text-foreground">Margin Trends</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t("pnlChartMarginTrends")}</h3>
             {hasLumpyNonOp && (
               <div
                 role="radiogroup"
-                aria-label="Margin view mode"
+                aria-label={t("pnlMarginViewAria")}
                 className="flex items-center gap-0 bg-muted/60 rounded-md p-0.5 text-[10px] font-semibold"
-                title="Toggle between bookkeeping (raw monthly) and management (smoothed) views"
+                title={t("pnlMarginViewTooltip")}
               >
                 <button
                   type="button"
@@ -691,7 +695,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
                   onClick={() => setMarginViewMode("management")}
                   className={`px-2 py-1 rounded ${marginViewMode === "management" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                 >
-                  Management
+                  {t("pnlMarginViewManagement")}
                 </button>
                 <button
                   type="button"
@@ -700,7 +704,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
                   onClick={() => setMarginViewMode("bookkeeping")}
                   className={`px-2 py-1 rounded ${marginViewMode === "bookkeeping" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                 >
-                  Bookkeeping
+                  {t("pnlMarginViewBookkeeping")}
                 </button>
               </div>
             )}
@@ -712,9 +716,9 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v + "%"} />
               <Tooltip formatter={((v: number) => v.toFixed(1) + "%") as never} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Area type="monotone" dataKey="Gross Margin" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={2} />
-              <Area type="monotone" dataKey="EBITDA Margin" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.08} strokeWidth={2} />
-              <Area type="monotone" dataKey="Net Margin" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.1} strokeWidth={2} />
+              <Area type="monotone" dataKey="Gross Margin" name={t("pnlGrossMarginLabel")} stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={2} />
+              <Area type="monotone" dataKey="EBITDA Margin" name={t("pnlEbitdaMarginLabel")} stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.08} strokeWidth={2} />
+              <Area type="monotone" dataKey="Net Margin" name={t("pnlNetMarginLabel")} stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.1} strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
           {hasLumpyNonOp && (
@@ -722,8 +726,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               <Info className="h-3 w-3 mt-0.5 shrink-0" />
               <span>
                 {marginViewMode === "management"
-                  ? "Management view: year-end accrual lumps (FX losses, interest, extraordinary, tax) booked as single-month entries are spread evenly across 12 months. YTD totals unchanged."
-                  : "Bookkeeping view: raw monthly bookings as recorded — single-month spikes reflect AZ SAP year-end true-ups."}
+                  ? t("pnlMarginNoteManagement")
+                  : t("pnlMarginNoteBookkeeping")}
               </span>
             </div>
           )}
@@ -732,11 +736,11 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
 
       {/* Waterfall Chart */}
       <div className="rounded-xl border bg-card p-4">
-        <h3 className="text-sm font-semibold text-foreground mb-3">P&L Waterfall</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">{t("pnlWaterfallTitle")}</h3>
         <ResponsiveContainer width="100%" height={220} minWidth={0}>
           <BarChart data={waterfallData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" className="opacity-30" vertical={false} />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
             <Tooltip formatter={((v: number) => fmtCurrency(Math.abs(v)) + " AZN") as never} />
             {/* Phase 3.3 — Cell onClick fires drillToSection with the
@@ -761,10 +765,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       <div className="rounded-xl border bg-card">
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-foreground">P&L Statement — Detail</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t("pnlDetailTitle")}</h3>
             {!hasActuals && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
-                No actuals imported - variance columns show no value
+                {t("pnlNoActualsBadge")}
               </span>
             )}
           </div>
@@ -774,12 +778,12 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="sticky left-0 bg-muted/50 px-3 py-2.5 text-left font-semibold min-w-[220px]">Account</th>
+                <th className="sticky left-0 bg-muted/50 px-3 py-2.5 text-left font-semibold min-w-[220px]">{t("balanceSheetAccount")}</th>
                 {MONTHS.map((m) => (
                   <th key={m} className="px-2 py-2.5 text-right font-semibold min-w-[80px]">{m}</th>
                 ))}
-                <th className="px-3 py-2.5 text-right font-bold min-w-[90px] bg-muted">Plan (Total)</th>
-                <th className="px-3 py-2.5 text-right font-semibold min-w-[90px] bg-muted">Actual</th>
+                <th className="px-3 py-2.5 text-right font-bold min-w-[90px] bg-muted">{t("pnlColPlanTotal")}</th>
+                <th className="px-3 py-2.5 text-right font-semibold min-w-[90px] bg-muted">{t("colActual")}</th>
                 <th className="px-3 py-2.5 text-right font-semibold min-w-[80px] bg-muted">Δ%</th>
               </tr>
             </thead>
@@ -792,7 +796,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               >
                 <td className="sticky left-0 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 flex items-center gap-1">
                   {expandedSections.has("revenue") ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                  Net Revenue
+                  {t("pnlNetRevenue")}
                 </td>
                 {Array.from({ length: 12 }, (_, i) => (
                   <td key={i} className="px-2 py-2 text-right text-emerald-700 dark:text-emerald-400 tabular-nums">
@@ -856,7 +860,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
                 id="pnl-section-gross-profit"
                 className={`bg-blue-50 dark:bg-blue-950/30 font-bold border-b-2 border-blue-200 dark:border-blue-800 transition-shadow ${flashSection === "gross-profit" ? "shadow-[inset_0_0_0_3px_rgb(59,130,246)]" : ""}`}
               >
-                <td className="sticky left-0 bg-blue-50 dark:bg-blue-950/30 px-3 py-2.5 pl-6">Gross Profit</td>
+                <td className="sticky left-0 bg-blue-50 dark:bg-blue-950/30 px-3 py-2.5 pl-6">{t("pnlWfGrossProfit")}</td>
                 {Array.from({ length: 12 }, (_, i) => {
                   const rev = monthlyRevenue?.[i + 1] || 0
                   const gp = rev + (monthlyCogs?.[i + 1] || 0)
@@ -900,7 +904,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               >
                 <td className="sticky left-0 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 flex items-center gap-1">
                   {expandedSections.has("opex") ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                  Operating Expenses
+                  {t("pnlOperatingExpenses")}
                 </td>
                 {Array.from({ length: 12 }, (_, i) => {
                   const monthOpex = Math.abs(opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
@@ -988,7 +992,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
                 >
                   <td className="sticky left-0 bg-slate-50 dark:bg-slate-950/30 px-3 py-2 flex items-center gap-1">
                     {expandedSections.has("below-ebitda") ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                    D&A, Finance & Tax
+                    {t("pnlBelowEbitdaSection")}
                   </td>
                   {Array.from({ length: 12 }, (_, i) => {
                     const val = Math.abs(belowEbitdaRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
@@ -1027,7 +1031,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
                 className={`font-bold border-t-2 transition-shadow ${netProfit >= 0 ? "bg-emerald-100 dark:bg-emerald-950/40" : "bg-red-100 dark:bg-red-950/40"} ${flashSection === "net-profit" ? "shadow-[inset_0_0_0_3px_rgb(16,185,129)]" : ""}`}
               >
                 <td className={`sticky left-0 px-3 py-3 pl-6 text-sm ${netProfit >= 0 ? "bg-emerald-100 dark:bg-emerald-950/40" : "bg-red-100 dark:bg-red-950/40"}`}>
-                  Net Profit / (Loss)
+                  {t("pnlNetProfitLoss")}
                 </td>
                 {Array.from({ length: 12 }, (_, i) => {
                   const rev = monthlyRevenue?.[i + 1] || 0

@@ -4,7 +4,7 @@
 // strip, colored by status. The most recognizable artifact of the trade
 // marketing profession.
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { CalendarRange } from "lucide-react";
 
 interface Campaign {
@@ -31,6 +31,10 @@ const BAR_CLASSES: Record<string, string> = {
 export function TradeCalendar({ campaigns }: { campaigns: Campaign[] | null }) {
   const t = useTranslations("trade.calendar");
   const tm = useTranslations("trade.campaigns.status");
+  // `toLocaleDateString(undefined, …)` follows the BROWSER locale, so an AZ
+  // page opened in an en-US Chrome printed "Jan Feb Mar". Pin it to the UI
+  // locale instead.
+  const locale = useLocale();
   const year = new Date().getUTCFullYear();
 
   const visible = (campaigns ?? []).filter((c) => {
@@ -43,7 +47,10 @@ export function TradeCalendar({ campaigns }: { campaigns: Campaign[] | null }) {
 
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
   const monthName = (m: number) =>
-    new Date(Date.UTC(year, m - 1, 1)).toLocaleDateString(undefined, { month: "short" });
+    new Date(Date.UTC(year, m - 1, 1)).toLocaleDateString(locale, {
+      month: "short",
+      timeZone: "UTC",
+    });
 
   return (
     <section className="rounded-lg border p-4">

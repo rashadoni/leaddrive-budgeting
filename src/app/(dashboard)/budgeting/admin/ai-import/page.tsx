@@ -60,7 +60,7 @@ export default async function AIImportPage({
     }),
   ])
   const resetScopes = buildImportResetScopes({
-    organizationName: organization?.name ?? "Whole holding",
+    organizationName: organization?.name ?? t("reset.wholeHoldingFallback"),
     companies,
   })
 

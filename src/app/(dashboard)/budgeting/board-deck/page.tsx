@@ -28,9 +28,10 @@ import { FooterActions } from "@/features/board-deck/components/FooterActions";
 import { NarrationControls } from "@/features/board-deck/components/NarrationControls";
 import { prisma } from "@/lib/prisma";
 
-export const metadata = {
-  title: "Board Deck — Risk Snapshot",
-};
+export async function generateMetadata() {
+  const t = await getTranslations("terminal.boardDeck");
+  return { title: t("metaTitle") };
+}
 
 /**
  * Phase C3 v1 — Board Deck Generator.

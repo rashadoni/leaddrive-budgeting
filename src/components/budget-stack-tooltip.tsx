@@ -1,5 +1,7 @@
 "use client"
 
+import { useTranslations } from "next-intl"
+
 interface StackTooltipPayloadEntry {
   dataKey?: string | number
   name?: string | number
@@ -36,6 +38,7 @@ export function BudgetStackTooltip({
   valueLabel = "AZN",
   maxItems = 8,
 }: BudgetStackTooltipProps) {
+  const t = useTranslations("budgeting")
   if (!active || !payload?.length) return null
 
   const totalEntry = payload.find((entry) => entry.name === "Total" || entry.dataKey === "Total")
@@ -62,7 +65,7 @@ export function BudgetStackTooltip({
     return (
       <div className="max-w-[280px] rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg">
         <div className="font-semibold">{label}</div>
-        <div className="mt-1 text-muted-foreground">No value in this month</div>
+        <div className="mt-1 text-muted-foreground">{t("tooltipNoValueThisMonth")}</div>
       </div>
     )
   }
@@ -72,7 +75,7 @@ export function BudgetStackTooltip({
       <div className="border-b border-border/70 px-3 py-2">
         <div className="text-sm font-semibold">{label}</div>
         <div className="mt-0.5 flex items-center justify-between gap-4 text-xs">
-          <span className="text-muted-foreground">Total</span>
+          <span className="text-muted-foreground">{t("totalLabel")}</span>
           <span className="font-mono font-semibold tabular-nums">
             {formatAmount(total)} {valueLabel}
           </span>
@@ -94,7 +97,7 @@ export function BudgetStackTooltip({
         </div>
         {hiddenCount > 0 && (
           <div className="mt-2 border-t border-border/70 pt-2 text-[11px] text-muted-foreground">
-            +{hiddenCount} smaller lines hidden
+            {t("tooltipMoreLinesHidden", { count: hiddenCount })}
           </div>
         )}
       </div>

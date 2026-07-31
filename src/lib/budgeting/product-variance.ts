@@ -77,24 +77,41 @@ export function buildProductVarianceRows(args: {
     .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance))
 }
 
+/**
+ * Stable identifiers for the coverage notices. The renderer resolves each
+ * one through `budgeting.productVarianceMissing.<code>` so the amber
+ * banner speaks the viewer's language; `missingMessages` keeps the old
+ * English literals for non-UI callers (and the existing unit tests).
+ */
+export type ProductVarianceMissingCode = "budgetRows" | "actualRows" | "rateVolume"
+
 export function productVarianceCoverage(rows: ProductVarianceRow[]): {
   hasBudget: boolean
   hasActual: boolean
   hasRateVolume: boolean
+  missingCodes: ProductVarianceMissingCode[]
   missingMessages: string[]
 } {
   const hasBudget = rows.some((row) => row.budgetAmount !== 0)
   const hasActual = rows.some((row) => row.actualAmount !== 0)
   const hasRateVolume = rows.some((row) => row.hasRateVolume)
+  const missingCodes: ProductVarianceMissingCode[] = []
   const missingMessages: string[] = []
 
-  if (!hasBudget) missingMessages.push("Budget product rows are not available for this year.")
-  if (!hasActual) missingMessages.push("Actual product rows are not available for this year.")
+  if (!hasBudget) {
+    missingCodes.push("budgetRows")
+    missingMessages.push("Budget product rows are not available for this year.")
+  }
+  if (!hasActual) {
+    missingCodes.push("actualRows")
+    missingMessages.push("Actual product rows are not available for this year.")
+  }
   if (!hasRateVolume) {
+    missingCodes.push("rateVolume")
     missingMessages.push("Price/volume variance needs quantity and unit price/unit cost in both budget and actual imports.")
   }
 
-  return { hasBudget, hasActual, hasRateVolume, missingMessages }
+  return { hasBudget, hasActual, hasRateVolume, missingCodes, missingMessages }
 }
 
 function aggregateByProduct(lines: ProductVarianceInputLine[]): Map<string, ProductBucket> {

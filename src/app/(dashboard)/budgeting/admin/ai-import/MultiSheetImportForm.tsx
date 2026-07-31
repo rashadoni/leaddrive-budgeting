@@ -16,6 +16,10 @@ import { useTranslations } from "next-intl"
 import type { ColumnMappingProposal, MappingProposal, SourceColumn } from "@/lib/onboarding/ai-mapper/types"
 import { buildUserOverrides } from "@/features/onboarding/lib/proposal-overrides"
 import { MappingReviewTable } from "@/features/onboarding/components/MappingReviewTable"
+import {
+  asImportTranslator,
+  localizeImportMessage,
+} from "./import-message-i18n"
 
 interface CompanyOpt { id: string; code: string; name: string }
 interface Classification { sheetName: string; dataType: string; confidence: number }
@@ -77,6 +81,9 @@ function flatten(tree: unknown): CompanyOpt[] {
 
 export function MultiSheetImportForm() {
   const t = useTranslations("adminMultiSheet")
+  // 11.7x — the rest of this tab is fully translated; the red banner was
+  // printing the API's English sentence verbatim.
+  const tShared = asImportTranslator(useTranslations("adminAiImport.shared"))
   const [companies, setCompanies] = useState<CompanyOpt[]>([])
   const [companyId, setCompanyId] = useState("")
   const [file, setFile] = useState<File | null>(null)
@@ -319,7 +326,7 @@ export function MultiSheetImportForm() {
 
       {error && (
         <div className="border border-red-500/40 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 rounded p-3 text-sm">
-          ❌ {error}
+          ❌ {localizeImportMessage(tShared, error)}
         </div>
       )}
 

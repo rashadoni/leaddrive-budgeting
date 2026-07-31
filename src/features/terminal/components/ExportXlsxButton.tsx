@@ -12,7 +12,7 @@
  */
 
 import { useEffect } from "react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { ensureMatrix } from "../hooks/use-matrix";
 import {
   ensureCompanies,
@@ -27,6 +27,11 @@ import { computeCompositeByCompany } from "@/lib/risk/composite-score";
 
 export function ExportXlsxTrigger() {
   const locale = useLocale() as "en" | "ru" | "az";
+  // 2026-07-31 i18n sweep — the workbook used to be English-only regardless
+  // of locale (the component read `locale` purely to format the date), so an
+  // Azerbaijani user exported an English spreadsheet.
+  const t = useTranslations("terminal");
+  const tStatus = useTranslations("terminal.status");
   const alertMatches = useTerminalStore((s) => s.alertMatches);
   const selectedPeriod = useTerminalStore((s) => s.selectedPeriod);
 
@@ -69,17 +74,22 @@ export function ExportXlsxTrigger() {
           else unknown += 1;
         }
         const summaryRows = [
-          ["Organization", orgName],
-          ["Period", matrix.period],
-          ["Generated", generatedAt],
+          [t("export.organization"), orgName],
+          [t("export.period"), matrix.period],
+          [t("export.generated"), generatedAt],
           [],
-          ["Status", "Count"],
-          ["Green", green],
-          ["Amber", amber],
-          ["Red", red],
-          ["Unknown / missing", unknown],
+          [t("export.status"), t("export.count")],
+          [tStatus("green"), green],
+          [tStatus("amber"), amber],
+          [tStatus("red"), red],
+          [t("export.unknownMissing"), unknown],
           [],
-          ["Company", "Code", "Composite", "Contributing / Total"],
+          [
+            t("export.company"),
+            t("export.code"),
+            t("export.composite"),
+            t("export.contributingTotal"),
+          ],
           ...matrix.companies.map((co) => {
             const s = compositesById.get(co.id);
             return [
@@ -99,7 +109,7 @@ export function ExportXlsxTrigger() {
           cellMap.set(`${c.companyId}|${c.indicatorId}`, c);
         }
         const matrixHeader = [
-          "Company",
+          t("export.company"),
           ...matrix.indicators.map((i) => i.code),
         ];
         const matrixValueRows: (string | number)[][] = matrix.companies.map(
@@ -157,14 +167,19 @@ export function ExportXlsxTrigger() {
         moverPool.sort((a, b) => Math.abs(b.deltaPct) - Math.abs(a.deltaPct));
 
         const briefRows: (string | number)[][] = [
-          ["Top-3 worst (red)"],
-          ["Company", "Indicator", "Value", "Unit"],
+          [t("export.briefWorst")],
+          [
+            t("export.company"),
+            t("export.indicator"),
+            t("export.value"),
+            t("export.unit"),
+          ],
           ...worst
             .slice(0, 3)
             .map((w) => [w.companyCode, w.indicatorCode, w.value, w.unit]),
           [],
-          ["Top-3 movers (12-month delta %)"],
-          ["Company", "Indicator", "Delta %"],
+          [t("export.briefMovers")],
+          [t("export.company"), t("export.indicator"), t("export.deltaPct")],
           ...moverPool
             .slice(0, 3)
             .map((m) => [
@@ -173,33 +188,38 @@ export function ExportXlsxTrigger() {
               Number(m.deltaPct.toFixed(2)),
             ]),
           [],
-          ["Active alerts"],
-          ["Rule ID", "Message"],
+          [t("export.activeAlerts")],
+          [t("export.ruleId"), t("export.message")],
           ...(alertMatches ?? [])
             .slice(0, 10)
             .map((a) => [a.ruleId, a.message]),
         ];
 
         const wb = XLSX.utils.book_new();
+        // Excel caps sheet names at 31 chars and rejects []:*?/\ — the
+        // localized names are short, but clamp defensively so a future
+        // translation can't produce an unopenable workbook.
+        const sheetName = (raw: string) =>
+          raw.replace(/[[\]:*?/\\]/g, " ").slice(0, 31);
         XLSX.utils.book_append_sheet(
           wb,
           XLSX.utils.aoa_to_sheet(summaryRows),
-          "Summary",
+          sheetName(t("export.sheetSummary")),
         );
         XLSX.utils.book_append_sheet(
           wb,
           XLSX.utils.aoa_to_sheet([matrixHeader, ...matrixValueRows]),
-          "Matrix (values)",
+          sheetName(t("export.sheetMatrixValues")),
         );
         XLSX.utils.book_append_sheet(
           wb,
           XLSX.utils.aoa_to_sheet([matrixHeader, ...matrixStatusRows]),
-          "Matrix (status)",
+          sheetName(t("export.sheetMatrixStatus")),
         );
         XLSX.utils.book_append_sheet(
           wb,
           XLSX.utils.aoa_to_sheet(briefRows),
-          "Today's Brief",
+          sheetName(t("export.sheetBrief")),
         );
 
         const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
@@ -220,14 +240,15 @@ export function ExportXlsxTrigger() {
           err: err instanceof Error ? err.message : String(err),
         });
         alert(
-          "XLSX export failed: " +
-            (err instanceof Error ? err.message : String(err)),
+          t("export.xlsxFailed", {
+            message: err instanceof Error ? err.message : String(err),
+          }),
         );
       }
     };
     window.addEventListener("terminal:export-xlsx", handler);
     return () => window.removeEventListener("terminal:export-xlsx", handler);
-  }, [selectedPeriod, locale, alertMatches]);
+  }, [selectedPeriod, locale, alertMatches, t, tStatus]);
 
   return null;
 }

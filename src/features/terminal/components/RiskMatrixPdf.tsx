@@ -112,6 +112,15 @@ const DIRECTION_GLYPH = {
   band: "≈",
 } as const;
 
+/** Cell status → I18N dict key. Keeps the Per-Company Breakdown status
+ *  column speaking the same language as the legend page. */
+const STATUS_LABEL_KEY = {
+  green: "healthy",
+  amber: "watch",
+  red: "critical",
+  unknown: "nodata",
+} as const;
+
 const I18N: Record<RiskMatrixPdfProps["language"], Record<string, string>> = {
   en: {
     coverTitle: "Risk Matrix Report",
@@ -161,7 +170,7 @@ const I18N: Record<RiskMatrixPdfProps["language"], Record<string, string>> = {
     alertsHeader: "Активные алёрты",
     matrixHeader: "Матрица рисков",
     perCompany: "Детализация по компаниям",
-    composite: "Composite",
+    composite: "Композит",
     indicator: "Индикатор",
     value: "Значение",
     status: "Статус",
@@ -195,7 +204,7 @@ const I18N: Record<RiskMatrixPdfProps["language"], Record<string, string>> = {
     alertsHeader: "Aktiv xəbərdarlıqlar",
     matrixHeader: "Risk matrisi",
     perCompany: "Şirkətlər üzrə detal",
-    composite: "Composite",
+    composite: "Kompozit",
     indicator: "İndikator",
     value: "Dəyər",
     status: "Status",
@@ -479,8 +488,11 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
                       {DIRECTION_GLYPH[ind.direction]} {ind.code}
                     </Text>
                     <Text style={styles.perCoTableCellValue}>{formatVal(cell.value, ind.unit)}</Text>
+                    {/* Was `cell.status.toUpperCase()` — printed GREEN /
+                        AMBER / RED in every language while the legend page
+                        of the same PDF said Sağlam / Diqqət / Kritik. */}
                     <Text style={[styles.perCoTableCellStatus, { color: STATUS_HEX[cell.status] }]}>
-                      {cell.status.toUpperCase()}
+                      {t[STATUS_LABEL_KEY[cell.status]]}
                     </Text>
                   </View>
                 ))

@@ -27,13 +27,23 @@ export type SectionStatus = "missing" | "partial" | "complete" | "n_a";
 export interface SectionResult {
   /** Section code from docs/ONBOARDING_DATA_REQUIREMENTS.md (e.g. "§2"). */
   code: string;
-  /** Human-readable label. */
+  /**
+   * Human-readable label, English. Kept as the wire/log/CLI form and as the
+   * UI fallback; the dashboard renders `onboardingDashboard.sectionLabel.<labelKey>`
+   * when that key exists so an AZ/RU operator doesn't read an English list.
+   */
   label: string;
+  /** i18n key suffix under `onboardingDashboard.sectionLabel.*`. */
+  labelKey: string;
+  /** ICU params for `labelKey` (only the generic industry fallback uses one). */
+  labelParams?: Record<string, string>;
   status: SectionStatus;
   /** Count of rows / records found (renders as "12 lines" / "0 rows"). */
   rowCount: number;
-  /** Free-text hint: how to satisfy this section. */
+  /** Free-text hint, English: how to satisfy this section. UI fallback. */
   hint: string;
+  /** i18n key suffix under `onboardingDashboard.hint.*`. */
+  hintKey: string;
   /** True when this section gates other sections (P&L → ratio indicators). */
   blocking: boolean;
 }
@@ -56,8 +66,10 @@ export interface CompletenessReport {
 const COMPLETE: Omit<SectionResult, "rowCount"> & { rowCount?: never } = {
   code: "",
   label: "",
+  labelKey: "",
   status: "complete",
   hint: "",
+  hintKey: "",
   blocking: false,
 };
 
@@ -205,19 +217,23 @@ export async function checkOnboardingCompleteness(
     {
       code: "§1",
       label: "Chart of Accounts",
+      labelKey: "coa",
       status: coaCount >= 20 ? "complete" : coaCount > 0 ? "partial" : "missing",
       rowCount: coaCount,
-      hint:
-        coaCount === 0
-          ? "Import CoA template via /budgeting/onboarding"
-          : coaCount < 20
-            ? "CoA loaded but sparse — expected at least 20 accounts for a mid-sized P&L"
-            : "OK",
+      ...(coaCount === 0
+        ? { hint: "Import CoA template via /budgeting/onboarding", hintKey: "coaMissing" }
+        : coaCount < 20
+          ? {
+              hint: "CoA loaded but sparse — expected at least 20 accounts for a mid-sized P&L",
+              hintKey: "coaSparse",
+            }
+          : { hint: "OK", hintKey: "ok" }),
       blocking: true,
     },
     {
       code: "§2",
       label: "P&L plan (BudgetLines)",
+      labelKey: "pnl",
       status: isRollupOnly
         ? "n_a"
         : revenueLineCount > 0 && cogsLineCount > 0
@@ -226,90 +242,142 @@ export async function checkOnboardingCompleteness(
             ? "partial"
             : "missing",
       rowCount: revenueLineCount + cogsLineCount + expenseLineCount,
-      hint: isRollupOnly
-        ? "Rollup-only parent — P&L is consolidated from children"
+      ...(isRollupOnly
+        ? {
+            hint: "Rollup-only parent — P&L is consolidated from children",
+            hintKey: "pnlRollup",
+          }
         : revenueLineCount === 0
-          ? "Import P&L budget xlsx — REVENUE/COGS/OPEX lines per month"
+          ? {
+              hint: "Import P&L budget xlsx — REVENUE/COGS/OPEX lines per month",
+              hintKey: "pnlMissing",
+            }
           : cogsLineCount === 0
-            ? "Revenue loaded but no COGS classification — splits gross margin from 0"
-            : "OK",
+            ? {
+                hint: "Revenue loaded but no COGS classification — splits gross margin from 0",
+                hintKey: "pnlNoCogs",
+              }
+            : { hint: "OK", hintKey: "ok" }),
       blocking: !isRollupOnly,
     },
     {
       code: "§3",
       label: "Sales budget (product × month)",
+      labelKey: "salesBudget",
       status: isRollupOnly ? "n_a" : salesBudgetCount > 0 ? "complete" : "missing",
       rowCount: salesBudgetCount,
-      hint: isRollupOnly
-        ? "Rollup-only parent — sales budgets live on operational children"
+      ...(isRollupOnly
+        ? {
+            hint: "Rollup-only parent — sales budgets live on operational children",
+            hintKey: "salesRollup",
+          }
         : salesBudgetCount === 0
-          ? "Import SalesBudget xlsx via /budgeting/import (product/qty/price/month)"
-          : "OK",
+          ? {
+              hint: "Import SalesBudget xlsx via /budgeting/import (product/qty/price/month)",
+              hintKey: "salesMissing",
+            }
+          : { hint: "OK", hintKey: "ok" }),
       blocking: false,
     },
     {
       code: "§4",
       label: "COGS detail (per-product cost)",
+      labelKey: "cogsDetail",
       status: isRollupOnly ? "n_a" : cogsBudgetCount > 0 ? "complete" : "missing",
       rowCount: cogsBudgetCount,
-      hint: isRollupOnly
-        ? "Rollup-only parent — COGS detail lives on operational children"
+      ...(isRollupOnly
+        ? {
+            hint: "Rollup-only parent — COGS detail lives on operational children",
+            hintKey: "cogsRollup",
+          }
         : cogsBudgetCount === 0
-          ? "Import COGS budget xlsx (cost element × product × month)"
-          : "OK",
+          ? {
+              hint: "Import COGS budget xlsx (cost element × product × month)",
+              hintKey: "cogsMissing",
+            }
+          : { hint: "OK", hintKey: "ok" }),
       blocking: false,
     },
     {
       code: "§5",
       label: "Balance Sheet",
+      labelKey: "balanceSheet",
       status: isRollupOnly ? "n_a" : balanceSheetCount > 0 ? "complete" : "missing",
       rowCount: balanceSheetCount,
-      hint: isRollupOnly
-        ? "Rollup-only parent — Balance Sheet is consolidated from children"
+      ...(isRollupOnly
+        ? {
+            hint: "Rollup-only parent — Balance Sheet is consolidated from children",
+            hintKey: "bsRollup",
+          }
         : balanceSheetCount === 0
-          ? "Import Balance Sheet xlsx — assets/liabilities/equity, monthly"
-          : "OK",
+          ? {
+              hint: "Import Balance Sheet xlsx — assets/liabilities/equity, monthly",
+              hintKey: "bsMissing",
+            }
+          : { hint: "OK", hintKey: "ok" }),
       blocking: false,
     },
     {
       code: "§6",
       label: "Cash Flow",
+      labelKey: "cashFlow",
       status: isRollupOnly ? "n_a" : cashFlowCount > 0 ? "complete" : "missing",
       rowCount: cashFlowCount,
-      hint: isRollupOnly
-        ? "Rollup-only parent — Cash Flow is consolidated from children"
+      ...(isRollupOnly
+        ? {
+            hint: "Rollup-only parent — Cash Flow is consolidated from children",
+            hintKey: "cfRollup",
+          }
         : cashFlowCount === 0
-          ? "Import Cash Flow statement (operating/investing/financing)"
-          : "OK",
+          ? {
+              hint: "Import Cash Flow statement (operating/investing/financing)",
+              hintKey: "cfMissing",
+            }
+          : { hint: "OK", hintKey: "ok" }),
       blocking: false,
     },
     {
       code: "§7",
       label: "Actuals (variance vs plan)",
+      labelKey: "actuals",
       status: isRollupOnly ? "n_a" : actualsCount > 0 ? "complete" : "missing",
       rowCount: actualsCount,
-      hint: isRollupOnly
-        ? "Rollup-only parent — actuals are tracked on operational children"
+      ...(isRollupOnly
+        ? {
+            hint: "Rollup-only parent — actuals are tracked on operational children",
+            hintKey: "actualsRollup",
+          }
         : actualsCount === 0
-          ? "Import GL extract of real bookings to unlock variance analysis"
-          : "OK",
+          ? {
+              hint: "Import GL extract of real bookings to unlock variance analysis",
+              hintKey: "actualsMissing",
+            }
+          : { hint: "OK", hintKey: "ok" }),
       blocking: false,
     },
     {
       code: "§8",
       label: "Assumptions (FX/inflation/tax)",
+      labelKey: "assumptions",
       status: isRollupOnly ? "n_a" : assumptionsCount > 0 ? "complete" : "missing",
       rowCount: assumptionsCount,
-      hint: isRollupOnly
-        ? "Rollup-only parent — assumptions are plan-scoped (held on children's plans)"
+      ...(isRollupOnly
+        ? {
+            hint: "Rollup-only parent — assumptions are plan-scoped (held on children's plans)",
+            hintKey: "assumptionsRollup",
+          }
         : assumptionsCount === 0
-          ? "Set assumptions via /budgeting?tab=assumptions"
-          : "OK",
+          ? {
+              hint: "Set assumptions via /budgeting?tab=assumptions",
+              hintKey: "assumptionsMissing",
+            }
+          : { hint: "OK", hintKey: "ok" }),
       blocking: false,
     },
     {
       code: "§R.0",
       label: "ESG disclosures (Carbon Scope 1/2/3)",
+      labelKey: "esg",
       status: isRollupOnly
         ? "n_a"
         : esgCount >= 3
@@ -318,22 +386,36 @@ export async function checkOnboardingCompleteness(
             ? "partial"
             : "missing",
       rowCount: esgCount,
-      hint: isRollupOnly
-        ? "Rollup-only parent — ESG disclosures are per operational entity"
+      ...(isRollupOnly
+        ? {
+            hint: "Rollup-only parent — ESG disclosures are per operational entity",
+            hintKey: "esgRollup",
+          }
         : esgCount === 0
-          ? "No ESG data — Scope 1/2 currently modelled from revenue (no disclosed value)"
+          ? {
+              hint: "No ESG data — Scope 1/2 currently modelled from revenue (no disclosed value)",
+              hintKey: "esgMissing",
+            }
           : esgCount < 3
-            ? "Partial ESG disclosure — Scope 1/2 covered but Scope 3 still modelled"
-            : "Disclosed Scope 1+2+3 + ESG composite",
+            ? {
+                hint: "Partial ESG disclosure — Scope 1/2 covered but Scope 3 still modelled",
+                hintKey: "esgPartial",
+              }
+            : {
+                hint: "Disclosed Scope 1+2+3 + ESG composite",
+                hintKey: "esgComplete",
+              }),
       blocking: false,
     },
     isRollupOnly
       ? {
           code: "§R.parent",
           label: "Industry baseline (parent rollup)",
+          labelKey: "parentRollup",
           status: "n_a",
           rowCount: 0,
           hint: "Rollup-only parent — sector KPI baselines live on operational children",
+          hintKey: "parentRollup",
           blocking: false,
         }
       : industrySpecific,
@@ -376,9 +458,11 @@ function industrySpecificSection(
     return {
       code: "§0.6",
       label: "Industry classification",
+      labelKey: "industryClassification",
       status: "missing",
       rowCount: 0,
       hint: "Set company.industry — gates every sector KPI",
+      hintKey: "industryMissing",
       blocking: true,
     };
   }
@@ -386,68 +470,95 @@ function industrySpecificSection(
   // Industries with required settings keys.
   const requirements: Record<
     string,
-    { code: string; label: string; keys: string[]; hint: string }
+    {
+      code: string;
+      label: string;
+      labelKey: string;
+      keys: string[];
+      hint: string;
+      hintKey: string;
+    }
   > = {
     agro_crops: {
       code: "§R.1",
       label: "Agro KPI baseline (hectares + region + crop)",
+      labelKey: "agroBaseline",
       keys: ["hectaresPlanted", "region", "cropType"],
       hint:
-        "Set in /budgeting/admin/companies/<code>/settings — hectares + region + cropType",
+        "Set in /budgeting/admin/companies/[code]/settings — hectares + region + cropType",
+      hintKey: "agroBaseline",
     },
     food_processing: {
       code: "§R.2",
       label: "Food processing KPI baseline (capacity + extraction rate)",
+      labelKey: "foodProcessingBaseline",
       keys: ["processingCapacityTonsYr", "extractionRateTarget", "mainInputCommodity"],
       hint: "Set processing capacity + extraction rate target + main input commodity",
+      hintKey: "foodProcessingBaseline",
     },
     hospitality: {
       code: "§R.5",
       label: "Hospitality baseline (rooms + seasonality)",
+      labelKey: "hospitalityBaseline",
       keys: ["totalRooms", "region"],
       hint: "Set totalRooms + region",
+      hintKey: "hospitalityBaseline",
     },
     services: {
       code: "§R.3",
       label: "Services baseline (revenue concentration target)",
+      labelKey: "servicesBaseline",
       keys: ["topCustomerHhiTarget"],
       hint: "Set HHI target for customer concentration (or default to industry mean)",
+      hintKey: "servicesBaseline",
     },
     industrial: {
       code: "§R.4",
       label: "Industrial KPI baseline (capacity + BOM)",
+      labelKey: "industrialBaseline",
       keys: ["productionCapacity", "topInputCommodities"],
       hint: "Set production capacity (units/month) + top-3 raw-material exposures",
+      hintKey: "industrialBaseline",
     },
     real_estate: {
       code: "§R.6",
       label: "Real estate baseline (sqm + lease terms)",
+      labelKey: "realEstateBaseline",
       keys: ["totalSquareMeters", "averageLeaseMonths"],
       hint: "Set total sqm + average lease tenor",
+      hintKey: "realEstateBaseline",
     },
     pharma: {
       code: "§R.7",
       label: "Pharma baseline (inventory days + R&D)",
+      labelKey: "pharmaBaseline",
       keys: ["inventoryDaysCover", "rndIntensityTarget"],
       hint: "Set inventory days + R&D intensity target",
+      hintKey: "pharmaBaseline",
     },
     entertainment: {
       code: "§R.8",
       label: "Entertainment baseline (capacity + seasonality)",
+      labelKey: "entertainmentBaseline",
       keys: ["seatingCapacity"],
       hint: "Set seating capacity + peak-season months",
+      hintKey: "entertainmentBaseline",
     },
     education: {
       code: "§R.9",
       label: "Education baseline (enrollment capacity + tuition)",
+      labelKey: "educationBaseline",
       keys: ["enrollmentCapacity", "averageTuition"],
       hint: "Set enrollment capacity + average annual tuition",
+      hintKey: "educationBaseline",
     },
     poultry: {
       code: "§R.10",
       label: "Poultry baseline (FCR + mortality target)",
+      labelKey: "poultryBaseline",
       keys: ["fcrTarget", "mortalityTarget"],
       hint: "Set Feed Conversion Ratio + mortality % target",
+      hintKey: "poultryBaseline",
     },
   };
 
@@ -456,9 +567,12 @@ function industrySpecificSection(
     return {
       code: `§R.${industry}`,
       label: `Industry baseline (${industry})`,
+      labelKey: "genericBaseline",
+      labelParams: { industry },
       status: "n_a",
       rowCount: 0,
       hint: "No sector-specific KPI baseline defined for this industry yet",
+      hintKey: "noBaseline",
       blocking: false,
     };
   }
@@ -475,9 +589,11 @@ function industrySpecificSection(
   return {
     code: req.code,
     label: req.label,
+    labelKey: req.labelKey,
     status,
     rowCount: present,
     hint: status === "complete" ? "All required settings set" : req.hint,
+    hintKey: status === "complete" ? "allSet" : req.hintKey,
     blocking: false,
   };
 }

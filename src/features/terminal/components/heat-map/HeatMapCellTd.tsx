@@ -25,29 +25,9 @@ import {
 } from "@/components/ui/tooltip";
 import { Sparkline, type SparklineStatus } from "../Sparkline";
 import { resolveIndicatorLabel } from "../../lib/resolve-indicator-label";
+import { localizeFormulaError } from "../../lib/localize-formula-error";
 import type { ApplicabilityReason } from "../../lib/indicator-applicability";
 import type { CompanyRow, IndicatorCol } from "./types";
-
-function localizeFormulaError(
-  code: string,
-  reason: string,
-  indicatorCode: string,
-  t: (key: string, vars?: Record<string, string | number>) => string,
-): string {
-  // Most common case: _VS_<YEAR> Δ-indicators NaN because the baseline
-  // year's IndicatorValue isn't in the DB. Show the year + actionable
-  // import hint instead of the cryptic engine error.
-  if (code === 'non_finite') {
-    const m = indicatorCode.match(/_VS_(\d{4})/);
-    if (m) {
-      return t('heatMap.errMissingBaseline', { year: m[1] });
-    }
-    return t('heatMap.errNonFinite');
-  }
-  if (code === 'parse') return t('heatMap.errParse');
-  if (code === 'eval') return t('heatMap.errEval');
-  return reason;
-}
 
 function formatValue(value: number, unit: string): string {
   if (!Number.isFinite(value)) return '—';
@@ -674,7 +654,15 @@ export function HeatMapCellTd({
               {cell.error && (
                 <div
                   className="text-[11px] text-[#FF4757] mt-1"
-                  title={`${cell.error.code}: ${cell.error.reason}`}
+                  // The title used to carry the raw English engine reason —
+                  // the only untranslated string left in this tooltip. Mirror
+                  // the localized text the user already reads below it.
+                  title={localizeFormulaError(
+                    cell.error.code,
+                    cell.error.reason,
+                    ind.code,
+                    t,
+                  )}
                 >
                   ⚠ {localizeFormulaError(cell.error.code, cell.error.reason, ind.code, t)}
                 </div>

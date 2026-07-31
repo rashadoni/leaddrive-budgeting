@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -24,6 +25,8 @@ interface Department {
 }
 
 export function BudgetDepartmentAccess() {
+  const t = useTranslations("budgeting")
+  const tCommon = useTranslations("common")
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId
 
@@ -64,7 +67,7 @@ export function BudgetDepartmentAccess() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Shield className="h-5 w-5" />
-          Department Budget Access
+          {t("deptAccessTitle")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -72,13 +75,13 @@ export function BudgetDepartmentAccess() {
         {/* Assign form */}
         <div className="flex flex-wrap items-end gap-3 p-4 bg-muted/30 rounded-lg border">
           <div className="space-y-1.5">
-            <Label className="text-xs">Department</Label>
+            <Label className="text-xs">{t("deptAccessDepartment")}</Label>
             <select
               value={selectedDept}
               onChange={(e) => setSelectedDept(e.target.value)}
               className="flex h-9 w-[180px] rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
-              <option value="">Select department</option>
+              <option value="">{t("deptAccessSelectDepartment")}</option>
               {departments.map((d) => (
                 <option key={d.id} value={d.id}>{d.label}</option>
               ))}
@@ -86,13 +89,13 @@ export function BudgetDepartmentAccess() {
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs">User</Label>
+            <Label className="text-xs">{t("deptAccessUser")}</Label>
             <select
               value={selectedUser}
               onChange={(e) => setSelectedUser(e.target.value)}
               className="flex h-9 w-[200px] rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
-              <option value="">Select user</option>
+              <option value="">{tCommon("selectUser")}</option>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
               ))}
@@ -102,17 +105,17 @@ export function BudgetDepartmentAccess() {
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-xs cursor-pointer">
               <input type="checkbox" checked={canEdit} onChange={(e) => setCanEdit(e.target.checked)} className="rounded" />
-              Edit
+              {tCommon("edit")}
             </label>
             <label className="flex items-center gap-2 text-xs cursor-pointer">
               <input type="checkbox" checked={canApprove} onChange={(e) => setCanApprove(e.target.checked)} className="rounded" />
-              Approve
+              {t("btnApprove")}
             </label>
           </div>
 
           <Button onClick={handleAssign} disabled={!selectedDept || !selectedUser || assignOwner.isPending} size="sm">
             {assignOwner.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Assign
+            {t("deptAccessAssign")}
           </Button>
         </div>
 
@@ -120,20 +123,20 @@ export function BudgetDepartmentAccess() {
         {owners.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Users className="h-10 w-10 mx-auto mb-2 opacity-40" />
-            <p className="text-sm">No department owners assigned yet.</p>
-            <p className="text-xs">Admin and Manager roles have full access by default.</p>
+            <p className="text-sm">{t("deptAccessNoOwners")}</p>
+            <p className="text-xs">{t("deptAccessDefaultAccessHint")}</p>
           </div>
         ) : (
           <div className="border rounded-lg overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="text-left px-4 py-2 font-medium">Department</th>
-                  <th className="text-left px-4 py-2 font-medium">User</th>
-                  <th className="text-left px-4 py-2 font-medium">Role</th>
-                  <th className="text-center px-4 py-2 font-medium">Edit</th>
-                  <th className="text-center px-4 py-2 font-medium">Approve</th>
-                  <th className="text-right px-4 py-2 font-medium">Actions</th>
+                  <th className="text-left px-4 py-2 font-medium">{t("deptAccessDepartment")}</th>
+                  <th className="text-left px-4 py-2 font-medium">{t("deptAccessUser")}</th>
+                  <th className="text-left px-4 py-2 font-medium">{t("deptAccessRole")}</th>
+                  <th className="text-center px-4 py-2 font-medium">{tCommon("edit")}</th>
+                  <th className="text-center px-4 py-2 font-medium">{t("btnApprove")}</th>
+                  <th className="text-right px-4 py-2 font-medium">{t("deptAccessActions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -147,10 +150,10 @@ export function BudgetDepartmentAccess() {
                       <Badge variant="secondary" className="text-xs">{owner.user.role}</Badge>
                     </td>
                     <td className="px-4 py-2 text-center">
-                      {owner.canEdit ? <Badge className="bg-green-100 text-green-800 text-xs">Yes</Badge> : <Badge variant="outline" className="text-xs">No</Badge>}
+                      {owner.canEdit ? <Badge className="bg-green-100 text-green-800 text-xs">{t("deptAccessYes")}</Badge> : <Badge variant="outline" className="text-xs">{t("deptAccessNo")}</Badge>}
                     </td>
                     <td className="px-4 py-2 text-center">
-                      {owner.canApprove ? <Badge className="bg-blue-100 text-blue-800 text-xs">Yes</Badge> : <Badge variant="outline" className="text-xs">No</Badge>}
+                      {owner.canApprove ? <Badge className="bg-blue-100 text-blue-800 text-xs">{t("deptAccessYes")}</Badge> : <Badge variant="outline" className="text-xs">{t("deptAccessNo")}</Badge>}
                     </td>
                     <td className="px-4 py-2 text-right">
                       <Button variant="ghost" size="icon" onClick={() => removeOwner.mutate(owner.id)} disabled={removeOwner.isPending}>
@@ -165,8 +168,9 @@ export function BudgetDepartmentAccess() {
         )}
 
         <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3">
-          <strong>Note:</strong> Admin and Manager roles automatically have full access to all departments.
-          Department owners only apply to Sales, Support, and Viewer roles.
+          {t.rich("deptAccessNote", {
+            strong: (chunks) => <strong>{chunks}</strong>,
+          })}
         </div>
         </DataBoundary>
       </CardContent>

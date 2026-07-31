@@ -10,10 +10,28 @@ import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer"
 
 export type PdfChatMessage = { role: "user" | "assistant"; content: string }
 
+/**
+ * Localized strings for the exported PDF. The document is rendered through
+ * `pdf(<ChatPdfDoc/>)`, i.e. OUTSIDE the React tree, so `useTranslations()`
+ * has no provider here — the caller (AIAnalyticsPanel) resolves the copy and
+ * passes it down.
+ */
+export interface ChatPdfLabels {
+  /** Document + header title, e.g. "AI Analysis". */
+  title: string
+  /** Speaker label above each assistant answer. */
+  analyst: string
+  /** Fine-print line repeated on every page. */
+  footer: string
+}
+
 interface Props {
   sectionLabel: string
   planName: string | null
   messages: PdfChatMessage[]
+  labels: ChatPdfLabels
+  /** BCP-47 tag used for the generated-on date. */
+  locale: string
 }
 
 const styles = StyleSheet.create({
@@ -161,24 +179,23 @@ function renderSegments(segments: Segment[]) {
   })
 }
 
-export function ChatPdfDoc({ sectionLabel, planName, messages }: Props) {
-  const date = new Date().toLocaleDateString("en-US", {
+export function ChatPdfDoc({ sectionLabel, planName, messages, labels, locale }: Props) {
+  const date = new Date().toLocaleDateString(locale, {
     year: "numeric",
     month: "long",
     day: "numeric",
   })
-  const footerText = `Generated from data in ${planName ? `"${planName}"` : "the selected budget plan"}. Not audited. For internal review only.`
 
   return (
     <Document
-      title="BudgetPro AI Analysis"
+      title={`BudgetPro — ${labels.title}`}
       author="BudgetPro"
-      subject={`AI Analysis — ${sectionLabel}`}
+      subject={`${labels.title} — ${sectionLabel}`}
     >
       <Page size="A4" style={styles.page} wrap>
         <View style={styles.header} fixed>
           <Text style={styles.brand}>BudgetPro</Text>
-          <Text style={styles.title}>AI Analysis</Text>
+          <Text style={styles.title}>{labels.title}</Text>
           <Text style={styles.subtitle}>
             {sectionLabel}
             {planName ? ` · ${planName}` : ""} · {date}
@@ -198,7 +215,7 @@ export function ChatPdfDoc({ sectionLabel, planName, messages }: Props) {
             </View>
           ) : (
             <View key={i} style={styles.assistantRow}>
-              <Text style={styles.roleLabel}>Analyst</Text>
+              <Text style={styles.roleLabel}>{labels.analyst}</Text>
               <View style={styles.assistantBubble}>{renderSegments(segments)}</View>
             </View>
           )
@@ -210,7 +227,7 @@ export function ChatPdfDoc({ sectionLabel, planName, messages }: Props) {
           fixed
         />
         <Text style={styles.footer} fixed>
-          {footerText}
+          {labels.footer}
         </Text>
       </Page>
     </Document>

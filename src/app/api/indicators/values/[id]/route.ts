@@ -19,6 +19,7 @@ import { withOrgScope } from "@/lib/db/with-org-scope"
 import {
   getMateriality,
   getMaterialityNote,
+  getMaterialityNoteI18n,
   isMaterialityScoped,
 } from "@/lib/risk/esg-materiality"
 
@@ -109,6 +110,13 @@ export async function GET(
     iv.indicator?.code && isMaterialityScoped(iv.indicator.code)
       ? getMaterialityNote(iv.company.industry, iv.indicator.code)
       : null
+  // Ship all three languages; the panel picks by active locale the same way
+  // it does for hintTemplateEn/Az/Ru. `materialityNote` stays the EN field so
+  // older clients keep working.
+  const materialityNoteI18n =
+    iv.indicator?.code && isMaterialityScoped(iv.indicator.code)
+      ? getMaterialityNoteI18n(iv.company.industry, iv.indicator.code)
+      : null
 
   return NextResponse.json({
     id: iv.id,
@@ -125,6 +133,8 @@ export async function GET(
     // the Panel-3 materiality badge tooltip.
     materiality,
     materialityNote,
+    materialityNoteAz: materialityNoteI18n?.az ?? null,
+    materialityNoteRu: materialityNoteI18n?.ru ?? null,
     // Financial-truth-infra Phase B.2 — provenance + reconciliation.
     // null when audit-company.cjs hasn't yet visited this IV (legacy /
     // freshly-computed rows). UI renders "not yet reconciled" copy.

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { useTranslations } from "next-intl"
 import { BUDGET_COLORS, fmt } from "@/lib/budget-chart-theme"
 
 interface BudgetMarginSummaryProps {
@@ -24,6 +25,7 @@ function InlineBar({ label, plan, forecast, actual, maxVal, whatIfActual }: {
   maxVal: number
   whatIfActual?: number
 }) {
+  const t = useTranslations("budgeting")
   const pct = (v: number) => maxVal > 0 ? Math.min(Math.abs(v) / maxVal * 100, 100) : 0
   const displayActual = whatIfActual ?? actual
   const diffPct = plan !== 0 ? ((displayActual - plan) / plan) * 100 : 0
@@ -40,7 +42,7 @@ function InlineBar({ label, plan, forecast, actual, maxVal, whatIfActual }: {
       <div className="space-y-1">
         {/* Plan */}
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground w-14 text-right">Plan</span>
+          <span className="text-[10px] text-muted-foreground w-14 text-right">{t("colPlan")}</span>
           <div className="flex-1 h-2.5 rounded-full bg-muted/50 overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-500"
@@ -51,7 +53,7 @@ function InlineBar({ label, plan, forecast, actual, maxVal, whatIfActual }: {
         </div>
         {/* Forecast */}
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground w-14 text-right">Forecast</span>
+          <span className="text-[10px] text-muted-foreground w-14 text-right">{t("colForecast")}</span>
           <div className="flex-1 h-2.5 rounded-full bg-muted/50 overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-500"
@@ -63,7 +65,7 @@ function InlineBar({ label, plan, forecast, actual, maxVal, whatIfActual }: {
         {/* Actual */}
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-muted-foreground w-14 text-right">
-            {whatIfActual !== undefined ? "What-if" : "Actual"}
+            {whatIfActual !== undefined ? t("whatIfLabel") : t("colActual")}
           </span>
           <div className="flex-1 h-2.5 rounded-full bg-muted/50 overflow-hidden">
             <div
@@ -89,6 +91,7 @@ export function BudgetMarginSummary({
   marginPlan, marginForecast, marginActual,
   className,
 }: BudgetMarginSummaryProps) {
+  const t = useTranslations("budgeting")
   const [whatIfPct, setWhatIfPct] = useState(0)
   const [showWhatIf, setShowWhatIf] = useState(false)
 
@@ -102,9 +105,9 @@ export function BudgetMarginSummary({
   return (
     <div className={className}>
       <div className="space-y-4">
-        <InlineBar label="Revenue" plan={revenuePlan} forecast={revenueForecast} actual={revenueActual} maxVal={maxVal} />
+        <InlineBar label={t("plRevenue")} plan={revenuePlan} forecast={revenueForecast} actual={revenueActual} maxVal={maxVal} />
         <InlineBar
-          label="Expenses"
+          label={t("plExpenses")}
           plan={expensePlan}
           forecast={expenseForecast}
           actual={expenseActual}
@@ -112,7 +115,7 @@ export function BudgetMarginSummary({
           whatIfActual={isWhatIf ? adjustedExpenseActual : undefined}
         />
         <InlineBar
-          label="Margin"
+          label={t("rollingMargin")}
           plan={marginPlan}
           forecast={marginForecast}
           actual={marginActual}
@@ -132,7 +135,7 @@ export function BudgetMarginSummary({
                 : "bg-muted/50 text-muted-foreground hover:bg-muted border border-transparent"
             }`}
           >
-            What-if
+            {t("whatIfLabel")}
           </button>
           {showWhatIf && (
             <div className="flex-1 flex items-center gap-2 animate-in fade-in slide-in-from-left-3 duration-200">
@@ -155,7 +158,7 @@ export function BudgetMarginSummary({
         </div>
         {isWhatIf && (
           <div className="mt-1.5 text-[10px] animate-in fade-in duration-200">
-            <span className="text-muted-foreground">Margin: </span>
+            <span className="text-muted-foreground">{t("rollingMargin")}: </span>
             <span className={`font-bold font-mono ${adjustedMarginActual >= 0 ? "text-green-500" : "text-red-500"}`}>
               {fmt(adjustedMarginActual)}
             </span>

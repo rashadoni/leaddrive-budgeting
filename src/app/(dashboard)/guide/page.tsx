@@ -20,15 +20,17 @@
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { getTranslations } from "next-intl/server";
 import { GuideViewer, type GuideLanguage } from "@/features/guide/GuideViewer";
 
 export const dynamic = "force-dynamic";
 
 const SUPPORTED: GuideLanguage[] = ["en", "ru", "az"];
 
-export const metadata = {
-  title: "User Guide · BudgetPro",
-};
+export async function generateMetadata() {
+  const t = await getTranslations("nav");
+  return { title: `${t("guide")} · BudgetPro` };
+}
 
 export default async function GuidePage({
   searchParams,

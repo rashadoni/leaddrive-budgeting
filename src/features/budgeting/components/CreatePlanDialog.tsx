@@ -36,7 +36,7 @@ export function CreatePlanDialog({ onClose }: { onClose: () => void }) {
       })
       onClose()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to create plan"
+      const msg = err instanceof Error ? err.message : t("createPlanError")
       setError(msg)
     }
   }

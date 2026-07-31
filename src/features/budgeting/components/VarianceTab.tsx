@@ -56,6 +56,7 @@ import { MonthlySparkline } from "./monthly-sparkline"
 
 export function VarianceTab() {
   const t = useTranslations("budgeting")
+  const monthLabels = t("monthsShort").split(",")
   const { data: plans = [], isLoading: plansLoading } = useBudgetPlans()
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const [materialityPct, setMaterialityPct] = useState(5)
@@ -287,7 +288,7 @@ export function VarianceTab() {
                         distribution sparkline. Helps users see seasonality
                         (year-end loaded? quarter-start spike? steady?)
                         without leaving the variance table. */}
-                    <th className="text-left px-3 py-2 font-semibold" title="12-month planned distribution">
+                    <th className="text-left px-3 py-2 font-semibold" title={t("varianceTrendTooltip")}>
                       {t("varianceColTrend")}
                     </th>
                   </tr>
@@ -353,6 +354,10 @@ export function VarianceTab() {
                           <MonthlySparkline
                             values={row.monthlyPlanned}
                             actuals={row.monthlyActual}
+                            monthLabels={monthLabels}
+                            planLabel={t("colPlan")}
+                            actualLabel={t("colActual")}
+                            distributionLabel={t("compTrendDistribution")}
                           />
                         </td>
                       </tr>

@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine, LabelList, CartesianGrid } from "recharts"
 import { BUDGET_COLORS, ANIMATION, AXIS_TICK, fmtK, fmt } from "@/lib/budget-chart-theme"
 
@@ -29,28 +30,32 @@ export function BudgetWaterfallChart({
   className,
   onBarClick,
 }: WaterfallChartProps) {
+  const t = useTranslations("budgeting")
   const forecastDelta = totalForecast - totalPlanned
   const actualVsPlanPct = totalPlanned > 0 ? ((totalActual - totalPlanned) / totalPlanned * 100) : 0
   const projVsPlanPct = totalPlanned > 0 ? ((yearEndProjection - totalPlanned) / totalPlanned * 100) : 0
 
+  // `key` is the stable identifier the color rules + onBarClick consumers
+  // read; `name` is what the X axis and the tooltip render, so it carries the
+  // translated label.
   const data = [
-    { name: "Budget", value: totalPlanned, base: 0, isStart: true, label: "", desc: "Planned budget" },
-    { name: "Δ Forecast", value: Math.abs(forecastDelta), base: forecastDelta >= 0 ? totalPlanned : totalPlanned + forecastDelta, positive: forecastDelta >= 0, label: pctLabel(totalForecast, totalPlanned), desc: `Forecast ${forecastDelta >= 0 ? "above" : "below"} budget` },
-    { name: "Actual", value: totalActual, base: 0, isTotal: true, label: pctLabel(totalActual, totalPlanned), desc: "Actual expenses" },
-    { name: "Δ Variance", value: Math.abs(totalVariance), base: totalVariance >= 0 ? totalActual : totalActual - Math.abs(totalVariance), positive: totalVariance >= 0, label: "", desc: `Variance ${totalVariance >= 0 ? "overspend" : "savings"}` },
-    { name: "Projection", value: yearEndProjection, base: 0, isTotal: true, label: pctLabel(yearEndProjection, totalPlanned), desc: "Year-end projection" },
+    { key: "budget", name: t("colBudget"), value: totalPlanned, base: 0, isStart: true, label: "", desc: t("wfDescPlannedBudget") },
+    { key: "forecastDelta", name: t("wfBarForecastDelta"), value: Math.abs(forecastDelta), base: forecastDelta >= 0 ? totalPlanned : totalPlanned + forecastDelta, positive: forecastDelta >= 0, label: pctLabel(totalForecast, totalPlanned), desc: forecastDelta >= 0 ? t("wfDescForecastAbove") : t("wfDescForecastBelow") },
+    { key: "actual", name: t("colActual"), value: totalActual, base: 0, isTotal: true, label: pctLabel(totalActual, totalPlanned), desc: t("wfDescActualExpenses") },
+    { key: "varianceDelta", name: t("wfBarVarianceDelta"), value: Math.abs(totalVariance), base: totalVariance >= 0 ? totalActual : totalActual - Math.abs(totalVariance), positive: totalVariance >= 0, label: "", desc: totalVariance >= 0 ? t("wfDescVarianceOverspend") : t("wfDescVarianceSavings") },
+    { key: "projection", name: t("wfBarProjection"), value: yearEndProjection, base: 0, isTotal: true, label: pctLabel(yearEndProjection, totalPlanned), desc: t("wfDescYearEndProjection") },
   ]
 
   const getColor = (item: (typeof data)[0]) => {
     if (item.isStart) return BUDGET_COLORS.planIndigo
     if (item.isTotal) {
-      if (item.name === "Actual") {
+      if (item.key === "actual") {
         const pct = Math.abs(actualVsPlanPct)
         if (pct <= 5) return BUDGET_COLORS.actualGreen
         if (pct <= 15) return BUDGET_COLORS.warning
         return BUDGET_COLORS.negative
       }
-      if (item.name === "Projection") {
+      if (item.key === "projection") {
         const pct = Math.abs(projVsPlanPct)
         if (pct <= 5) return BUDGET_COLORS.planViolet
         if (pct <= 15) return BUDGET_COLORS.warning
@@ -85,7 +90,7 @@ export function BudgetWaterfallChart({
         </div>
         {d.label && (
           <div className="mt-1.5 pt-1.5 border-t border-border/50 text-xs font-mono" style={{ color }}>
-            {d.label} vs budget
+            {t("wfVsBudget", { pct: d.label })}
           </div>
         )}
       </div>
@@ -177,7 +182,7 @@ export function BudgetWaterfallChart({
           radius={[4, 4, 0, 0]}
           animationDuration={ANIMATION.duration}
           animationEasing={ANIMATION.easing}
-          onClick={(_, index) => { if (onBarClick) onBarClick(data[index].name) }}
+          onClick={(_, index) => { if (onBarClick) onBarClick(data[index].key) }}
           style={{ cursor: onBarClick ? "pointer" : "default" }}
         >
           {data.map((entry, i) => (

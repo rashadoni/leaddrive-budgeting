@@ -19,8 +19,9 @@ import { hasRole } from "@/lib/api-auth"
 import Link from "next/link"
 import { ADMIN_GROUPS, ADMIN_TOOLS } from "@/lib/nav/admin-tools"
 
-export const metadata = {
-  title: "Admin · BudgetPro",
+export async function generateMetadata() {
+  const t = await getTranslations("nav")
+  return { title: `${t("adminTools")} · BudgetPro` }
 }
 
 export default async function AdminLandingPage() {

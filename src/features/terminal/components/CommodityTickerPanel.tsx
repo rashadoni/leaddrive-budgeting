@@ -16,6 +16,7 @@
  */
 
 import { useMemo } from "react"
+import { useTranslations } from "next-intl"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +50,7 @@ function meanOf(values: number[]): number | null {
 }
 
 export function CommodityTickerPanel() {
+  const t = useTranslations("terminal")
   // Sugar series — 24 monthly bars
   const { data: sugarRows, isLoading: sugarLoading } = useQuery<DataPoint[]>({
     queryKey: ["intel-sugar"],
@@ -118,7 +120,9 @@ export function CommodityTickerPanel() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">ICE Sugar #11 (USD / tonne)</h3>
+            <h3 className="text-sm font-semibold">
+              {t("commodityTicker.sugarTitle")}
+            </h3>
             <Badge variant="outline" className="text-[10px]">
               {SUGAR_SOURCE}
             </Badge>
@@ -126,14 +130,14 @@ export function CommodityTickerPanel() {
 
           {sugarLoading && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+              <Loader2 className="h-3 w-3 animate-spin" />{" "}
+              {t("commodityTicker.loading")}
             </div>
           )}
 
           {!sugarLoading && sugarSeries.values.length === 0 && (
             <div className="text-sm text-muted-foreground">
-              No sugar data yet. Adapter runs daily via the intel scheduler;
-              first row lands after the next ingest.
+              {t("commodityTicker.sugarEmpty")}
             </div>
           )}
 
@@ -141,7 +145,7 @@ export function CommodityTickerPanel() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
               <div className="space-y-1">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                  Latest
+                  {t("commodityTicker.latest")}
                 </div>
                 <div
                   data-testid="sugar-latest"
@@ -149,11 +153,13 @@ export function CommodityTickerPanel() {
                 >
                   ${fmtNum(sugarSeries.latest, 1)}
                 </div>
-                <div className="text-[10px] text-muted-foreground">USD/tonne</div>
+                <div className="text-[10px] text-muted-foreground">
+                  {t("commodityTicker.unitUsdTonne")}
+                </div>
               </div>
               <div className="space-y-1">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                  12M mean
+                  {t("commodityTicker.mean12m")}
                 </div>
                 <div className="text-lg font-semibold tabular-nums">
                   ${fmtNum(sugarSeries.mean12, 1)}
@@ -171,16 +177,18 @@ export function CommodityTickerPanel() {
                     ) : (
                       <TrendingDown className="h-3 w-3" />
                     )}
-                    {sugarSeries.variancePct >= 0 ? "+" : ""}
-                    {fmtNum(sugarSeries.variancePct, 1)}% vs 12M mean
+                    {t("commodityTicker.vsMean12m", {
+                      delta: `${sugarSeries.variancePct >= 0 ? "+" : ""}${fmtNum(sugarSeries.variancePct, 1)}`,
+                    })}
                   </div>
                 )}
               </div>
               <div className="space-y-1">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                  Trailing 24M
+                  {t("commodityTicker.trailing24m")}
                 </div>
                 <Sparkline
+                  ariaLabel={t("commodityTicker.sparklineAria")}
                   data={sugarSeries.values.slice(-24)}
                   status={
                     sugarSeries.variancePct == null
@@ -192,7 +200,9 @@ export function CommodityTickerPanel() {
                   compact={false}
                 />
                 <div className="text-[10px] text-muted-foreground">
-                  {sugarSeries.values.length} obs
+                  {t("commodityTicker.observations", {
+                    count: sugarSeries.values.length,
+                  })}
                 </div>
               </div>
             </div>
@@ -204,7 +214,9 @@ export function CommodityTickerPanel() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">AZ Sugar Belt Weather</h3>
+            <h3 className="text-sm font-semibold">
+              {t("commodityTicker.weatherTitle")}
+            </h3>
             <Badge variant="outline" className="text-[10px]">
               {WEATHER_SOURCE}
             </Badge>
@@ -223,11 +235,14 @@ export function CommodityTickerPanel() {
                   </div>
                   {loading && (
                     <div className="text-[10px] text-muted-foreground">
-                      <Loader2 className="inline h-2.5 w-2.5 animate-spin" /> Loading
+                      <Loader2 className="inline h-2.5 w-2.5 animate-spin" />{" "}
+                      {t("commodityTicker.weatherLoading")}
                     </div>
                   )}
                   {!loading && !rainfallRow && !tempRow && (
-                    <div className="text-[10px] text-muted-foreground">No data yet.</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {t("commodityTicker.noDataYet")}
+                    </div>
                   )}
                   {rainfallRow && (
                     <div className="flex items-center gap-1.5 text-xs">
@@ -236,7 +251,7 @@ export function CommodityTickerPanel() {
                         {fmtNum(rainfallRow.value, 0)}
                       </span>
                       <span className="text-[10px] text-muted-foreground">
-                        mm / 90d
+                        {t("commodityTicker.rainfallUnit")}
                       </span>
                     </div>
                   )}
@@ -247,7 +262,7 @@ export function CommodityTickerPanel() {
                         {fmtNum(tempRow.value, 1)}
                       </span>
                       <span className="text-[10px] text-muted-foreground">
-                        °C / 30d
+                        {t("commodityTicker.tempUnit")}
                       </span>
                     </div>
                   )}
@@ -256,7 +271,7 @@ export function CommodityTickerPanel() {
             })}
           </div>
           <div className="text-[10px] text-muted-foreground">
-            Source: Open-Meteo archive · refreshed daily by the intel scheduler.
+            {t("commodityTicker.weatherSource")}
           </div>
         </CardContent>
       </Card>

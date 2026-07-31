@@ -18,14 +18,22 @@
  */
 
 export interface OwnerContact {
-  /** Role label shown in UI when no contact configured. */
+  /** Role label shown in UI when no contact configured. English fallback. */
   role: string;
+  /**
+   * i18n key suffix under `adminIndicatorBacklog.ownerRole.*` for `role`.
+   * Present only on the built-in defaults below — an org that supplies its
+   * own `dataOwners` JSON writes free text, which the UI renders verbatim.
+   */
+  roleKey?: string;
   /** Optional human name (e.g. "Nəcəf M") */
   name?: string;
   /** Optional email for mailto: link */
   email?: string;
-  /** Optional 1-line explanation of WHAT this person provides */
+  /** Optional 1-line explanation of WHAT this person provides. English fallback. */
   scope?: string;
+  /** i18n key suffix under `adminIndicatorBacklog.ownerScope.*` for `scope`. */
+  scopeKey?: string;
 }
 
 export type RequiredInputCategory =
@@ -50,109 +58,153 @@ const DEFAULT_OWNER_MAP: Record<string, OwnerContact> = {
   // ─── Audit + Legal (compliance, court, regulatory) ──────────────────
   "operationalFact:AUDIT_CLOSED_PCT": {
     role: "Internal Audit / Hüquq Şöbəsi",
+    roleKey: "internalAuditLegal",
     scope: "PBC findings closure status (Major / Minor / Observation / OFI)",
+    scopeKey: "auditClosedPct",
   },
   "operationalFact:AUDIT_MAJOR_OPEN": {
     role: "Internal Audit / Hüquq Şöbəsi",
+    roleKey: "internalAuditLegal",
     scope: "Outstanding Major audit findings count",
+    scopeKey: "auditMajorOpen",
   },
   "operationalFact:LEGAL_CASES_ACTIVE": {
     role: "Hüquq Şöbəsi (Legal)",
+    roleKey: "legal",
     scope: "Open court cases register with case type + status",
+    scopeKey: "legalCasesActive",
   },
 
   // ─── Financial statements (P&L / BS / CF) ──────────────────────────
   budgetLine: {
     role: "CFO / Finance Manager",
+    roleKey: "cfo",
     scope: "Monthly P&L lines by Chart of Accounts (Revenue / COGS / OpEx)",
+    scopeKey: "budgetLine",
   },
   balanceSheetLine: {
     role: "CFO / Finance Manager",
+    roleKey: "cfo",
     scope: "Monthly Balance Sheet lines (Assets / Liabilities / Equity)",
+    scopeKey: "balanceSheetLine",
   },
   cashFlow: {
     role: "Treasury / CFO",
+    roleKey: "treasury",
     scope: "Monthly cash flow entries (operating / investing / financing)",
+    scopeKey: "cashFlow",
   },
 
   // ─── Counterparty (customers + suppliers) ──────────────────────────
   "counterparty:customer": {
     role: "Sales Director / Commercial Manager",
+    roleKey: "sales",
     scope:
       "Top customers with annual AZN amount + revenue share + payment terms",
+    scopeKey: "counterpartyCustomer",
   },
   "counterparty:supplier": {
     role: "Procurement / Təchizat Şöbəsi",
+    roleKey: "procurement",
     scope:
       "Top suppliers with annual AZN volume + COGS share + single-source flag",
+    scopeKey: "counterpartySupplier",
   },
 
   // ─── External feeds (market-driven, system-provided) ──────────────
   commodityPrice: {
     role: "BudgetPro System",
+    roleKey: "system",
     scope: "External commodity price feed (ICE Sugar No. 11, FAO, EIA)",
+    scopeKey: "commodityPrice",
   },
   currencyRate: {
     role: "BudgetPro System",
+    roleKey: "system",
     scope: "CBAR FX forward curve (auto-populated)",
+    scopeKey: "currencyRate",
   },
   weather: {
     role: "BudgetPro System",
+    roleKey: "system",
     scope: "OpenMeteo regional forecast (auto-populated)",
+    scopeKey: "weather",
   },
   newsSentiment: {
     role: "BudgetPro System",
+    roleKey: "system",
     scope: "News pipeline (sugar industry sentiment, auto-populated)",
+    scopeKey: "newsSentiment",
   },
   industryFactor: {
     role: "BudgetPro System",
+    roleKey: "system",
     scope: "Industry benchmark coefficients (auto-populated)",
+    scopeKey: "industryFactor",
   },
 
   // ─── Operational KPIs ──────────────────────────────────────────────
   "operationalFact:harvest_tons": {
     role: "Farm Manager / Operations",
+    roleKey: "farmManager",
     scope: "Per-region harvest tonnage (monthly or seasonal)",
+    scopeKey: "harvestTons",
   },
   "operationalFact:yield_per_ha": {
     role: "Farm Manager / Operations",
+    roleKey: "farmManager",
     scope: "Yield per hectare per crop (direct entry)",
+    scopeKey: "yieldPerHa",
   },
   "operationalFact:drought_index": {
     role: "BudgetPro System",
+    roleKey: "system",
     scope: "Computed from weather feed",
+    scopeKey: "droughtIndex",
   },
   "operationalFact:sugar_content_pct": {
     role: "Quality Control / Production",
+    roleKey: "qualityControl",
     scope: "Brix / Pol % from refinery quality logs",
+    scopeKey: "sugarContentPct",
   },
 
   // ─── Company settings (qualitative tags + descriptions) ────────────
   companySettings: {
     role: "Risk Officer (Nəcəf M)",
+    roleKey: "riskOfficer",
     scope:
       "Strategic narrative, competitive advantage, risk registry, NPS, qualitative riskTags",
+    scopeKey: "companySettings",
   },
 
   // ─── Rollup + fact (derived; depends on children) ─────────────────
   rollup: {
     role: "BudgetPro System",
+    roleKey: "system",
     scope: "Auto-computed when child entities have data",
+    scopeKey: "rollup",
   },
   fact: {
     role: "BudgetPro System",
+    roleKey: "system",
     scope: "Cross-period lookup (needs prior period data)",
+    scopeKey: "fact",
   },
   booking: {
     role: "Finance / ERP",
+    roleKey: "financeErp",
     scope: "Specific bookings extracted from ERP",
+    scopeKey: "booking",
   },
 };
 
 /** Generic fallback when even the category prefix doesn't match. */
 const UNKNOWN_OWNER: OwnerContact = {
   role: "Data Owner (unknown)",
+  roleKey: "unknown",
   scope: "Contact your administrator to configure this owner",
+  scopeKey: "unknown",
 };
 
 /**

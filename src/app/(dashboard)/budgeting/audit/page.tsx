@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import { AuditFeed } from "@/features/audit/components/AuditFeed"
 
-export const metadata = {
-  title: "Audit Log",
+export async function generateMetadata() {
+  const t = await getTranslations("nav")
+  return { title: t("auditLog") }
 }
 
 /**
@@ -22,15 +24,14 @@ export default async function AuditPage() {
   if (!hasRole(role, "manager")) {
     redirect("/budgeting")
   }
+  const tNav = await getTranslations("nav")
+  const t = await getTranslations("budgeting")
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Audit Log</h1>
-        <p className="text-sm text-muted-foreground">
-          High-business-impact writes on the holding tree — budget imports,
-          AI-mapper applies, role changes, indicator overrides. Retained 365 days.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">{tNav("auditLog")}</h1>
+        <p className="text-sm text-muted-foreground">{t("auditPageSubtitle")}</p>
       </header>
       <AuditFeed />
     </div>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -41,7 +42,9 @@ function ChangeRow({ change, isLast, onUndo, undoing }: {
   onUndo: (id: string) => void
   undoing: boolean
 }) {
-  const category = change.category || "Unknown"
+  const t = useTranslations("budgeting")
+  const tCommon = useTranslations("common")
+  const category = change.category || tCommon("unknown")
 
   return (
     <div className={`relative pl-8 pb-4 ${!isLast ? "border-l-2 border-muted-foreground/20 ml-[7px]" : "ml-[7px]"}`}>
@@ -75,7 +78,7 @@ function ChangeRow({ change, isLast, onUndo, undoing }: {
             )}
             {change.action === "create" && (
               <span>
-                <Badge variant="outline" className="text-[10px] text-green-600 border-green-300 mr-1.5 px-1 py-0">NEW</Badge>
+                <Badge variant="outline" className="text-[10px] text-green-600 border-green-300 mr-1.5 px-1 py-0">{t("changeBadgeNew")}</Badge>
                 <span className="font-medium">{category}</span>
                 {change.newValue != null && (
                   <span className="text-muted-foreground ml-1.5">({formatAmount(change.newValue as number)})</span>
@@ -84,7 +87,7 @@ function ChangeRow({ change, isLast, onUndo, undoing }: {
             )}
             {change.action === "delete" && (
               <span>
-                <Badge variant="outline" className="text-[10px] text-red-500 border-red-300 mr-1.5 px-1 py-0">DEL</Badge>
+                <Badge variant="outline" className="text-[10px] text-red-500 border-red-300 mr-1.5 px-1 py-0">{t("changeBadgeDeleted")}</Badge>
                 <span className="font-medium line-through text-muted-foreground">{category}</span>
                 {change.oldValue != null && (
                   <span className="text-muted-foreground ml-1.5">({formatAmount(change.oldValue as number)})</span>
@@ -103,7 +106,7 @@ function ChangeRow({ change, isLast, onUndo, undoing }: {
               onClick={() => onUndo(change.id)}
             >
               <Undo2 className="h-3 w-3 mr-1" />
-              Undo
+              {t("changeUndo")}
             </Button>
           )}
         </div>
@@ -117,6 +120,7 @@ interface BudgetChangeHistoryProps {
 }
 
 export function BudgetChangeHistory({ planId }: BudgetChangeHistoryProps) {
+  const t = useTranslations("budgeting")
   const [expanded, setExpanded] = useState(true)
   const [showAll, setShowAll] = useState(false)
   const { data: changelogData } = useBudgetChangelog(planId)
@@ -130,7 +134,7 @@ export function BudgetChangeHistory({ planId }: BudgetChangeHistoryProps) {
   const hasMore = changes.length > 4
 
   const handleUndo = (changeId: string) => {
-    if (confirm("Revert this change?")) {
+    if (confirm(t("changeUndoConfirm"))) {
       undoMutation.mutate(changeId)
     }
   }
@@ -142,7 +146,7 @@ export function BudgetChangeHistory({ planId }: BudgetChangeHistoryProps) {
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-muted-foreground" />
             <CardTitle className="text-sm font-medium">
-              Budget Changes
+              {t("changeHistoryTitle")}
             </CardTitle>
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
               {changes.length}
@@ -155,9 +159,9 @@ export function BudgetChangeHistory({ planId }: BudgetChangeHistoryProps) {
             className="h-7 px-2 text-xs text-muted-foreground"
           >
             {expanded ? (
-              <>Hide <ChevronUp className="h-3 w-3 ml-1" /></>
+              <>{t("changeHistoryHide")} <ChevronUp className="h-3 w-3 ml-1" /></>
             ) : (
-              <>Show <ChevronDown className="h-3 w-3 ml-1" /></>
+              <>{t("changeHistoryShow")} <ChevronDown className="h-3 w-3 ml-1" /></>
             )}
           </Button>
         </div>
@@ -184,7 +188,7 @@ export function BudgetChangeHistory({ planId }: BudgetChangeHistoryProps) {
               onClick={() => setShowAll(!showAll)}
               className="w-full text-xs text-muted-foreground hover:text-foreground mt-1"
             >
-              {showAll ? "Show less" : `Show ${changes.length - 4} more changes`}
+              {showAll ? t("changeHistoryShowLess") : t("changeHistoryShowMore", { count: changes.length - 4 })}
             </Button>
           )}
         </CardContent>

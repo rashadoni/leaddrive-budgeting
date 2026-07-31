@@ -81,7 +81,7 @@ export function PeriodLocksAdmin() {
       setLocks(data.locks)
       setSnapshots(data.snapshots ?? {})
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load")
+      setError(e instanceof Error ? e.message : t("errLoad"))
     } finally {
       setLoading(false)
     }
@@ -116,7 +116,7 @@ export function PeriodLocksAdmin() {
       setReason("")
       void fetchLocks()
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to add")
+      setError(e instanceof Error ? e.message : t("errAdd"))
     } finally {
       setSubmitting(false)
     }
@@ -138,7 +138,7 @@ export function PeriodLocksAdmin() {
       }
       void fetchLocks()
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to remove")
+      setError(e instanceof Error ? e.message : t("errRemove"))
     }
   }
 

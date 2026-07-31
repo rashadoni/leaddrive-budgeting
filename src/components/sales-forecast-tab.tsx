@@ -33,7 +33,6 @@ interface ForecastEntry {
   budgetDept: { id: string; key: string; label: string }
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const VAT_RATE = 0.18
 
 const PIE_COLORS = ["#6366f1", "#8b5cf6", "#3b82f6", "#06b6d4", "#10b981", "#22c55e", "#f59e0b", "#f97316", "#ec4899", "#a855f7"]
@@ -44,6 +43,7 @@ function fmt(n: number): string {
 
 export function SalesForecastTab() {
   const t = useTranslations("budgeting")
+  const MONTHS = t("monthsShort").split(",")
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId
 
@@ -215,8 +215,8 @@ export function SalesForecastTab() {
       <Card>
         <CardContent className="p-12 text-center text-muted-foreground">
           <TrendingUp className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">No revenue departments configured</p>
-          <p className="text-sm mt-1">Import an Excel budget file to create departments and sales forecasts automatically.</p>
+          <p className="font-medium">{t("salesForecastNoDepartments")}</p>
+          <p className="text-sm mt-1">{t("salesForecastNoDepartmentsHint")}</p>
         </CardContent>
       </Card>
     )
@@ -288,7 +288,7 @@ export function SalesForecastTab() {
             </div>
           </div>
           <AnimatedNumber value={avgMonthly} className="text-2xl font-bold tabular-nums text-blue-700 dark:text-blue-300" trigger="always" />
-          <p className="text-[10px] text-muted-foreground mt-1">per month average</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{t("forecastPerMonthAverage")}</p>
         </div>
 
         {/* Top Service */}
@@ -314,7 +314,7 @@ export function SalesForecastTab() {
           <div className="text-2xl font-bold tabular-nums text-violet-700 dark:text-violet-300">
             {departments.filter(d => rowTotal(d.id) > 0).length} / {departments.length}
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1">services with forecast</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{t("forecastServicesWithForecast")}</p>
         </div>
       </div>
 
@@ -429,10 +429,10 @@ export function SalesForecastTab() {
               onClick={() => setShowTable(!showTable)}
             >
               {showTable ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              {year} — {departments.length} services
+              {t("forecastGridServicesTitle", { year, count: departments.length })}
             </CardTitle>
             <span className="text-xs text-muted-foreground">
-              {showVat ? "Amounts incl. VAT 18%" : "Amounts excl. VAT (net)"}
+              {showVat ? t("forecastAmountsInclVat") : t("forecastAmountsExclVat")}
             </span>
           </div>
         </CardHeader>

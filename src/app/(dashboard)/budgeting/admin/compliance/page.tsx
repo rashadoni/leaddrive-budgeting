@@ -23,9 +23,10 @@ import {
   type EntityComplianceData,
 } from "./ComplianceHub";
 
-export const metadata = {
-  title: "Compliance & Legal · Admin · BudgetPro",
-};
+export async function generateMetadata() {
+  const t = await getTranslations("adminCompliance");
+  return { title: t("metaTitle") };
+}
 
 interface AuditFinding {
   severity: string;

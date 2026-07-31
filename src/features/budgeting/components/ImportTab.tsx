@@ -7,6 +7,7 @@
 
 import Link from "next/link"
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { Brain, ArrowRight } from "lucide-react"
 import { BudgetCsvImport } from "@/components/budget-csv-import"
 import { BudgetImportHistory } from "@/components/budget-import-history"
@@ -48,6 +49,7 @@ export function ImportTab({
   planId: string
   onImported?: (planId: string) => void
 }) {
+  const t = useTranslations("budgeting")
   return (
     <div className="space-y-4">
       <div
@@ -57,18 +59,16 @@ export function ImportTab({
         <Brain className="size-5 text-primary mt-0.5 shrink-0" />
         <div className="flex-1 space-y-2">
           <div className="font-semibold text-sm">
-            Используйте единый «Импорт данных» для xlsx/CSV актуалов
+            {t("importBannerTitle")}
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            AI Import распознаёт BUDGET_ACTUALS shape (category | amount |
-            date | department | description | lineType | companyCode) — один
-            экран на все импорты. Эта форма остаётся как backup для CSV.
+            {t("importBannerBody")}
           </p>
           <Link
             href="/budgeting/admin/ai-import"
             className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
           >
-            Перейти к Импорту данных
+            {t("importBannerLink")}
             <ArrowRight className="size-3" />
           </Link>
         </div>

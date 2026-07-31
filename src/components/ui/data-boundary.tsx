@@ -25,6 +25,7 @@
  */
 
 import * as React from "react"
+import { useTranslations } from "next-intl"
 
 export interface DataBoundaryProps {
   /** When true, renders loading fallback regardless of error state. */
@@ -45,6 +46,7 @@ export interface DataBoundaryProps {
 }
 
 function DefaultSkeleton() {
+  const t = useTranslations("common")
   return (
     <div
       role="status"
@@ -59,7 +61,7 @@ function DefaultSkeleton() {
           aria-hidden="true"
         />
       ))}
-      <span className="sr-only">Loading…</span>
+      <span className="sr-only">{t("loading")}</span>
     </div>
   )
 }
@@ -71,6 +73,7 @@ function DefaultErrorAlert({
   message: string
   onRetry?: () => void
 }) {
+  const t = useTranslations("common")
   return (
     <div
       role="alert"
@@ -85,7 +88,7 @@ function DefaultErrorAlert({
           data-testid="data-boundary-retry"
           className="mt-2 rounded border border-red-500/40 px-2 py-1 text-xs hover:bg-red-500/10"
         >
-          Retry
+          {t("retry")}
         </button>
       )}
     </div>

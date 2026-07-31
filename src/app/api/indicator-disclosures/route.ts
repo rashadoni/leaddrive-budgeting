@@ -184,7 +184,12 @@ export async function POST(req: NextRequest) {
   const result = validateValue(rule, body.value, body.unit, historicalMean)
   if (!result.ok) {
     return NextResponse.json(
-      { error: "Validation failed", errors: result.errors },
+      {
+        error: "Validation failed",
+        errorKey: "validationFailed",
+        errors: result.errors,
+        errorMessages: result.errorMessages,
+      },
       { status: 400 },
     )
   }
@@ -198,6 +203,8 @@ export async function POST(req: NextRequest) {
         requiresConfirm: true,
         warnings: result.warnings,
         anomalyWarning: result.anomalyWarning,
+        warningMessages: result.warningMessages,
+        anomalyMessage: result.anomalyMessage,
       },
       { status: 200 },
     )

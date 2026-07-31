@@ -8,6 +8,7 @@
  * form; nothing else consumes them.
  */
 import { useState, useMemo, type ReactNode } from "react"
+import { useTranslations } from "next-intl"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import {
@@ -236,6 +237,7 @@ function SeverityDots({ criticality }: { criticality: number }) {
 }
 
 export function RiskRegistryPanel({ companyId }: { companyId: string }) {
+  const t = useTranslations("budgeting")
   const { data, isLoading } = useQuery({
     queryKey: ["company-settings", companyId],
     queryFn: () => fetchSettings(companyId),
@@ -298,20 +300,20 @@ export function RiskRegistryPanel({ companyId }: { companyId: string }) {
         >
           <div className="flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
             <BookOpen className="h-3.5 w-3.5" />
-            <span>Risk registry</span>
+            <span>{t("riskRegistryTitle")}</span>
             <span className="ml-auto inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-mono">
-              ⚠️ Pending client
+              {t("riskRegistryPendingBadge")}
             </span>
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
-            No top-risk register has been provided yet for this entity.{" "}
+            {t("riskRegistryPendingBody")}{" "}
             <a
               href={`/budgeting/admin/indicator-backlog?company=${data?.companyCode ?? ""}`}
               className="text-primary underline-offset-2 hover:underline"
             >
-              Open Backlog →
+              {t("riskRegistryOpenBacklog")}
             </a>{" "}
-            to email the owner (CARRYOVER row B2 — Nəcəf M).
+            {t("riskRegistryPendingOwner")}
           </p>
         </div>
       </div>
@@ -326,7 +328,7 @@ export function RiskRegistryPanel({ companyId }: { companyId: string }) {
         className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left"
       >
         <BookOpen className="h-3.5 w-3.5" />
-        Risk registry
+        {t("riskRegistryTitle")}
         <span className="ml-1 text-xs tabular-nums text-muted-foreground/70">{registry.length}</span>
         {grouped.criticalCount > 0 && (
           <span className="ml-1 inline-flex items-center gap-1 text-[10px] font-medium tabular-nums text-rose-500">

@@ -26,29 +26,29 @@ export const metadata = {
   title: "API keys · Admin · BudgetPro",
 }
 
+/**
+ * Vendor name + signup URL stay verbatim (they are proper nouns / URLs).
+ * The prose blurb lives in `adminApiKeys.sourceNotes.<source>` so the
+ * card body follows the viewer's locale like every other string on the
+ * page — it used to be a hardcoded English literal.
+ */
 const SOURCE_DOCS: Record<
   string,
-  { name: string; signupUrl: string; notes: string; sectors: string[] }
+  { name: string; signupUrl: string; sectors: string[] }
 > = {
   eia: {
     name: "EIA Energy v2",
     signupUrl: "https://www.eia.gov/opendata/register.php",
-    notes:
-      "Free & instant. Drives BRENT / WTI / NATGAS feeds (logistics, industrial sectors).",
     sectors: ["logistics", "industrial", "construction"],
   },
   usda: {
     name: "USDA NASS Quick Stats",
     signupUrl: "https://quickstats.nass.usda.gov/api",
-    notes:
-      "Free; email-verified. Drives BROILER / EGG / CHICK-PLACEMENT feeds (poultry sector).",
     sectors: ["poultry"],
   },
   gtrends: {
     name: "Google Trends Proxy (SerpAPI / ScrapingDog)",
     signupUrl: "https://serpapi.com/users/sign_up",
-    notes:
-      "Paid (SerpAPI has free tier ~100 searches/mo). Drives AZ search-trend signals (retail / beverage demand).",
     sectors: ["retail", "beverage", "entertainment"],
   },
   // Phase 8 C4 (2026-05-28) — per-org Anthropic key. When set the
@@ -58,8 +58,6 @@ const SOURCE_DOCS: Record<
   anthropic: {
     name: "Anthropic (Claude API)",
     signupUrl: "https://console.anthropic.com/settings/keys",
-    notes:
-      "Paid (~$3 / 1M input tokens for Sonnet 4.5). Powers AI Variance Explainer, Forecast Explainer, Board Deck narration, Morning Brief, and impact-forecast scans. When set, your org's key replaces the global server key — spend hits your Anthropic billing.",
     sectors: ["all"],
   },
 }
@@ -77,12 +75,15 @@ export default async function ApiKeysPage() {
   }
 
   const raw = await listApiKeys(prisma, orgId)
-  const initial = KNOWN_API_KEY_SOURCES.map((src) => ({
-    source: src,
-    configured: !!raw[src],
-    preview: redactApiKey(raw[src]),
-    doc: SOURCE_DOCS[src],
-  }))
+  const initial = KNOWN_API_KEY_SOURCES.map((src) => {
+    const doc = SOURCE_DOCS[src]
+    return {
+      source: src,
+      configured: !!raw[src],
+      preview: redactApiKey(raw[src]),
+      doc: doc ? { ...doc, notes: t(`sourceNotes.${src}`) } : undefined,
+    }
+  })
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">

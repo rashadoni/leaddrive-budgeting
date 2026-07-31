@@ -60,8 +60,12 @@ export interface IndicatorValueDetail {
    *  (company.industry × indicator) pair. Null on non-ESG indicators. */
   materiality?: 'material' | 'low_materiality' | 'not_material' | null;
   /** Phase 7.H F4.v2.4 — calibration note explaining why this pair was
-   *  rated low/not-material. Null on `material` (default) cells + non-ESG. */
+   *  rated low/not-material. Null on `material` (default) cells + non-ESG.
+   *  `materialityNote` is EN; the Az/Ru twins are picked by active locale
+   *  (same contract as hintTemplateEn/Az/Ru). */
   materialityNote?: string | null;
+  materialityNoteAz?: string | null;
+  materialityNoteRu?: string | null;
   /** Financial-truth-infra Phase B.2 — provenance + reconciliation
    *  metadata. `sourceDocument` is the file/sheet/row pointer the value
    *  was ingested from (e.g. `Consolidated budget 2026.xlsx#PL_EDEN!R3`).

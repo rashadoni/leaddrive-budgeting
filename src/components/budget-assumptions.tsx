@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
@@ -89,6 +90,17 @@ export function getCategoryMeta(cat: string): CategoryMeta {
   return { ...DEFAULT_CATEGORY_META, label: cat }
 }
 
+/**
+ * i18n key per known category code. `CATEGORY_META.label` stays as the
+ * English source of truth (and the fallback for codes the catalogue has not
+ * caught up with yet); the UI resolves this map through next-intl so the
+ * treemap tiles / donut legend / ranking bars / group headers speak the
+ * viewer's language.
+ */
+const CATEGORY_LABEL_KEYS: Record<string, string> = Object.fromEntries(
+  Object.keys(CATEGORY_META).map((code) => [code, `assumptionCategory.${code}`]),
+)
+
 function fmtNum(n: number): string {
   if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M"
   if (Math.abs(n) >= 1_000) return (n / 1_000).toFixed(1) + "K"
@@ -127,11 +139,13 @@ interface TreemapContentProps {
   name?: string
   value?: number
   color?: string
+  /** Localized "{n} items" formatter injected by the parent. */
+  itemsLabel?: (count: number) => string
 }
 
 // Treemap custom content
 function TreemapContent(props: TreemapContentProps) {
-  const { x = 0, y = 0, width = 0, height = 0, name = "", value = 0, color = "#9ca3af" } = props
+  const { x = 0, y = 0, width = 0, height = 0, name = "", value = 0, color = "#9ca3af", itemsLabel } = props
   if (width < 40 || height < 30) return null
   return (
     <g>
@@ -139,7 +153,7 @@ function TreemapContent(props: TreemapContentProps) {
       {width > 60 && height > 40 && (
         <>
           <text x={x + 8} y={y + 18} fill="#fff" fontSize={11} fontWeight={600}>{name}</text>
-          <text x={x + 8} y={y + 34} fill="rgba(255,255,255,0.8)" fontSize={10}>{value} items</text>
+          <text x={x + 8} y={y + 34} fill="rgba(255,255,255,0.8)" fontSize={10}>{itemsLabel ? itemsLabel(value) : value}</text>
         </>
       )}
     </g>
@@ -147,6 +161,11 @@ function TreemapContent(props: TreemapContentProps) {
 }
 
 export function BudgetAssumptions({ planId }: { planId: string }) {
+  const t = useTranslations("budgeting")
+  const categoryLabel = (cat: string): string => {
+    const key = CATEGORY_LABEL_KEYS[cat]
+    return key ? t(key) : getCategoryMeta(cat).label
+  }
   const { data: session } = useSession()
   const router = useRouter()
   const orgId = session?.user?.organizationId
@@ -186,12 +205,12 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
       <Card>
         <CardContent className="p-12 text-center">
           <Settings2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium text-foreground">No assumptions in this plan</p>
+          <p className="font-medium text-foreground">{t("assumptionsEmptyTitle")}</p>
           <p className="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">
-            Assumptions are budget drivers such as prices, inflation, rates, operational norms, and scenario parameters. The current import did not write assumption rows for this plan.
+            {t("assumptionsEmptyDescription")}
           </p>
           <Button className="mt-5" onClick={() => router.push("/budgeting/admin/ai-import")}>
-            <Upload className="h-4 w-4 mr-1" /> Import Excel data
+            <Upload className="h-4 w-4 mr-1" /> {t("balanceSheetImport")}
           </Button>
         </CardContent>
       </Card>
@@ -214,7 +233,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
     const totalSum = items.reduce((s, i) => s + (typeof i.value === "number" ? i.value : 0), 0)
     const meta = getCategoryMeta(cat)
     return {
-      name: meta.label, key: cat, count: items.length,
+      name: categoryLabel(cat), key: cat, count: items.length,
       aznValue: aznTotal, totalSum,
       color: meta.color,
     }
@@ -238,7 +257,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
   const filteredCategories = Array.from(grouped.entries()).filter(([cat, items]) => {
     if (!search) return selectedCategory ? cat === selectedCategory : true
     const q = search.toLowerCase()
-    return getCategoryMeta(cat).label.toLowerCase().includes(q) ||
+    return categoryLabel(cat).toLowerCase().includes(q) ||
       items.some((i) => i.label?.toLowerCase().includes(q))
   })
 
@@ -270,34 +289,34 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200 dark:from-amber-950/30 dark:to-amber-900/20 dark:border-amber-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-amber-200 dark:bg-amber-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <DollarSign className="h-3.5 w-3.5" /> Total Value
+            <DollarSign className="h-3.5 w-3.5" /> {t("assumptionsKpiTotalValue")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-amber-700 dark:text-amber-300">{fmtNum(totalValue)} <span className="text-sm font-normal text-muted-foreground">AZN</span></p>
-          <p className="text-[10px] text-muted-foreground mt-1">Sum of all monetary assumptions</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{t("assumptionsKpiTotalValueHint")}</p>
         </div>
 
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-violet-50 to-violet-100 border border-violet-200 dark:from-violet-950/30 dark:to-violet-900/20 dark:border-violet-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200 dark:bg-violet-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-violet-600 dark:text-violet-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <Hash className="h-3.5 w-3.5" /> Parameters
+            <Hash className="h-3.5 w-3.5" /> {t("assumptionsKpiParameters")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-violet-700 dark:text-violet-300">{totalAssumptions}</p>
-          <p className="text-[10px] text-muted-foreground mt-1">{categories.length} categories</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{t("assumptionsCategoriesCount", { count: categories.length })}</p>
         </div>
 
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200 dark:bg-emerald-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <TrendingUp className="h-3.5 w-3.5" /> Top Category
+            <TrendingUp className="h-3.5 w-3.5" /> {t("assumptionsKpiTopCategory")}
           </div>
           <p className="text-lg font-bold tracking-tight truncate text-emerald-700 dark:text-emerald-300">{topCategory?.name || "—"}</p>
-          <p className="text-[10px] text-muted-foreground mt-1">{topCategory ? topCategory.count + " items" : ""}</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{topCategory ? t("assumptionsItemsCount", { count: topCategory.count }) : ""}</p>
         </div>
 
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-violet-50 to-violet-100 border border-violet-200 dark:from-violet-950/30 dark:to-violet-900/20 dark:border-violet-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200 dark:bg-violet-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-violet-600 dark:text-violet-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <Layers className="h-3.5 w-3.5" /> Units
+            <Layers className="h-3.5 w-3.5" /> {t("assumptionsKpiUnits")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-violet-700 dark:text-violet-300">{uniqueUnits.length}</p>
           <p className="text-[10px] text-muted-foreground mt-1 truncate">{uniqueUnits.slice(0, 4).join(", ")}{uniqueUnits.length > 4 ? "…" : ""}</p>
@@ -310,8 +329,8 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
           {/* Treemap — Power BI signature visualization */}
           <div className="lg:col-span-3 rounded-xl border bg-card p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-foreground">Assumptions by Category</h3>
-              <Badge variant="outline" className="text-[10px]">{allCategoryCounts.length} categories</Badge>
+              <h3 className="text-sm font-semibold text-foreground">{t("assumptionsByCategoryTitle")}</h3>
+              <Badge variant="outline" className="text-[10px]">{t("assumptionsCategoriesCount", { count: allCategoryCounts.length })}</Badge>
             </div>
             <ResponsiveContainer width="100%" height={280}>
               <Treemap
@@ -319,14 +338,14 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                 dataKey="size"
                 aspectRatio={4 / 3}
                 stroke="none"
-                content={<TreemapContent />}
+                content={<TreemapContent itemsLabel={(count) => t("assumptionsItemsCount", { count })} />}
               />
             </ResponsiveContainer>
           </div>
 
           {/* Donut Chart */}
           <div className="lg:col-span-2 rounded-xl border bg-card p-4">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Distribution</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-3">{t("assumptionsDistributionTitle")}</h3>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie
@@ -343,7 +362,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                     <Cell key={i} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip formatter={((v: number) => v + " items") as never} />
+                <Tooltip formatter={((v: number) => t("assumptionsItemsCount", { count: v })) as never} />
               </PieChart>
             </ResponsiveContainer>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
@@ -365,7 +384,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
       {/* Horizontal Bar — ranked waterfall style */}
       {barData.length > 0 && (
         <div className="rounded-xl border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Category Ranking</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-3">{t("assumptionsCategoryRankingTitle")}</h3>
           <div className="space-y-2">
             {barData.map((item, i) => (
               <div
@@ -388,7 +407,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                     {item.pct.toFixed(1)}%
                   </span>
                 </div>
-                <span className="text-xs font-bold tabular-nums w-20 text-right">{item.count} items</span>
+                <span className="text-xs font-bold tabular-nums w-20 text-right">{t("assumptionsItemsCount", { count: item.count })}</span>
               </div>
             ))}
           </div>
@@ -398,11 +417,11 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
       {/* Detail Matrix — Tableau style with search + expandable rows */}
       <div className="rounded-xl border bg-card">
         <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="text-sm font-semibold text-foreground">Assumption Details</h3>
+          <h3 className="text-sm font-semibold text-foreground">{t("assumptionsDetailsTitle")}</h3>
           <div className="relative w-64">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search assumptions..."
+              placeholder={t("assumptionsSearchPlaceholder")}
               value={search}
               onChange={e => { setSearch(e.target.value); setSelectedCategory(null) }}
               className="pl-8 h-8 text-xs"
@@ -412,10 +431,10 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
 
         {/* Table Header */}
         <div className="grid grid-cols-[1fr_100px_80px_80px] gap-2 px-4 py-2 border-b bg-muted/30 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          <span>Parameter</span>
-          <span className="text-right">Value</span>
-          <span className="text-center">Unit</span>
-          <span className="text-center">Period</span>
+          <span>{t("assumptionsColParameter")}</span>
+          <span className="text-right">{t("assumptionsColValue")}</span>
+          <span className="text-center">{t("assumptionsColUnit")}</span>
+          <span className="text-center">{t("assumptionsColPeriod")}</span>
         </div>
 
         <div className="max-h-[500px] overflow-y-auto">
@@ -438,7 +457,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                 >
                   {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
                   <span className="text-sm mr-1">{getCategoryMeta(cat).icon}</span>
-                  <span className="text-xs font-semibold text-foreground">{getCategoryMeta(cat).label}</span>
+                  <span className="text-xs font-semibold text-foreground">{categoryLabel(cat)}</span>
                   <Badge variant="secondary" className="text-[9px] ml-1 h-4">{items.length}</Badge>
                   <span className="ml-auto text-xs font-bold tabular-nums text-foreground">
                     {catTotal > 0 ? fmtCurrency(catTotal) + " AZN" : ""}
@@ -481,10 +500,10 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
 
         {/* Footer */}
         <div className="flex items-center justify-between px-4 py-2 border-t bg-muted/20 text-[10px] text-muted-foreground">
-          <span>{filteredCategories.length} categories • {search ? filteredCategories.reduce((s, [, items]) => s + items.filter((i) => i.label?.toLowerCase().includes(search.toLowerCase())).length, 0) : totalAssumptions} items</span>
+          <span>{t("assumptionsCategoriesCount", { count: filteredCategories.length })} • {t("assumptionsItemsCount", { count: search ? filteredCategories.reduce((s, [, items]) => s + items.filter((i) => i.label?.toLowerCase().includes(search.toLowerCase())).length, 0) : totalAssumptions })}</span>
           {selectedCategory && (
             <button className="text-primary hover:underline" onClick={() => setSelectedCategory(null)}>
-              Clear filter
+              {t("assumptionsClearFilter")}
             </button>
           )}
         </div>

@@ -52,7 +52,6 @@ interface GridRow {
   deptLabel: string | null
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 const PIE_COLORS = ["#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e", "#06b6d4", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#ec4899"]
 
@@ -67,6 +66,7 @@ function rowKey(costTypeId: string, departmentId: string | null): string {
 
 export function ExpenseForecastTab() {
   const t = useTranslations("budgeting")
+  const MONTHS = t("monthsShort").split(",")
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId
 
@@ -326,7 +326,7 @@ export function ExpenseForecastTab() {
             </div>
           </div>
           <AnimatedNumber value={avgMonthly} className="text-2xl font-bold tabular-nums text-red-700 dark:text-red-300" trigger="always" />
-          <p className="text-[10px] text-muted-foreground mt-1">per month average</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{t("forecastPerMonthAverage")}</p>
         </div>
 
         {/* Top Cost Type */}
@@ -359,9 +359,9 @@ export function ExpenseForecastTab() {
         <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 px-4 py-3">
           <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
           <div className="text-sm text-blue-800 dark:text-blue-300">
-            <strong>Cost Model is active.</strong> Planned budget expenses are calculated automatically from the cost model.
-            The expense forecast is used as a fallback — if the cost model does not contain data for a category,
-            the forecast from this table will be used.
+            {t.rich("expenseCostModelActive", {
+              strong: (chunks) => <strong>{chunks}</strong>,
+            })}
           </div>
         </div>
       )}
@@ -481,16 +481,16 @@ export function ExpenseForecastTab() {
               onClick={() => setShowTable(!showTable)}
             >
               {showTable ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              {year} — {gridRows.length} expense categories
+              {t("expenseCategoriesHeading", { year, count: gridRows.length })}
             </CardTitle>
-            <span className="text-xs text-muted-foreground">Amounts in AZN</span>
+            <span className="text-xs text-muted-foreground">{t("amountsInAzn")}</span>
           </div>
         </CardHeader>
         {showTable && (
           <CardContent>
             {gridRows.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground text-sm">
-                No active cost types. Add them in the Settings section.
+                {t("expenseNoActiveCostTypes")}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -519,7 +519,7 @@ export function ExpenseForecastTab() {
                             <div className="flex items-center gap-2">
                               <span className="truncate">{row.label}</span>
                               {!row.departmentId && (
-                                <Badge variant="outline" className="text-[9px] shrink-0">shared</Badge>
+                                <Badge variant="outline" className="text-[9px] shrink-0">{t("configShared")}</Badge>
                               )}
                             </div>
                           </td>
@@ -547,7 +547,7 @@ export function ExpenseForecastTab() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-muted/70 font-semibold">
-                      <td className="p-2 border sticky left-0 bg-muted/70 z-10">TOTAL</td>
+                      <td className="p-2 border sticky left-0 bg-muted/70 z-10">{t("matrixTotal")}</td>
                       {MONTHS.map((_, mi) => (
                         <td key={mi} className="p-2 border text-right tabular-nums">
                           {fmt(colTotal(mi + 1))}

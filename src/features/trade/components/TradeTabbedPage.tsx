@@ -59,7 +59,7 @@ export function TradeTabbedPage() {
     <div className="space-y-4">
       <div
         role="tablist"
-        aria-label="Trade Tower view"
+        aria-label={t("tablistAria")}
         className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-card/50 p-1 shadow-sm"
       >
         {VIEWS.map((v) => (

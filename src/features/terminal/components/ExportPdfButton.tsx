@@ -12,7 +12,7 @@
  */
 
 import { useEffect } from "react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { ensureMatrix } from "../hooks/use-matrix";
 import {
   ensureCompanies,
@@ -27,6 +27,7 @@ import { computeCompositeByCompany } from "@/lib/risk/composite-score";
 
 export function ExportPdfTrigger() {
   const locale = useLocale() as "en" | "ru" | "az";
+  const t = useTranslations("terminal");
   const alertMatches = useTerminalStore((s) => s.alertMatches);
   const selectedPeriod = useTerminalStore((s) => s.selectedPeriod);
 
@@ -136,12 +137,16 @@ export function ExportPdfTrigger() {
           period: selectedPeriod,
           err: err instanceof Error ? err.message : String(err),
         });
-        alert("PDF export failed: " + (err instanceof Error ? err.message : String(err)));
+        alert(
+          t("export.pdfFailed", {
+            message: err instanceof Error ? err.message : String(err),
+          }),
+        );
       }
     };
     window.addEventListener("terminal:export-pdf", handler);
     return () => window.removeEventListener("terminal:export-pdf", handler);
-  }, [selectedPeriod, locale, alertMatches]);
+  }, [selectedPeriod, locale, alertMatches, t]);
 
   return null;
 }

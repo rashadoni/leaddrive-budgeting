@@ -81,8 +81,10 @@ export interface BacklogSummary {
   totalMissing: number;
   totalPresent: number;
   overallReadinessPct: number;
-  /** Per-owner-role count of missing items across all entities. */
-  byOwnerRole: Array<{ role: string; missingCount: number }>;
+  /** Per-owner-role count of missing items across all entities.
+   *  `roleKey` mirrors `OwnerContact.roleKey` so the UI can translate the
+   *  chip/dropdown label while `role` stays the stable filter identity. */
+  byOwnerRole: Array<{ role: string; roleKey?: string; missingCount: number }>;
   /** Per-indicator-category count of missing items. */
   byCategory: Array<{ category: string; missingCount: number }>;
 }
@@ -257,14 +259,18 @@ export async function computeIndicatorBacklog(
   const totalPresent = result.reduce((s, r) => s + r.presentCount, 0);
 
   // Per-owner role counts
-  const byRoleMap = new Map<string, number>();
+  const byRoleMap = new Map<string, { roleKey?: string; missingCount: number }>();
   for (const co of result) {
     for (const item of co.items) {
-      byRoleMap.set(item.owner.role, (byRoleMap.get(item.owner.role) ?? 0) + 1);
+      const prev = byRoleMap.get(item.owner.role);
+      byRoleMap.set(item.owner.role, {
+        roleKey: prev?.roleKey ?? item.owner.roleKey,
+        missingCount: (prev?.missingCount ?? 0) + 1,
+      });
     }
   }
   const byOwnerRole = [...byRoleMap.entries()]
-    .map(([role, missingCount]) => ({ role, missingCount }))
+    .map(([role, v]) => ({ role, roleKey: v.roleKey, missingCount: v.missingCount }))
     .sort((a, b) => b.missingCount - a.missingCount);
 
   // Per-category counts
