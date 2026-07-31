@@ -12,6 +12,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
+import { indicatorProvenance } from "@/lib/risk/indicator-provenance";
 import {
   statusShape,
   statusColor,
@@ -160,6 +161,8 @@ export function HeatMapCellTd({
   const status = cell?.status ?? (isNotApplicable ? 'na' : 'missing');
   const ivId = cell?.indicatorValueId;
   const t = useTranslations('terminal');
+  // 11.66 — classify once per cell; see the marker below.
+  const provenance = indicatorProvenance(ind);
   const locale = useLocale();
   // N/A stays neutral but readable when the user reveals the full catalogue.
   // Other statuses use the shared palette helper. Cast N/A to missing for the
@@ -288,10 +291,33 @@ export function HeatMapCellTd({
       : t('heatMap.staleInputStale');
   return (
     <td
-      className="border-b border-gray-800/40 p-0"
+      className="relative border-b border-gray-800/40 p-0"
       data-materiality={cell?.materiality ?? undefined}
       data-signal-confidence={cell?.signalConfidence ?? undefined}
+      data-provenance={provenance === "client-data" ? undefined : provenance}
     >
+      {/* 11.66 — mark where this number comes from.
+          After a reset that provably emptied every financial table these tiles
+          stayed lit, and the screen never said that their inputs are not the
+          client's data at all: «при удалении почему риск терминал не удален?».
+          Measured on production — 531 of 6,426 values survived, every one from
+          a market/weather feed or from a constant.
+          ABSOLUTELY positioned on purpose: the column is fixed-width with
+          `truncate`, so any inline glyph could push the indicator code into
+          an ellipsis. A corner dot consumes no layout at all, which also means
+          it cannot move the committed visual baseline. */}
+      {provenance !== "client-data" && (
+        <span
+          aria-hidden="true"
+          data-testid={`tile-provenance-${provenance}`}
+          title={t(`heatMap.provenance.${provenance}` as never)}
+          className={`pointer-events-none absolute right-[1px] top-[1px] text-[7px] leading-none ${
+            provenance === "constant" ? "text-gray-600" : "text-sky-400/70"
+          }`}
+        >
+          {provenance === "external-feed" ? "~" : "="}
+        </span>
+      )}
       {/* Dense matrix cells sit directly beside each other. Radix's default
           hoverable-content grace area can keep the previous cell's tooltip
           open while the pointer is already over the next cell, so a tooltip

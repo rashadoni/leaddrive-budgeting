@@ -29,6 +29,19 @@ export type IndicatorCol = {
    *  this company's industry) distinct from "unknown" (applicable but no
    *  data). Empty array = sector-agnostic, applies to every operational co. */
   industries?: string[];
+  /**
+   * 11.66 — the formula's input families, e.g. `budgetLine.cogs`,
+   * `commodityPrice:sugar_no11`, `weather:salyan_rainfall_14d`. Already
+   * selected by the matrix route and already on the wire; the type simply
+   * never said so. Drives `indicatorProvenance` — which tiles light up from
+   * a market feed rather than the client's own reported data, and which are
+   * constants that must not enter a risk score.
+   *
+   * Optional because ABSENT is not EMPTY: a caller that omits it means
+   * "unknown", and the classifier must not read that as "no inputs" and
+   * silently drop the indicator out of every composite.
+   */
+  requiredInputs?: string[] | null;
 };
 export type MatrixResponse = {
   period: string;

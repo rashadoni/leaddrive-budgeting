@@ -2320,7 +2320,11 @@
       "revertToBase": "Baza məlumatlarına qayıt",
       "provisionalBadgeAll": "LEGACY · QƏRAR ÜÇÜN DEYİL",
       "provisionalBadgeSome": "LEGACY · {total} DƏYƏRDƏN {count} QƏRAR ÜÇÜN DEYİL",
-      "provisionalBadgeTooltip": "Bu dəyərlər mənbə ilə üzləşdirilməyib və izlənilə bilmir, ona görə də qərar qəbulu üçün sertifikatlaşdırılmayıb. Rəqəmlər dəyişməyib — yalnız onlar haqqında iddia dəyişib. Hərəkət etməzdən əvvəl mənbə ilə yoxlayın."
+      "provisionalBadgeTooltip": "Bu dəyərlər mənbə ilə üzləşdirilməyib və izlənilə bilmir, ona görə də qərar qəbulu üçün sertifikatlaşdırılmayıb. Rəqəmlər dəyişməyib — yalnız onlar haqqında iddia dəyişib. Hərəkət etməzdən əvvəl mənbə ilə yoxlayın.",
+      "provenance": {
+        "external-feed": "Bazar / hava / məzənnə mənbəyi — sizin hesabatınızdan deyil, ona görə sıfırlamadan sonra da işıqlı qalır",
+        "constant": "Müvəqqəti dəyər — ölçmə deyil, sabit rəqəm. Risk balına daxil edilmir"
+      }
     },
     "benchmarkBand": {
       "title": "Hədəf aralığı (benchmark)",

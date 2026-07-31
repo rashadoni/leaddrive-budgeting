@@ -10,6 +10,7 @@ import {
   deriveParentComposites,
   type CompositeScore,
 } from '@/lib/risk/composite-score';
+import { excludeNonScoringCells } from '@/lib/risk/indicator-provenance';
 import {
   computeCompanyTrustStatus,
   type TrustStatus,
@@ -103,7 +104,14 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
     // penalties — see the helper's doc-comment for the divergence this
     // closes.
     const riskTagsByCompanyId = buildRiskTagsByCompanyId(companies);
-    const byId = computeCompositeByCompany(matrix.cells, undefined, riskTagsByCompanyId);
+    // 11.66 — a CONSTANT indicator must not enter a risk score.
+    // `IND_GOV_CLIMATE_SCORE` has no inputs and a formula of literally `38`,
+    // so it returned the same amber cell for every company in every period —
+    // 204 identical rows on production — and dragged the composite of
+    // companies holding no data at all. Shared helper so this panel and the
+    // HeatMap cannot disagree about a number shown on one screen.
+    const scoringCells = excludeNonScoringCells(matrix.cells, matrix.indicators);
+    const byId = computeCompositeByCompany(scoringCells, undefined, riskTagsByCompanyId);
     // Derive parent/holding composites from children — REVENUE-WEIGHTED so a
     // 0-revenue shell (e.g. a JV "awaiting data") can't inflate a holding.
     // Shared helper → byte-identical to the HeatMap row headers (Panel 2);
@@ -669,7 +677,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
             {root.code}
           </span>
           <ReadinessChip data={readinessByCode.get(root.code) ?? null} />
-          <CompositeMini score={compositeByCode.get(root.code)?.score ?? null} />
+          <CompositeMini composite={compositeByCode.get(root.code) ?? null} />
           <RowFreshness iso={freshnessByCode.get(root.code) ?? null} />
           <span
             className="flex-1 truncate"
@@ -741,7 +749,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                       : child.code}
                   </span>
                   <ReadinessChip data={readinessByCode.get(child.code) ?? null} />
-                  <CompositeMini score={compositeByCode.get(child.code)?.score ?? null} />
+                  <CompositeMini composite={compositeByCode.get(child.code) ?? null} />
                   <RowFreshness iso={freshnessByCode.get(child.code) ?? null} />
                   <span
                     className="flex-1 truncate"
