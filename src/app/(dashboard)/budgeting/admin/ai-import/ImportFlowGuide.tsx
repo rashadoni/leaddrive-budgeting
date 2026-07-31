@@ -127,7 +127,14 @@ export function ImportFlowStrip({
 /** Past this many seconds the run is unusual enough to say so out loud. */
 const SLOW_AFTER_SEC = 100
 
-export function ImportRunningBanner({ phase }: { phase: "analyze" | "apply" }) {
+export function ImportRunningBanner({
+  phase,
+  years = [],
+}: {
+  phase: "analyze" | "apply"
+  /** 11.68 — the years this run is writing, captured at submit. */
+  years?: number[]
+}) {
   const t = useTranslations("adminAiImport.multi.flow")
   const [sec, setSec] = useState(0)
 
@@ -164,6 +171,20 @@ export function ImportRunningBanner({ phase }: { phase: "analyze" | "apply" }) {
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
         </svg>
         <span className="font-medium">{t(`running.${phase}` as never)}</span>
+        {/* 11.68 — name the years OUT LOUD while the write runs.
+            The owner pressed Apply believing both years were going, and only
+            the database afterwards revealed it had been one. The scope was
+            decided at the click and then never restated; a destructive write
+            should say what it is doing while it does it. */}
+        {years.length > 0 && (
+          <span
+            className="rounded bg-emerald-100 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-emerald-900"
+            data-testid="import-running-years"
+            data-years={years.join(",")}
+          >
+            {years.join(", ")}
+          </span>
+        )}
         <span
           className="ml-auto font-mono text-xs tabular-nums text-emerald-800"
           data-testid="import-running-elapsed"

@@ -3696,6 +3696,17 @@
           "receipt": "Safety receipt",
           "warnings": "Warnings"
         }
+      },
+      "warnings": {
+        "group": {
+          "structure": "{n} sheet(s) could not be read — check these",
+          "unattributed": "{n} sheet(s) resolved to no company — check these",
+          "other": "{n} other note(s) — check these",
+          "unit-fix": "{n} column(s) had their units corrected — the figures were changed on import",
+          "dictionary": "{n} sheet(s) with product names outside the dictionary — imported under their own code",
+          "off-year": "{n} sheet(s) belong to another year — skipped"
+        },
+        "offYearHint": "({years}) — tick “this upload contains …” above to load them too"
       }
     },
     "single": {

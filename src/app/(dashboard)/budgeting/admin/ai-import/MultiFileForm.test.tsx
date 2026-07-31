@@ -1592,4 +1592,155 @@ describe("MultiFileForm", () => {
       expect(screen.getByTestId("review-tab-warnings").textContent).toContain("1")
     })
   })
+
+  /**
+   * 11.68 — the year scope is frozen once the write starts.
+   *
+   * Found by the owner mid-apply: the multi-year checkbox was still live while
+   * "Bazaya yazılır… 49 san keçdi" was on screen. Toggling it changes nothing —
+   * the request body is assembled at the click — but it reads as "I can still
+   * change my mind", and that run went out with 2026 alone while he believed
+   * both years were going. The database was the first thing to say otherwise.
+   */
+  describe("year scope during a run (11.68)", () => {
+    function previewTwoYears() {
+      return {
+        ok: true,
+        mode: "preview",
+        perFile: [
+          {
+            filename: "book.xlsx",
+            fileTypeResult: {
+              fileType: "main-financial",
+              confidence: 0.9,
+              reasoning: "x",
+              sheetCounts: {},
+            },
+            classifications: [],
+            importableYears: { years: [2025, 2026] },
+            error: null,
+          },
+        ],
+        conflicts: [],
+        perGroup: [],
+        overallVerdict: "green",
+        llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+        durationMs: 10,
+        recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+        warnings: [],
+      }
+    }
+
+    async function previewThen() {
+      mockFetchOnce(200, previewTwoYears())
+      render(<MultiFileForm />)
+      fireEvent.change(screen.getByTestId("multi-file-input"), {
+        target: { files: [makeFakeFile("book.xlsx")] },
+      })
+      fireEvent.click(screen.getByTestId("btn-analyze"))
+      await screen.findByTestId("multi-year-offer")
+    }
+
+    it("disables the year checkbox while the apply is running", async () => {
+      await previewThen()
+      const box = screen.getByTestId("chk-all-years") as HTMLInputElement
+      expect(box.disabled).toBe(false)
+
+      // Hold the apply open so the running state is observable.
+      let release: (r: unknown) => void = () => {}
+      fetchMock.mockReturnValueOnce(new Promise((res) => { release = res }))
+      fireEvent.click(screen.getByTestId("btn-apply"))
+
+      await waitFor(() =>
+        expect(
+          (screen.getByTestId("chk-all-years") as HTMLInputElement).disabled,
+        ).toBe(true),
+      )
+
+      release({ ok: true, status: 200, json: async () => ({ perFile: [], perGroup: [] }) })
+    })
+
+    it("states WHICH years the run is writing, while it writes them", async () => {
+      // The scope was decided at the click and then never restated. A
+      // destructive write should say what it is doing while it does it.
+      await previewThen()
+      fireEvent.click(screen.getByTestId("chk-all-years"))
+
+      let release: (r: unknown) => void = () => {}
+      fetchMock.mockReturnValueOnce(new Promise((res) => { release = res }))
+      fireEvent.click(screen.getByTestId("btn-apply"))
+
+      const badge = await screen.findByTestId("import-running-years")
+      expect(badge.getAttribute("data-years")).toBe("2025,2026")
+
+      release({ ok: true, status: 200, json: async () => ({ perFile: [], perGroup: [] }) })
+    })
+
+    it("reports the SINGLE year when the box was left unticked", async () => {
+      // Exactly the live case: the operator believed both were going.
+      await previewThen()
+
+      let release: (r: unknown) => void = () => {}
+      fetchMock.mockReturnValueOnce(new Promise((res) => { release = res }))
+      fireEvent.click(screen.getByTestId("btn-apply"))
+
+      const badge = await screen.findByTestId("import-running-years")
+      expect(badge.getAttribute("data-years")).not.toContain("2025")
+
+      release({ ok: true, status: 200, json: async () => ({ perFile: [], perGroup: [] }) })
+    })
+  })
+
+  /**
+   * 11.69 — twelve warnings became five headings, worst first.
+   */
+  describe("grouped warnings (11.69)", () => {
+    const OFF_YEAR = (co: string) =>
+      `book.xlsx: sheet "PLF Actual 2025 [${co}]" — carries 2025 data, but this run imports 2026 — skipped without calling the AI detector.`
+
+    it("groups repeated off-year skips and puts what needs action first", async () => {
+      mockFetchOnce(200, {
+        ok: true,
+        mode: "preview",
+        perFile: [
+          {
+            filename: "book.xlsx",
+            fileTypeResult: { fileType: "main-financial", confidence: 0.9, reasoning: "x", sheetCounts: {} },
+            classifications: [],
+            error: null,
+          },
+        ],
+        conflicts: [],
+        perGroup: [],
+        overallVerdict: "green",
+        llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+        durationMs: 10,
+        recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+        warnings: [
+          OFF_YEAR("AZSEKER-CPC"),
+          OFF_YEAR("AZSEKER-AZSF"),
+          OFF_YEAR("AZSEKER-EDEN"),
+          'book.xlsx: sheet "Satış İcmalı" — row 1: Missing required column(s): companyCode, metric',
+        ],
+      })
+      render(<MultiFileForm />)
+      fireEvent.change(screen.getByTestId("multi-file-input"), {
+        target: { files: [makeFakeFile("book.xlsx")] },
+      })
+      fireEvent.click(screen.getByTestId("btn-analyze"))
+
+      const structure = await screen.findByTestId("warning-group-structure")
+      const offYear = screen.getByTestId("warning-group-off-year")
+      // Three identical skips collapse under one heading…
+      expect(offYear.querySelectorAll("li")).toHaveLength(3)
+      // …and the sheet that did NOT parse is flagged for action.
+      expect(structure.getAttribute("data-actionable")).toBe("true")
+      expect(offYear.getAttribute("data-actionable")).toBeNull()
+      // Actionable renders before informational.
+      expect(
+        structure.compareDocumentPosition(offYear) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    })
+  })
 })

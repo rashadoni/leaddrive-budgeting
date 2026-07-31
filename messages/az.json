@@ -3696,6 +3696,17 @@
           "receipt": "Safety receipt",
           "warnings": "Xəbərdarlıqlar"
         }
+      },
+      "warnings": {
+        "group": {
+          "structure": "{n} vərəq oxuna bilmədi — yoxlayın",
+          "unattributed": "{n} vərəq heç bir şirkətə bağlanmadı — yoxlayın",
+          "other": "{n} digər qeyd — yoxlayın",
+          "unit-fix": "{n} sütunun vahidi düzəldildi — rəqəmlər idxal zamanı dəyişdirildi",
+          "dictionary": "{n} vərəqdə lüğətdən kənar məhsul adı — öz kodu ilə idxal edildi",
+          "off-year": "{n} vərəq başqa ilə aiddir — atlandı"
+        },
+        "offYearHint": "({years}) — yuxarıdakı «bu yükləmədə …» xanasını işarələyin ki, onlar da yüklənsin"
       }
     },
     "single": {
