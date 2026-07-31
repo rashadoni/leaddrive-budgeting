@@ -30,6 +30,12 @@ import type { PrismaClient } from "@prisma/client"
 import type * as XLSXType from "xlsx"
 import { buildProductionAdapterRegistry } from "../ai-import/production-adapter-registry"
 import { clearDataPendingBanners } from "../clear-data-pending-banner"
+import {
+  aggregateSheetReports,
+  decideAction,
+  describeReconciliationRejection,
+} from "../ai-import/universal-reconciler"
+import type { ReconciliationReport } from "../reconciliation"
 import type {
   AdapterRegistry,
   AdapterRunResult,
@@ -105,6 +111,28 @@ export interface ReportingPackImportInput {
   organizationId: string
   year: number
   mode: "preview" | "apply"
+  /**
+   * 11.60 — supplying this makes the apply ATTEST to itself.
+   *
+   * Without it the route committed rows and wrote no `ImportBatchReport`, so
+   * the newest row in `import_batch_reports` still described the PREVIOUS
+   * import — and that row is exactly what `/api/import/reports` presents as
+   * reconciliation evidence. A stale attestation is worse than none: it reads
+   * as proof of a write that never happened.
+   *
+   * Optional because a PREVIEW has nothing to attest to (it writes nothing),
+   * and because the CLI entry point predates this and must keep working.
+   */
+  runId?: string
+  /** Files this run covers — recorded on the report for provenance. */
+  filenames?: string[]
+  /** Who triggered it. Null for the CLI. */
+  actorUserId?: string | null
+  /**
+   * Commit a YELLOW post-write verdict. Red always aborts. Mirrors the
+   * ai-auto-multi orchestrator's flag of the same name.
+   */
+  allowYellow?: boolean
 }
 
 export interface ReportingPackImportDeps {
@@ -256,14 +284,63 @@ export async function runReportingPackImport(
 
   let totalRowsWritten = 0
   await prisma.$transaction(async (tx) => {
+    // 11.60 — the batch layer already re-reads every row it writes and
+    // reconciles it (11.2); this path collected `rowsInserted` and threw the
+    // reconciliation away, so a reporting-pack apply produced no evidence at
+    // all AND could not refuse bad data.
+    const perSheetReports = new Map<Committable, ReconciliationReport | null>()
     for (const c of committable) {
       const applied = await c.result.applyToDb(tx)
       totalRowsWritten += applied.rowsInserted
       if (c.report) c.report.rowsWritten = applied.rowsInserted
+      perSheetReports.set(c, applied.reconciliation ?? null)
     }
     // Companies that just received data are no longer "awaiting data" — clear any
     // stale settings.dataPendingBanner atomically with the write (2026-06-21).
     await clearDataPendingBanners(tx, organizationId, Array.from(affected))
+
+    const postReconciliation = aggregateSheetReports(
+      committable.map((c) => ({
+        sheetName: c.report?.sheetName ?? "(unknown sheet)",
+        dataType: c.report?.dataType ?? "UNKNOWN",
+        entityCode: c.report?.entityCode ?? null,
+        report: perSheetReports.get(c) ?? null,
+        unverifiedReason:
+          "adapter wrote no reconcilable sums (settings JSON or zero parsed rows)",
+      })),
+    )
+
+    // Persisted INSIDE the transaction, before the abort check, exactly as the
+    // ai-auto-multi orchestrator does: a report then exists if and only if the
+    // rows it describes commit. An aborted apply rolls this row back too —
+    // correct, because there is no committed data for it to attest to.
+    if (input.runId) {
+      await tx.importBatchReport.create({
+        data: {
+          organizationId,
+          runId: input.runId,
+          fileType: "reporting-pack",
+          filenames: input.filenames ?? [],
+          year,
+          verdict: postReconciliation.overallVerdict,
+          evidence: postReconciliation.evidence ?? "parse-self-check",
+          sheetsVerified: postReconciliation.perSheet.length,
+          sheetsUnverified: postReconciliation.unverified?.length ?? 0,
+          rowsInserted: totalRowsWritten,
+          committed: true,
+          report: postReconciliation as unknown as object,
+          actorUserId: input.actorUserId ?? null,
+        },
+      })
+    }
+
+    // 11.60 — this path used to COMMIT ON RED where the orchestrator aborts,
+    // so a red row in `import_batch_reports` meant "bad data committed", not
+    // "import refused". Throwing inside the tx callback rolls the whole apply
+    // back; the message carries the numbers (11.58) rather than sheet names.
+    if (decideAction(postReconciliation, { allowYellow: input.allowYellow }) === "abort") {
+      throw new Error(describeReconciliationRejection(postReconciliation))
+    }
   })
 
   const affectedEntities = Array.from(affected)

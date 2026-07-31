@@ -215,7 +215,24 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await runReportingPackImport(
-      { workbook: wb, organizationId: orgId, year, mode: shouldApply ? "apply" : "preview" },
+      {
+        workbook: wb,
+        organizationId: orgId,
+        year,
+        mode: shouldApply ? "apply" : "preview",
+        // 11.60 — a run id is what makes the importer persist an
+        // ImportBatchReport for this apply. Without one the newest row in
+        // `import_batch_reports` still described the PREVIOUS import, and
+        // that row is what /api/import/reports presents as reconciliation
+        // evidence. A preview passes none: it writes nothing to attest to.
+        ...(shouldApply
+          ? {
+              runId: `reporting-pack:${orgId}:${year}:${Date.now()}`,
+              filenames: [fileName],
+              actorUserId: session.userId ?? null,
+            }
+          : {}),
+      },
       {
         prisma,
         XLSX,

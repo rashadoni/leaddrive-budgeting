@@ -299,6 +299,32 @@ export async function POST(request: NextRequest) {
       | { code: string; error: string }
     > = []
     for (const target of targets) {
+      // 11.61 — read the years to recompute BEFORE the reset deletes them.
+      //
+      // The recompute below derives its year list from `IndicatorValue.period`
+      // when no explicit `year` was given. That query used to run AFTER
+      // `resetCompanyImportData`, which hard-deletes exactly those rows
+      // (`archive.ts:815-831`) — so it came back empty, `affected` was empty,
+      // and the post-reset recompute **never ran at all**. Not an edge case:
+      // the UI's year field is optional and documents blank as "all years"
+      // (`DataArchiveForm.tsx:51`), so the widest reset was the one that
+      // silently skipped its own recompute.
+      const yearsBeforeReset: number[] = year
+        ? [year]
+        : Array.from(
+            new Set(
+              (
+                await prisma.indicatorValue.findMany({
+                  where: { companyId: target.id },
+                  select: { period: true },
+                  distinct: ["period"],
+                })
+              )
+                // "2026" | "2026-Q2" | "2026-04" all start with the year.
+                .map((r) => parseInt(r.period, 10))
+                .filter((n) => Number.isFinite(n)),
+            ),
+          )
       let reset
       try {
         reset = await resetCompanyImportData({
@@ -326,22 +352,11 @@ export async function POST(request: NextRequest) {
       }
       let rc = 0
       try {
-        const years = year
-          ? [year]
-          : Array.from(
-              new Set(
-                (
-                  await prisma.indicatorValue.findMany({
-                    where: { companyId: target.id },
-                    select: { period: true },
-                    distinct: ["period"],
-                  })
-                )
-                  .map((r) => parseInt(r.period, 10))
-                  .filter((n) => Number.isFinite(n)),
-              ),
-            )
-        const affected = years.map((y) => ({ companyId: target.id, year: y }))
+        // 11.61 — captured before the reset; see the note above.
+        const affected = yearsBeforeReset.map((y) => ({
+          companyId: target.id,
+          year: y,
+        }))
         if (affected.length > 0) {
           // Phase 11.7 — the reset now deletes month/quarter IndicatorValue
           // rows (11.6), so the follow-up recompute must be able to rebuild
