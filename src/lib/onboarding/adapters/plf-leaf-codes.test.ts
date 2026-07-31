@@ -92,17 +92,54 @@ describe("buildLeafPredicate — nothing that works today stops working", () => 
   })
 
   it("never rescues a computed total like PLF.03 / PLF.08 / PLF.10", () => {
-    // GROSS MARGIN / EBITDA / NET PROFIT are derived. They have children, so
-    // the descendant rule already excludes them — pinned because importing
-    // them would double-count the entire statement.
+    // 11.74 — this assertion is unchanged; its FIXTURE was the bug.
+    //
+    // It used to supply `PLF.03.01.01` and `PLF.10.01.01` as children, so the
+    // descendant rule excluded the parents and the test passed for a reason
+    // that does not hold in the file. Read out of `actual-budget-v1.xlsx`,
+    // GROSS MARGIN / EBITDA / NET PROFIT have ZERO children in every PLF
+    // sheet — nothing is broken out beneath them, they simply state the
+    // section's computed total. Childlessness cannot tell them apart from a
+    // real account; depth can.
     const isLeaf = buildLeafPredicate([
-      "PLF.03",
-      "PLF.03.01.01",
-      "PLF.10",
-      "PLF.10.01.01",
+      "PLF.02.01.01",
+      "PLF.03", // GROSS MARGIN — childless, all three sheets
+      "PLF.08", // EBITDA — childless in the 2026 chart of accounts
+      "PLF.10", // NET PROFIT / (LOSS) — childless everywhere
     ])
     expect(isLeaf("PLF.03")).toBe(false)
+    expect(isLeaf("PLF.08")).toBe(false)
     expect(isLeaf("PLF.10")).toBe(false)
+    expect(isLeaf("PLF.02.01.01")).toBe(true)
+  })
+
+  it("still rescues PLF.08.01 — a real account under a section, not the section", () => {
+    // The 2025 chart of accounts codes Shareholders' expense as `PLF.08.01`
+    // (174,491 AZN, AZSF actual). It is three segments and childless, so it
+    // is exactly the case 11.70 exists to recover — and the depth guard must
+    // not take it back. In 2025 `PLF.08` itself HAS children, so the section
+    // is excluded by the descendant rule rather than by depth.
+    const isLeaf = buildLeafPredicate([
+      "PLF.08",
+      "PLF.08.01", // Shareholders' expense
+      "PLF.08.02", // Expenses of prior periods
+      "PLF.08.03", // EDEN adjustment
+    ])
+    expect(isLeaf("PLF.08")).toBe(false)
+    expect(isLeaf("PLF.08.01")).toBe(true)
+    expect(isLeaf("PLF.08.02")).toBe(true)
+    expect(isLeaf("PLF.08.03")).toBe(true)
+  })
+
+  it("refuses every one-segment section, populated or not", () => {
+    // The whole PLF.NN family from the real 2026 sheet. Sections with detail
+    // beneath them were already excluded; the childless ones are the ones
+    // that leaked. Neither kind is a posting account.
+    const sections = ["PLF.01", "PLF.02", "PLF.03", "PLF.04", "PLF.05", "PLF.07", "PLF.08", "PLF.10", "PLF.12"]
+    const isLeaf = buildLeafPredicate([...sections, "PLF.01.01.01", "PLF.12.01.01"])
+    for (const s of sections) {
+      expect(isLeaf(s), `${s} must never be imported`).toBe(false)
+    }
   })
 
   it("handles a one-code sheet and an empty one without inventing leaves", () => {

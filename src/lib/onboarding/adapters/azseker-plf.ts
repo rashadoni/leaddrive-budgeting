@@ -110,9 +110,29 @@ export interface CfParseResult {
   warnings: PlfParseWarning[]
 }
 
+/**
+ * Rows that state a COMPUTED SUBTOTAL rather than a posting account (11.74).
+ *
+ * `PLF.10` NET PROFIT was already skipped below, at section level. These two
+ * were not, and they are childless in this chart of accounts — so once
+ * leafness stopped being decided by code depth alone (11.70), nothing else
+ * separated them from a real expense line and they were emitted as one:
+ * 34,393,596 AZN of phantom cost in `PLF Budget 2026` alone.
+ *
+ * Matched EXACTLY, never by section prefix: `PLF.08.01` is Shareholders'
+ * expense (174,491 AZN, AZSF actual 2025), a real account sitting beneath the
+ * EBITDA line, and it must still import. This is the second of two independent
+ * guards — `buildLeafPredicate` also refuses to rescue a one-segment section —
+ * because a subtotal reaching `budget_lines` is silent, and money that lands
+ * twice is harder to notice than money that never lands.
+ */
+const COMPUTED_SUBTOTAL_CODES = new Set(["PLF.03", "PLF.08"])
+
 // PLF prefix → accountType map
 function plfAccountType(code: string): PlfAccountType | null {
-  const m = code.trim().match(/^PLF\.(\d{2})/)
+  const trimmed = code.trim()
+  if (COMPUTED_SUBTOTAL_CODES.has(trimmed)) return null
+  const m = trimmed.match(/^PLF\.(\d{2})/)
   if (!m) return null
   const section = m[1]
   if (section === "01") return "revenue"
