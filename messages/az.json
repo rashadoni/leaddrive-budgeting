@@ -3680,6 +3680,13 @@
         "title": "İdxal baş tutmadı",
         "reassurance": "Bazaya heç nə yazılmadı — idxal atomikdir, uğursuzluq datanızı olduğu kimi saxlayır. Səbəbi aradan qaldırıb yenidən işlədə bilərsiniz.",
         "details": "Texniki təfərrüatlar"
+      },
+      "review": {
+        "ariaLabel": "İdxal baxışı",
+        "tab": {
+          "analysis": "AI nə oxudu",
+          "routing": "Hara gedir"
+        }
       }
     },
     "single": {

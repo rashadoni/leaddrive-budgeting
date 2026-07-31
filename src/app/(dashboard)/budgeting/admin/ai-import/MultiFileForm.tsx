@@ -22,8 +22,10 @@ import {
   ImportFlowStrip,
   ImportRunningBanner,
   ImportDoneRedirect,
+  ImportReviewTabs,
   PNL_HREF,
   type FlowStepKey,
+  type ReviewTabKey,
 } from "./ImportFlowGuide"
 
 interface ConflictOccurrence {
@@ -592,6 +594,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   const [runningPhase, setRunningPhase] = useState<"analyze" | "apply" | null>(
     null,
   )
+  // 11.64 — which of the two INFORMATIONAL review panels is on screen.
+  // Defaults to the analysis: after a run the operator's first question is
+  // "did it understand my file". Anything that BLOCKS the apply stays outside
+  // these tabs and always visible — see ImportReviewTabs for why.
+  const [reviewTab, setReviewTab] = useState<ReviewTabKey>("analysis")
   const [previewResult, setPreviewResult] =
     useState<MultiFileApiResponse | null>(null)
   const [applyResult, setApplyResult] =
@@ -2385,9 +2392,13 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
               {t("coaReview.description")}
             </p>
           </div>
-          <div className="overflow-x-auto">
+          {/* 11.64 — bounded like the guided-fix table, and for the same
+              reason: this is the ONLY place an unresolved CoA mapping can be
+              decided, so it stays visible and mounted; only its length is
+              capped. */}
+          <div className="max-h-[24rem] overflow-auto">
             <table className="w-full text-xs">
-              <thead>
+              <thead className="sticky top-0 bg-amber-50">
                 <tr className="border-b border-amber-200 text-left">
                   <th className="py-1 pr-2">{t("coaReview.col.source")}</th>
                   <th className="py-1 pr-2">{t("coaReview.col.reason")}</th>
@@ -2519,9 +2530,15 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
               </button>
             )}
           </div>
-          <div className="overflow-x-auto">
+          {/* 11.64 — bounded, NOT hidden. On a real workbook this table is 23
+              rows of three dropdowns each and pushed everything below it off
+              the screen. It fixes a blocker, so it must stay visible and
+              mounted; capping its height gives the page a stable frame while
+              the header, the count and the re-run button stay in view. The
+              sticky header keeps the column meanings while you scroll. */}
+          <div className="max-h-[24rem] overflow-auto">
             <table className="w-full text-xs">
-              <thead>
+              <thead className="sticky top-0 bg-violet-50">
                 <tr className="border-b border-violet-200 text-left">
                   <th className="py-1 pr-2">{t("fixes.col.sheet")}</th>
                   <th className="py-1 pr-2">{t("fixes.col.company")}</th>
@@ -2646,9 +2663,30 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
         </div>
       )}
 
+      {/* 11.64 — the two informational panels below share one frame instead of
+          stacking. Both stay MOUNTED and the inactive one is hidden with CSS:
+          unmounting would break every `getByTestId` the suite runs against
+          them, and the pattern must never be extended to a section that can
+          block an apply. */}
+      {previewResult && (buRoutingSplits.length > 0 || previewResult.perFile.length > 0) && (
+        <ImportReviewTabs
+          active={reviewTab}
+          onChange={setReviewTab}
+          counts={{
+            analysis: previewResult.perFile.reduce(
+              (n, f) => n + f.classifications.length,
+              0,
+            ),
+            routing: buRoutingSplits.length,
+          }}
+        />
+      )}
+
       {previewResult && buRoutingSplits.length > 0 && (
         <div
-          className="rounded border border-cyan-200 bg-cyan-50 p-4 space-y-3"
+          className={`rounded border border-cyan-200 bg-cyan-50 p-4 space-y-3 ${
+            reviewTab === "routing" ? "" : "hidden"
+          }`}
           data-testid="bu-routing-grid"
         >
           <div>
@@ -2738,7 +2776,10 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
           admin can verify both classification correctness AND downstream
           impact before clicking Apply. */}
       {previewResult && previewResult.perFile.length > 0 && (
-        <div className="space-y-3" data-testid="preview-result">
+        <div
+          className={`space-y-3 ${reviewTab === "analysis" ? "" : "hidden"}`}
+          data-testid="preview-result"
+        >
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h3 className="font-semibold text-sm">{t("preview.title")}</h3>
