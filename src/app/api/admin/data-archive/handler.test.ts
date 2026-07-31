@@ -314,6 +314,67 @@ describe("POST /api/admin/data-archive — AllImportData multi-company reset", (
     expect(resetMock).toHaveBeenCalledTimes(1)
   })
 
+  // ── 11.61 — the widest reset silently skipped its own recompute ──
+  // With no `year`, the route derives the years to rebuild from
+  // IndicatorValue.period. That query used to run AFTER
+  // resetCompanyImportData, which hard-deletes exactly those rows — so it
+  // came back empty and the post-reset recompute never ran at all. The UI's
+  // year field is optional and documents blank as "all years", so this was
+  // the DEFAULT path, not an edge case.
+  it("recomputes every year the company had, when no year is given", async () => {
+    prismaMock.company.findMany.mockResolvedValue([{ id: "c1", code: "AZSEKER-CPC" }])
+    // The stub models the real thing: resetCompanyImportData HARD-DELETES the
+    // IndicatorValue rows, so a lookup after it sees nothing. Keyed on the
+    // reset actually having run, not on call order — so this test fails for
+    // the RIGHT reason (an empty year list) rather than by counting calls.
+    let wiped = false
+    resetMock.mockImplementation(async () => {
+      wiped = true
+      return { rowsAffected: 100, breakdown: {}, auditEventId: "r1" }
+    })
+    prismaMock.indicatorValue.findMany.mockImplementation(async () =>
+      wiped ? [] : [{ period: "2025" }, { period: "2025-Q2" }, { period: "2026-04" }],
+    )
+
+    await POST(
+      req({ mode: "archive", entityKind: "AllImportData", companyCodes: ["AZSEKER-CPC"], confirmCode: "ALL" }),
+    )
+
+    expect(recomputeMock).toHaveBeenCalledTimes(1)
+    const affected = recomputeMock.mock.calls[0][2] as Array<{ year: number }>
+    // "2025", "2025-Q2" and "2026-04" collapse to the two YEARS 2025 and 2026.
+    expect(affected.map((a) => a.year).sort()).toEqual([2025, 2026])
+  })
+
+  it("reads the year list BEFORE the reset, not after", async () => {
+    // Ordering is the whole defect: same query, same result shape, wrong
+    // moment. Pinned directly so a future refactor cannot quietly move it
+    // back below the delete while every other assertion stays green.
+    prismaMock.company.findMany.mockResolvedValue([{ id: "c1", code: "AZSEKER-CPC" }])
+    prismaMock.indicatorValue.findMany.mockResolvedValue([{ period: "2026" }])
+
+    await POST(
+      req({ mode: "archive", entityKind: "AllImportData", companyCodes: ["AZSEKER-CPC"], confirmCode: "ALL" }),
+    )
+
+    const readOrder = prismaMock.indicatorValue.findMany.mock.invocationCallOrder[0]
+    const resetOrder = resetMock.mock.invocationCallOrder[0]
+    expect(readOrder).toBeLessThan(resetOrder)
+  })
+
+  // Guard — an explicit year must not trigger the lookup at all.
+  it("skips the period lookup when a year IS given", async () => {
+    prismaMock.company.findMany.mockResolvedValue([{ id: "c1", code: "AZSEKER-CPC" }])
+
+    await POST(
+      req({ mode: "archive", entityKind: "AllImportData", companyCodes: ["AZSEKER-CPC"], year: 2026, confirmCode: "ALL" }),
+    )
+
+    expect(prismaMock.indicatorValue.findMany).not.toHaveBeenCalled()
+    const affected = recomputeMock.mock.calls[0][2] as Array<{ year: number }>
+    expect(affected).toEqual([{ companyId: "c1", year: 2026 }])
+  })
+
   it("returns 207 + ok:false when a company's reset itself fails", async () => {
     prismaMock.company.findMany.mockResolvedValue([
       { id: "c1", code: "AZSEKER-CPC" },

@@ -21,6 +21,7 @@ import * as XLSX from "xlsx"
 import { prisma } from "@/lib/prisma"
 import { runReportingPackImport } from "@/lib/onboarding/adapters/reporting-pack-importer"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
+import { acquireImportLock, type ImportLock } from "@/lib/onboarding/import-lock"
 
 function parseArgs(argv: string[]) {
   const positional: string[] = []
@@ -61,22 +62,69 @@ async function main() {
   })
   const codeToId = new Map(companies.map((c) => [c.code, c.id]))
 
-  const result = await runReportingPackImport(
-    { workbook: wb, organizationId: org.id, year, mode: apply ? "apply" : "preview" },
-    {
-      prisma,
-      XLSX,
-      onAfterApply: async (entityCodes) => {
-        const affected = entityCodes
-          .map((code) => codeToId.get(code))
-          .filter((id): id is string => Boolean(id))
-          .map((companyId) => ({ companyId, year }))
-        console.log(`\nRecomputing indicators for ${affected.length} companies…`)
-        const rc = await runRecomputeForCompanies(prisma, org.id, affected)
-        console.log(`recompute: ${JSON.stringify(rc)}`)
+  // 11.60 — this CLI was a SECOND door onto the same rows, and it neither
+  // serialised nor attested: no import lock, so it could interleave with a
+  // web apply and leave a full duplicate set (both are clean-slate, and
+  // cash_flow_entries has no unique constraint to reject the copy); and no
+  // runId, so it wrote no ImportBatchReport and the newest attestation kept
+  // describing some earlier import.
+  let cliLock: ImportLock | null = null
+  if (apply) {
+    cliLock = await acquireImportLock(org.id, year)
+    if (!cliLock.acquired) {
+      await cliLock.release()
+      console.error(
+        `\n✗ Another import is already running for ${org.id} / ${year} ` +
+          `(${cliLock.scope}). Wait for it to finish — running both would ` +
+          `duplicate every row they share.`,
+      )
+      process.exit(1)
+    }
+  }
+
+  let result
+  try {
+    result = await runReportingPackImport(
+      {
+        workbook: wb,
+        organizationId: org.id,
+        year,
+        mode: apply ? "apply" : "preview",
+        ...(apply
+          ? {
+              runId: `reporting-pack-cli:${org.id}:${year}:${Date.now()}`,
+              filenames: [file],
+              actorUserId: null,
+            }
+          : {}),
       },
-    },
-  )
+      {
+        prisma,
+        XLSX,
+        onAfterApply: async (entityCodes) => {
+          const affected = entityCodes
+            .map((code) => codeToId.get(code))
+            .filter((id): id is string => Boolean(id))
+            .map((companyId) => ({ companyId, year }))
+          console.log(`\nRecomputing indicators for ${affected.length} companies…`)
+          // Same granularity as every other writer of these rows (11.40) —
+          // the reset deletes month and quarter IndicatorValues too.
+          const rc = await runRecomputeForCompanies(prisma, org.id, affected, {}, {
+            granularity: "year+quarter+month",
+          })
+          console.log(`recompute: ${JSON.stringify(rc)}`)
+        },
+      },
+    )
+  } finally {
+    // Swallowed: a throw here would mask the real outcome, and Postgres drops
+    // a session lock when the connection dies anyway.
+    try {
+      await cliLock?.release()
+    } catch {
+      /* best-effort */
+    }
+  }
 
   const pad = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s).padEnd(n)
   console.log(
