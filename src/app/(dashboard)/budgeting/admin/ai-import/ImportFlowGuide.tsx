@@ -251,7 +251,23 @@ export function ImportDoneRedirect({ href = PNL_HREF }: { href?: string }) {
   )
 }
 
-export type ReviewTabKey = "analysis" | "routing"
+export type ReviewTabKey =
+  | "analysis"
+  | "fixes"
+  | "coa"
+  | "conflicts"
+  | "routing"
+  | "receipt"
+  | "warnings"
+
+export interface ReviewTabDef {
+  key: ReviewTabKey
+  /** Shown on the tab. 0 / undefined renders no badge. */
+  count?: number
+  /** Marks a tab that explains or fixes something blocking the apply. */
+  blocking?: boolean
+}
+
 
 /**
  * 11.64 — the review area stops being one endless scroll.
@@ -282,48 +298,54 @@ export type ReviewTabKey = "analysis" | "routing"
  * height — the only thing this change was asked to fix.
  */
 export function ImportReviewTabs({
+  tabs,
   active,
   onChange,
-  counts,
 }: {
+  tabs: ReviewTabDef[]
   active: ReviewTabKey
   onChange: (key: ReviewTabKey) => void
-  counts: Partial<Record<ReviewTabKey, number>>
 }) {
   const t = useTranslations("adminAiImport.multi.review")
-  const tabs: ReviewTabKey[] = ["analysis", "routing"]
+  if (tabs.length < 2) return null
   return (
     <div
       role="tablist"
       aria-label={t("ariaLabel")}
-      className="inline-flex rounded border border-slate-200 bg-slate-50 p-1"
+      className="flex flex-wrap gap-1 rounded border border-slate-200 bg-slate-50 p-1"
       data-testid="import-review-tabs"
     >
-      {tabs.map((key) => {
-        const n = counts[key]
-        return (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={active === key}
-            onClick={() => onChange(key)}
-            data-testid={`review-tab-${key}`}
-            className={`px-3 py-1.5 text-sm rounded font-medium transition ${
-              active === key
-                ? "bg-white text-slate-900 shadow-sm"
+      {tabs.map(({ key, count, blocking }) => (
+        <button
+          key={key}
+          type="button"
+          role="tab"
+          aria-selected={active === key}
+          onClick={() => onChange(key)}
+          data-testid={`review-tab-${key}`}
+          data-blocking={blocking ? "true" : undefined}
+          className={`rounded px-3 py-1.5 text-sm font-medium transition ${
+            active === key
+              ? "bg-white text-slate-900 shadow-sm"
+              : blocking
+                ? "text-red-700 hover:text-red-900"
                 : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            {t(`tab.${key}` as never)}
-            {n !== undefined && n > 0 && (
-              <span className="ml-1.5 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
-                {n}
-              </span>
-            )}
-          </button>
-        )
-      })}
+          }`}
+        >
+          {t(`tab.${key}` as never)}
+          {count !== undefined && count > 0 && (
+            <span
+              className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                blocking
+                  ? "bg-red-100 text-red-700"
+                  : "bg-slate-200 text-slate-700"
+              }`}
+            >
+              {count}
+            </span>
+          )}
+        </button>
+      ))}
     </div>
   )
 }

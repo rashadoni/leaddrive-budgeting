@@ -1437,8 +1437,27 @@ describe("MultiFileForm", () => {
    * So only the two purely informational panels are tabbed, they stay MOUNTED
    * (hidden via CSS, not unmounted), and the tests below pin both halves.
    */
-  describe("review tabs (11.64)", () => {
-    function previewWithBothPanels(extra: Record<string, unknown> = {}) {
+  /**
+   * 11.65 — every review section is a tab: Guided fixes, Safety receipt,
+   * Faylların analizi and the rest, side by side instead of stacked down the
+   * page.
+   *
+   * Tabbing a section that BLOCKS the apply is only safe because of two
+   * rules, and both are pinned below. Drop either and this is strictly worse
+   * than the endless scroll it replaced:
+   *
+   *   1. a blocking tab OPENS BY ITSELF, so a disabled Apply button always
+   *      has its reason on screen;
+   *   2. panels stay MOUNTED (hidden attribute, not unmounted) — the conflict
+   *      banner holds the only forceOverride checkbox, the Import Doctor
+   *      scrolls to refs inside these sections, and the suite queries testids
+   *      in them.
+   */
+  describe("review tabs (11.65)", () => {
+    const isHidden = (id: string) =>
+      (screen.getByTestId(id) as HTMLElement).hidden
+
+    function preview(extra: Record<string, unknown> = {}) {
       return {
         ok: true,
         mode: "preview",
@@ -1471,7 +1490,7 @@ describe("MultiFileForm", () => {
         llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
         durationMs: 100,
         recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
-        warnings: ["book.xlsx: sheet \"X\" — something worth reading"],
+        warnings: ["book.xlsx: sheet \"X\" — worth reading"],
         buColumnSplits: [
           {
             filename: "book.xlsx",
@@ -1492,6 +1511,16 @@ describe("MultiFileForm", () => {
       }
     }
 
+    const CONFLICT = {
+      key: "AZSEKER-CPC::PLF.01::2026-01",
+      occurrences: [
+        { filename: "a.xlsx", value: 1 },
+        { filename: "b.xlsx", value: 2 },
+      ],
+      spread: 1,
+      spreadPct: 0.5,
+    }
+
     async function analyse(body: Record<string, unknown>) {
       mockFetchOnce(200, body)
       render(<MultiFileForm />)
@@ -1502,68 +1531,65 @@ describe("MultiFileForm", () => {
       await screen.findByTestId("import-review-tabs")
     }
 
-    it("keeps BOTH panels mounted, hiding the inactive one with CSS", async () => {
-      // Unmounting would break every getByTestId the rest of this suite runs
-      // against these panels — and would silently null out any ref inside.
-      await analyse(previewWithBothPanels())
+    it("offers a tab per section that has content — and none for the empty ones", async () => {
+      await analyse(preview())
+      for (const key of ["analysis", "routing", "warnings"]) {
+        expect(screen.getByTestId(`review-tab-${key}`)).toBeTruthy()
+      }
+      // No conflicts and no CoA items in this fixture, so no empty panels.
+      expect(screen.queryByTestId("review-tab-conflicts")).toBeNull()
+      expect(screen.queryByTestId("review-tab-coa")).toBeNull()
+    })
 
+    it("keeps every panel MOUNTED, hiding the inactive ones", async () => {
+      // Unmounting would break every getByTestId the rest of this suite runs
+      // against these panels and null out any ref inside them.
+      await analyse(preview())
       expect(screen.getByTestId("preview-result")).toBeTruthy()
       expect(screen.getByTestId("bu-routing-grid")).toBeTruthy()
-      // Analysis is the default: after a run the first question is "did it
-      // understand my file".
-      expect(screen.getByTestId("preview-result").className).not.toContain("hidden")
-      expect(screen.getByTestId("bu-routing-grid").className).toContain("hidden")
+      expect(screen.getByTestId("preview-warnings")).toBeTruthy()
+      expect(isHidden("bu-routing-grid")).toBe(true)
+      expect(isHidden("preview-result")).toBe(false)
     })
 
     it("swaps which panel is visible when a tab is clicked", async () => {
-      await analyse(previewWithBothPanels())
-
+      await analyse(preview())
       fireEvent.click(screen.getByTestId("review-tab-routing"))
-      expect(screen.getByTestId("bu-routing-grid").className).not.toContain("hidden")
-      expect(screen.getByTestId("preview-result").className).toContain("hidden")
+      expect(isHidden("bu-routing-grid")).toBe(false)
+      expect(isHidden("preview-result")).toBe(true)
 
       fireEvent.click(screen.getByTestId("review-tab-analysis"))
-      expect(screen.getByTestId("preview-result").className).not.toContain("hidden")
+      expect(isHidden("preview-result")).toBe(false)
     })
 
-    it("NEVER hides a surface that blocks or explains a blocked apply", async () => {
-      // The invariant this whole change turns on. A conflict makes the apply
-      // refuse; the banner carries both the per-cell resolutions and the ONLY
-      // forceOverride checkbox, and the warnings block is the sole render of
-      // the routing-gate reasons. Neither may be behind a tab, on EITHER tab.
-      await analyse(
-        previewWithBothPanels({
-          conflicts: [
-            {
-              key: "AZSEKER-CPC::PLF.01::2026-01",
-              occurrences: [
-                { filename: "a.xlsx", value: 1 },
-                { filename: "b.xlsx", value: 2 },
-              ],
-              spread: 1,
-              spreadPct: 0.5,
-            },
-          ],
-          overallVerdict: "red",
-        }),
-      )
+    it("OPENS the blocking tab by itself, so a disabled Apply always shows its reason", async () => {
+      // The rule the whole design turns on. A conflict disables Apply; the
+      // banner carries the per-cell resolutions and the ONLY forceOverride
+      // checkbox. If the operator had to go looking for it, this would be a
+      // dead end rather than a tidier page.
+      await analyse(preview({ conflicts: [CONFLICT], overallVerdict: "red" }))
 
-      for (const tab of ["review-tab-routing", "review-tab-analysis"]) {
-        fireEvent.click(screen.getByTestId(tab))
-        const conflict = screen.getByTestId("conflict-banner")
-        expect(conflict.className).not.toContain("hidden")
-        // The only way past a conflict.
-        expect(screen.getByTestId("force-override")).toBeTruthy()
-        // The only place the routing-gate reasons are ever rendered (11.43).
-        expect(screen.getByTestId("preview-warnings")).toBeTruthy()
-      }
+      expect(isHidden("conflict-banner")).toBe(false)
+      expect(screen.getByTestId("force-override")).toBeTruthy()
+      // …and it is marked as blocking, so it reads as urgent, not as one more
+      // tab among equals.
+      expect(
+        screen.getByTestId("review-tab-conflicts").getAttribute("data-blocking"),
+      ).toBe("true")
+    })
+
+    it("lets a deliberate click win over the auto-selection", async () => {
+      await analyse(preview({ conflicts: [CONFLICT], overallVerdict: "red" }))
+      fireEvent.click(screen.getByTestId("review-tab-analysis"))
+      expect(isHidden("preview-result")).toBe(false)
+      expect(isHidden("conflict-banner")).toBe(true)
     })
 
     it("counts what each tab holds so nothing hides behind a silent badge", async () => {
-      await analyse(previewWithBothPanels())
-      // 1 classification, 1 split sheet — visible on the tabs themselves.
+      await analyse(preview())
       expect(screen.getByTestId("review-tab-analysis").textContent).toContain("1")
       expect(screen.getByTestId("review-tab-routing").textContent).toContain("1")
+      expect(screen.getByTestId("review-tab-warnings").textContent).toContain("1")
     })
   })
 })
