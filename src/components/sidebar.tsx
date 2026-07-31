@@ -70,13 +70,20 @@ type NavItem = {
 // settings/config ONLY; the operational + monitoring tools moved into two
 // always-visible, admin-gated sections rendered at the foot of the nav
 // (SIDEBAR_ADMIN_GROUPS).
+// 2026-07-31 (11.55): Data Import is FIRST. It is the entry point of the whole
+// product — nothing else has anything to show until a workbook has been
+// imported — and it is the centrepiece of the client demo. It sat sixth,
+// below four views of data the visitor does not have yet. Renamed from
+// "AI idxal" to "Data Import" and held in English across all locales, the
+// same convention Risk Terminal and Board Deck already follow: it names a
+// product surface, not a generic UI action.
 const navItems: NavItem[] = [
+  { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },
   { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" },
   { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
   { href: "/budgeting/trade", icon: Store, labelKey: "tradeTower" },
   { href: "/budgeting/board-deck", icon: Presentation, labelKey: "boardDeck" },
   { href: "/budgeting/onboarding", icon: Upload, labelKey: "onboarding" },
-  { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },
   { href: "/budgeting/alerts", icon: Bell, labelKey: "alerts" },
   { href: "/budgeting/audit", icon: ScrollText, labelKey: "auditLog", minRole: "manager" },
   // 2026-07-20 reorder: the Admin Tools row is intentionally NOT in this array —

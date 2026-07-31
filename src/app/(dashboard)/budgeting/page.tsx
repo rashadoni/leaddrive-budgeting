@@ -162,7 +162,12 @@ export default function BudgetingPage() {
   const [aiOpen, setAiOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   React.useEffect(() => setMounted(true), [])
-  const activeTab = searchParams.get("tab") || "workspace"
+  // 2026-07-31 (11.55) — the budgeting module opens on the P&L.
+  // "workspace" was a landing page about the data rather than the data; the
+  // profit & loss statement is the first thing every user (and every client
+  // in a demo) actually wants. An explicit `?tab=` still wins, so every
+  // existing deep link keeps working.
+  const activeTab = searchParams.get("tab") || "pnl-report"
   const setActiveTab = (tab: string) => router.push(`/budgeting?tab=${tab}`)
 
   // Auto-select the most useful plan: a POPULATED budget plan (newest year)

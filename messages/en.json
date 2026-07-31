@@ -94,7 +94,7 @@
     "riskTerminal": "Risk Terminal",
     "boardDeck": "Board Deck",
     "onboarding": "Onboarding",
-    "aiImport": "AI Import",
+    "aiImport": "Data Import",
     "auditLog": "Audit Log",
     "adminTools": "Admin Tools",
     "guide": "User Guide",
@@ -3511,10 +3511,10 @@
       },
       "routing": {
         "title": "Entity routing grid — {n} split sheet(s)",
-        "description": "BU-column sheets were split before import. Write rows go to the listed company; elimination/unknown blocks are skipped.",
+        "description": "This workbook keeps several companies in one sheet, split by a business-unit column. Rows marked write go to the company named. Consolidation entries (EJE / AJE) cancel out trade between group companies — they belong to no single company, so they are not imported.",
         "write": "write",
-        "skipElim": "skip elimination",
-        "skipUnknown": "skip unknown",
+        "skipElim": "skip — consolidation entry",
+        "skipUnknown": "skip — company not recognised",
         "col": {
           "source": "Source sheet",
           "bu": "BU value",
@@ -3556,7 +3556,8 @@
         "none": "none",
         "openRiskTerminal": "Risk Terminal",
         "openIndicatorHealth": "Indicator Health",
-        "openRollback": "Cleanup / rollback"
+        "openRollback": "Cleanup / rollback",
+        "openPnl": "Open the P&L"
       },
       "preview": {
         "title": "File analysis",
@@ -3575,7 +3576,45 @@
         "profileMonths": "Month sheets {n}",
         "profileBu": "BU sheets {n}",
         "profileElim": "Elim {n}",
-        "profileDuplicates": "Duplicates {n}"
+        "profileDuplicates": "Duplicates {n}",
+        "dataTypeWrites": {
+          "PLF": "Profit & loss — 12 months",
+          "BS": "Balance sheet — month-end balances",
+          "CF": "Cash flow — 12 months",
+          "KPI_FARMING": "Farming metrics — area, harvest, yield, sugar content",
+          "KPI_PROCESSING": "Processing metrics — extraction rate, capacity, input and output",
+          "CAPEX": "Capital expenditure plan",
+          "SALES": "Product sales, month by month",
+          "LAND_REGISTRY": "Land registry — owned and leased area",
+          "DESCRIPTIONS": "Business description (free text)",
+          "INFO_SUMMARY": "Nothing — this is a section heading",
+          "COMPANIES": "Holding structure — the companies themselves",
+          "OPS_FACTS": "Operational metrics (free-form table)",
+          "BUDGET_ACTUALS": "Actual transactions, dated",
+          "SALES_PRODUCTS": "Sales plan — volume and price per product, per month",
+          "SALES_FORECAST": "Sales forecast by department, per month",
+          "COUNTERPARTY": "Largest customers and suppliers by turnover",
+          "LEGAL_CASES": "Court case register",
+          "AUDIT_FINDINGS": "Audit findings register",
+          "RISK_REGISTER": "Risk register (key risk indicators)",
+          "UNKNOWN": "Not recognised"
+        },
+        "dataTypeNote": {
+          "CF": "Stored for future cash-flow indicators — nothing reads it yet.",
+          "CAPEX": "Stored for a future CAPEX-to-revenue ratio.",
+          "SALES": "Stored for future customer and product mix.",
+          "DESCRIPTIONS": "Feeds the AI brief and the variance explainer — no indicator is touched.",
+          "INFO_SUMMARY": "The sheet is skipped — nothing is written to the database.",
+          "COMPANIES": "A structural change; indicators are recomputed afterwards.",
+          "BUDGET_ACTUALS": "Stored for future plan-versus-actual analysis.",
+          "SALES_PRODUCTS": "Feeds the Sales tab. Indicators read the P&L, not this table.",
+          "SALES_FORECAST": "No indicator reads the forecast yet.",
+          "COUNTERPARTY": "Feeds customer and supplier concentration.",
+          "LEGAL_CASES": "Feeds the active court cases indicator.",
+          "AUDIT_FINDINGS": "Feeds audit closure rate and open major findings.",
+          "RISK_REGISTER": "Recognised, but no indicator consumes it yet.",
+          "UNKNOWN": "The AI could not identify this sheet — it will not be imported."
+        }
       },
       "result": {
         "title": "Apply result",
@@ -3600,6 +3639,42 @@
       "multiYear": {
         "title": "This upload contains {years}",
         "hint": "Selected year: {picked}. Tick to import {extra} in the same run — one pipeline pass per year, in order."
+      },
+      "flow": {
+        "title": "How this import works",
+        "intro": "Drop in the workbook you already use. The AI reads every sheet, decides what each one is, and shows you where the numbers will land — before anything is written. Nothing reaches the database until you press Apply, and if a single check fails the whole import is rolled back.",
+        "step": {
+          "file": {
+            "label": "File",
+            "hint": "Your workbook, unchanged. No template to fill in."
+          },
+          "analyze": {
+            "label": "AI reads it",
+            "hint": "Each sheet is identified: P&L, balance sheet, sales, and which company it belongs to."
+          },
+          "verify": {
+            "label": "Checks",
+            "hint": "Conflicts, unknown companies and unclear sheets are reported now, not after the write."
+          },
+          "write": {
+            "label": "Write",
+            "hint": "After writing, the rows are read back out of the database and compared with the file. Any mismatch rolls everything back."
+          }
+        },
+        "running": {
+          "analyze": "The AI is reading your sheets…",
+          "analyzeHint": "Usually 30–90 seconds for one workbook. Keep this page open.",
+          "apply": "Writing to the database…",
+          "applyHint": "One full pass per year, one after the other, then the numbers are read back and checked. Keep this page open.",
+          "elapsed": "{sec} s elapsed",
+          "slow": "Still working — a large workbook or several years takes longer than usual."
+        },
+        "previewIsSelfCheck": "Parse self-check — confirms the file was read consistently. The database comparison happens after Apply.",
+        "done": {
+          "opening": "Opening the P&L in {sec} s…",
+          "goNow": "Open now",
+          "stay": "Stay on this receipt"
+        }
       }
     },
     "single": {

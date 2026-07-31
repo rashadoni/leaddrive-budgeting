@@ -252,6 +252,18 @@ async function defaultReadActualKpiSums(
   // import).
   const footprintMetrics = [...new Set(plan.rows.map((r) => r.metric))]
   const footprintCompanyIds = [...new Set(plan.rows.map((r) => r.companyId))]
+  // 2026-07-31 (11.56) — the read must mirror the DELETE's date predicate.
+  // The reset resolves `dateScope` in two branches (:112-131): a 4-digit year
+  // becomes a gte/lte window, explicit ISO dates become `date IN (…)`. This
+  // read only ever implemented the first, so an explicit-date scope deleted
+  // `date IN (…)` and then read back with NO date bound at all — summing rows
+  // the clean-slate was forbidden to touch. Those become `extra` keys, and any
+  // extra is an unconditional red (`reconciliation.ts:152`) that rolls back
+  // the whole group. Same class as 11.51: read back exactly what you were
+  // allowed to delete.
+  const explicitDates = plan.dateScope.filter((d) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(d),
+  )
   const filter: Record<string, unknown> = {
     organizationId: plan.organizationId,
     companyId: { in: footprintCompanyIds },
@@ -261,6 +273,18 @@ async function defaultReadActualKpiSums(
     const min = new Date(Date.UTC(Math.min(...yearScope), 0, 1))
     const max = new Date(Date.UTC(Math.max(...yearScope) + 1, 0, 1) - 1)
     filter.date = { gte: min, lte: max }
+  } else if (explicitDates.length > 0) {
+    // Branch ORDER matters as much as the branch: year wins over explicit
+    // dates on the delete side too (:125 before :129). Reorder one side only
+    // and a mixed scope re-opens the same divergence.
+    //
+    // Known consequence: the read now also STOPS at the scope, so a row in
+    // `plan.rows` dated outside it reconciles as `missing` (red) instead of
+    // being silently swallowed. That is the honest verdict — such a row sits
+    // outside the reset window, so a re-import can never reclaim it and will
+    // collide with the unique (companyId, date, metric) index. The year
+    // branch has always behaved this way.
+    filter.date = { in: explicitDates.map((d) => new Date(d)) }
   }
   const rows = await prisma.operationalFact.findMany({
     where: filter,
