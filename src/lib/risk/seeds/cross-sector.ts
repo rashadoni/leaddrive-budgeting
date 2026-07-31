@@ -393,6 +393,10 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Net margin moved {value}pp vs 2025 baseline. -3pp+ deterioration = red — investigate cost mix or pricing. Requires backfilled 2025 IND_NET_MARGIN to fire.",
+    hintTemplateAz:
+      "Xalis marja 2025 bazisinə nisbətən {value} faiz bəndi dəyişib. -3 f.b. və daha çox pisləşmə qırmızıdır — xərc strukturunu və ya qiymət siyasətini araşdırın. İşləməsi üçün 2025-ci il IND_NET_MARGIN dəyəri geriyə doldurulmalıdır.",
+    hintTemplateRu:
+      "Чистая маржа изменилась на {value} п.п. относительно базы 2025 года. Ухудшение на 3 п.п. и более — красный: разберите структуру затрат или ценообразование. Для расчёта нужен загруженный задним числом IND_NET_MARGIN за 2025 год.",
     requiredInputs: ["budgetLine", "fact:IND_NET_MARGIN@2025"],
     sortOrder: 3,
   },

@@ -36,6 +36,7 @@
  * plan, referencing a ChartOfAccount whose `name` satisfies the matcher
  * (`accountName` below is chosen to match — "Inventory" ⊃ "inventory").
  */
+import type { ValidationMessage } from "./metric-validation-rules"
 
 /** Which financial statement table a variable is written to. */
 export type FinancialVariableModel = "balanceSheetLine"
@@ -151,8 +152,13 @@ export function resolveFinancialVariableByInput(
 
 export interface FinancialValueCheck {
   ok: boolean
+  /** English sentences — logs + non-localized callers. */
   errors: string[]
   warnings: string[]
+  /** Translatable twins, index-aligned with `errors` / `warnings`.
+   *  Keys resolve under `adminIndicatorHealth.validation.*`. */
+  errorMessages: ValidationMessage[]
+  warningMessages: ValidationMessage[]
 }
 
 /**
@@ -167,32 +173,46 @@ export function validateFinancialValue(
 ): FinancialValueCheck {
   const errors: string[] = []
   const warnings: string[] = []
+  const errorMessages: ValidationMessage[] = []
+  const warningMessages: ValidationMessage[] = []
 
   if (!Number.isFinite(value)) {
     errors.push("Value must be a finite number")
-    return { ok: false, errors, warnings }
+    errorMessages.push({ key: "notFinite" })
+    return { ok: false, errors, warnings, errorMessages, warningMessages }
   }
   if (value < rule.min) {
     errors.push(`Value ${value} is below the minimum ${rule.min}`)
+    errorMessages.push({ key: "belowMin", params: { value, min: rule.min } })
   }
   if (value > rule.max) {
     errors.push(`Value ${value} is above the maximum ${rule.max}`)
+    errorMessages.push({ key: "aboveMax", params: { value, max: rule.max } })
   }
   if (errors.length > 0) {
-    return { ok: false, errors, warnings }
+    return { ok: false, errors, warnings, errorMessages, warningMessages }
   }
 
   if (rule.warnMin != null && value < rule.warnMin) {
     warnings.push(`Value ${value} is unusually small (below ${rule.warnMin})`)
+    warningMessages.push({
+      key: "unusuallySmall",
+      params: { value, warnMin: rule.warnMin },
+    })
   }
   if (rule.warnMax != null && value > rule.warnMax) {
     warnings.push(`Value ${value} is unusually large (above ${rule.warnMax})`)
+    warningMessages.push({
+      key: "unusuallyLarge",
+      params: { value, warnMax: rule.warnMax },
+    })
   }
   if (rule.requiresPositive && value <= 0) {
     warnings.push(
       "A value of 0 will not unlock the indicator (the formula needs a positive balance)",
     )
+    warningMessages.push({ key: "zeroDoesNotUnlock" })
   }
 
-  return { ok: true, errors, warnings }
+  return { ok: true, errors, warnings, errorMessages, warningMessages }
 }

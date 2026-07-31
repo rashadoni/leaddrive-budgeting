@@ -14,6 +14,12 @@
 import { useState, useRef, type DragEvent, type ChangeEvent } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { localizedName } from "@/lib/i18n/localized-name"
+import {
+  asImportTranslator,
+  localizeImportMessage,
+  localizeVerdict,
+  type ImportTranslator,
+} from "./import-message-i18n"
 
 interface Classification {
   sheetName: string
@@ -109,18 +115,30 @@ interface ImportApplyResult {
   recompute: { targets: number; ok: number; unknown: number; failed: number }
 }
 
-const DATA_TYPE_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
-  PLF: { bg: "bg-blue-50 dark:bg-blue-500/10", fg: "text-blue-700 dark:text-blue-300", label: "P&L" },
-  BS: { bg: "bg-purple-50 dark:bg-purple-500/10", fg: "text-purple-700 dark:text-purple-300", label: "Balance Sheet" },
-  CF: { bg: "bg-cyan-50 dark:bg-cyan-500/10", fg: "text-cyan-700 dark:text-cyan-300", label: "Cash Flow" },
-  KPI_FARMING: { bg: "bg-green-50 dark:bg-green-500/10", fg: "text-green-700 dark:text-green-300", label: "KPI Farming" },
-  KPI_PROCESSING: { bg: "bg-green-50 dark:bg-green-500/10", fg: "text-green-700 dark:text-green-300", label: "KPI Processing" },
-  CAPEX: { bg: "bg-amber-50 dark:bg-amber-500/10", fg: "text-amber-700 dark:text-amber-300", label: "CAPEX" },
-  SALES: { bg: "bg-pink-50 dark:bg-pink-500/10", fg: "text-pink-700 dark:text-pink-300", label: "Sales" },
-  LAND_REGISTRY: { bg: "bg-emerald-50 dark:bg-emerald-500/10", fg: "text-emerald-700 dark:text-emerald-300", label: "Land Registry" },
-  DESCRIPTIONS: { bg: "bg-indigo-50 dark:bg-indigo-500/10", fg: "text-indigo-700 dark:text-indigo-300", label: "Descriptions" },
-  INFO_SUMMARY: { bg: "bg-gray-50 dark:bg-gray-500/10", fg: "text-gray-700 dark:text-gray-400", label: "Separator" },
-  UNKNOWN: { bg: "bg-red-50 dark:bg-red-500/10", fg: "text-red-700 dark:text-red-300", label: "Unknown ⚠" },
+/**
+ * 11.7x — the chip colours stay here; the chip TEXT moved to the catalogue
+ * (`adminAiImport.shared.dataType.*`). This map used to carry `label: "Balance
+ * Sheet"` and friends, which is why the «Tip» column of an otherwise
+ * Azerbaijani table read as a column of English.
+ */
+const DATA_TYPE_STYLE: Record<string, { bg: string; fg: string }> = {
+  PLF: { bg: "bg-blue-50 dark:bg-blue-500/10", fg: "text-blue-700 dark:text-blue-300" },
+  BS: { bg: "bg-purple-50 dark:bg-purple-500/10", fg: "text-purple-700 dark:text-purple-300" },
+  CF: { bg: "bg-cyan-50 dark:bg-cyan-500/10", fg: "text-cyan-700 dark:text-cyan-300" },
+  KPI_FARMING: { bg: "bg-green-50 dark:bg-green-500/10", fg: "text-green-700 dark:text-green-300" },
+  KPI_PROCESSING: { bg: "bg-green-50 dark:bg-green-500/10", fg: "text-green-700 dark:text-green-300" },
+  CAPEX: { bg: "bg-amber-50 dark:bg-amber-500/10", fg: "text-amber-700 dark:text-amber-300" },
+  SALES: { bg: "bg-pink-50 dark:bg-pink-500/10", fg: "text-pink-700 dark:text-pink-300" },
+  LAND_REGISTRY: { bg: "bg-emerald-50 dark:bg-emerald-500/10", fg: "text-emerald-700 dark:text-emerald-300" },
+  DESCRIPTIONS: { bg: "bg-indigo-50 dark:bg-indigo-500/10", fg: "text-indigo-700 dark:text-indigo-300" },
+  INFO_SUMMARY: { bg: "bg-gray-50 dark:bg-gray-500/10", fg: "text-gray-700 dark:text-gray-400" },
+  UNKNOWN: { bg: "bg-red-50 dark:bg-red-500/10", fg: "text-red-700 dark:text-red-300" },
+}
+
+/** Catalogue label for a classifier dataType, falling back to UNKNOWN. */
+function dataTypeLabel(tShared: ImportTranslator, dataType: string): string {
+  const key = dataType in DATA_TYPE_STYLE ? dataType : "UNKNOWN"
+  return tShared(`dataType.${key}`)
 }
 
 const VERDICT_STYLE = {
@@ -131,6 +149,7 @@ const VERDICT_STYLE = {
 
 export function AIImportForm({ initialYear }: { initialYear?: number }) {
   const t = useTranslations("adminAiImport.single")
+  const tShared = asImportTranslator(useTranslations("adminAiImport.shared"))
   const [file, setFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isClassifying, setIsClassifying] = useState(false)
@@ -245,7 +264,10 @@ export function AIImportForm({ initialYear }: { initialYear?: number }) {
       {/* ── Error banner ───────────────────────────────────────── */}
       {error && (
         <div className="border border-red-500/40 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 rounded p-3 text-sm">
-          ❌ {error}
+          {/* 11.7x — the API answers in English; render it through the shared
+              localizer so a recognised failure reads in the page language and
+              an unrecognised one still reaches the operator verbatim. */}
+          ❌ {localizeImportMessage(tShared, error)}
         </div>
       )}
 
@@ -278,6 +300,7 @@ export function AIImportForm({ initialYear }: { initialYear?: number }) {
 
 function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
   const t = useTranslations("adminAiImport.single")
+  const tShared = asImportTranslator(useTranslations("adminAiImport.shared"))
   const locale = useLocale()
   return (
     <div className="space-y-4">
@@ -293,7 +316,11 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
           ·{" "}
           {preview.skippedLLM
             ? t("preview.skippedLlm")
-            : `${preview.llmUsage.inputTokens} in + ${preview.llmUsage.outputTokens} out tokens · ${preview.llmUsage.modelName}`}
+            : tShared("tokenUsage", {
+                in: preview.llmUsage.inputTokens,
+                out: preview.llmUsage.outputTokens,
+                model: preview.llmUsage.modelName,
+              })}
         </div>
       </div>
 
@@ -330,7 +357,7 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
                     <span
                       className={`inline-flex items-center px-1.5 py-0.5 rounded border text-xs ${style.bg} ${style.fg}`}
                     >
-                      {style.label}
+                      {dataTypeLabel(tShared, c.dataType)}
                     </span>
                   </td>
                   <td className="p-2 font-mono text-xs">
@@ -411,27 +438,61 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
               <div className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
                 {m.code}
               </div>
+              {/* 11.7x — nine hardcoded English row labels lived here. They
+                  now come from `adminAiImport.shared.sheetMap.*`; the finance
+                  abbreviations the catalogue already keeps as-is (P&L, BS, CF,
+                  CAPEX) stay in their own values. */}
               <div className="text-muted-foreground text-[11px] grid grid-cols-3 gap-1 mt-1">
-                {m.plSheet && <div>P&L: {m.plSheet}</div>}
-                {m.bsSheet && <div>BS: {m.bsSheet}</div>}
-                {m.cfSheet && <div>CF: {m.cfSheet}</div>}
+                {m.plSheet && (
+                  <div>{tShared("sheetMap.pl", { sheets: m.plSheet })}</div>
+                )}
+                {m.bsSheet && (
+                  <div>{tShared("sheetMap.bs", { sheets: m.bsSheet })}</div>
+                )}
+                {m.cfSheet && (
+                  <div>{tShared("sheetMap.cf", { sheets: m.cfSheet })}</div>
+                )}
                 {m.kpiFarmingSheets.length > 0 && (
-                  <div>KPI Farm: {m.kpiFarmingSheets.join(", ")}</div>
+                  <div>
+                    {tShared("sheetMap.kpiFarming", {
+                      sheets: m.kpiFarmingSheets.join(", "),
+                    })}
+                  </div>
                 )}
                 {m.kpiProcessingSheets.length > 0 && (
-                  <div>KPI Proc: {m.kpiProcessingSheets.join(", ")}</div>
+                  <div>
+                    {tShared("sheetMap.kpiProcessing", {
+                      sheets: m.kpiProcessingSheets.join(", "),
+                    })}
+                  </div>
                 )}
                 {m.capexSheets.length > 0 && (
-                  <div>CAPEX: {m.capexSheets.join(", ")}</div>
+                  <div>
+                    {tShared("sheetMap.capex", {
+                      sheets: m.capexSheets.join(", "),
+                    })}
+                  </div>
                 )}
                 {m.salesSheets.length > 0 && (
-                  <div>Sales: {m.salesSheets.join(", ")}</div>
+                  <div>
+                    {tShared("sheetMap.sales", {
+                      sheets: m.salesSheets.join(", "),
+                    })}
+                  </div>
                 )}
                 {m.landSheets.length > 0 && (
-                  <div>Land: {m.landSheets.join(", ")}</div>
+                  <div>
+                    {tShared("sheetMap.land", {
+                      sheets: m.landSheets.join(", "),
+                    })}
+                  </div>
                 )}
                 {m.descriptionSheets.length > 0 && (
-                  <div>Desc: {m.descriptionSheets.join(", ")}</div>
+                  <div>
+                    {tShared("sheetMap.descriptions", {
+                      sheets: m.descriptionSheets.join(", "),
+                    })}
+                  </div>
                 )}
               </div>
             </div>
@@ -444,16 +505,26 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
 
 function ImportResultView({ result }: { result: ImportApplyResult }) {
   const t = useTranslations("adminAiImport.single")
+  const tShared = asImportTranslator(useTranslations("adminAiImport.shared"))
   const s = VERDICT_STYLE[result.overallVerdict]
   return (
     <div className="space-y-3">
       <div className={`border rounded p-4 ${s.bg}`}>
+        {/* 11.7x — the verdict enum used to be printed verbatim
+            (`.toUpperCase()`) next to an already-translated title. Note the
+            uppercasing is gone on purpose: JS `toUpperCase()` maps Azerbaijani
+            "i" to "I" instead of "İ". */}
         <div className={`text-lg font-bold ${s.fg}`}>
-          {s.icon} {t("result.title")} · {result.overallVerdict.toUpperCase()}
+          {s.icon} {t("result.title")} ·{" "}
+          {localizeVerdict(tShared, result.overallVerdict)}
         </div>
         <div className="text-xs text-muted-foreground mt-1">
-          {result.durationMs}ms · recompute {result.recompute.ok}✓{" "}
-          {result.recompute.unknown}? {result.recompute.failed}✗
+          {t("result.timing", {
+            ms: result.durationMs,
+            ok: result.recompute.ok,
+            unknown: result.recompute.unknown,
+            failed: result.recompute.failed,
+          })}
         </div>
       </div>
 
@@ -492,7 +563,8 @@ function ImportResultView({ result }: { result: ImportApplyResult }) {
                     <span
                       className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs ${ps.bg} ${ps.fg}`}
                     >
-                      {ps.icon} {phase.reconciliation.verdict}
+                      {ps.icon}{" "}
+                      {localizeVerdict(tShared, phase.reconciliation.verdict)}
                     </span>
                   </td>
                 </tr>

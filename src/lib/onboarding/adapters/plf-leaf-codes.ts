@@ -39,6 +39,40 @@
  * everything it already decided, and a code it REJECTS is rescued only when
  * it has no descendants and no already-imported ancestor. Nothing that is
  * imported today stops being imported.
+ *
+ * ---------------------------------------------------------------------------
+ * 2026-07-31 (11.74) — the first version of the above was WRONG, and a dry-run
+ * against the real workbook caught it before it reached the database.
+ *
+ * "Childless" is not the same as "leaf". A statement SECTION code carries the
+ * section's computed subtotal and has no children when nothing is broken out
+ * beneath it:
+ *
+ *   PLF.03  GROSS MARGIN     childless in all three PLF sheets
+ *   PLF.08  EBITDA           childless in the 2026 chart of accounts
+ *   PLF.10  NET PROFIT       childless everywhere
+ *
+ * `plfAccountType` special-cased only `PLF.10`, so rescuing by childlessness
+ * alone emitted GROSS MARGIN and EBITDA as ordinary expense lines —
+ * 34,393,596 AZN of phantom cost in `PLF Budget 2026` alone, on top of the
+ * real numbers it was already double-counting elsewhere.
+ *
+ * Worse, those two rows are POSITIVE in a sheet whose costs are negative, so
+ * they poisoned the cost-sign evidence: six business-unit blocks fell from
+ * `negative_costs` to `ambiguous`, which fails Gate A and aborts the whole
+ * import before a transaction opens. The bug's own side effect was the only
+ * thing stopping it from landing.
+ *
+ * The distinguishing property is DEPTH, and it is structural rather than
+ * cosmetic: `PLF.NN` is a section of the statement, never a posting account.
+ * Every posting account in this chart lives at `PLF.NN.NN` or deeper. So a
+ * rescue additionally requires at least two numeric segments.
+ *
+ * Why the original tests missed it: they asserted `PLF.03` and `PLF.10` were
+ * not rescued, but supplied invented children (`PLF.03.01.01`) that do not
+ * exist in the workbook. The fixture disagreed with the file sitting next to
+ * it, and the shape of the assertion hid that. The codes below are now read
+ * out of the real sheets.
  */
 
 /** The historical shape rule. Everything it accepts stays a leaf. */
@@ -58,6 +92,18 @@ function splitNamespace(code: string): { path: string; ns: string } {
   const m = code.match(/^((?:PLF|CF)(?:\.\d{2})+)\.([A-Za-z]{1,2})$/)
   return m ? { path: m[1], ns: m[2] } : { path: code, ns: "" }
 }
+
+/**
+ * A rescued code must be at least `PLF.NN.NN` deep.
+ *
+ * One numeric segment is a statement SECTION — REVENUE, GROSS MARGIN, EBITDA,
+ * NET PROFIT. Sections whose detail is broken out have children and are
+ * excluded by `hasDescendant`; sections that state only a computed subtotal
+ * have none, and depth is the only thing separating them from a real account.
+ * Applies to the namespace-stripped path, so `PLF.05.R` (path `PLF.05`) is a
+ * section too.
+ */
+const RESCUE_MIN_DEPTH_RE = /^(?:PLF|CF)(?:\.\d{2}){2,}$/
 
 /**
  * Decide leafness for every code on a sheet at once.
@@ -97,6 +143,7 @@ export function buildLeafPredicate(
       .filter(
         (p) =>
           !shapeAccepted.has(p.code) &&
+          RESCUE_MIN_DEPTH_RE.test(p.path) &&
           !hasDescendant(p) &&
           !hasImportedAncestor(p),
       )

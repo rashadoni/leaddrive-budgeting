@@ -213,9 +213,12 @@ export function CompanyStrategicContextCard({
             <span className="text-amber-300 font-mono font-bold">
               {fmtAZN(data.capexSummary.totalAzn)}
             </span>{" "}
-            · {data.capexSummary.totalItems} initiatives (
-            {data.capexSummary.capexCount} CAPEX +{" "}
-            {data.capexSummary.opexCount} OPEX)
+            ·{" "}
+            {t("strategicContext.capexBreakdown", {
+              total: data.capexSummary.totalItems,
+              capex: data.capexSummary.capexCount,
+              opex: data.capexSummary.opexCount,
+            })}
           </div>
           <div className="mt-1 space-y-0.5">
             {data.capexSummary.topByAmount.slice(0, 3).map((item, i) => (
@@ -231,7 +234,9 @@ export function CompanyStrategicContextCard({
             ))}
             {data.capexSummary.topByAmount.length > 3 && (
               <div className="text-[9px] text-gray-600 italic">
-                ... +{data.capexSummary.topByAmount.length - 3} more
+                {t("strategicContext.moreItems", {
+                  count: data.capexSummary.topByAmount.length - 3,
+                })}
               </div>
             )}
           </div>
@@ -242,9 +247,11 @@ export function CompanyStrategicContextCard({
       {data.forwardForecast && data.forwardForecast.years.length > 0 && (
         <div className="rounded border border-purple-500/20 bg-purple-500/5 px-2 py-1.5">
           <div className="text-[9px] text-purple-300/80 uppercase mb-1 flex items-baseline gap-2 flex-wrap">
-            <span>📈 Forward forecast (consolidated holding)</span>
+            <span>{t("strategicContext.forwardForecast")}</span>
             {data.forwardForecast.hasTerminalValue && (
-              <span className="text-purple-300">+ Terminal value</span>
+              <span className="text-purple-300">
+                {t("strategicContext.terminalValue")}
+              </span>
             )}
             <span className="text-gray-600 normal-case not-italic text-[8px]">
               {t("strategicContext.sourceLabel", { source: data.forwardForecast.source ?? "EDEN İcmal" })}
@@ -272,7 +279,9 @@ export function CompanyStrategicContextCard({
             ))}
             {data.forwardForecast.years.length > 5 && (
               <div className="text-[9px] text-gray-600 italic">
-                ... +{data.forwardForecast.years.length - 5} more years
+                {t("strategicContext.moreYears", {
+                  count: data.forwardForecast.years.length - 5,
+                })}
               </div>
             )}
           </div>
@@ -301,7 +310,7 @@ export function CompanyStrategicContextCard({
                 : "text-emerald-300/80"
             }`}
           >
-            <span>📑 Risk Registry (KRI)</span>
+            <span>{t("strategicContext.riskRegistry")}</span>
             {data.riskRegistry.source && (
               <span className="text-gray-600 normal-case not-italic text-[8px]">
                 {t("strategicContext.sourceLabel", { source: data.riskRegistry.source })}

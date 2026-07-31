@@ -88,7 +88,7 @@ export function ApprovalRequestsAdmin() {
       const data = (await res.json()) as { requests: ApprovalRequestRow[] }
       setRequests(data.requests)
     } catch (e: any) {
-      setError(e?.message || "Failed to load")
+      setError(e?.message || t("errLoad"))
     } finally {
       setLoading(false)
     }

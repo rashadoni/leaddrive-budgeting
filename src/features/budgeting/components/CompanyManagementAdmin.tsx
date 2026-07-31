@@ -157,6 +157,12 @@ async function patchCompany(
 
 export function CompanyManagementAdmin() {
   const t = useTranslations("adminCompanies")
+  // The 14 industry codes already have a translated label in the shared
+  // `industries` namespace — reuse it instead of the English literals in
+  // INDUSTRY_OPTIONS (kept as the code list / validation mirror).
+  const tIndustries = useTranslations("industries")
+  const industryLabel = (code: string): string =>
+    INDUSTRY_OPTIONS.some((o) => o.value === code) ? tIndustries(code) : code
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId ?? ""
   const canEdit = session?.user?.role === "admin"
@@ -223,7 +229,7 @@ export function CompanyManagementAdmin() {
           ...prev,
           [id]: {
             kind: "error",
-            message: err instanceof Error ? err.message : "Save failed",
+            message: err instanceof Error ? err.message : t("saveFailed"),
           },
         }))
       }
@@ -304,14 +310,14 @@ export function CompanyManagementAdmin() {
                               <option value="" className="bg-background text-foreground">—</option>
                               {INDUSTRY_OPTIONS.map((o) => (
                                 <option key={o.value} value={o.value} className="bg-background text-foreground">
-                                  {o.label}
+                                  {tIndustries(o.value)}
                                 </option>
                               ))}
                             </select>
                           ) : (
                             c.industry ? (
                               <Badge variant="outline" className="text-[10px]">
-                                {c.industry}
+                                {industryLabel(c.industry)}
                               </Badge>
                             ) : (
                               <span className="text-muted-foreground">—</span>
@@ -408,7 +414,7 @@ export function CompanyManagementAdmin() {
       )}
 
       {!isLoading && rows.length === 0 && !fetchError && (
-        <p className="text-sm text-muted-foreground">No companies found.</p>
+        <p className="text-sm text-muted-foreground">{t("noCompaniesFound")}</p>
       )}
     </section>
   )

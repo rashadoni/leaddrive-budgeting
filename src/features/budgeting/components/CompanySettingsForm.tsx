@@ -8,6 +8,7 @@
  * back.
  */
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -175,6 +176,7 @@ function SelectField({
   label,
   options,
 }: FieldProps & { field: string; label: string; options: readonly string[] }) {
+  const t = useTranslations("budgeting")
   const value = draft[field] ?? ""
   return (
     <div className="space-y-1">
@@ -191,7 +193,7 @@ function SelectField({
         }}
         disabled={!canEdit}
       >
-        <option value="">— select —</option>
+        <option value="">{t("companySettingsSelectPlaceholder")}</option>
         {options.map((o) => (
           <option key={o} value={o}>
             {o}
@@ -309,12 +311,13 @@ function FoodProcessingSettingsFields({ draft, setDraft, canEdit }: FieldProps) 
 }
 
 function GenericSettingsFields({ draft, setDraft, canEdit }: FieldProps) {
+  const t = useTranslations("budgeting")
   // Free-form JSON for industries without a hardened schema. Visible
   // but capped — the API rejects > 32 keys / nested objects.
   const text = JSON.stringify(draft, null, 2)
   return (
     <div className="space-y-1">
-      <Label htmlFor="generic-json">Настройки JSON (свободная форма)</Label>
+      <Label htmlFor="generic-json">{t("companySettingsGenericJsonLabel")}</Label>
       <textarea
         id="generic-json"
         className="w-full font-mono text-xs rounded border bg-background p-2 min-h-[160px]"

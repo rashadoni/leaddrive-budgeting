@@ -23,6 +23,10 @@ interface SourceProseI18n {
 
 export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
   "cbar-official-fx": {
+    displayName: {
+      en: "CBAR Official FX",
+      az: "CBAR · rəsmi valyuta məzənnələri",
+    },
     whatItIs: {
       en: "Official daily AZN exchange rates against 6 currencies (USD, EUR, RUB, TRY, GBP, CNY), published by the CBAR at cbar.az.",
       az: "CBAR tərəfindən cbar.az saytında dərc olunan, 6 valyutaya (USD, EUR, RUB, TRY, GBP, CNY) qarşı rəsmi gündəlik AZN məzənnələri.",
@@ -38,6 +42,10 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
     cadence: { en: "daily (business days)", az: "gündəlik (iş günləri)" },
   },
   "eia-energy": {
+    displayName: {
+      en: "US EIA Energy",
+      az: "ABŞ EIA · neft və təbii qaz",
+    },
     whatItIs: {
       en: "Benchmark world prices: Brent (crude, ICE), WTI (crude, NYMEX), Henry Hub (natural gas, NYMEX). A U.S. government agency — the most authoritative official price in the world.",
       az: "Bençmark dünya qiymətləri: Brent (xam neft, ICE), WTI (xam neft, NYMEX), Henry Hub (təbii qaz, NYMEX). ABŞ dövlət qurumu — dünyada ən nüfuzlu rəsmi qiymət.",
@@ -53,6 +61,10 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
     cadence: { en: "monthly (some series weekly)", az: "aylıq (bəzi seriyalar həftəlik)" },
   },
   "fao-food-prices": {
+    displayName: {
+      en: "FAO Food Price Index",
+      az: "FAO · BMT Ərzaq Qiymət İndeksi",
+    },
     whatItIs: {
       en: "Monthly index of world food prices, split into 5 categories: meat, dairy, cereals, vegetable oils, sugar. Base 2014-2016=100.",
       az: "Dünya ərzaq qiymətlərinin aylıq indeksi, 5 kateqoriyaya bölünür: ət, süd, taxıl, bitki yağları, şəkər. Baza 2014-2016=100.",
@@ -68,6 +80,10 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
     cadence: { en: "monthly (first Friday)", az: "aylıq (ilk cümə)" },
   },
   "yahoo-grains": {
+    displayName: {
+      en: "Yahoo Finance Grains",
+      az: "Yahoo Finance · taxıl və pambıq fyuçersləri",
+    },
     whatItIs: {
       en: "Front-month futures for 5 crops: corn (ZC), wheat (ZW), soybeans (ZS), oats (ZO, a barley proxy), cotton (CT). Converted to USD/tonne.",
       az: "5 bitki üzrə cari-ay fyuçersləri: qarğıdalı (ZC), buğda (ZW), soya (ZS), yulaf (ZO, arpa proksisi), pambıq (CT). USD/tona çevrilir.",
@@ -83,6 +99,10 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
     cadence: { en: "monthly (daily also available when needed)", az: "aylıq (lazım olduqda gündəlik də mümkündür)" },
   },
   "yahoo-metals": {
+    displayName: {
+      en: "Yahoo Finance Metals + Lumber",
+      az: "Yahoo Finance · birja metalları və oduncaq",
+    },
     whatItIs: {
       en: "Front-month futures: copper HG (electrical, wiring), aluminum ALI (packaging), steel HRC (construction, metalwork), lumber LBR (construction). Converted to USD/tonne.",
       az: "Cari-ay fyuçersləri: mis HG (elektrik, naqil), alüminium ALI (qablaşdırma), polad HRC (tikinti, metal işləri), oduncaq LBR (tikinti). USD/tona çevrilir.",
@@ -98,6 +118,10 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
     cadence: { en: "monthly", az: "aylıq" },
   },
   "yahoo-fuel-bdi": {
+    displayName: {
+      en: "Yahoo Fuel + Baltic Dry Index",
+      az: "Yahoo · yanacaq və dəniz fraxtı (Baltic Dry)",
+    },
     whatItIs: {
       en: "Diesel (HO, ULSD), gasoline (RB, RBOB), and the BDRY maritime-freight index (tracks the Baltic Dry Index via 3-month rolling Capesize/Panamax/Supramax futures).",
       az: "Dizel (HO, ULSD), benzin (RB, RBOB) və BDRY dəniz-fraxt indeksi (3 aylıq rolling Capesize/Panamax/Supramax fyuçersləri ilə Baltic Dry Index-i izləyir).",
@@ -113,6 +137,10 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
     cadence: { en: "monthly", az: "aylıq" },
   },
   "openmeteo-forecast": {
+    displayName: {
+      en: "Open-Meteo 14-Day Forecast",
+      az: "Open-Meteo · 14 günlük hava proqnozu",
+    },
     whatItIs: {
       en: "14-day forecast: daily rainfall (mm), average and maximum temperature for 8 Azerbaijani regions (Salyan, Imishli, Sabirabad, Yevlakh, Shamkir, Fizuli, Aghjabadi, Beylagan).",
       az: "14 günlük proqnoz: 8 Azərbaycan rayonu (Salyan, İmişli, Sabirabad, Yevlax, Şəmkir, Füzuli, Ağcabədi, Beyləqan) üçün gündəlik yağıntı (mm), orta və maksimum temperatur.",
@@ -128,6 +156,10 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
     cadence: { en: "daily", az: "gündəlik" },
   },
   "az-stat-cpi": {
+    displayName: {
+      en: "AZ State Statistics CPI",
+      az: "AZ Dövlət Statistika Komitəsi · istehlak qiymətləri indeksi",
+    },
     whatItIs: {
       en: "Monthly consumer price index (base 2010=100) split into 4 categories: all items, food + beverages + tobacco, non-food, paid services. Downloaded as XLSX from stat.gov.az.",
       az: "Aylıq istehlak qiymətləri indeksi (baza 2010=100), 4 kateqoriyaya bölünür: bütün mallar, ərzaq + içki + tütün, qeyri-ərzaq, ödənişli xidmətlər. stat.gov.az-dan XLSX kimi yüklənir.",
@@ -143,6 +175,10 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
     cadence: { en: "monthly (~14th of the following month)", az: "aylıq (növbəti ayın ~14-də)" },
   },
   "un-comtrade-az": {
+    displayName: {
+      en: "UN Comtrade — Azerbaijan",
+      az: "UN Comtrade · Azərbaycanın ixracı və idxalı",
+    },
     whatItIs: {
       en: "Annual official statistics of Azerbaijan's merchandise exports/imports. The source for the trade balance, which the UN aggregates from the country's state statistics.",
       az: "Azərbaycanın əmtəə ixrac/idxalının illik rəsmi statistikası. BMT-nin ölkə dövlət statistikasından topladığı ticarət balansının mənbəyi.",
@@ -158,6 +194,10 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
     cadence: { en: "annual (2-3 quarter lag)", az: "illik (2-3 rüb gecikmə)" },
   },
   "wb-indicators": {
+    displayName: {
+      en: "World Bank Indicators",
+      az: "Dünya Bankı · Azərbaycan üzrə turizm və təhsil",
+    },
     whatItIs: {
       en: "Annual AZ macro indicators from the World Bank database: international tourism (arrivals + spending + receipts), education (secondary-school enrollment, government spending, % of population aged 0-14).",
       az: "Dünya Bankı bazasından illik AZ makro göstəriciləri: beynəlxalq turizm (gəlişlər + xərclər + gəlirlər), təhsil (orta məktəbə qəbul, dövlət xərcləri, 0-14 yaş əhalinin %-i).",
@@ -173,6 +213,10 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
     cadence: { en: "annual (1-2 year lag)", az: "illik (1-2 il gecikmə)" },
   },
   "usda-nass": {
+    displayName: {
+      en: "USDA NASS Quick Stats",
+      az: "USDA · ABŞ quşçuluğunun topdansatış qiymətləri",
+    },
     whatItIs: {
       en: "Monthly/weekly wholesale prices: broilers ($/lb), eggs ($/doz), chick placements. The U.S. is the global benchmark; local AZ prices lag by 4-6 weeks.",
       az: "Aylıq/həftəlik topdan qiymətlər: broyler ($/lb), yumurta ($/düjün), cücə yerləşdirmələri. ABŞ qlobal bençmarkdır; yerli AZ qiymətləri 4-6 həftə gecikir.",
@@ -188,6 +232,10 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
     cadence: { en: "monthly + some series weekly", az: "aylıq + bəzi seriyalar həftəlik" },
   },
   "google-trends-az": {
+    displayName: {
+      en: "Google Trends Azerbaijan (via Scrapingdog proxy)",
+      az: "Google Trends · Azərbaycanda axtarış tələbi",
+    },
     whatItIs: {
       en: "Normalized 0-100 search-interest index across 4 categories: food (yemək/grocery), apparel (moda/fashion), electronics (iPhone/electronics), tourism (tour/travel) — geo:AZ.",
       az: "4 kateqoriya üzrə normallaşdırılmış 0-100 axtarış-maraq indeksi: ərzaq (yemək/grocery), geyim (moda/fashion), elektronika (iPhone/electronics), turizm (tur/travel) — geo:AZ.",

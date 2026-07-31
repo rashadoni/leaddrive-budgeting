@@ -685,12 +685,31 @@ export function getEsgDisclosureRule(
  * required state. Anomaly check is opt-in: caller passes
  * `historicalMean` if available; absence = no anomaly check.
  */
+/**
+ * A validator message in translatable form: a stable key plus its ICU
+ * params. The validators run server-side (API routes, xlsx import) where
+ * there is no UI locale, so they keep emitting the English sentence AND
+ * this structured twin; the client renders the translation and falls back
+ * to the English sentence when a key has no catalogue entry.
+ */
+export interface ValidationMessage {
+  /** Key suffix under `adminIndicatorHealth.validation.*`. */
+  key: string;
+  params?: Record<string, string | number>;
+}
+
 export interface ValidationResult {
   ok: boolean;
+  /** English sentences — logs, import reports, non-localized callers. */
   errors: string[];
   warnings: string[];
   /** Set when |value − historicalMean| / historicalMean > anomalyDeltaPct. */
   anomalyWarning: string | null;
+  /** Translatable twins of `errors` / `warnings` / `anomalyWarning`,
+   *  index-aligned with the string arrays. */
+  errorMessages: ValidationMessage[];
+  warningMessages: ValidationMessage[];
+  anomalyMessage: ValidationMessage | null;
 }
 
 /**
@@ -708,26 +727,40 @@ export function validateValue(
 ): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const errorMessages: ValidationMessage[] = [];
+  const warningMessages: ValidationMessage[] = [];
   let anomalyWarning: string | null = null;
+  let anomalyMessage: ValidationMessage | null = null;
 
   if (!Number.isFinite(value)) {
     errors.push("Value must be a finite number.");
+    errorMessages.push({ key: "notFinite" });
   } else {
     if (value < rule.min) {
       errors.push(`Value ${value} is below the minimum (${rule.min}).`);
+      errorMessages.push({ key: "belowMin", params: { value, min: rule.min } });
     }
     if (value > rule.max) {
       errors.push(`Value ${value} is above the maximum (${rule.max}).`);
+      errorMessages.push({ key: "aboveMax", params: { value, max: rule.max } });
     }
     if (rule.warnMin != null && value < rule.warnMin && value >= rule.min) {
       warnings.push(
         `Value ${value} is unusually low (typical floor: ${rule.warnMin}).`,
       );
+      warningMessages.push({
+        key: "unusuallyLow",
+        params: { value, warnMin: rule.warnMin },
+      });
     }
     if (rule.warnMax != null && value > rule.warnMax && value <= rule.max) {
       warnings.push(
         `Value ${value} is unusually high (typical ceiling: ${rule.warnMax}).`,
       );
+      warningMessages.push({
+        key: "unusuallyHigh",
+        params: { value, warnMax: rule.warnMax },
+      });
     }
   }
 
@@ -735,6 +768,10 @@ export function validateValue(
     errors.push(
       `Unit "${unit}" does not match expected unit "${rule.unit}".`,
     );
+    errorMessages.push({
+      key: "unitMismatch",
+      params: { unit, expected: rule.unit },
+    });
   }
 
   if (
@@ -747,6 +784,15 @@ export function validateValue(
       (Math.abs(value - historicalMean) / Math.abs(historicalMean)) * 100;
     if (deltaPct > rule.anomalyDeltaPct) {
       anomalyWarning = `Value ${value} deviates ${deltaPct.toFixed(0)}% from this company's historical mean ${historicalMean.toFixed(2)} (anomaly threshold: ${rule.anomalyDeltaPct}%). Double-check before saving.`;
+      anomalyMessage = {
+        key: "anomaly",
+        params: {
+          value,
+          pct: deltaPct.toFixed(0),
+          mean: historicalMean.toFixed(2),
+          threshold: rule.anomalyDeltaPct,
+        },
+      };
     }
   }
 
@@ -755,6 +801,9 @@ export function validateValue(
     errors,
     warnings,
     anomalyWarning,
+    errorMessages,
+    warningMessages,
+    anomalyMessage,
   };
 }
 

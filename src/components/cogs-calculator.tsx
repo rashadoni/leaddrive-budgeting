@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
@@ -16,7 +17,6 @@ import { BudgetStackTooltip } from "@/components/budget-stack-tooltip"
 import { ProductPerformanceComparison } from "@/components/product-performance-comparison"
 import type { ProductVarianceInputLine } from "@/lib/budgeting/product-variance"
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const COLORS = ["#ef4444", "#f97316", "#eab308", "#84cc16", "#06b6d4", "#8b5cf6"]
 
 function fmtNum(n: number): string {
@@ -75,6 +75,8 @@ interface CogsResponse {
 type MonthlyDataRow = { month: string; Total: number } & Record<string, number | string>
 
 export function COGSCalculator({ planId }: { planId: string }) {
+  const t = useTranslations("budgeting")
+  const MONTHS = t("monthsShort").split(",")
   const { data: session } = useSession()
   const router = useRouter()
   const orgId = session?.user?.organizationId
@@ -121,16 +123,15 @@ export function COGSCalculator({ planId }: { planId: string }) {
       <Card>
         <CardContent className="p-12 text-center">
           <Factory className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium text-foreground">No COGS data in this plan</p>
+          <p className="font-medium text-foreground">{t("cogsEmptyTitle")}</p>
           <p className="text-sm mt-1 text-muted-foreground">
-            The selected plan exists, but it does not contain product-level cost of goods sold rows yet.
-            Creating a plan only creates an empty container.
+            {t("cogsEmptyDescription")}
           </p>
           <Button
             className="mt-5"
             onClick={() => router.push("/budgeting/admin/ai-import")}
           >
-            <Upload className="h-4 w-4 mr-1" /> Import Excel data
+            <Upload className="h-4 w-4 mr-1" /> {t("balanceSheetImport")}
           </Button>
         </CardContent>
       </Card>
@@ -238,18 +239,18 @@ export function COGSCalculator({ planId }: { planId: string }) {
     <div className="space-y-4">
       {fromBudgetLines && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300">
-          Showing imported P&L COGS rows because the dedicated COGS product table is empty.
+          {t("cogsFallbackBanner")}
         </div>
       )}
       <ProductPerformanceComparison
-        title="Actual vs Budget COGS"
-        description="Monthly cost execution and product cost drivers behind the variance."
+        title={t("cogsComparisonTitle")}
+        description={t("cogsComparisonSubtitle")}
         budgetLines={comparisonBudgetLines}
         actualLines={comparisonActualLines}
         missingData={data?.comparison?.missingData}
-        amountLabel="COGS"
-        rateVarianceLabel="Unit-cost variance"
-        volumeVarianceLabel="Volume variance"
+        amountLabel={t("cogs")}
+        rateVarianceLabel={t("unitCostVarianceLabel")}
+        volumeVarianceLabel={t("volumeVarianceLabel")}
         favorable="down"
       />
       {/* KPI Strip — Power BI dark scorecards */}
@@ -257,40 +258,40 @@ export function COGSCalculator({ planId }: { planId: string }) {
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 dark:from-cyan-950/30 dark:to-cyan-900/20 dark:border-cyan-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-cyan-200 dark:bg-cyan-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-cyan-600 dark:text-cyan-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <TrendingDown className="h-3.5 w-3.5" /> Total COGS
+            <TrendingDown className="h-3.5 w-3.5" /> {t("cogsKpiTotal")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-cyan-700 dark:text-cyan-300">{fmtNum(totalCost)} <span className="text-sm font-normal text-muted-foreground">AZN</span></p>
-          <p className="text-[10px] text-muted-foreground mt-1">Annual cost budget</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{t("cogsKpiTotalHint")}</p>
         </div>
 
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 dark:from-blue-950/30 dark:to-blue-900/20 dark:border-blue-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-blue-200 dark:bg-blue-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <Percent className="h-3.5 w-3.5" /> Avg Monthly
+            <Percent className="h-3.5 w-3.5" /> {t("forecastAvgMonthly")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-blue-700 dark:text-blue-300">{fmtNum(avgMonthlyCogs)} <span className="text-sm font-normal text-muted-foreground">AZN</span></p>
-          <p className="text-[10px] text-muted-foreground mt-1">{monthsWithCost} months with costs</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{t("cogsKpiMonthsWithCosts", { count: monthsWithCost })}</p>
         </div>
 
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 dark:from-orange-950/30 dark:to-orange-900/20 dark:border-orange-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-orange-200 dark:bg-orange-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <Factory className="h-3.5 w-3.5" /> Top Cost Driver
+            <Factory className="h-3.5 w-3.5" /> {t("cogsKpiTopDriver")}
           </div>
           <p className="text-lg font-bold tracking-tight truncate text-orange-700 dark:text-orange-300">{topProduct?.name || "—"}</p>
           <div className="flex items-center gap-1 mt-1">
             <span className="text-[10px] text-orange-600 dark:text-orange-400 font-medium">{topProduct ? ((topProduct.totalCost / totalCost) * 100).toFixed(0) + "%" : ""}</span>
-            <span className="text-[10px] text-muted-foreground">of total COGS</span>
+            <span className="text-[10px] text-muted-foreground">{t("cogsKpiOfTotal")}</span>
           </div>
         </div>
 
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-violet-50 to-violet-100 border border-violet-200 dark:from-violet-950/30 dark:to-violet-900/20 dark:border-violet-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200 dark:bg-violet-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-violet-600 dark:text-violet-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <Package className="h-3.5 w-3.5" /> Product Lines
+            <Package className="h-3.5 w-3.5" /> {t("cogsKpiProductLines")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-violet-700 dark:text-violet-300">{productList.length}</p>
-          <p className="text-[10px] text-muted-foreground mt-1">With COGS data</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{t("cogsKpiWithCogsData")}</p>
         </div>
       </div>
 
@@ -298,7 +299,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* Stacked Bar with Total trend */}
         <div className="lg:col-span-3 rounded-xl border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Monthly COGS by Product</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-3">{t("cogsChartMonthlyByProduct")}</h3>
           <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={0}>
             <ComposedChart data={monthlyData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -315,7 +316,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
 
         {/* Donut Chart */}
         <div className="lg:col-span-2 rounded-xl border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Cost Breakdown</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-3">{t("cogsChartBreakdown")}</h3>
           <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={0}>
             <PieChart>
               <Pie data={donutData} cx="50%" cy="50%" outerRadius={75} innerRadius={45} paddingAngle={2} dataKey="value" stroke="none">
@@ -343,7 +344,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
 
       {/* COGS Trend Area Chart */}
       <div className="rounded-xl border bg-card p-4">
-        <h3 className="text-sm font-semibold text-foreground mb-3">COGS Trend</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">{t("cogsChartTrend")}</h3>
         <ResponsiveContainer width="100%" height={180} minWidth={0} minHeight={0}>
           <AreaChart data={trendData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -357,7 +358,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
 
       {/* Product Ranking */}
       <div className="rounded-xl border bg-card p-4">
-        <h3 className="text-sm font-semibold text-foreground mb-3">Cost Ranking</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">{t("cogsRankingTitle")}</h3>
         <div className="space-y-2">
           {productRanking.map((p, i) => {
             const pct = totalCost > 0 ? (p.totalCost / totalCost) * 100 : 0
@@ -388,8 +389,8 @@ export function COGSCalculator({ planId }: { planId: string }) {
       {/* Collapsible Product Details */}
       <div className="rounded-xl border bg-card">
         <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="text-sm font-semibold text-foreground">Product Details</h3>
-          <Badge variant="outline" className="text-[10px]">{productList.length} products</Badge>
+          <h3 className="text-sm font-semibold text-foreground">{t("productDetailsTitle")}</h3>
+          <Badge variant="outline" className="text-[10px]">{t("productsCountBadge", { count: productList.length })}</Badge>
         </div>
 
         {productRanking.map((product) => {
@@ -407,20 +408,20 @@ export function COGSCalculator({ planId }: { planId: string }) {
                 {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
                 <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: product.color }} />
                 <span className="text-xs font-semibold text-foreground">{product.name}</span>
-                <span className="text-[10px] text-muted-foreground">{pct}% share</span>
+                <span className="text-[10px] text-muted-foreground">{t("productShareLabel", { pct })}</span>
                 <div className="ml-auto flex items-center gap-4">
                   {product.totalQty > 0 && (
                     <div className="text-right">
-                      <span className="text-[10px] text-muted-foreground block">Production</span>
+                      <span className="text-[10px] text-muted-foreground block">{t("cogsProduction")}</span>
                       <span className="text-xs font-semibold tabular-nums">{fmtNum(product.totalQty)}</span>
                     </div>
                   )}
                   <div className="text-right">
-                    <span className="text-[10px] text-muted-foreground block">Avg/Month</span>
+                    <span className="text-[10px] text-muted-foreground block">{t("colAvgPerMonth")}</span>
                     <span className="text-xs font-semibold tabular-nums">{fmtNum(product.avgMonthlyCost)}</span>
                   </div>
                   <div className="text-right min-w-[80px]">
-                    <span className="text-[10px] text-muted-foreground block">Total Cost</span>
+                    <span className="text-[10px] text-muted-foreground block">{t("cogsTotalCost")}</span>
                     <span className="text-xs font-bold tabular-nums" style={{ color: product.color }}>{fmtNum(product.totalCost)} AZN</span>
                   </div>
                 </div>
@@ -437,18 +438,18 @@ export function COGSCalculator({ planId }: { planId: string }) {
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="bg-muted/30">
-                              <th className="px-3 py-2 text-left font-semibold w-64">Metric</th>
+                              <th className="px-3 py-2 text-left font-semibold w-64">{t("colMetric")}</th>
                               {MONTHS.map(m => (
                                 <th key={m} className="px-2 py-2 text-right font-semibold">{m}</th>
                               ))}
-                              <th className="px-3 py-2 text-right font-bold bg-muted/50">Total</th>
+                              <th className="px-3 py-2 text-right font-bold bg-muted/50">{t("totalLabel")}</th>
                             </tr>
                           </thead>
                     <tbody>
                       {product.totalQty > 0 && (
                         <>
                           <tr className="border-b">
-                            <td className="px-3 py-1.5 font-medium">Qty</td>
+                            <td className="px-3 py-1.5 font-medium">{t("quantityLabel")}</td>
                             {MONTHS.map((_, i) => (
                               <td key={i} className="px-2 py-1.5 text-right tabular-nums">
                                 {product.months[i + 1]?.qty ? fmtNum(product.months[i + 1].qty) : "—"}
@@ -457,7 +458,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
                             <td className="px-3 py-1.5 text-right font-bold bg-muted/50 tabular-nums">{fmtNum(product.totalQty)}</td>
                           </tr>
                           <tr className="border-b">
-                            <td className="px-3 py-1.5 font-medium text-muted-foreground">Unit Cost</td>
+                            <td className="px-3 py-1.5 font-medium text-muted-foreground">{t("cogsUnitCost")}</td>
                             {MONTHS.map((_, i) => {
                               const m = product.months[i + 1]
                               const unitCost = m && m.qty > 0 ? m.cost / m.qty : 0
@@ -474,7 +475,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
                         </>
                       )}
                       <tr className="bg-red-50/50 dark:bg-red-950/20 font-semibold">
-                        <td className="px-3 py-1.5">Cost</td>
+                        <td className="px-3 py-1.5">{t("cogsCostRow")}</td>
                         {MONTHS.map((_, i) => (
                           <td key={i} className="px-2 py-1.5 text-right text-red-700 dark:text-red-400 tabular-nums">
                             {product.months[i + 1]?.cost ? fmtNum(product.months[i + 1].cost) : "—"}
@@ -486,12 +487,12 @@ export function COGSCalculator({ planId }: { planId: string }) {
                   </table>
                   {stageList.length > 0 && (
                     <div className="border-t bg-muted/10">
-                      <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Cost Breakdown — Formation Detail</div>
+                      <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{t("cogsFormationTitle")}</div>
                       {stageList.map(([stageKey, stage]) => (
                         <div key={stageKey} className="border-t">
                           {stageKey !== "_default" && (
                             <div className="px-4 py-1.5 bg-amber-50/50 dark:bg-amber-950/20 text-xs font-semibold text-amber-800 dark:text-amber-300">
-                              Stage: {stageKey}
+                              {t("cogsStageLabel", { stage: stageKey })}
                             </div>
                           )}
                           <table className="w-full text-[11px]">
@@ -499,7 +500,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
                               {stage.raw.length > 0 && (
                                 <>
                                   <tr className="bg-emerald-50/40 dark:bg-emerald-950/10">
-                                    <td colSpan={14} className="px-4 py-1 text-[10px] font-semibold uppercase text-emerald-700 dark:text-emerald-400">Xammal (Raw materials)</td>
+                                    <td colSpan={14} className="px-4 py-1 text-[10px] font-semibold uppercase text-emerald-700 dark:text-emerald-400">{t("cogsRawMaterials")}</td>
                                   </tr>
                                   {stage.raw.map((line, idx) => (
                                     <tr key={`raw-${idx}`} className="border-b hover:bg-muted/20">
@@ -525,7 +526,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
                               {stage.indirect.length > 0 && (
                                 <>
                                   <tr className="bg-blue-50/40 dark:bg-blue-950/10">
-                                    <td colSpan={14} className="px-4 py-1 text-[10px] font-semibold uppercase text-blue-700 dark:text-blue-400">Qeyri-xammal (Indirect / overhead)</td>
+                                    <td colSpan={14} className="px-4 py-1 text-[10px] font-semibold uppercase text-blue-700 dark:text-blue-400">{t("cogsIndirectCosts")}</td>
                                   </tr>
                                   {stage.indirect.map((line, idx) => (
                                     <tr key={`ind-${idx}`} className="border-b hover:bg-muted/20">
@@ -550,7 +551,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
                               )}
                               {stage.production && (
                                 <tr className="bg-slate-50 dark:bg-slate-900/40 font-medium border-b">
-                                  <td className="px-4 py-1">Production (İstehsal)</td>
+                                  <td className="px-4 py-1">{t("cogsProduction")}</td>
                                   {MONTHS.map((_, i) => (
                                     <td key={i} className="px-2 py-1 text-right tabular-nums">
                                       {stage.production!.months[i + 1] ? fmtNum(stage.production!.months[i + 1]) : "—"}
@@ -561,7 +562,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
                               )}
                               {stage.unitCost && (
                                 <tr className="bg-red-50/60 dark:bg-red-950/30 font-semibold border-b text-red-800 dark:text-red-300">
-                                  <td className="px-4 py-1">Vahid maya dəyəri (Unit Cost)</td>
+                                  <td className="px-4 py-1">{t("cogsUnitCost")}</td>
                                   {MONTHS.map((_, i) => (
                                     <td key={i} className="px-2 py-1 text-right tabular-nums">
                                       {stage.unitCost!.months[i + 1] ? stage.unitCost!.months[i + 1].toFixed(2) : "—"}

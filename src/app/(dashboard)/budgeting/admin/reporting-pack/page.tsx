@@ -28,7 +28,7 @@ export default async function ReportingPackPage() {
     <div className="container mx-auto py-8 px-4 max-w-4xl">
       <div className="mb-6">
         <div className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-primary/10 text-primary text-xs font-medium mb-2">
-          Reporting Pack
+          {t("pill")}
         </div>
         <h1 className="text-2xl font-bold mb-2">{t("title")}</h1>
         <p className="text-sm text-muted-foreground leading-relaxed">

@@ -503,6 +503,29 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'strategicContext.loadError': 'Load error: {error}',
   'strategicContext.riskPending':
     "⚠️ Pending client verification — the KRI registry hasn't been provided by the company's finance team yet. Risk indicators will show «unknown» until the xlsx is uploaded.",
+  // Phase 11.7x — the CAPEX/forecast summaries moved from JSX literals to t().
+  'strategicContext.capexBreakdown': '{total} initiatives ({capex} CAPEX + {opex} OPEX)',
+  'strategicContext.terminalValue': '+ Terminal value',
+
+  // Phase 11.7x — CommandBar IND partial notice + IntelFeedPanel refresh notice
+  // moved from JSX literals to t(); their tests assert the phrasing verbatim.
+  'commandBar.indPartial':
+    'IND partial — no IndicatorValue found for "{code}" in current period (cell may be missing or indicator not seeded)',
+  'intelFeedPanel.refreshCreated': '{count} new',
+  'intelFeedPanel.refreshSkipped': '{count} skipped',
+  'intelFeedPanel.refreshFetched': '{count} hits in {ms}ms',
+  'intelFeedPanel.refreshErrors': '⚠ {count} errors',
+  'commodityTicker.vsMean12m': '{delta}% vs 12M mean',
+
+  // Phase 11.7x — budgeting keys whose components moved from JSX literals to
+  // t() and whose tests assert the rendered phrase. Mirrors messages/en.json
+  // budgeting.*. `monthsShort` is split on "," by every sparkline call site,
+  // so the mock must return the real 12-item list, not the camelCase shout.
+  'monthsShort': 'Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec',
+  'colPlan': 'Plan',
+  'colActual': 'Actual',
+  'drillPanelAria': 'Detail for {account}',
+  'drillNoActualsYet': 'No actuals yet',
 
   // SignalsStrip signal labels/details (terminal.signals.*) — the signals route
   // localizes server-side via getTranslations, mocked here. Mirrors messages/en.json
@@ -560,8 +583,25 @@ function makeMockT() {
   return t;
 }
 
+/**
+ * Phase 11.7x — the translator MUST be referentially stable across renders.
+ *
+ * Real `useTranslations` memoizes its translator (`use-intl`
+ * `useTranslationsImpl` wraps `createBaseTranslator` in `useMemo`), so
+ * components legitimately list `t` in `useEffect` / `useCallback` dependency
+ * arrays. Returning a fresh `makeMockT()` per call broke that contract: every
+ * render produced a new identity, effects that depend on `t` re-fired, and any
+ * effect that also sets state looped until React threw "Maximum update depth
+ * exceeded" (IndicatorDetail, IntelFeedPanel, LayoutMenu).
+ *
+ * The mock resolves labels from a namespace-agnostic map, so one shared
+ * instance is equivalent to one-per-namespace — and it restores the stability
+ * guarantee the components are written against.
+ */
+const sharedMockT = makeMockT();
+
 vi.mock('next-intl', () => ({
-  useTranslations: (_namespace?: string) => makeMockT(),
+  useTranslations: (_namespace?: string) => sharedMockT,
   useLocale: () => 'en',
   NextIntlClientProvider: ({ children }: { children: React.ReactNode }) => children,
   useMessages: () => ({}),
@@ -579,7 +619,7 @@ vi.mock('next-intl', () => ({
 // duplicate of these keys, creating a drift surface. Centralizing the
 // server mock here kills the drift class entirely.
 vi.mock('next-intl/server', () => ({
-  getTranslations: async (_namespace?: string) => makeMockT(),
+  getTranslations: async (_namespace?: string) => sharedMockT,
   getLocale: async () => 'en',
   getMessages: async () => ({}),
   getFormatter: async () => ({

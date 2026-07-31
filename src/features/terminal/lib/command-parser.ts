@@ -153,8 +153,22 @@ export type ParseError = {
     | "unexpected_target"
     | "cmp_requires_two_targets"
     | "too_many_tokens"
-  /** Human-readable hint shown in the command bar inline. */
+  /**
+   * Human-readable hint, English. Kept as the last-resort fallback for
+   * non-React callers (and for tests, which assert on it) — the UI should
+   * prefer `i18nKey`.
+   */
   reason: string
+  /**
+   * 2026-07-31 i18n sweep — catalogue key for `reason`, relative to the
+   * `terminal` namespace. The parser is a pure lib (no hooks), so it emits
+   * the key + its ICU variables and CommandBar resolves them through
+   * `useTranslations`. Without this the command bar answered every typo in
+   * English on an Azerbaijani page.
+   */
+  i18nKey: string
+  /** ICU variables for `i18nKey`. */
+  i18nVars?: Record<string, string | number>
 }
 
 export type ParseResult =
@@ -176,7 +190,14 @@ function tokenize(input: string): string[] {
 export function parseCommand(rawInput: string): ParseResult {
   const tokens = tokenize(rawInput)
   if (tokens.length === 0) {
-    return { ok: false, error: { code: "empty", reason: "Type a command" } }
+    return {
+      ok: false,
+      error: {
+        code: "empty",
+        reason: "Type a command",
+        i18nKey: "commandBar.errors.empty",
+      },
+    }
   }
 
   // GO terminator must be present and last. Without GO the user is still
@@ -187,6 +208,7 @@ export function parseCommand(rawInput: string): ParseResult {
       error: {
         code: "missing_go",
         reason: "Commands end with `GO` (Bloomberg convention).",
+        i18nKey: "commandBar.errors.missingGo",
       },
     }
   }
@@ -199,6 +221,7 @@ export function parseCommand(rawInput: string): ParseResult {
       error: {
         code: "missing_go",
         reason: "Type a function before GO. Try `HOLD GO` or `HEAT CO GO`.",
+        i18nKey: "commandBar.errors.missingFunction",
       },
     }
   }
@@ -223,6 +246,8 @@ export function parseCommand(rawInput: string): ParseResult {
       error: {
         code: "unknown_function",
         reason: `Unknown function "${fn}". Available: ${FUNCTION_CODES.join(", ")}.`,
+        i18nKey: "commandBar.errors.unknownFunction",
+        i18nVars: { fn, list: FUNCTION_CODES.join(", ") },
       },
     }
   }
@@ -239,6 +264,8 @@ export function parseCommand(rawInput: string): ParseResult {
       error: {
         code: "unexpected_target",
         reason: `${fn} doesn't take a target. Type \`${fn} GO\`.`,
+        i18nKey: "commandBar.errors.unexpectedTarget",
+        i18nVars: { fn },
       },
     }
   }
@@ -248,6 +275,8 @@ export function parseCommand(rawInput: string): ParseResult {
       error: {
         code: "missing_target",
         reason: `${fn} needs a target before the verb. Example: \`AAC ${fn} GO\`.`,
+        i18nKey: "commandBar.errors.missingTarget",
+        i18nVars: { fn },
       },
     }
   }
@@ -257,6 +286,8 @@ export function parseCommand(rawInput: string): ParseResult {
       error: {
         code: "cmp_requires_two_targets",
         reason: `CMP compares exactly two targets. Got ${targets.length}: \`${targets.join(", ")}\`.`,
+        i18nKey: "commandBar.errors.cmpTwoTargets",
+        i18nVars: { count: targets.length, targets: targets.join(", ") },
       },
     }
   }
@@ -267,6 +298,8 @@ export function parseCommand(rawInput: string): ParseResult {
       error: {
         code: "cmp_requires_two_targets",
         reason: `PEER compares 2-5 companies. Got ${targets.length}: \`${targets.join(", ")}\`. Example: \`AAC,ATL,SPARK PEER GO\`.`,
+        i18nKey: "commandBar.errors.peerTargetRange",
+        i18nVars: { count: targets.length, targets: targets.join(", ") },
       },
     }
   }
@@ -277,6 +310,8 @@ export function parseCommand(rawInput: string): ParseResult {
       error: {
         code: "too_many_tokens",
         reason: `${fn} takes at most one target. Got: \`${targets.join(", ")}\`.`,
+        i18nKey: "commandBar.errors.tooManyTargets",
+        i18nVars: { fn, targets: targets.join(", ") },
       },
     }
   }

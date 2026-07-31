@@ -65,7 +65,7 @@ export function LayoutMenu({ readCurrent, applyLayout, inline = false }: Props) 
         // useless — surface a quiet error.
         setLayouts([]);
         if (res.status !== 401 && res.status !== 403) {
-          setError(`Failed to load layouts (HTTP ${res.status})`);
+          setError(t("layoutMenu.errorLoadFailed", { status: res.status }));
         }
         return;
       }
@@ -76,7 +76,7 @@ export function LayoutMenu({ readCurrent, applyLayout, inline = false }: Props) 
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (open) void refresh();

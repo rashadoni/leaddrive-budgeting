@@ -25,10 +25,36 @@ type SectionStatus = "missing" | "partial" | "complete" | "n_a";
 interface SectionResult {
   code: string;
   label: string;
+  /** i18n key suffix under `onboardingDashboard.sectionLabel.*` (server-supplied). */
+  labelKey?: string;
+  labelParams?: Record<string, string>;
   status: SectionStatus;
   rowCount: number;
   hint: string;
+  /** i18n key suffix under `onboardingDashboard.hint.*` (server-supplied). */
+  hintKey?: string;
   blocking: boolean;
+}
+
+/**
+ * Section labels + hints are produced by the server-side completeness
+ * checker, which has no locale. It ships an English string plus a stable
+ * i18n key; we render the translation when the catalogue has it and fall
+ * back to the English string otherwise (older API responses, new sections
+ * shipped before their translation lands).
+ */
+type Translator = ReturnType<typeof useTranslations>;
+
+function sectionLabel(t: Translator, s: SectionResult): string {
+  const key = `sectionLabel.${s.labelKey}`;
+  return s.labelKey && t.has(key as never)
+    ? t(key as never, s.labelParams as never)
+    : s.label;
+}
+
+function sectionHint(t: Translator, s: SectionResult): string {
+  const key = `hint.${s.hintKey}`;
+  return s.hintKey && t.has(key as never) ? t(key as never) : s.hint;
 }
 
 interface CompletenessReport {
@@ -139,7 +165,7 @@ function CompanyCompletenessCard({ company }: { company: CompanyRow }) {
 
   const copyReport = () => {
     if (!data) return;
-    const md = formatReportAsMarkdown(company, data);
+    const md = formatReportAsMarkdown(company, data, t, industryLabel);
     navigator.clipboard?.writeText(md);
   };
 
@@ -254,6 +280,8 @@ function CompletenessGauge({
 
 function SectionRow({ section }: { section: SectionResult }) {
   const t = useTranslations("onboardingDashboard");
+  const label = sectionLabel(t, section);
+  const hint = sectionHint(t, section);
   return (
     <li className="flex items-start gap-2 text-xs">
       {STATUS_ICON[section.status]}
@@ -262,9 +290,9 @@ function SectionRow({ section }: { section: SectionResult }) {
           <span className="font-mono text-muted-foreground shrink-0">{section.code}</span>
           <span
             className="font-medium truncate"
-            title={`${section.code} — ${section.label}`}
+            title={`${section.code} — ${label}`}
           >
-            {section.label}
+            {label}
           </span>
           <span className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${STATUS_PILL_COLOR[section.status]}`}>
             {t(`status.${section.status}`)}
@@ -275,9 +303,9 @@ function SectionRow({ section }: { section: SectionResult }) {
             </span>
           )}
         </div>
-        {section.hint && section.status !== "complete" && (
+        {hint && section.status !== "complete" && (
           <div className="text-[10px] text-muted-foreground leading-snug mt-0.5">
-            → {section.hint}
+            → {hint}
           </div>
         )}
       </div>
@@ -285,17 +313,38 @@ function SectionRow({ section }: { section: SectionResult }) {
   );
 }
 
-function formatReportAsMarkdown(co: CompanyRow, r: CompletenessReport): string {
+/**
+ * The clipboard report is pasted straight into a client e-mail, so every
+ * word of it has to be in the operator's language — the section labels and
+ * hints included (they arrive from the server as English + i18n key).
+ */
+function formatReportAsMarkdown(
+  co: CompanyRow,
+  r: CompletenessReport,
+  t: Translator,
+  industryLabel: (code: string) => string,
+): string {
   const lines: string[] = [];
   lines.push(`# ${co.code} — ${co.name}`);
-  lines.push(`Industry: ${co.industry ?? "(not set)"} · Level: ${co.level} · Period: ${r.period}`);
+  lines.push(
+    t("report.meta", {
+      industry: co.industry ? industryLabel(co.industry) : t("report.industryNotSet"),
+      level: co.level,
+      period: r.period,
+    }),
+  );
   lines.push("");
-  lines.push(`**Completeness: ${r.percentComplete}% · ${r.overall.toUpperCase()}**`);
+  lines.push(
+    `**${t("report.completeness", {
+      pct: r.percentComplete,
+      overall: t(`overall.${r.overall}`).toUpperCase(),
+    })}**`,
+  );
   lines.push("");
-  lines.push("| Code | Section | Status | Rows | Hint |");
+  lines.push(t("report.tableHeader"));
   lines.push("|---|---|---|---:|---|");
   for (const s of r.sections) {
-    const status =
+    const icon =
       s.status === "complete"
         ? "✅"
         : s.status === "partial"
@@ -304,10 +353,10 @@ function formatReportAsMarkdown(co: CompanyRow, r: CompletenessReport): string {
             ? "🔴"
             : "—";
     lines.push(
-      `| ${s.code} | ${s.label} | ${status} ${s.status} | ${s.rowCount.toLocaleString()} | ${s.hint || ""} |`,
+      `| ${s.code} | ${sectionLabel(t, s)} | ${icon} ${t(`status.${s.status}`)} | ${s.rowCount.toLocaleString()} | ${sectionHint(t, s) || ""} |`,
     );
   }
   lines.push("");
-  lines.push(`_Generated ${new Date(r.generatedAt).toISOString()}_`);
+  lines.push(`_${t("report.generated", { when: new Date(r.generatedAt).toISOString() })}_`);
   return lines.join("\n");
 }

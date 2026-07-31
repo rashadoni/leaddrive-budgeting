@@ -24,6 +24,7 @@ import {
   getFinancialVariableRule,
   validateFinancialValue,
 } from "@/lib/risk/financial-variable-rules"
+import { useValidationText } from "./use-validation-text"
 
 export interface RecomputeSummary {
   ok: number
@@ -102,6 +103,7 @@ export function FinancialVariableEntry({
   nowYear?: number
 }) {
   const t = useTranslations("adminIndicatorHealth.financialEntry")
+  const vt = useValidationText()
   const locale = useLocale()
   const rule = getFinancialVariableRule(variable)
 
@@ -162,15 +164,21 @@ export function FinancialVariableEntry({
       if (!res.ok) {
         const errs =
           Array.isArray(json.errors) && json.errors.length > 0
-            ? (json.errors as string[]).join("; ")
-            : ((json.error as string) ?? `HTTP ${res.status}`)
+            ? vt.list(json.errorMessages, json.errors as string[]).join("; ")
+            : vt.one(
+                json.errorKey ? { key: json.errorKey as string } : null,
+                (json.error as string) ?? `HTTP ${res.status}`,
+              )
         setFeedback({ kind: "error", message: errs })
         return
       }
       if (json.requiresConfirm === true) {
         setFeedback({
           kind: "confirm",
-          warnings: Array.isArray(json.warnings) ? (json.warnings as string[]) : [],
+          warnings: vt.list(
+            json.warningMessages,
+            Array.isArray(json.warnings) ? (json.warnings as string[]) : [],
+          ),
         })
         return
       }

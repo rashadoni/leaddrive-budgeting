@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { fmt, calcVariance } from "@/lib/budget-chart-theme"
 
 /** Phase 8 D3(n) (2026-05-28) — single payload entry passed by Recharts'
@@ -37,6 +38,7 @@ export function BudgetChartTooltip({
   forecastKey,
   formatValue = fmt,
 }: TooltipProps) {
+  const t = useTranslations("budgeting")
   if (!active || !payload?.length) return null
 
   return (
@@ -76,7 +78,7 @@ export function BudgetChartTooltip({
         const color = v.direction === "under" ? "text-emerald-500" : v.direction === "over" ? "text-red-500" : "text-amber-500"
         return (
           <div className={`mt-2 pt-2 border-t border-border/50 flex items-center justify-between text-xs ${color}`}>
-            <span>Variance</span>
+            <span>{t("colVariance")}</span>
             <span className="font-mono font-bold">
               {v.pct >= 0 ? "+" : ""}{v.pct.toFixed(1)}% ({v.amount >= 0 ? "+" : ""}{fmt(v.amount)})
             </span>
@@ -97,7 +99,7 @@ export function BudgetChartTooltip({
         const color = v.direction === "under" ? "text-emerald-500" : v.direction === "over" ? "text-red-500" : "text-amber-500"
         return (
           <div className={`mt-2 pt-2 border-t border-border/50 flex items-center justify-between text-xs ${color}`}>
-            <span>Actual vs Plan</span>
+            <span>{t("tooltipActualVsPlan")}</span>
             <span className="font-mono font-bold">
               {v.pct >= 0 ? "+" : ""}{v.pct.toFixed(1)}%
             </span>
@@ -108,7 +110,7 @@ export function BudgetChartTooltip({
       {/* Composition mode: show % of total */}
       {mode === "composition" && totalValue && totalValue > 0 && payload[0]?.value != null && (
         <div className="mt-2 pt-2 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
-          <span>Share</span>
+          <span>{t("tooltipShare")}</span>
           <span className="font-mono font-bold text-popover-foreground">
             {((payload[0].value / totalValue) * 100).toFixed(1)}%
           </span>

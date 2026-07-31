@@ -58,9 +58,7 @@ type NavItem = {
 // ("Risk Terminal", "Board Deck", "Admin Tools", "Audit Log",
 // "Onboarding"), hardcoded RU ("Руководство"), and labelKey-driven
 // items rendered an inconsistent half-translated sidebar — user
-// flagged it on 2026-05-27. Brand names (Risk Terminal / Board Deck)
-// stay English across all locales by convention (they're product
-// names, not generic UI labels).
+// flagged it on 2026-05-27.
 // 2026-06-21 menu restructure: Risk Terminal first (the holding risk view is the
 // product centrepiece), the legacy Budgeting planner expands to its OWN tabs
 // only (admin links moved OUT — see the Admin row, which expands to the
@@ -73,10 +71,13 @@ type NavItem = {
 // 2026-07-31 (11.55): Data Import is FIRST. It is the entry point of the whole
 // product — nothing else has anything to show until a workbook has been
 // imported — and it is the centrepiece of the client demo. It sat sixth,
-// below four views of data the visitor does not have yet. Renamed from
-// "AI idxal" to "Data Import" and held in English across all locales, the
-// same convention Risk Terminal and Board Deck already follow: it names a
-// product surface, not a generic UI action.
+// below four views of data the visitor does not have yet.
+// 2026-07-31 (i18n sweep): the "brand names stay English" convention is
+// RETIRED. The owner flagged an Azerbaijani demo whose sidebar still read
+// "Risk Terminal" / "Board Deck" / "Data Import" / "Trade Tower" /
+// "Drift Dashboard". Those are surfaces, not trademarks — every labelKey
+// here now resolves to a real az/ru string in messages/*.json. Do not
+// re-introduce identical en/az/ru values for nav labels.
 const navItems: NavItem[] = [
   { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },
   { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" },
@@ -253,7 +254,7 @@ export function Sidebar() {
                     type="button"
                     onClick={() => setBudgetExpanded((v) => !v)}
                     aria-expanded={budgetExpanded}
-                    aria-label="Toggle budgeting sub-menu"
+                    aria-label={t("toggleBudgetingSubmenu")}
                     className="ml-1 mr-1 rounded-md p-1.5 text-white/50 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
                   >
                     <ChevronLeft
@@ -390,7 +391,7 @@ export function Sidebar() {
                     type="button"
                     onClick={() => setAdminExpanded((v) => !v)}
                     aria-expanded={adminExpanded}
-                    aria-label="Toggle admin sub-menu"
+                    aria-label={t("toggleAdminSubmenu")}
                     className="ml-1 mr-1 rounded-md p-1.5 text-white/50 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
                   >
                     <ChevronDown

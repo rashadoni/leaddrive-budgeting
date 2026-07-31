@@ -20,6 +20,7 @@ import { TodayBrief } from "./TodayBrief";
 import { useTerminalStore } from "../store/terminalStore";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
+import { localizeFormulaError } from "../lib/localize-formula-error";
 import { PeerBenchmarkModal } from "./PeerBenchmarkModal";
 import { Button } from "@/components/ui/button";
 import { getDataSourcesForIndicator } from "@/lib/intel/sources-catalog";
@@ -100,7 +101,7 @@ export function IndicatorDetail({
         if (!cancelled) setDetail(data);
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message || "Failed to load");
+        if (!cancelled) setError(err.message || t('indicatorDetail.loadFailed'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -108,7 +109,7 @@ export function IndicatorDetail({
     return () => {
       cancelled = true;
     };
-  }, [ivId, refetchTick]);
+  }, [ivId, refetchTick, t]);
 
   const triggerRecompute = async () => {
     if (recomputeState.kind === 'running' || !detail) return;
@@ -416,7 +417,15 @@ export function IndicatorDetail({
               visual noise. */}
           <MaterialityBadge
             rating={detail.materiality ?? null}
-            note={detail.materialityNote ?? null}
+            note={
+              (locale === 'ru'
+                ? detail.materialityNoteRu
+                : locale === 'az'
+                  ? detail.materialityNoteAz
+                  : detail.materialityNote) ??
+              detail.materialityNote ??
+              null
+            }
             t={t}
           />
           {/* Phase 7.I — "Open source" jump for indicators that read from
@@ -596,7 +605,15 @@ export function IndicatorDetail({
             {t('indicatorDetail.pipelineNote')}
           </div>
           <div className="text-muted-foreground text-[11px]">
-            <span className="text-muted-foreground">{errPayload.code}:</span> {errPayload.reason}
+            {/* The engine's `reason` is English-only developer text. Route it
+                through the same localizer HeatMapCellTd uses so Panel 3 and
+                the matrix tooltip say the same thing in the same language. */}
+            {localizeFormulaError(
+              errPayload.code,
+              errPayload.reason,
+              ind.code,
+              t,
+            )}
           </div>
         </div>
       )}

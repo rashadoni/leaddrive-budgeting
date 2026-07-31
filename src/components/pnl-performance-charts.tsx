@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useTranslations } from "next-intl"
 import {
   Bar,
   BarChart,
@@ -23,13 +24,26 @@ import type {
   PnlPerformancePoint,
 } from "@/lib/budgeting/pnl-performance"
 
-const METRICS: Array<{ key: PnlPerformanceMetric; label: string; favorable: "up" | "down" }> = [
-  { key: "revenue", label: "Revenue", favorable: "up" },
-  { key: "cogs", label: "COGS", favorable: "down" },
-  { key: "opex", label: "OPEX", favorable: "down" },
-  { key: "ebitda", label: "EBITDA", favorable: "up" },
-  { key: "netProfit", label: "Net Profit", favorable: "up" },
+// `labelKey` resolves inside the `budgeting` namespace at render time; the
+// tab strip, the chart tooltip title and the summary tiles all read it.
+const METRICS: Array<{ key: PnlPerformanceMetric; labelKey: string; favorable: "up" | "down" }> = [
+  { key: "revenue", labelKey: "plRevenue", favorable: "up" },
+  { key: "cogs", labelKey: "cogs", favorable: "down" },
+  { key: "opex", labelKey: "pnlOpEx", favorable: "down" },
+  { key: "ebitda", labelKey: "pnlWfEbitda", favorable: "up" },
+  { key: "netProfit", labelKey: "pnlNetProfit", favorable: "up" },
 ]
+
+// Bridge step key → i18n key. `buildEbitdaBridge` is locale-agnostic and
+// only hands back the stable `key`.
+const BRIDGE_LABEL_KEYS: Record<EbitdaBridgeStep["key"], string> = {
+  budget: "pnlBridgeBudgetEbitda",
+  revenue: "pnlBridgeRevenueVariance",
+  cogs: "pnlBridgeCogsVariance",
+  opex: "pnlBridgeOpexVariance",
+  da: "pnlBridgeDaAddBack",
+  actual: "pnlBridgeActualEbitda",
+}
 
 interface PnlPerformanceChartsProps {
   monthly: Record<PnlPerformanceMetric, PnlPerformancePoint[]>
@@ -44,9 +58,19 @@ export function PnlPerformanceCharts({
   hasActuals,
   notices = [],
 }: PnlPerformanceChartsProps) {
+  const t = useTranslations("budgeting")
   const [metric, setMetric] = useState<PnlPerformanceMetric>("ebitda")
   const activeMetric = METRICS.find((item) => item.key === metric) ?? METRICS[3]
   const selectedData = monthly[metric]
+  const seriesLabels = {
+    budget: t("colBudget"),
+    actual: t("colActual"),
+    variance: t("colVariance"),
+  }
+  const bridgeRows = useMemo(
+    () => bridge.map((step) => ({ ...step, label: t(BRIDGE_LABEL_KEYS[step.key]) })),
+    [bridge, t],
+  )
   const annual = useMemo(
     () => selectedData.reduce(
       (acc, row) => ({
@@ -71,10 +95,10 @@ export function PnlPerformanceCharts({
           <div>
             <div className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold text-foreground">Actual vs Budget P&L</h3>
+              <h3 className="text-sm font-semibold text-foreground">{t("pnlPerformanceTitle")}</h3>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Monthly comparison for Revenue, COGS, OPEX, EBITDA and Net Profit.
+              {t("pnlPerformanceSubtitle")}
             </p>
             {notices.length > 0 ? (
               <div className="mt-2 space-y-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
@@ -84,11 +108,11 @@ export function PnlPerformanceCharts({
               </div>
             ) : !hasActuals && (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
-                Actual data is not available for this period yet.
+                {t("pnlNoActualsYet")}
               </p>
             )}
           </div>
-          <div className="flex flex-wrap gap-1 rounded-lg bg-muted/60 p-1" role="tablist" aria-label="P&L metric">
+          <div className="flex flex-wrap gap-1 rounded-lg bg-muted/60 p-1" role="tablist" aria-label={t("pnlMetricTablistAria")}>
             {METRICS.map((item) => (
               <button
                 key={item.key}
@@ -103,20 +127,20 @@ export function PnlPerformanceCharts({
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {item.label}
+                {t(item.labelKey)}
               </button>
             ))}
           </div>
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
-          <MetricSummary label="Budget" value={annual.budget} />
-          <MetricSummary label="Actual" value={annualActual} emptyLabel="No data" muted={!hasActuals} />
+          <MetricSummary label={seriesLabels.budget} value={annual.budget} emptyLabel={t("pnlNoDataShort")} />
+          <MetricSummary label={seriesLabels.actual} value={annualActual} emptyLabel={t("pnlNoDataShort")} muted={!hasActuals} />
           <MetricSummary
-            label="Variance"
+            label={seriesLabels.variance}
             value={annualVariance}
             tone={varianceIsFavorable ? "positive" : "negative"}
-            emptyLabel="Waiting for actuals"
+            emptyLabel={t("pnlWaitingForActuals")}
             suffix={annualExecution == null ? "" : ` · ${annualExecution.toFixed(0)}%`}
             signed
           />
@@ -128,16 +152,16 @@ export function PnlPerformanceCharts({
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={fmtK} />
-              <Tooltip content={<MonthlyTooltip metric={activeMetric.label} hasActuals={hasActuals} />} />
+              <Tooltip content={<MonthlyTooltip metric={t(activeMetric.labelKey)} hasActuals={hasActuals} labels={seriesLabels} noActualsText={t("pnlNoActualsPeriod")} />} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="budget" name="Budget" fill={BUDGET_COLORS.planIndigo} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="budget" name={seriesLabels.budget} fill={BUDGET_COLORS.planIndigo} radius={[4, 4, 0, 0]} />
               {hasActuals && (
                 <>
-                  <Bar dataKey="actual" name="Actual" fill={BUDGET_COLORS.actualGreen} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="actual" name={seriesLabels.actual} fill={BUDGET_COLORS.actualGreen} radius={[4, 4, 0, 0]} />
                   <Line
                     type="monotone"
                     dataKey="variance"
-                    name="Variance"
+                    name={seriesLabels.variance}
                     stroke={BUDGET_COLORS.forecastAmber}
                     strokeWidth={2}
                     dot={{ r: 2 }}
@@ -154,15 +178,15 @@ export function PnlPerformanceCharts({
           <div>
             <div className="flex items-center gap-2">
               <Activity className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold text-foreground">EBITDA variance bridge</h3>
+              <h3 className="text-sm font-semibold text-foreground">{t("pnlBridgeTitle")}</h3>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Starts with Budget EBITDA and shows which P&L lines moved it to Actual EBITDA.
+              {t("pnlBridgeSubtitle")}
             </p>
           </div>
           {!hasActuals && (
             <span className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              No actuals
+              {t("pnlBridgeNoActualsBadge")}
             </span>
           )}
         </div>
@@ -170,7 +194,7 @@ export function PnlPerformanceCharts({
         {hasActuals ? (
           <div className="mt-4 min-w-0">
             <ResponsiveContainer width="100%" height={340} minWidth={0} minHeight={0}>
-              <BarChart data={bridge} layout="vertical" margin={{ top: 4, right: 24, left: 10, bottom: 4 }}>
+              <BarChart data={bridgeRows} layout="vertical" margin={{ top: 4, right: 24, left: 10, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={fmtK} />
                 <YAxis
@@ -181,9 +205,9 @@ export function PnlPerformanceCharts({
                   axisLine={false}
                   width={106}
                 />
-                <Tooltip content={<BridgeTooltip />} />
+                <Tooltip content={<BridgeTooltip labels={{ ebitda: t("pnlWfEbitda"), impact: t("pnlBridgeImpact"), running: t("pnlBridgeRunningEbitda") }} />} />
                 <Bar dataKey="range" radius={[4, 4, 4, 4]} minPointSize={2}>
-                  {bridge.map((entry) => (
+                  {bridgeRows.map((entry) => (
                     <Cell key={entry.key} fill={bridgeColor(entry)} />
                   ))}
                 </Bar>
@@ -196,9 +220,9 @@ export function PnlPerformanceCharts({
               <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
                 <Activity className="h-5 w-5" />
               </div>
-              <p className="text-sm font-semibold text-foreground">Bridge waits for actuals</p>
+              <p className="text-sm font-semibold text-foreground">{t("pnlBridgeEmptyTitle")}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Import or sync actual P&L data for this year to compare Budget EBITDA with Actual EBITDA.
+                {t("pnlBridgeEmptyDescription")}
               </p>
             </div>
           </div>
@@ -212,7 +236,7 @@ function MetricSummary({
   label,
   value,
   tone,
-  emptyLabel = "No data",
+  emptyLabel,
   suffix = "",
   signed = false,
   muted = false,
@@ -220,7 +244,7 @@ function MetricSummary({
   label: string
   value: number | null
   tone?: "positive" | "negative"
-  emptyLabel?: string
+  emptyLabel: string
   suffix?: string
   signed?: boolean
   muted?: boolean
@@ -250,12 +274,16 @@ function MonthlyTooltip({
   label,
   metric,
   hasActuals,
+  labels,
+  noActualsText,
 }: {
   active?: boolean
   payload?: Array<{ dataKey?: string | number; name?: string | number; value?: number; color?: string; fill?: string }>
   label?: string
   metric: string
   hasActuals: boolean
+  labels: { budget: string; actual: string; variance: string }
+  noActualsText: string
 }) {
   if (!active || !payload?.length) return null
   const budget = payload.find((item) => item.dataKey === "budget")?.value ?? 0
@@ -266,15 +294,15 @@ function MonthlyTooltip({
       <div className="mb-2 border-b pb-1.5 font-semibold text-popover-foreground">
         {metric} · {label}
       </div>
-      <TooltipRow label="Budget" value={budget} color={BUDGET_COLORS.planIndigo} />
+      <TooltipRow label={labels.budget} value={budget} color={BUDGET_COLORS.planIndigo} />
       {hasActuals ? (
         <>
-          <TooltipRow label="Actual" value={actual} color={BUDGET_COLORS.actualGreen} />
-          <TooltipRow label="Variance" value={variance} color={variance >= 0 ? BUDGET_COLORS.positive : BUDGET_COLORS.negative} signed />
+          <TooltipRow label={labels.actual} value={actual} color={BUDGET_COLORS.actualGreen} />
+          <TooltipRow label={labels.variance} value={variance} color={variance >= 0 ? BUDGET_COLORS.positive : BUDGET_COLORS.negative} signed />
         </>
       ) : (
         <div className="mt-2 border-t pt-2 text-xs font-medium text-muted-foreground">
-          Actual data is not available for this period.
+          {noActualsText}
         </div>
       )}
     </div>
@@ -284,9 +312,11 @@ function MonthlyTooltip({
 function BridgeTooltip({
   active,
   payload,
+  labels,
 }: {
   active?: boolean
-  payload?: Array<{ payload?: EbitdaBridgeStep }>
+  payload?: Array<{ payload?: EbitdaBridgeStep & { label: string } }>
+  labels?: { ebitda: string; impact: string; running: string }
 }) {
   const item = payload?.[0]?.payload
   if (!active || !item) return null
@@ -294,11 +324,11 @@ function BridgeTooltip({
     <div className="min-w-[190px] rounded-lg border bg-popover p-3 text-xs shadow-lg">
       <div className="mb-2 border-b pb-1.5 font-semibold text-popover-foreground">{item.label}</div>
       {item.kind === "endpoint" ? (
-        <TooltipRow label="EBITDA" value={item.value} color={bridgeColor(item)} />
+        <TooltipRow label={labels?.ebitda ?? ""} value={item.value} color={bridgeColor(item)} />
       ) : (
         <>
-          <TooltipRow label="Impact" value={item.delta} color={bridgeColor(item)} signed />
-          <TooltipRow label="Running EBITDA" value={item.value} color={BUDGET_COLORS.neutral} />
+          <TooltipRow label={labels?.impact ?? ""} value={item.delta} color={bridgeColor(item)} signed />
+          <TooltipRow label={labels?.running ?? ""} value={item.value} color={BUDGET_COLORS.neutral} />
         </>
       )}
     </div>

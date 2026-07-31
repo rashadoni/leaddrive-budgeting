@@ -290,7 +290,7 @@ export function BudgetConfigTab() {
             </div>
             <div>
               <label className="text-xs font-medium">{t("configNameLabel")}</label>
-              <Input value={ctForm.label} onChange={e => setCtForm({ ...ctForm, label: e.target.value })} placeholder="Payroll (salaries)" />
+              <Input value={ctForm.label} onChange={e => setCtForm({ ...ctForm, label: e.target.value })} placeholder={t("configCostTypePlaceholder")} />
             </div>
             <div>
               <label className="text-xs font-medium">{t("configPatternLabel")}</label>
@@ -344,7 +344,7 @@ export function BudgetConfigTab() {
             </div>
             <div>
               <label className="text-xs font-medium">{t("configNameLabel")}</label>
-              <Input value={deptForm.label} onChange={e => setDeptForm({ ...deptForm, label: e.target.value })} placeholder="Permanent IT" />
+              <Input value={deptForm.label} onChange={e => setDeptForm({ ...deptForm, label: e.target.value })} placeholder={t("configDepartmentPlaceholder")} />
             </div>
             <div>
               <label className="text-xs font-medium">{t("configServiceKeyLabel")}</label>

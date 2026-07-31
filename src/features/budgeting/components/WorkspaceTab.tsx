@@ -408,7 +408,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
   const budgetExecPct = hasAnyActuals ? Math.max(0, Math.round(revAchieve * 0.6 + costDisc * 0.4)) : 0
   const budgetExecColor = !hasAnyActuals ? "amber" as const : budgetExecPct >= 80 ? "green" as const : budgetExecPct >= 50 ? "amber" as const : "red" as const
   const budgetExecEmoji = !hasAnyActuals ? "⏳" : budgetExecPct >= 80 ? "🟢" : budgetExecPct >= 50 ? "🟡" : "🔴"
-  const budgetExecLabel = hasAnyActuals ? `${budgetExecPct}% composite score` : "No actuals yet"
+  const budgetExecLabel = hasAnyActuals ? t("wsCompositeScore", { pct: budgetExecPct }) : t("wsNoActualsYet")
 
   // Turn 36 fix: dedupe by (category, lineType) — see sumActualUniqueCategories jsdoc
   // Section actuals for the GP/EBITDA blocks + section headers: use the
@@ -533,7 +533,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
         <Card data-testid="workspace-category-bars" className="border-0 shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">{t("chartPlanForecastActual") || "Plan vs Actual by Category"}</CardTitle>
-            <p className="text-[10px] text-muted-foreground">{byCategory.filter((c: BudgetCategoryRow) => c.planned > 0 || c.actual > 0).length} active categories</p>
+            <p className="text-[10px] text-muted-foreground">{t("wsActiveCategories", { count: byCategory.filter((c: BudgetCategoryRow) => c.planned > 0 || c.actual > 0).length })}</p>
           </CardHeader>
           <CardContent className="pt-0">
             <BudgetCategoryBars categories={byCategory} />

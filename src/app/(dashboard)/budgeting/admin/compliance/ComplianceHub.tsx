@@ -70,6 +70,9 @@ type StatusFilter = "all" | "open" | "closed";
 
 export function ComplianceHub({ entities }: Props) {
   const t = useTranslations("adminCompliance");
+  // CSV / e-mail exports reuse the shared Name / Yes / No labels rather than
+  // minting compliance-specific duplicates of them.
+  const tc = useTranslations("common");
   const [tab, setTab] = useState<Tab>("audit");
   const [entityFilter, setEntityFilter] = useState<string>("all");
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
@@ -358,7 +361,15 @@ export function ComplianceHub({ entities }: Props) {
 
   const handleExport = () => {
     if (tab === "audit") {
-      const header = ["Entity", "Name", "Severity", "Audit", "Status", "Grouping", "Status Jan-26"];
+      const header = [
+        t("thEntity"),
+        tc("name"),
+        t("thSeverity"),
+        t("thAudit"),
+        t("thStatus"),
+        t("thGrouping"),
+        t("drilldownJanStatus"),
+      ];
       const rows = [header, ...filteredAuditRows.map((r) => [
         r.entityCode,
         r.entityName,
@@ -370,7 +381,17 @@ export function ComplianceHub({ entities }: Props) {
       ])];
       downloadCsv(`compliance-audit-${new Date().toISOString().slice(0, 10)}.csv`, rows);
     } else {
-      const header = ["Entity", "Name", "Date", "Court", "Plaintiff", "Defendant", "Dispute Type", "Status", "Closed"];
+      const header = [
+        t("thEntity"),
+        tc("name"),
+        t("thDate"),
+        t("thCourt"),
+        t("csvPlaintiff"),
+        t("csvDefendant"),
+        t("thType"),
+        t("thStatus"),
+        t("statusClosed"),
+      ];
       const rows = [header, ...filteredCourtRows.map((r) => [
         r.entityCode,
         r.entityName,
@@ -380,7 +401,7 @@ export function ComplianceHub({ entities }: Props) {
         r.case.defendant,
         r.case.disputeType,
         r.case.status,
-        r.case.closed ? "yes" : "no",
+        r.case.closed ? tc("yes") : tc("no"),
       ])];
       downloadCsv(`compliance-court-${new Date().toISOString().slice(0, 10)}.csv`, rows);
     }
@@ -401,9 +422,13 @@ export function ComplianceHub({ entities }: Props) {
   const handleEmailExport = () => {
     const today = new Date().toISOString().slice(0, 10);
     const filterChips = [
-      entityFilter !== "all" ? `entity=${entityFilter}` : null,
-      tab === "audit" && severityFilter !== "all" ? `severity=${severityFilter}` : null,
-      statusFilter !== "all" ? `status=${statusFilter}` : null,
+      entityFilter !== "all" ? `${t("filterEntity")}=${entityFilter}` : null,
+      tab === "audit" && severityFilter !== "all"
+        ? `${t("filterSeverity")}=${severityFilter}`
+        : null,
+      statusFilter !== "all"
+        ? `${t("filterStatus")}=${statusFilter === "open" ? t("statusOpen") : t("statusClosed")}`
+        : null,
     ]
       .filter((c): c is string => c !== null)
       .join(" · ");
@@ -415,16 +440,18 @@ export function ComplianceHub({ entities }: Props) {
       subject = t("emailSubjectAudit", { count: total, date: today });
       const lines: string[] = [];
       lines.push(t("emailHeaderAudit", { count: total, date: today }));
-      if (filterChips) lines.push(`Filters: ${filterChips}`);
+      if (filterChips) lines.push(t("emailFilters", { filters: filterChips }));
       lines.push("");
-      lines.push("| # | Entity | Severity | Audit |");
+      lines.push(
+        `| # | ${t("thEntity")} | ${t("thSeverity")} | ${t("thAudit")} |`,
+      );
       lines.push("|---|---|---|---|");
       filteredAuditRows.slice(0, MAILTO_ROW_CAP).forEach((r, i) => {
         const closed = isRowClosed(r.entityId, r.findingIdx, r.finding);
         const sev = r.finding.severity.replace(/\|/g, "/");
         const audit = r.finding.audit.replace(/\|/g, "/").slice(0, 120);
         lines.push(
-          `| ${i + 1} | ${r.entityCode.replace("AZSEKER-", "")} | ${sev}${closed ? " ✓closed" : ""} | ${audit} |`,
+          `| ${i + 1} | ${r.entityCode.replace("AZSEKER-", "")} | ${sev}${closed ? ` ✓${t("statusClosed")}` : ""} | ${audit} |`,
         );
       });
       if (total > MAILTO_ROW_CAP) {
@@ -438,12 +465,14 @@ export function ComplianceHub({ entities }: Props) {
       subject = t("emailSubjectCourt", { count: total, date: today });
       const lines: string[] = [];
       lines.push(t("emailHeaderCourt", { count: total, date: today }));
-      if (filterChips) lines.push(`Filters: ${filterChips}`);
+      if (filterChips) lines.push(t("emailFilters", { filters: filterChips }));
       lines.push("");
-      lines.push("| # | Entity | Date | Type | Plaintiff → Defendant | Status |");
+      lines.push(
+        `| # | ${t("thEntity")} | ${t("thDate")} | ${t("thType")} | ${t("thPlaintiffDefendant")} | ${t("thStatus")} |`,
+      );
       lines.push("|---|---|---|---|---|---|");
       filteredCourtRows.slice(0, MAILTO_ROW_CAP).forEach((r, i) => {
-        const status = r.case.closed ? "✓closed" : "open";
+        const status = r.case.closed ? `✓${t("statusClosed")}` : t("statusOpen");
         const cl = r.case.claimant.replace(/\|/g, "/");
         const df = r.case.defendant.replace(/\|/g, "/");
         const ty = r.case.disputeType.replace(/\|/g, "/").slice(0, 60);

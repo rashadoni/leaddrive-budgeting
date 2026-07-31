@@ -38,6 +38,7 @@ export interface PlSectionCtx {
 }
 
 export function makePlSection(ctx: PlSectionCtx) {
+  const monthLabels = ctx.t("monthsShort").split(",")
   const {
     t, byCategory, collapsed, toggleCollapse, drilldown, setDrilldown,
     pulseDrilldown, plShowMaterialOnly, isPlMaterial, flashSection, drillToSection,
@@ -249,8 +250,17 @@ export function makePlSection(ctx: PlSectionCtx) {
                               >
                                 <td colSpan={6} className="px-4 py-2 pl-14">
                                   <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                                    <span className="uppercase tracking-wider">12-month</span>
-                                    <MonthlySparkline values={rowMonthly} actuals={rowMonthlyActual} width={220} height={28} />
+                                    <span className="uppercase tracking-wider">{t("plDrill12Month")}</span>
+                                    <MonthlySparkline
+                                      values={rowMonthly}
+                                      actuals={rowMonthlyActual}
+                                      width={220}
+                                      height={28}
+                                      monthLabels={monthLabels}
+                                      planLabel={t("colPlan")}
+                                      actualLabel={t("colActual")}
+                                      distributionLabel={t("compTrendDistribution")}
+                                    />
                                   </div>
                                 </td>
                               </tr>
@@ -291,8 +301,17 @@ export function makePlSection(ctx: PlSectionCtx) {
                         <tr className="border-t-0 bg-primary/[0.02]" data-pl-drill-row={row.category}>
                           <td colSpan={6} className="px-4 py-2 pl-6">
                             <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                              <span className="uppercase tracking-wider">12-month</span>
-                              <MonthlySparkline values={rowMonthly} actuals={rowMonthlyActual} width={220} height={28} />
+                              <span className="uppercase tracking-wider">{t("plDrill12Month")}</span>
+                              <MonthlySparkline
+                                      values={rowMonthly}
+                                      actuals={rowMonthlyActual}
+                                      width={220}
+                                      height={28}
+                                      monthLabels={monthLabels}
+                                      planLabel={t("colPlan")}
+                                      actualLabel={t("colActual")}
+                                      distributionLabel={t("compTrendDistribution")}
+                                    />
                             </div>
                           </td>
                         </tr>
@@ -332,8 +351,17 @@ export function makePlSection(ctx: PlSectionCtx) {
                       <tr className="border-t-0 bg-primary/[0.02]" data-pl-drill-row={row.category}>
                         <td colSpan={6} className="px-4 py-2 pl-6">
                           <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                            <span className="uppercase tracking-wider">12-month</span>
-                            <MonthlySparkline values={rowMonthly} actuals={rowMonthlyActual} width={220} height={28} />
+                            <span className="uppercase tracking-wider">{t("plDrill12Month")}</span>
+                            <MonthlySparkline
+                                      values={rowMonthly}
+                                      actuals={rowMonthlyActual}
+                                      width={220}
+                                      height={28}
+                                      monthLabels={monthLabels}
+                                      planLabel={t("colPlan")}
+                                      actualLabel={t("colActual")}
+                                      distributionLabel={t("compTrendDistribution")}
+                                    />
                           </div>
                         </td>
                       </tr>

@@ -152,6 +152,13 @@ function ForecastItem({ row }: { row: ImpactForecastRow }) {
   const t = useTranslations("terminal")
   const locale = useLocale()
   const source = getDataSourceByCode(row.triggerSourceCode)
+  // Crossing-rule names ship English-only in the default pack. Prefer a
+  // localized catalogue entry (`terminal.impactForecasts.rules.<ruleId>`)
+  // and fall back to the pack name for rules that don't have one yet.
+  const ruleKey = `impactForecasts.rules.${row.ruleId}`
+  const ruleLabel = t.has(ruleKey as never)
+    ? t(ruleKey as never)
+    : (RULE_LABEL.get(row.ruleId) ?? row.ruleId)
   return (
     <article className="border border-gray-800 rounded p-2 bg-[#050814]">
       <header className="flex items-center justify-between gap-2 mb-1.5">
@@ -161,9 +168,7 @@ function ForecastItem({ row }: { row: ImpactForecastRow }) {
           </span>{" "}
           @ {row.triggerValueRounded}{" "}
           <span className="text-gray-600">·</span>{" "}
-          <span className="text-gray-400">
-            {RULE_LABEL.get(row.ruleId) ?? row.ruleId}
-          </span>
+          <span className="text-gray-400">{ruleLabel}</span>
         </div>
         <ConfidenceChip confidence={row.confidence} />
       </header>

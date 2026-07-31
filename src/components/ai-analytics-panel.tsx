@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useLocale, useTranslations } from "next-intl"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Sparkles, Loader2, Send, Search, X, Eraser, Database, AlertTriangle, FileDown } from "lucide-react"
@@ -19,13 +20,14 @@ type ToolChip = {
 // Map the sanitized AI error codes (from /lib/ai/ai-error) to neutral,
 // user-facing copy — never expose the raw provider message / billing text.
 // Unknown values (e.g. "Conversation limit reached") pass through unchanged.
-const AI_ERROR_MESSAGES: Record<string, string> = {
-  ai_unavailable: "AI is temporarily unavailable. Please try again shortly.",
-  ai_credits: "AI is temporarily unavailable. Please try again shortly.",
-  ai_rate_limit: "AI is busy right now. Please try again in a moment.",
+const AI_ERROR_KEYS: Record<string, string> = {
+  ai_unavailable: "aiErrorUnavailable",
+  ai_credits: "aiErrorUnavailable",
+  ai_rate_limit: "aiErrorBusy",
 }
-function displayAiError(e: string): string {
-  return AI_ERROR_MESSAGES[e] ?? e
+function displayAiError(e: string, t: (key: string) => string): string {
+  const key = AI_ERROR_KEYS[e]
+  return key ? t(key) : e
 }
 
 type Message = {
@@ -45,10 +47,14 @@ const LANGUAGES: { code: Language; label: string; fullName: string }[] = [
   { code: "az", label: "AZ", fullName: "Azərbaycan" },
 ]
 
-function chipLabel(chip: ToolChip): string {
-  if (chip.name === "web_search") return chip.query ? `Searching: "${chip.query}"` : "Searching the web…"
-  if (chip.name === "get_monthly_breakdown") return "Fetching monthly breakdown…"
-  if (chip.name === "get_account_drill") return "Drilling into account…"
+type Translator = (key: string, values?: Record<string, string | number>) => string
+
+function chipLabel(chip: ToolChip, t: Translator): string {
+  if (chip.name === "web_search") {
+    return chip.query ? t("aiChipSearchingQuery", { query: chip.query }) : t("aiChipSearchingWeb")
+  }
+  if (chip.name === "get_monthly_breakdown") return t("aiChipMonthlyBreakdown")
+  if (chip.name === "get_account_drill") return t("aiChipAccountDrill")
   return chip.name
 }
 
@@ -82,6 +88,9 @@ export function AIAnalyticsPanel({
   companyId,
   companyName,
 }: Props) {
+  const t = useTranslations("budgeting")
+  const tCommon = useTranslations("common")
+  const locale = useLocale()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [streaming, setStreaming] = useState(false)
@@ -265,6 +274,14 @@ export function AIAnalyticsPanel({
           sectionLabel={sectionLabel}
           planName={planName}
           messages={messages.map((m) => ({ role: m.role, content: m.content }))}
+          labels={{
+            title: t("aiFabLabel"),
+            analyst: t("aiPdfAnalyst"),
+            footer: planName
+              ? t("aiPdfFooterWithPlan", { plan: planName })
+              : t("aiPdfFooterNoPlan"),
+          }}
+          locale={locale}
         />
       )
       const blob = await pdf(doc).toBlob()
@@ -278,7 +295,7 @@ export function AIAnalyticsPanel({
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to export PDF")
+      setError(e instanceof Error ? e.message : t("aiPdfExportFailed"))
     } finally {
       setExporting(false)
     }
@@ -291,7 +308,7 @@ export function AIAnalyticsPanel({
           <div className="flex-1 min-w-0">
             <SheetTitle className="flex items-center gap-2 text-base">
               <Sparkles className="h-4 w-4 text-violet-500" />
-              AI Analysis
+              {t("aiFabLabel")}
             </SheetTitle>
             <SheetDescription className="text-xs mt-0.5 truncate">
               {sectionLabel}{planName ? ` · ${planName}` : ""}
@@ -301,7 +318,7 @@ export function AIAnalyticsPanel({
                   <span
                     className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-300"
                     data-testid="ai-analytics-company-chip"
-                    title="Scoped to this company (data filtered server-side)"
+                    title={t("aiScopeCompanyTitle")}
                   >
                     {companyName}
                   </span>
@@ -312,9 +329,9 @@ export function AIAnalyticsPanel({
                   <span
                     className="inline-flex items-center rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
                     data-testid="ai-analytics-all-companies-chip"
-                    title="All companies under this plan (no per-company filter)"
+                    title={t("aiScopeAllCompaniesTitle")}
                   >
-                    All companies
+                    {t("companyFilterAllCompanies")}
                   </span>
                 </>
               )}
@@ -323,7 +340,7 @@ export function AIAnalyticsPanel({
           <div className="flex items-center gap-1 shrink-0">
             <div
               role="radiogroup"
-              aria-label="Analysis language"
+              aria-label={t("aiLanguageGroupAria")}
               className="flex items-center gap-0.5 bg-muted/60 rounded-md p-0.5 mr-1"
             >
               {LANGUAGES.map((l) => (
@@ -353,7 +370,7 @@ export function AIAnalyticsPanel({
                   className="h-7 px-2 text-xs"
                   onClick={handleExportPdf}
                   disabled={streaming || exporting}
-                  title="Export chat as PDF"
+                  title={t("aiExportPdfTitle")}
                 >
                   {exporting ? (
                     <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
@@ -363,7 +380,7 @@ export function AIAnalyticsPanel({
                   PDF
                 </Button>
                 <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={handleClear} disabled={streaming || exporting}>
-                  <Eraser className="h-3.5 w-3.5 mr-1" />Clear
+                  <Eraser className="h-3.5 w-3.5 mr-1" />{tCommon("clearAll")}
                 </Button>
               </>
             )}
@@ -379,19 +396,18 @@ export function AIAnalyticsPanel({
               {planId ? (
                 <>
                   <div className="text-xs text-muted-foreground max-w-[320px]">
-                    Analysis will run in{" "}
-                    <span className="font-medium text-foreground">
-                      {LANGUAGES.find((l) => l.code === language)?.fullName}
-                    </span>
-                    . Change the language above if needed.
+                    {t.rich("aiIntroLanguage", {
+                      language: LANGUAGES.find((l) => l.code === language)?.fullName ?? "",
+                      strong: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
+                    })}
                   </div>
                   <Button size="sm" onClick={handleStart} disabled={!planId}>
                     <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-                    Start analysis
+                    {t("aiStartAnalysis")}
                   </Button>
                 </>
               ) : (
-                <div className="text-xs text-muted-foreground">Select a plan to analyze.</div>
+                <div className="text-xs text-muted-foreground">{t("aiSelectPlan")}</div>
               )}
             </div>
           )}
@@ -426,7 +442,7 @@ export function AIAnalyticsPanel({
                               ) : (
                                 <Icon className="h-3 w-3" />
                               )}
-                              {chipLabel(c)}
+                              {chipLabel(c, t as unknown as Translator)}
                             </span>
                           )
                         })}
@@ -438,7 +454,7 @@ export function AIAnalyticsPanel({
                     {m.truncated && (
                       <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-700 dark:text-amber-400">
                         <AlertTriangle className="h-3 w-3" />
-                        Response hit the output limit. Ask a follow-up to continue.
+                        {t("aiResponseTruncated")}
                       </div>
                     )}
                   </>
@@ -449,12 +465,12 @@ export function AIAnalyticsPanel({
           {streaming && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span>Thinking…</span>
+              <span>{t("aiThinking")}</span>
             </div>
           )}
           {error && (
             <div className="text-xs rounded-md border border-destructive/40 bg-destructive/10 text-destructive p-2">
-              {displayAiError(error)}
+              {displayAiError(error, t as unknown as (key: string) => string)}
             </div>
           )}
         </div>
@@ -462,7 +478,7 @@ export function AIAnalyticsPanel({
         <div className="border-t p-3 space-y-2">
           <Textarea
             className="min-h-[72px] text-sm resize-none"
-            placeholder="Ask a follow-up about these numbers..."
+            placeholder={t("aiFollowUpPlaceholder")}
             value={input}
             disabled={streaming || !planId}
             onChange={(e) => setInput(e.target.value)}
@@ -476,7 +492,7 @@ export function AIAnalyticsPanel({
           <div className="flex justify-end">
             <Button size="sm" onClick={handleSend} disabled={streaming || !input.trim() || !planId}>
               {streaming ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
-              Send
+              {tCommon("send")}
             </Button>
           </div>
         </div>

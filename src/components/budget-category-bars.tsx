@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from "recharts"
 import { BUDGET_COLORS, ANIMATION, AXIS_TICK, fmtK, fmt } from "@/lib/budget-chart-theme"
 import type { BudgetCategoryRow } from "@/lib/budgeting/types"
@@ -13,6 +14,7 @@ interface BudgetCategoryBarsProps {
 type FilterMode = "all" | "expense" | "revenue"
 
 export function BudgetCategoryBars({ categories, className }: BudgetCategoryBarsProps) {
+  const t = useTranslations("budgeting")
   const [filter, setFilter] = useState<FilterMode>("all")
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
 
@@ -64,40 +66,40 @@ export function BudgetCategoryBars({ categories, className }: BudgetCategoryBars
         <div className="font-semibold text-popover-foreground mb-2 pb-1.5 border-b border-border/50 flex items-center justify-between">
           <span>{d.fullName}</span>
           <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-            {d.lineType === "revenue" ? "Revenue" : "Expense"}
+            {d.lineType === "revenue" ? t("revenue") : t("expense")}
           </span>
         </div>
         <div className="space-y-1.5">
           <div className="flex justify-between">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: BUDGET_COLORS.planIndigo }} />
-              <span className="text-muted-foreground text-xs">Plan</span>
+              <span className="text-muted-foreground text-xs">{t("colPlan")}</span>
             </span>
             <span className="font-mono font-medium">{fmt(d.plan)}</span>
           </div>
           <div className="flex justify-between">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: BUDGET_COLORS.warning }} />
-              <span className="text-muted-foreground text-xs">Forecast</span>
+              <span className="text-muted-foreground text-xs">{t("colForecast")}</span>
             </span>
             <span className="font-mono font-medium">{fmt(d.forecast)}</span>
           </div>
           <div className="flex justify-between">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: getActualColor(d.variancePct) }} />
-              <span className="text-muted-foreground text-xs">Actual</span>
+              <span className="text-muted-foreground text-xs">{t("colActual")}</span>
             </span>
             <span className="font-mono font-medium">{fmt(d.actual)}</span>
           </div>
           <div className="pt-1.5 border-t border-border/50 space-y-1">
             <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Variance</span>
+              <span className="text-muted-foreground">{t("colVariance")}</span>
               <span className="font-mono font-bold" style={{ color: getActualColor(d.variancePct) }}>
                 {d.variance >= 0 ? "+" : ""}{fmt(d.variance)}
               </span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Variance %</span>
+              <span className="text-muted-foreground">{t("colVariancePct")}</span>
               <span className="font-mono font-bold" style={{ color: getActualColor(d.variancePct) }}>
                 {d.variancePct >= 0 ? "+" : ""}{Math.round(d.variancePct)}%
               </span>
@@ -116,7 +118,7 @@ export function BudgetCategoryBars({ categories, className }: BudgetCategoryBars
     return (
       <div className={className}>
         <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
-          No category data available
+          {t("categoryBarsEmpty")}
         </div>
       </div>
     )
@@ -129,9 +131,9 @@ export function BudgetCategoryBars({ categories, className }: BudgetCategoryBars
       {/* Filter tabs */}
       <div className="flex items-center gap-1 mb-3">
         {([
-          { key: "all" as FilterMode, label: `All (${categories.length})` },
-          { key: "expense" as FilterMode, label: `Expenses (${expenseCount})` },
-          { key: "revenue" as FilterMode, label: `Revenue (${revenueCount})` },
+          { key: "all" as FilterMode, label: `${t("filterAll")} (${categories.length})` },
+          { key: "expense" as FilterMode, label: `${t("filterExpenses")} (${expenseCount})` },
+          { key: "revenue" as FilterMode, label: `${t("filterRevenues")} (${revenueCount})` },
         ]).map(tab => (
           <button
             key={tab.key}
@@ -215,15 +217,15 @@ export function BudgetCategoryBars({ categories, className }: BudgetCategoryBars
           </div>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Plan</div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">{t("colPlan")}</div>
               <div className="text-sm font-bold font-mono">{fmt(selected.plan)}</div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Actual</div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">{t("colActual")}</div>
               <div className="text-sm font-bold font-mono" style={{ color: getActualColor(selected.variancePct) }}>{fmt(selected.actual)}</div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Variance</div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">{t("colVariance")}</div>
               <div className="text-sm font-bold font-mono" style={{ color: getActualColor(selected.variancePct) }}>
                 {selected.variancePct >= 0 ? "+" : ""}{Math.round(selected.variancePct)}%
               </div>
@@ -243,7 +245,7 @@ export function BudgetCategoryBars({ categories, className }: BudgetCategoryBars
           </div>
           <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
             <span>0</span>
-            <span>{fmtK(selected.plan)} (plan)</span>
+            <span>{fmtK(selected.plan)} ({t("colPlan").toLowerCase()})</span>
           </div>
         </div>
       )}

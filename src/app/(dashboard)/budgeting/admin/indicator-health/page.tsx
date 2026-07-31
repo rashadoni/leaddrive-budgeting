@@ -14,8 +14,9 @@ import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import { IndicatorHealthView } from "./IndicatorHealthView"
 
-export const metadata = {
-  title: "Indicator Health · Admin · BudgetPro",
+export async function generateMetadata() {
+  const t = await getTranslations("adminIndicatorHealth")
+  return { title: t("metaTitle") }
 }
 
 export default async function IndicatorHealthPage() {

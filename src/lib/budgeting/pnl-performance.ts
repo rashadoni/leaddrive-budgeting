@@ -25,9 +25,13 @@ export interface EbitdaBridgeInput {
   }
 }
 
+/**
+ * A single step of the EBITDA bridge. `key` is the stable identifier the
+ * renderer resolves into a localized axis label — the helper stays
+ * locale-agnostic so it can run in pure unit tests and on the server.
+ */
 export interface EbitdaBridgeStep {
   key: "budget" | "revenue" | "cogs" | "opex" | "da" | "actual"
-  label: string
   range: [number, number]
   delta: number
   value: number
@@ -57,7 +61,6 @@ export function buildEbitdaBridge(input: EbitdaBridgeInput): EbitdaBridgeStep[] 
   const steps: EbitdaBridgeStep[] = [
     {
       key: "budget",
-      label: "Budget EBITDA",
       range: rangeFromZero(input.budget.ebitda),
       delta: 0,
       value: input.budget.ebitda,
@@ -68,14 +71,12 @@ export function buildEbitdaBridge(input: EbitdaBridgeInput): EbitdaBridgeStep[] 
   let running = input.budget.ebitda
   const addStep = (
     key: Exclude<EbitdaBridgeStep["key"], "budget" | "actual">,
-    label: string,
     delta: number,
   ) => {
     const from = running
     const to = running + delta
     steps.push({
       key,
-      label,
       range: [Math.min(from, to), Math.max(from, to)],
       delta,
       value: to,
@@ -84,14 +85,13 @@ export function buildEbitdaBridge(input: EbitdaBridgeInput): EbitdaBridgeStep[] 
     running = to
   }
 
-  addStep("revenue", "Revenue variance", input.actual.revenue - input.budget.revenue)
-  addStep("cogs", "COGS variance", input.budget.cogs - input.actual.cogs)
-  addStep("opex", "OPEX variance", input.budget.opex - input.actual.opex)
-  addStep("da", "D&A add-back", input.actual.da - input.budget.da)
+  addStep("revenue", input.actual.revenue - input.budget.revenue)
+  addStep("cogs", input.budget.cogs - input.actual.cogs)
+  addStep("opex", input.budget.opex - input.actual.opex)
+  addStep("da", input.actual.da - input.budget.da)
 
   steps.push({
     key: "actual",
-    label: "Actual EBITDA",
     range: rangeFromZero(input.actual.ebitda),
     delta: 0,
     value: input.actual.ebitda,

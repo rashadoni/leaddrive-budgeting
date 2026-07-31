@@ -362,11 +362,14 @@ describe("VarianceTab — monthly sparkline column (Phase 3.1 v1.1)", () => {
     expect(planLine).toBeTruthy()
     expect(actualLine).toBeTruthy()
     expect(actualLine!.getAttribute("stroke-dasharray")).toBeTruthy()
-    // Tooltip mentions plan + actual per month
+    // Tooltip mentions plan + actual per month. Phase 11.7x: the labels now
+    // come from the catalogue (`colPlan` / `colActual` → "Plan" / "Actual")
+    // instead of the component's lowercase hardcoded defaults, so match
+    // case-insensitively — the assertion is about the words, not their casing.
     const svg = row.querySelector('[data-testid="variance-sparkline"]')
     const title = svg!.querySelector("title")
-    expect(title?.textContent ?? "").toContain("plan")
-    expect(title?.textContent ?? "").toContain("actual")
+    expect(title?.textContent ?? "").toMatch(/plan/i)
+    expect(title?.textContent ?? "").toMatch(/actual/i)
   })
 
   it("does NOT render actual-overlay when monthlyActual is all-zero (no spend yet)", () => {

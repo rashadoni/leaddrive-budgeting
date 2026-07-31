@@ -20,6 +20,7 @@
  */
 
 import { Suspense, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useParams, useSearchParams } from "next/navigation";
 import { CompanyTree } from "@/features/terminal/components/CompanyTree";
 import { HeatMap } from "@/features/terminal/components/HeatMap";
@@ -35,23 +36,32 @@ import { FxExposurePanel } from "@/features/terminal/components/FxExposurePanel"
 import { useCompanies } from "@/features/terminal/hooks/use-companies";
 import { useTerminalStore } from "@/features/terminal/store/terminalStore";
 
-const PANEL_TITLES: Record<string, string> = {
-  tree: "Дерево компаний",
-  matrix: "Карта рисков",
-  detail: "Детализация индикатора",
-  variance: "AI Variance Explainer",
-  brief: "Сводка дня",
-  news: "📰 Новости холдинга",
+/**
+ * Panel kind → i18n key (relative to the `terminal` namespace).
+ *
+ * 2026-07-31 i18n sweep — this map used to be hardcoded: six entries in
+ * Russian, five in English, none locale-aware. An Azerbaijani user never
+ * saw Azerbaijani in a pop-out window title. Existing `terminal.panels.*`
+ * keys are reused where they already describe the panel.
+ */
+const PANEL_TITLE_KEYS: Record<string, string> = {
+  tree: "panels.companyTree",
+  matrix: "panels.heatMap",
+  detail: "panels.indicatorDetail",
+  variance: "varianceExplainer.title",
+  brief: "todayBrief.title",
+  news: "todayBrief.newsHeader",
   // Phase 7.I — agro / sugar pop-out widgets
-  "agro-dashboard": "Agro Dashboard",
-  "commodity-ticker": "Commodity & Weather",
-  "agronomy-entry": "Agronomy Entry",
+  "agro-dashboard": "panels.agroDashboard",
+  "commodity-ticker": "panels.commodityTicker",
+  "agronomy-entry": "agronomyEntry.title",
   // Phase 7.J — counterparty + FX widgets
-  "concentration": "Concentration · Customers / Suppliers",
-  "fx-exposure": "FX Exposure · Net by Currency",
+  "concentration": "panels.concentration",
+  "fx-exposure": "panels.fxExposure",
 };
 
 function PanelContent({ kind }: { kind: string }) {
+  const t = useTranslations("terminal");
   const { companies, loading } = useCompanies();
   switch (kind) {
     case "tree":
@@ -82,13 +92,14 @@ function PanelContent({ kind }: { kind: string }) {
     default:
       return (
         <div className="text-gray-500 p-6">
-          Unknown panel kind: {kind}
+          {t("panels.unknownKind", { kind })}
         </div>
       );
   }
 }
 
 export default function PoppedOutPanelPage() {
+  const t = useTranslations("terminal");
   const params = useParams();
   const search = useSearchParams();
   const kind = typeof params.id === "string" ? params.id : "matrix";
@@ -144,7 +155,8 @@ export default function PoppedOutPanelPage() {
     setMounted(true);
   }, []);
 
-  const title = PANEL_TITLES[kind] ?? kind;
+  const titleKey = PANEL_TITLE_KEYS[kind];
+  const title = titleKey ? t(titleKey as never) : kind;
 
   return (
     <div className="flex flex-col h-full bg-[#0A0E27] text-gray-300">
@@ -160,9 +172,9 @@ export default function PoppedOutPanelPage() {
       </header>
       <main className="flex-1 overflow-auto p-3">
         {!mounted ? (
-          <div className="text-gray-500 text-xs">Загрузка панели…</div>
+          <div className="text-gray-500 text-xs">{t("panels.loadingPanel")}</div>
         ) : (
-        <Suspense fallback={<div className="text-gray-500">Loading…</div>}>
+        <Suspense fallback={<div className="text-gray-500">{t("panels.loading")}</div>}>
           <PanelContent kind={kind} />
         </Suspense>
         )}

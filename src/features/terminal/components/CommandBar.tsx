@@ -319,7 +319,9 @@ export function CommandBar() {
           } else {
             setFeedback({
               kind: 'err',
-              message: `IND partial — no IndicatorValue found for "${cmd.indicatorCode}" in current period (cell may be missing or indicator not seeded)`,
+              message: t('commandBar.indPartial', {
+                code: cmd.indicatorCode,
+              }),
             });
           }
         });
@@ -403,7 +405,15 @@ export function CommandBar() {
     e.preventDefault();
     const result = parseCommand(command);
     if (!result.ok) {
-      setFeedback({ kind: 'err', message: result.error.reason });
+      // The parser is a pure lib and can't call hooks, so it hands back an
+      // i18n key + ICU vars; resolve them here. `reason` stays the fallback
+      // for the (impossible today) case of a key-less error.
+      setFeedback({
+        kind: 'err',
+        message: result.error.i18nKey
+          ? t(result.error.i18nKey as never, result.error.i18nVars as never)
+          : result.error.reason,
+      });
       return;
     }
     // CLI Bloomberg-sweep — record the raw command into sessionStorage
@@ -661,11 +671,13 @@ export function CommandBar() {
       <div className="flex items-center space-x-6 text-gray-400" data-volatile="true">
         <div className="flex items-center gap-1">
           <span className="text-gray-400">CO:</span>
-          <span className={activeCompany ? 'text-[#FFB800]' : ''}>{activeCompany || 'NONE'}</span>
+          <span className={activeCompany ? 'text-[#FFB800]' : ''}>
+            {activeCompany || t('commandBar.companyNone')}
+          </span>
           <RelatedFunctionsMenu />
         </div>
         <div className="flex items-center cursor-pointer hover:text-white transition-colors">
-          <span className="mr-1">[user]</span>
+          <span className="mr-1">{t('commandBar.userPlaceholder')}</span>
         </div>
         <Tooltip>
           <TooltipTrigger asChild>

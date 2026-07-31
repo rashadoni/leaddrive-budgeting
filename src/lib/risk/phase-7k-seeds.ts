@@ -63,6 +63,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "AZ tourism arrivals at {value}k (annual, latest reported year). Above 2M is a green demand signal; below 1.5M means hotel occupancy headwind ahead.",
+    hintTemplateAz:
+      "Azərbaycana turist axını {value} min nəfər (illik, son hesabat ili). 2 milyondan yuxarı — yaşıl tələb siqnalı; 1,5 milyondan aşağı otel dolğunluğu üçün qarşıda əks külək deməkdir.",
+    hintTemplateRu:
+      "Туристический поток в Азербайджан — {value} тыс. чел. (годовой, последний отчётный год). Выше 2 млн — зелёный сигнал спроса; ниже 1,5 млн — встречный ветер для загрузки отелей.",
     requiredInputs: ["commodityPrice:az_tourism_arrivals_latest"],
     sortOrder: 75,
     defaultValueSource: "macro",
@@ -88,6 +92,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "AZN/USD at {value}. Pharma cost-of-goods is ~80% USD imports — every 1% AZN devaluation flows directly to gross margin.",
+    hintTemplateAz:
+      "AZN/USD məzənnəsi {value}. Əczaçılıqda malın maya dəyərinin ~80%-i USD idxalıdır — AZN-in hər 1% ucuzlaşması birbaşa ümumi marjaya keçir.",
+    hintTemplateRu:
+      "Курс AZN/USD — {value}. Около 80% себестоимости в фарме — импорт за USD: каждый 1% девальвации маната напрямую бьёт по валовой марже.",
     requiredInputs: ["commodityPrice:azn_usd_latest"],
     sortOrder: 135,
     defaultValueSource: "macro",
@@ -116,6 +124,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "AZ Services CPI (rent + utilities proxy) at {value}% YoY. ≥105 indicates rising occupancy + utility cost pass-through (tailwind for real-estate revenue); <100 = deflationary headwind.",
+    hintTemplateAz:
+      "Xidmətlər üzrə AZ istehlak qiymətləri indeksi (icarə + kommunal proksisi) illik {value}%. ≥105 dolğunluğun və kommunal xərclərin qiymətə ötürülməsinin artmasını göstərir (daşınmaz əmlak gəliri üçün əlverişli külək); <100 deflyasiya təzyiqidir.",
+    hintTemplateRu:
+      "ИПЦ услуг AZ (прокси аренды и коммунальных) — {value}% г/г. ≥105 указывает на рост заполняемости и переноса коммунальных затрат в цену (попутный ветер для доходов недвижимости); <100 — дефляционное давление.",
     requiredInputs: ["commodityPrice:az_cpi_housing_latest"],
     sortOrder: 365,
     defaultValueSource: "macro",
@@ -141,6 +153,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Copper at {value} USD/tonne. >$11k/t is an industrial input-cost red flag — review pass-through pricing.",
+    hintTemplateAz:
+      "Mis {value} USD/ton. >11 min $/ton sənaye xammal xərci üçün qırmızı siqnaldır — qiymətə ötürmə siyasətini nəzərdən keçirin.",
+    hintTemplateRu:
+      "Медь — {value} USD/т. Выше $11 тыс./т — красный флаг по стоимости промышленного сырья: пересмотрите перенос затрат в цену.",
     requiredInputs: ["commodityPrice:copper_price_latest"],
     sortOrder: 755,
     defaultValueSource: "macro",
@@ -162,6 +178,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Henry Hub natural gas at {value} USD/MMBtu. >$6 is a power + petrochem input cost red flag.",
+    hintTemplateAz:
+      "Henry Hub təbii qazı {value} USD/MMBtu. >6 $ enerji və neft-kimya xammalı xərci üçün qırmızı siqnaldır.",
+    hintTemplateRu:
+      "Природный газ Henry Hub — {value} USD/MMBtu. Выше $6 — красный флаг по стоимости энергии и нефтехимического сырья.",
     requiredInputs: ["commodityPrice:natgas_price_latest"],
     sortOrder: 756,
     defaultValueSource: "macro",
@@ -187,6 +207,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "HRC steel {value} USD/tonne. >$900/t is a construction-margin red flag — review project bid contingencies.",
+    hintTemplateAz:
+      "HRC polad {value} USD/ton. >900 $/ton tikinti marjası üçün qırmızı siqnaldır — layihə tenderlərindəki ehtiyat büdcəni yoxlayın.",
+    hintTemplateRu:
+      "Сталь HRC — {value} USD/т. Выше $900/т — красный флаг для маржи в строительстве: проверьте резервы в тендерных расчётах.",
     requiredInputs: ["commodityPrice:steel_price_latest"],
     sortOrder: 765,
     defaultValueSource: "macro",
@@ -208,6 +232,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Lumber at {value} USD/1000 board ft. >$600 is a residential-margin red flag.",
+    hintTemplateAz:
+      "Oduncaq {value} USD/1000 bord-fut. >600 $ yaşayış tikintisi marjası üçün qırmızı siqnaldır.",
+    hintTemplateRu:
+      "Пиломатериалы — {value} USD за 1000 борд-футов. Выше $600 — красный флаг для маржи жилищного строительства.",
     requiredInputs: ["commodityPrice:lumber_price_latest"],
     sortOrder: 766,
     defaultValueSource: "macro",
@@ -233,6 +261,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "ULSD diesel proxy {value} USD/L. >$0.9 is a fleet-cost red flag — review fuel-surcharge clauses.",
+    hintTemplateAz:
+      "ULSD dizel proksisi {value} USD/litr. >0,9 $ avtopark xərcləri üçün qırmızı siqnaldır — müqavilələrdəki yanacaq əlavəsi bəndlərini nəzərdən keçirin.",
+    hintTemplateRu:
+      "Прокси дизеля ULSD — {value} USD/л. Выше $0,9 — красный флаг по затратам автопарка: пересмотрите топливные надбавки в договорах.",
     requiredInputs: ["commodityPrice:diesel_price_latest"],
     sortOrder: 795,
     defaultValueSource: "macro",
@@ -258,6 +290,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "BDRY ETF at {value} USD/share — proxy for Baltic Dry Index. <$10 = global freight slowdown (negative for logistics revenue); ≥$20 = freight demand strength.",
+    hintTemplateAz:
+      "BDRY ETF {value} USD/pay — Baltic Dry İndeksinin proksisi. <10 $ qlobal fraxtın yavaşlamasıdır (logistika gəliri üçün mənfi); ≥20 $ fraxt tələbinin güclü olmasıdır.",
+    hintTemplateRu:
+      "BDRY ETF — {value} USD за пай, прокси индекса Baltic Dry. Ниже $10 — замедление мирового фрахта (негатив для выручки логистики); ≥$20 — сильный спрос на фрахт.",
     requiredInputs: ["commodityPrice:baltic_dry_latest"],
     sortOrder: 796,
     defaultValueSource: "macro",
@@ -279,6 +315,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Brent at {value} USD/bbl. >$100 is a logistics cost-pass-through red flag (drives diesel + freight rates upstream).",
+    hintTemplateAz:
+      "Brent {value} USD/barel. >100 $ logistika xərclərinin qiymətə ötürülməsi üçün qırmızı siqnaldır (dizel və fraxt tariflərini yuxarı çəkir).",
+    hintTemplateRu:
+      "Brent — {value} USD/барр. Выше $100 — красный флаг по переносу логистических затрат в цену (тянет вверх дизель и фрахтовые ставки).",
     requiredInputs: ["commodityPrice:brent_price_latest"],
     sortOrder: 797,
     defaultValueSource: "macro",
@@ -304,6 +344,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Wholesale broiler at {value} USD/lb (USDA). <$1.00 = margin compression risk; >$1.20 = pricing tailwind.",
+    hintTemplateAz:
+      "Broylerin topdansatış qiyməti {value} USD/funt (USDA). <1,00 $ marjanın sıxılma riski; >1,20 $ qiymət üzrə əlverişli küləkdir.",
+    hintTemplateRu:
+      "Оптовая цена бройлера — {value} USD/фунт (USDA). Ниже $1,00 — риск сжатия маржи; выше $1,20 — ценовой попутный ветер.",
     requiredInputs: ["commodityPrice:broiler_price_latest"],
     sortOrder: 825,
     defaultValueSource: "macro",
@@ -325,6 +369,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Corn at {value} USD/tonne — primary feed input. >$280/t squeezes broiler margin (typical feed is 65-75% of cost).",
+    hintTemplateAz:
+      "Qarğıdalı {value} USD/ton — əsas yem xammalı. >280 $/ton broyler marjasını sıxır (yem adətən maya dəyərinin 65-75%-idir).",
+    hintTemplateRu:
+      "Кукуруза — {value} USD/т, основное кормовое сырьё. Выше $280/т сжимает маржу по бройлеру (корм обычно 65-75% себестоимости).",
     requiredInputs: ["commodityPrice:corn_price_latest"],
     sortOrder: 826,
     defaultValueSource: "macro",
@@ -346,6 +394,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Wholesale eggs at {value} USD/dozen (USDA). <$1.50 = layer-operation margin pressure.",
+    hintTemplateAz:
+      "Yumurtanın topdansatış qiyməti {value} USD/duzin (USDA). <1,50 $ yumurtalıq təsərrüfatının marjasına təzyiq deməkdir.",
+    hintTemplateRu:
+      "Оптовая цена яйца — {value} USD за дюжину (USDA). Ниже $1,50 — давление на маржу яичного направления.",
     requiredInputs: ["commodityPrice:egg_price_latest"],
     sortOrder: 827,
     defaultValueSource: "macro",
@@ -371,6 +423,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "FAO Food Price Index {value}. >140 = global food inflation pressure — passes through to all food processors' input costs.",
+    hintTemplateAz:
+      "FAO Ərzaq Qiymət İndeksi {value}. >140 qlobal ərzaq inflyasiyası təzyiqidir — bütün qida emalı müəssisələrinin xammal xərcinə keçir.",
+    hintTemplateRu:
+      "Индекс продовольственных цен FAO — {value}. Выше 140 — давление мировой продовольственной инфляции, которое переходит в стоимость сырья всех пищевых производств.",
     requiredInputs: ["commodityPrice:fao_ffpi_latest"],
     sortOrder: 875,
     defaultValueSource: "macro",
@@ -392,6 +448,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Wheat at {value} USD/tonne. >$320/t pressures bakery + milling input cost.",
+    hintTemplateAz:
+      "Buğda {value} USD/ton. >320 $/ton çörək-bulka və dəyirman xammalının xərcinə təzyiq edir.",
+    hintTemplateRu:
+      "Пшеница — {value} USD/т. Выше $320/т давит на стоимость сырья хлебопечения и мукомольного производства.",
     requiredInputs: ["commodityPrice:wheat_price_latest"],
     sortOrder: 876,
     defaultValueSource: "macro",
@@ -417,6 +477,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "FAO Sugar sub-index {value}. >140 = sugar pricing pressure — review syrup cost in carbonated beverage formulas.",
+    hintTemplateAz:
+      "FAO Şəkər alt-indeksi {value}. >140 şəkər qiyməti təzyiqidir — qazlı içki reseptlərindəki siropun maya dəyərini nəzərdən keçirin.",
+    hintTemplateRu:
+      "Субиндекс сахара FAO — {value}. Выше 140 — ценовое давление по сахару: пересмотрите стоимость сиропа в рецептурах газированных напитков.",
     requiredInputs: ["commodityPrice:fao_sugar_latest"],
     sortOrder: 955,
     defaultValueSource: "macro",
@@ -442,6 +506,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "AZ food CPI at {value}. >115 = staples inflation pressure on retail margins; <105 = stable consumer-cost environment.",
+    hintTemplateAz:
+      "AZ ərzaq istehlak qiymətləri indeksi {value}. >115 əsas ərzaq inflyasiyasının pərakəndə marjasına təzyiqidir; <105 sabit istehlak xərci mühitidir.",
+    hintTemplateRu:
+      "ИПЦ продовольствия AZ — {value}. Выше 115 — инфляция базовых продуктов давит на маржу ритейла; ниже 105 — стабильная стоимость потребительской корзины.",
     requiredInputs: ["commodityPrice:az_cpi_food_latest"],
     sortOrder: 975,
     defaultValueSource: "macro",
@@ -459,6 +527,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     thresholds: DEMAND_SIGNAL,
     hintTemplateEn:
       "Google Trends food-retail interest {value}/100. <80 = consumer demand softening; ≥100 = strong demand window.",
+    hintTemplateAz:
+      "Google Trends-də ərzaq pərakəndəsinə maraq {value}/100. <80 istehlak tələbinin zəifləməsi; ≥100 güclü tələb pəncərəsidir.",
+    hintTemplateRu:
+      "Интерес к продуктовому ритейлу по Google Trends — {value}/100. Ниже 80 — ослабление потребительского спроса; ≥100 — окно сильного спроса.",
     requiredInputs: ["commodityPrice:az_trend_food_latest"],
     sortOrder: 976,
     defaultValueSource: "macro",
@@ -484,6 +556,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "AZ population age 0-14 at {value}% of total. <20% signals long-term enrollment shrinkage; ≥23% = healthy student cohort.",
+    hintTemplateAz:
+      "Azərbaycanda 0-14 yaş əhalisi ümumi əhalinin {value}%-idir. <20% uzunmüddətli qəbul azalmasının siqnalıdır; ≥23% sağlam şagird kontingentidir.",
+    hintTemplateRu:
+      "Население Азербайджана 0-14 лет — {value}% от общего. Ниже 20% — сигнал долгосрочного сокращения набора; ≥23% — здоровая когорта учащихся.",
     requiredInputs: ["commodityPrice:az_pop_age_0_14_latest"],
     sortOrder: 1025,
     defaultValueSource: "macro",
@@ -505,6 +581,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     thresholds: DEMAND_SIGNAL,
     hintTemplateEn:
       "Google Trends travel interest {value}/100. Forward demand signal for events + hospitality; ≥100 = high travel-search activity.",
+    hintTemplateAz:
+      "Google Trends-də səyahət marağı {value}/100. Tədbirlər və qonaqpərvərlik üçün irəliyə baxan tələb siqnalıdır; ≥100 yüksək səyahət axtarışı aktivliyidir.",
+    hintTemplateRu:
+      "Интерес к путешествиям по Google Trends — {value}/100. Опережающий сигнал спроса для событийной индустрии и гостеприимства; ≥100 — высокая активность поиска поездок.",
     requiredInputs: ["commodityPrice:az_trend_travel_latest"],
     sortOrder: 1055,
     defaultValueSource: "macro",
@@ -530,6 +610,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "AZ trade balance {value} USD (annual). Negative = import-dependent; ≥$10B = strong export economy supporting services demand.",
+    hintTemplateAz:
+      "Azərbaycanın ticarət balansı {value} USD (illik). Mənfi göstərici idxaldan asılılıqdır; ≥10 mlrd $ xidmətlərə tələbi dəstəkləyən güclü ixrac iqtisadiyyatıdır.",
+    hintTemplateRu:
+      "Торговый баланс Азербайджана — {value} USD (годовой). Отрицательный — зависимость от импорта; ≥$10 млрд — сильная экспортная экономика, поддерживающая спрос на услуги.",
     requiredInputs: ["commodityPrice:az_trade_balance_latest"],
     sortOrder: 1105,
     defaultValueSource: "macro",
@@ -555,6 +639,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Salyan 14-day rainfall forecast {value} mm. <10mm = irrigation pressure for cane fields; ≥30mm = good moisture window.",
+    hintTemplateAz:
+      "Salyan üzrə 14 günlük yağıntı proqnozu {value} mm. <10 mm şəkər qamışı sahələri üçün suvarma təzyiqi; ≥30 mm yaxşı rütubət pəncərəsidir.",
+    hintTemplateRu:
+      "Прогноз осадков по Сальяну на 14 дней — {value} мм. Менее 10 мм — нагрузка на орошение плантаций тростника; ≥30 мм — хорошее окно влагообеспеченности.",
     // Maps via COMMODITY_PRICE_ALIASES → openmeteo-forecast source +
     // SALYAN_RAINFALL_MM_14D_FCST metric. Uses commodityPrice
     // namespace because we don't have a dedicated `weather:` resolver
@@ -582,6 +670,10 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Blended corn+wheat mid-point at {value} USD/tonne. >$320/t = grain input cost stress for processors + integrated poultry.",
+    hintTemplateAz:
+      "Qarğıdalı və buğdanın orta qiyməti {value} USD/ton. >320 $/ton emalçılar və inteqrasiya olunmuş quşçuluq üçün taxıl xammalı xərci stressidir.",
+    hintTemplateRu:
+      "Средняя цена связки кукуруза+пшеница — {value} USD/т. Выше $320/т — стресс по стоимости зернового сырья для переработчиков и интегрированного птицеводства.",
     requiredInputs: [
       "commodityPrice:corn_price_latest",
       "commodityPrice:wheat_price_latest",

@@ -108,12 +108,15 @@ describe("Sparkline (Phase B3)", () => {
     );
   });
 
-  it("default aria-label includes point count + range", () => {
+  it("default aria-label falls back to the localized series description", () => {
     render(<Sparkline data={[10, 20, null, 30]} />);
+    // The default label is now `terminal.sparkline.ariaSeries` resolved via
+    // next-intl (the vitest mock renders unmapped keys as the uppercased
+    // leaf). Assert the fallback is present and non-empty — the point
+    // count / range live in the catalogue string's ICU placeholders.
     const label = screen.getByRole("img").getAttribute("aria-label") ?? "";
-    expect(label).toContain("3 of 4 points");
-    expect(label).toContain("10");
-    expect(label).toContain("30");
+    expect(label.length).toBeGreaterThan(0);
+    expect(label).toMatch(/aria ?series/i);
   });
 
   it("flat series (all-same value) renders centerline (snap-to-flat branch)", () => {

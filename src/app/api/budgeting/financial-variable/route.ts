@@ -130,9 +130,16 @@ export async function POST(req: NextRequest) {
   // ── Pure validation → reject (hard bound) ───────────────────────────
   const check = validateFinancialValue(rule, body.value)
   if (!check.ok) {
+    // `error`/`errors` stay English for logs + non-localized clients;
+    // `errorKey`/`errorMessages` let the UI render the operator's language.
     return {
       response: NextResponse.json(
-        { error: "Validation failed", errors: check.errors },
+        {
+          error: "Validation failed",
+          errorKey: "validationFailed",
+          errors: check.errors,
+          errorMessages: check.errorMessages,
+        },
         { status: 400 },
       ),
     }
@@ -150,6 +157,7 @@ export async function POST(req: NextRequest) {
   // with the existing figure in view. (Only meaningful for balance-sheet
   // variables; today every variable is one.)
   const warnings = [...check.warnings]
+  const warningMessages = [...check.warningMessages]
   if (rule.model === "balanceSheetLine") {
     const currentAssets = await tx.balanceSheetLine.findMany({
       where: {
@@ -177,12 +185,21 @@ export async function POST(req: NextRequest) {
       warnings.push(
         `Inventory is already recorded for this company in ${body.year} under: ${names} (total ${total} ${rule.unit}). Saving here adds a SEPARATE line — the indicator sums both and would double-count. Edit the existing line instead, or confirm to add anyway.`,
       )
+      warningMessages.push({
+        key: "inventoryDoubleCount",
+        params: { year: body.year, names, total, unit: rule.unit },
+      })
     }
   }
 
   const requiresConfirm = !body.forceConfirm && warnings.length > 0
   if (requiresConfirm) {
-    return { response: NextResponse.json({ requiresConfirm: true, warnings }, { status: 200 }) }
+    return {
+      response: NextResponse.json(
+        { requiresConfirm: true, warnings, warningMessages },
+        { status: 200 },
+      ),
+    }
   }
 
   // ── Find-or-create the year's actual plan ───────────────────────────

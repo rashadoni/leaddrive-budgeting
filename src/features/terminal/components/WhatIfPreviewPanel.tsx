@@ -779,10 +779,20 @@ export function WhatIfPreviewPanel() {
                                     {name}
                                   </span>
                                   {worsened && (
-                                    <span className="shrink-0 text-[10px] text-red-300" aria-label="worsened">▲</span>
+                                    <span
+                                      className="shrink-0 text-[10px] text-red-300"
+                                      aria-label={t("whatif.worsenedAria")}
+                                    >
+                                      ▲
+                                    </span>
                                   )}
                                   {improved && (
-                                    <span className="shrink-0 text-[10px] text-emerald-300" aria-label="improved">▼</span>
+                                    <span
+                                      className="shrink-0 text-[10px] text-emerald-300"
+                                      aria-label={t("whatif.improvedAria")}
+                                    >
+                                      ▼
+                                    </span>
                                   )}
                                 </div>
                                 <div className="text-[9px] font-mono text-gray-400 truncate">

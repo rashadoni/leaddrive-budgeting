@@ -16,6 +16,7 @@ import React from "react";
  *  Used by ESG composite indicators. Returns null if shape doesn't match. */
 function renderIndustryFactorAggregate(
   data: Record<string, unknown>,
+  t: (k: string) => string,
 ): React.ReactElement | null {
   const scopes = data.scopes;
   const industry = data.industry;
@@ -42,7 +43,9 @@ function renderIndustryFactorAggregate(
               <td className="text-muted-foreground pr-2 font-mono">{s.key.replace("_", " ")}</td>
               <td className="text-gray-200 text-right pr-3">{(s.factor * 100).toFixed(0)}%</td>
               <td className="text-muted-foreground text-right text-[9px] w-8">
-                <span title="data confidence">{s.confidence}</span>
+                <span title={t("indicatorDetail.dataConfidence")}>
+                  {s.confidence}
+                </span>
               </td>
             </tr>
           ))}
@@ -270,6 +273,7 @@ export function AggregateBlock({
     // that recognizes the shape wins; raw JSON only as last resort.
     const industryView = renderIndustryFactorAggregate(
       data as Record<string, unknown>,
+      t,
     );
     if (industryView) return industryView;
     const commodityView = renderCommodityPriceAggregate(

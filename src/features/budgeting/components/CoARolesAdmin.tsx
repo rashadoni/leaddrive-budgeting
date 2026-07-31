@@ -78,7 +78,7 @@ export function CoARolesAdmin() {
         role: nextRole === "" ? null : nextRole,
       })
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Update failed"
+      const msg = e instanceof Error ? e.message : t("errUpdate")
       setUpdateError(msg)
     } finally {
       setPendingId(null)

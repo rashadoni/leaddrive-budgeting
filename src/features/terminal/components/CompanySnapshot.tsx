@@ -155,7 +155,7 @@ export function CompanySnapshot({ companyCode }: Props) {
   if (error || !data) {
     return (
       <div className="text-[#FF4757] font-mono text-xs h-full w-full">
-        {t("snapshot.error")}: {error ?? "no data"}
+        {t("snapshot.error")}: {error ?? t("snapshot.noData")}
       </div>
     );
   }

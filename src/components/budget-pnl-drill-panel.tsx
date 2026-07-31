@@ -15,16 +15,12 @@
 
 import { useEffect } from "react"
 import { X } from "lucide-react"
+import { useTranslations } from "next-intl"
 // Phase 3.3 v1.2 — pure variance helpers extracted to a shared module
 // so the math is unit-testable and reusable. See variance-helpers.ts
 // for the rationale + 12 unit tests covering normal / edge / combined
 // cases (favorable-sign × variance.abs).
 import { variance, favorableSign } from "@/lib/budgeting/variance-helpers"
-
-const MONTHS_RU = [
-  "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
-  "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
-]
 
 /**
  * Phase 3.3 v1.4 — DrillRow widened to accept any PnlRow superset.
@@ -68,6 +64,11 @@ export function BudgetPnlDrillPanel({
   monthlyRevenue,
   onClose,
 }: Props) {
+  const t = useTranslations("budgeting")
+  // Month labels follow the viewer's locale. Until 2026-07-31 this panel
+  // hardcoded Russian abbreviations, so an Azerbaijani session saw Russian
+  // months next to English headers.
+  const months = t("monthsShort").split(",")
   // ESC key closes the panel.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -107,7 +108,7 @@ export function BudgetPnlDrillPanel({
       />
       <aside
         role="dialog"
-        aria-label={`Detail for ${row.accountName}`}
+        aria-label={t("drillPanelAria", { account: row.accountName })}
         data-testid="pnl-drill-panel"
         className="fixed right-0 top-0 z-50 h-screen w-full max-w-md overflow-y-auto bg-card border-l border-border shadow-2xl"
       >
@@ -115,7 +116,7 @@ export function BudgetPnlDrillPanel({
         <div className="sticky top-0 z-10 flex items-start justify-between bg-card border-b border-border px-4 py-3">
           <div className="flex-1 min-w-0">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Account · {row.accountType}
+              {t("drillAccountEyebrow", { type: row.accountType })}
             </div>
             <div
               className="text-lg font-semibold truncate"
@@ -132,7 +133,7 @@ export function BudgetPnlDrillPanel({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close detail panel"
+            aria-label={t("drillCloseAria")}
             className="rounded p-1 hover:bg-muted"
           >
             <X size={16} aria-hidden="true" />
@@ -143,7 +144,7 @@ export function BudgetPnlDrillPanel({
         <div className="grid grid-cols-3 gap-2 px-4 py-4 border-b border-border">
           <div>
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Plan
+              {t("colPlan")}
             </div>
             <div className="text-base font-semibold tabular-nums mt-1">
               {fmtMoney(plannedTotal)}
@@ -151,7 +152,7 @@ export function BudgetPnlDrillPanel({
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Actual
+              {t("colActual")}
             </div>
             <div className="text-base font-semibold tabular-nums mt-1">
               {fmtMoney(actualTotal)}
@@ -186,7 +187,7 @@ export function BudgetPnlDrillPanel({
                 className="text-xs text-muted-foreground/70 mt-1.5 italic"
                 data-testid="pnl-drill-empty-actuals"
               >
-                No actuals yet
+                {t("drillNoActualsYet")}
               </div>
             )}
           </div>
@@ -195,16 +196,16 @@ export function BudgetPnlDrillPanel({
         {/* Monthly breakdown table */}
         <div className="px-2 py-3">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 px-2">
-            12-month breakdown · plan / actual / Δ
+            {t("drillMonthlyBreakdown")}
           </div>
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
-                <th className="px-2 py-2 text-left">Month</th>
-                <th className="px-2 py-2 text-right">Plan</th>
-                <th className="px-2 py-2 text-right">Actual</th>
+                <th className="px-2 py-2 text-left">{t("colMonth")}</th>
+                <th className="px-2 py-2 text-right">{t("colPlan")}</th>
+                <th className="px-2 py-2 text-right">{t("colActual")}</th>
                 <th className="px-2 py-2 text-right">Δ</th>
-                <th className="px-2 py-2 text-right">% rev</th>
+                <th className="px-2 py-2 text-right">{t("drillColPctRevenue")}</th>
               </tr>
             </thead>
             <tbody data-testid="pnl-drill-monthly-tbody">
@@ -222,7 +223,7 @@ export function BudgetPnlDrillPanel({
                     data-month={month}
                   >
                     <td className="px-2 py-1.5 text-muted-foreground">
-                      {MONTHS_RU[i]}
+                      {months[i]}
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums">
                       {fmtMoney(plan)}
@@ -250,7 +251,7 @@ export function BudgetPnlDrillPanel({
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-border font-semibold">
-                <td className="px-2 py-2">Total</td>
+                <td className="px-2 py-2">{t("totalLabel")}</td>
                 <td className="px-2 py-2 text-right tabular-nums">
                   {fmtMoney(plannedTotal)}
                 </td>
@@ -276,8 +277,9 @@ export function BudgetPnlDrillPanel({
 
         {/* Hint */}
         <div className="px-4 pb-4 pt-2 text-[10px] text-muted-foreground">
-          Press <kbd className="border rounded px-1 font-mono">Esc</kbd> or click
-          outside to close.
+          {t.rich("drillCloseHint", {
+            kbd: (chunks) => <kbd className="border rounded px-1 font-mono">{chunks}</kbd>,
+          })}
         </div>
       </aside>
     </>

@@ -217,7 +217,10 @@ describe('CommandBar (Phase 7.D smoke)', () => {
     const after = getTerminalSnapshot();
     expect(after).toEqual(before);
     const alert = screen.getByRole('alert');
-    expect(alert.textContent).toMatch(/Unknown function/);
+    // Parser now returns an i18n key (commandBar.errors.unknownFunction)
+    // that CommandBar resolves through `t`; the vitest next-intl mock
+    // renders unmapped keys as the uppercased leaf, hence case-insensitive.
+    expect(alert.textContent).toMatch(/unknown function/i);
   });
 
   it('missing GO terminator → error feedback, no store change', () => {

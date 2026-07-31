@@ -393,17 +393,16 @@ export function BulkImportSection({
         <Brain className="size-4 text-primary mt-0.5 shrink-0" />
         <div className="flex-1 space-y-1">
           <div className="font-semibold text-xs">
-            Используйте единый «Импорт данных» для xlsx KPI
+            {t("bulkImportDeprecatedTitle")}
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            AI Import распознаёт OPS_FACTS shape (companyCode | metric | date |
-            value | unit) — один экран на все импорты данных.
+            {t("bulkImportDeprecatedBody")}
           </p>
           <Link
             href="/budgeting/admin/ai-import"
             className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
           >
-            Перейти к Импорту данных
+            {t("bulkImportDeprecatedLink")}
             <ArrowRight className="size-3" />
           </Link>
         </div>

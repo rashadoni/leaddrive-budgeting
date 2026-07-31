@@ -70,13 +70,33 @@ export async function GET(request: NextRequest) {
     ru: ["Вид затрат", "Метод начисления", "План", "Начислено", "Факт", "Контроль", "ИТОГО"],
     az: ["Xərc növü", "Hesablama metodu", "Plan", "Hesablanmış", "Fakt", "Kontrol", "CƏMİ"],
   }
+  // Worksheet tab names — previously "Entries"/"Summary" in every locale.
+  const SHEET: Record<string, { entries: string; summary: string }> = {
+    en: { entries: "Entries", summary: "Summary" },
+    ru: { entries: "Записи", summary: "Свод" },
+    az: { entries: "Yazılışlar", summary: "Yekun" },
+  }
+  // Enum codes are written as raw `plan` / `on_invoice` strings in the sheet
+  // while the on-screen ledger translates them; mirror the UI wording here.
+  const KIND: Record<string, Record<string, string>> = {
+    en: { plan: "Plan", accrued: "Accrued", actual: "Actual" },
+    ru: { plan: "План", accrued: "Начислено", actual: "Факт" },
+    az: { plan: "Plan", accrued: "Hesablanmış", actual: "Fakt" },
+  }
+  const ACCRUAL: Record<string, Record<string, string>> = {
+    en: { on_invoice: "On invoice", retro_formula: "Retro formula" },
+    ru: { on_invoice: "По счёту", retro_formula: "Ретро-формула" },
+    az: { on_invoice: "Hesab-faktura üzrə", retro_formula: "Retro düsturu" },
+  }
+  const kindLabel = (k: string) => KIND[lang][k] ?? k
+  const accrualLabel = (a: string) => ACCRUAL[lang][a] ?? a
   const entriesAoa: Array<Array<string | number>> = [
     H[lang],
     ...entries.map((e) => [
       e.entryDate.toISOString().slice(0, 10),
-      e.entryKind,
+      kindLabel(e.entryKind),
       e.spendType.label,
-      e.spendType.accrualMethod,
+      accrualLabel(e.spendType.accrualMethod),
       e.channelId ? (channelNameById.get(e.channelId) ?? "") : "",
       e.campaignId ? (campaignName.get(e.campaignId) ?? "") : "",
       e.amount,
@@ -89,17 +109,24 @@ export async function GET(request: NextRequest) {
   const { byType, totals } = summarizeLedger(entries)
   const summaryAoa: Array<Array<string | number>> = [
     HS[lang].slice(0, 6),
-    ...byType.map((r) => [r.label, r.accrualMethod, r.plan, r.accrued, r.actual, r.control]),
+    ...byType.map((r) => [
+      r.label,
+      accrualLabel(r.accrualMethod),
+      r.plan,
+      r.accrued,
+      r.actual,
+      r.control,
+    ]),
     [HS[lang][6], "", totals.plan, totals.accrued, totals.actual, totals.control],
   ]
 
   const wb = XLSX.utils.book_new()
   const ws1 = XLSX.utils.aoa_to_sheet(entriesAoa)
   ws1["!cols"] = [{ wch: 11 }, { wch: 9 }, { wch: 24 }, { wch: 18 }, { wch: 28 }, { wch: 12 }, { wch: 9 }, { wch: 40 }, { wch: 20 }]
-  XLSX.utils.book_append_sheet(wb, ws1, "Entries")
+  XLSX.utils.book_append_sheet(wb, ws1, SHEET[lang].entries)
   const ws2 = XLSX.utils.aoa_to_sheet(summaryAoa)
   ws2["!cols"] = [{ wch: 24 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }]
-  XLSX.utils.book_append_sheet(wb, ws2, "Summary")
+  XLSX.utils.book_append_sheet(wb, ws2, SHEET[lang].summary)
   const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" }) as Buffer
 
   const fileName = `trade-spend-${year}-${String(month).padStart(2, "0")}.xlsx`

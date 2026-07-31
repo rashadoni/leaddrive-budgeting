@@ -32,6 +32,8 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { groupByOwner } from "@/lib/onboarding/indicator-owner-map";
+import { useOwnerText } from "@/lib/onboarding/use-owner-text";
+import { useIndustryLabel } from "@/lib/industries/label";
 import type {
   CompanyBacklog,
   BacklogSummary,
@@ -48,6 +50,19 @@ interface Props {
 type CategoryFilter = "all" | string;
 type OwnerFilter = "all" | string;
 
+/**
+ * Indicator categories arrive as raw enum codes ("operational", "fx", …).
+ * Render the catalogue label when one exists so an AZ/RU operator doesn't
+ * read English enum words inside otherwise translated chips and filters.
+ */
+function useCategoryLabel(): (code: string) => string {
+  const t = useTranslations("adminIndicatorBacklog");
+  return (code) => {
+    const key = `indicatorCategory.${code}`;
+    return t.has(key as never) ? t(key as never) : code;
+  };
+}
+
 function localizedIndicatorName(
   item: {
     indicatorNameEn: string;
@@ -63,6 +78,8 @@ function localizedIndicatorName(
 
 export function IndicatorBacklogView({ companies, summary, period }: Props) {
   const t = useTranslations("adminIndicatorBacklog");
+  const ownerText = useOwnerText();
+  const categoryLabel = useCategoryLabel();
   const locale = useLocale();
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>("all");
@@ -177,7 +194,7 @@ export function IndicatorBacklogView({ companies, summary, period }: Props) {
                           : "border-border bg-card text-foreground/90 hover:bg-accent"
                   }`}
                 >
-                  <span className="font-medium">{r.role}</span>
+                  <span className="font-medium">{ownerText.role(r)}</span>
                   <span
                     className={`font-mono tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold ${
                       isActive
@@ -208,7 +225,7 @@ export function IndicatorBacklogView({ companies, summary, period }: Props) {
             { value: "all", label: t("allCategories") },
             ...summary.byCategory.map((c) => ({
               value: c.category,
-              label: `${c.category} (${c.missingCount})`,
+              label: `${categoryLabel(c.category)} (${c.missingCount})`,
             })),
           ]}
         />
@@ -220,7 +237,7 @@ export function IndicatorBacklogView({ companies, summary, period }: Props) {
             { value: "all", label: t("allOwners") },
             ...summary.byOwnerRole.map((r) => ({
               value: r.role,
-              label: `${r.role} (${r.missingCount})`,
+              label: `${ownerText.role(r)} (${r.missingCount})`,
             })),
           ]}
         />
@@ -378,26 +395,29 @@ function EntityCard({
   locale: string;
 }) {
   const t = useTranslations("adminIndicatorBacklog");
+  const ownerText = useOwnerText();
+  const categoryLabel = useCategoryLabel();
+  const industryLabel = useIndustryLabel();
   const [expandedPresent, setExpandedPresent] = useState(false);
 
   const handleCsv = () => {
     const header = [
-      "Indicator",
-      "Category",
-      "Required input",
-      "Owner role",
-      "Owner name",
-      "Owner email",
-      "Scope",
+      t("csv.indicator"),
+      t("csv.category"),
+      t("csv.requiredInput"),
+      t("csv.ownerRole"),
+      t("csv.ownerName"),
+      t("csv.ownerEmail"),
+      t("csv.scope"),
     ];
     const rows = company.items.map((it) => [
       it.indicatorCode,
-      it.category,
+      categoryLabel(it.category),
       it.requiredInput,
-      it.owner.role,
+      ownerText.role(it.owner),
       it.owner.name ?? "",
       it.owner.email ?? "",
-      it.owner.scope ?? "",
+      ownerText.scope(it.owner) ?? "",
     ]);
     downloadCsv(
       `backlog-${company.companyCode}-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -431,8 +451,8 @@ function EntityCard({
           (it) =>
             `- ${t("bulkEmail.item", {
               indicator: it.indicatorCode,
-              category: it.category,
-              scope: it.owner.scope ?? it.requiredInput,
+              category: categoryLabel(it.category),
+              scope: ownerText.scope(it.owner) ?? it.requiredInput,
             })}`,
         ),
         "",
@@ -475,7 +495,7 @@ function EntityCard({
               </h3>
               {company.industry && (
                 <span className="inline-flex items-center rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/90">
-                  {company.industry}
+                  {industryLabel(company.industry)}
                 </span>
               )}
             </div>
@@ -630,6 +650,8 @@ function EntityCard({
 
 function PresentChip({ item, locale }: { item: PresentItem; locale: string }) {
   const t = useTranslations("adminIndicatorBacklog");
+  const tStatus = useTranslations("terminal.status");
+  const categoryLabel = useCategoryLabel();
   // Human-readable locale name is primary; the stable code remains in the
   // tooltip for power users and audit cross-reference.
   const ringClass = {
@@ -644,9 +666,11 @@ function PresentChip({ item, locale }: { item: PresentItem; locale: string }) {
       title={t("statusTooltip", {
         code: item.indicatorCode,
         name: displayName,
-        category: item.category,
+        category: categoryLabel(item.category),
         unit: item.unit,
-        status: item.status,
+        status: tStatus.has(item.status as never)
+          ? tStatus(item.status as never)
+          : item.status,
       })}
     >
       <StatusDot status={item.status} />
@@ -667,7 +691,11 @@ function MissingRow({
   locale: string;
 }) {
   const t = useTranslations("adminIndicatorBacklog");
+  const ownerText = useOwnerText();
+  const categoryLabel = useCategoryLabel();
   const displayName = localizedIndicatorName(item, locale);
+  const ownerRole = ownerText.role(item.owner);
+  const ownerScope = ownerText.scope(item.owner);
   const handleEmail = () => {
     const subject = t("singleEmail.subject", {
       code: companyCode,
@@ -686,7 +714,7 @@ function MissingRow({
         name: displayName,
       }),
       t("singleEmail.required", {
-        scope: item.owner.scope ?? item.requiredInput,
+        scope: ownerScope ?? item.requiredInput,
       }),
       "",
       t("bulkEmail.sendFiles", { url: uploadUrl }),
@@ -719,17 +747,17 @@ function MissingRow({
             {item.indicatorCode}
           </span>
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">
-            {item.category}
+            {categoryLabel(item.category)}
           </span>
         </div>
       </div>
       <div className="hidden md:block min-w-0 max-w-[200px]">
         <div className="text-[11px] font-medium text-foreground/90 truncate">
-          {item.owner.role}
+          {ownerRole}
         </div>
-        {item.owner.scope && (
+        {ownerScope && (
           <div className="text-[10px] text-muted-foreground truncate">
-            {item.owner.scope}
+            {ownerScope}
           </div>
         )}
       </div>
@@ -738,7 +766,7 @@ function MissingRow({
           type="button"
           onClick={handleEmail}
           className="inline-flex items-center gap-1 rounded border border-border bg-card px-2 py-1 text-[11px] text-foreground/80 hover:bg-accent hover:border-primary/40 transition-colors opacity-60 group-hover:opacity-100 shrink-0"
-          title={t("emailRoleTitle", { role: item.owner.role })}
+          title={t("emailRoleTitle", { role: ownerRole })}
         >
           <Mail className="h-3 w-3" />
           {t("emailBtn")}

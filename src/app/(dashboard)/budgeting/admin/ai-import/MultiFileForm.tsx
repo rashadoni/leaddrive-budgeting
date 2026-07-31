@@ -23,6 +23,11 @@ import {
   ACTIONABLE_GROUPS,
 } from "@/lib/onboarding/ai-import/warning-groups"
 import {
+  asImportTranslator,
+  localizeImportMessage,
+  localizeVerdict,
+} from "./import-message-i18n"
+import {
   ImportFlowStrip,
   ImportRunningBanner,
   ImportDoneRedirect,
@@ -571,6 +576,10 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   // 11.58 — the flow namespace also carries the honest label for the
   // pre-write reconciliation (see `receipt-preview-self-check` below).
   const tFlow = useTranslations("adminAiImport.multi.flow")
+  // 11.7x — everything the SERVER wrote (warnings, skip reasons, CoA reasons,
+  // file-type reasoning, API errors, verdict enums) is rendered through this
+  // namespace. It was the single largest block of English left on the screen.
+  const tShared = asImportTranslator(useTranslations("adminAiImport.shared"))
   const locale = useLocale()
   /**
    * Phase 11.5 (2026-07-29) — the target year is an EXPLICIT, user-visible
@@ -842,7 +851,9 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
       return {
         code: "import_failed",
         severity: "blocking",
-        message: error,
+        // 11.7x — the other five doctor issues are built from the catalogue;
+        // this one carried the raw server sentence straight into the panel.
+        message: localizeImportMessage(tShared, error),
       }
     }
     if (!previewResult) return null
@@ -1527,10 +1538,14 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                     </span>
                   )}
                 </summary>
+                {/* 11.7x — the GROUP headline was translated while every
+                    line under it stayed raw server English. Grouping still
+                    keys on the untranslated text (warning-groups.ts patterns);
+                    only the rendered line is localized. */}
                 <ul className="mt-1.5 space-y-1 list-disc list-inside text-[11px]">
                   {g.messages.map((w, i) => (
                     <li key={i} className="break-words">
-                      {w}
+                      {localizeImportMessage(tShared, w)}
                     </li>
                   ))}
                 </ul>
@@ -1556,10 +1571,13 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
       ...c.unclassifiedFiles.map((f) =>
         t("result.incompleteUnclassified", { f }),
       ),
+      // 11.7x — the ICU wrapper was translated but `reason` was the raw
+      // English skipReason from the orchestrator, so the red banner read half
+      // Azerbaijani, half English.
       ...c.groupsNotCommitted.map((g) =>
         t("result.incompleteGroup", {
           g: g.fileType,
-          reason: g.reason,
+          reason: localizeImportMessage(tShared, g.reason),
         }),
       ),
     ]
@@ -1647,7 +1665,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                   receipt.reconciliation.verdict,
                 )}`}
               >
-                {receipt.reconciliation.verdict.toUpperCase()}
+                {/* 11.7x — was `.toUpperCase()` on the raw enum, sitting
+                    directly under the translated «Üzləşdirmə» label. Dropping
+                    toUpperCase() is deliberate: it maps az "i" → "I", not
+                    "İ". */}
+                {localizeVerdict(tShared, receipt.reconciliation.verdict)}
               </span>
               {receipt.reconciliation.conflicts > 0 && (
                 <span className="text-xs">
@@ -1774,7 +1796,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                   {compactList(
                     receipt.reconciliation.groups.map(
                       (group) =>
-                        `${group.fileType}: ${group.committed ? formatInt(group.rows) : group.verdict}`,
+                        `${group.fileType}: ${
+                          group.committed
+                            ? formatInt(group.rows)
+                            : localizeVerdict(tShared, group.verdict)
+                        }`,
                     ),
                     4,
                   )}
@@ -2058,7 +2084,7 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                     type="button"
                     onClick={() => removeFile(i)}
                     className="text-slate-400 hover:text-red-600 px-2"
-                    aria-label={`Remove ${f.name}`}
+                    aria-label={t("fileList.removeAria", { name: f.name })}
                     data-testid={`remove-file-${i}`}
                   >
                     ✕
@@ -2210,7 +2236,7 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
               className="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded bg-white/70 p-2 font-mono text-[11px]"
               data-testid="error-banner-raw"
             >
-              {error}
+              {localizeImportMessage(tShared, error)}
             </pre>
           </details>
         </div>
@@ -2595,8 +2621,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                           {item.filename} · {item.sheetName} · {item.dataType}
                         </div>
                       </td>
+                      {/* 11.7x — this panel BLOCKS Apply, so its «Səbəb»
+                          column was the English the client had to read to get
+                          unstuck. Produced by the dynamic PLF/BS/CF adapters. */}
                       <td className="py-1.5 pr-2 align-top text-amber-900">
-                        {item.reason}
+                        {localizeImportMessage(tShared, item.reason)}
                       </td>
                       <td className="py-1.5 pr-2 align-top">
                         <select
@@ -3008,8 +3037,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                     {f.fileTypeResult.fileType}
                   </span>
                 </div>
+                {/* 11.7x — one per uploaded file. file-type-detector.ts
+                    builds 16 English template literals; the localizer
+                    re-renders the recognised shapes from the catalogue. */}
                 <p className="text-xs text-slate-600">
-                  {f.fileTypeResult.reasoning}
+                  {localizeImportMessage(tShared, f.fileTypeResult.reasoning)}
                 </p>
                 {f.workbookProfile && (
                   <div
@@ -3060,7 +3092,9 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                   </div>
                 )}
                 {f.error && (
-                  <p className="text-xs text-red-700">⚠ {f.error}</p>
+                  <p className="text-xs text-red-700">
+                    ⚠ {localizeImportMessage(tShared, f.error)}
+                  </p>
                 )}
                 {impacts.length > 0 && (
                   <div className="border-t pt-2 space-y-1.5">
@@ -3220,7 +3254,9 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                 <span className="text-xs">
                   {g.committed
                     ? t("result.rowsWritten", { n: g.totalRowsInserted })
-                    : g.skipReason ?? t("result.skipped")}
+                    : g.skipReason
+                      ? localizeImportMessage(tShared, g.skipReason)
+                      : t("result.skipped")}
                 </span>
               </div>
             </div>

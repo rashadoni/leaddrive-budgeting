@@ -24,9 +24,10 @@ import { computeIndicatorBacklog } from "@/lib/risk/indicator-backlog";
 import { currentBakuYear } from "@/lib/risk/periods";
 import { IndicatorBacklogView } from "./IndicatorBacklogView";
 
-export const metadata = {
-  title: "Indicator Backlog · Admin · BudgetPro",
-};
+export async function generateMetadata() {
+  const t = await getTranslations("adminIndicatorBacklog");
+  return { title: t("metaTitle") };
+}
 
 export default async function IndicatorBacklogPage({
   searchParams,

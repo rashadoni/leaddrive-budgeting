@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts"
 import { AlertCircle, BarChart3 } from "lucide-react"
+import { useTranslations } from "next-intl"
 import { BUDGET_COLORS, fmtK } from "@/lib/budget-chart-theme"
 import {
   buildProductVarianceRows,
@@ -20,8 +21,6 @@ import {
   type ProductVarianceInputLine,
 } from "@/lib/budgeting/product-variance"
 import { cn } from "@/lib/utils"
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 interface ProductPerformanceComparisonProps {
   title: string
@@ -43,21 +42,28 @@ export function ProductPerformanceComparison({
   missingData = [],
   amountLabel,
   rateVarianceLabel,
-  volumeVarianceLabel = "Volume variance",
+  volumeVarianceLabel,
   favorable,
 }: ProductPerformanceComparisonProps) {
+  const t = useTranslations("budgeting")
+  const tCommon = useTranslations("common")
+  const MONTHS = useMemo(() => t("monthsShort").split(","), [t])
+  const volumeLabel = volumeVarianceLabel ?? t("varianceVolume")
   const rows = useMemo(
     () => buildProductVarianceRows({ budgetLines, actualLines }),
     [budgetLines, actualLines],
   )
   const coverage = useMemo(() => productVarianceCoverage(rows), [rows])
-  const notices = unique([...missingData, ...coverage.missingMessages])
+  const notices = unique([
+    ...missingData,
+    ...coverage.missingCodes.map((code) => t(`productVarianceMissing.${code}`)),
+  ])
   const monthlyData = useMemo(() => MONTHS.map((month, index) => {
     const m = index + 1
     const budget = budgetLines.filter((line) => line.month === m).reduce((sum, line) => sum + line.amount, 0)
     const actual = actualLines.filter((line) => line.month === m).reduce((sum, line) => sum + line.amount, 0)
     return { month, budget, actual, variance: actual - budget }
-  }), [budgetLines, actualLines])
+  }), [MONTHS, budgetLines, actualLines])
   const totals = rows.reduce(
     (acc, row) => ({
       budget: acc.budget + row.budgetAmount,
@@ -68,6 +74,11 @@ export function ProductPerformanceComparison({
   )
   const varianceGood = favorable === "up" ? totals.variance >= 0 : totals.variance <= 0
   const topRows = rows.slice(0, 8)
+  const seriesLabels = {
+    budget: t("colBudget"),
+    actual: t("colActual"),
+    variance: t("colVariance"),
+  }
 
   return (
     <section className="rounded-xl border bg-card p-4">
@@ -80,9 +91,9 @@ export function ProductPerformanceComparison({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="grid grid-cols-3 gap-2 text-xs lg:min-w-[460px]">
-          <SummaryBox label="Budget" value={totals.budget} />
-          <SummaryBox label="Actual" value={totals.actual} muted={!coverage.hasActual} />
-          <SummaryBox label="Variance" value={totals.variance} signed tone={varianceGood ? "positive" : "negative"} />
+          <SummaryBox label={t("colBudget")} value={totals.budget} />
+          <SummaryBox label={t("colActual")} value={totals.actual} muted={!coverage.hasActual} />
+          <SummaryBox label={t("colVariance")} value={totals.variance} signed tone={varianceGood ? "positive" : "negative"} />
         </div>
       </div>
 
@@ -107,14 +118,14 @@ export function ProductPerformanceComparison({
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" vertical={false} />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                 <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={fmtK} />
-                <Tooltip content={<MonthlyComparisonTooltip amountLabel={amountLabel} favorable={favorable} />} />
+                <Tooltip content={<MonthlyComparisonTooltip amountLabel={amountLabel} favorable={favorable} labels={seriesLabels} />} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="budget" name="Budget" fill={BUDGET_COLORS.planIndigo} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="actual" name="Actual" fill={BUDGET_COLORS.actualGreen} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="budget" name={seriesLabels.budget} fill={BUDGET_COLORS.planIndigo} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="actual" name={seriesLabels.actual} fill={BUDGET_COLORS.actualGreen} radius={[4, 4, 0, 0]} />
                 <Line
                   type="monotone"
                   dataKey="variance"
-                  name="Variance"
+                  name={seriesLabels.variance}
                   stroke={BUDGET_COLORS.forecastAmber}
                   strokeWidth={2}
                   dot={{ r: 2 }}
@@ -127,10 +138,10 @@ export function ProductPerformanceComparison({
         <div className="xl:col-span-2">
           <div className="rounded-lg border bg-muted/10">
             <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2 border-b px-3 py-2 text-[10px] font-semibold uppercase text-muted-foreground">
-              <span>Product</span>
-              <span className="text-right">Actual</span>
-              <span className="text-right">Budget</span>
-              <span className="text-right">Var</span>
+              <span>{tCommon("product")}</span>
+              <span className="text-right">{t("colActual")}</span>
+              <span className="text-right">{t("colBudget")}</span>
+              <span className="text-right">{t("colVarianceShort")}</span>
             </div>
             <div className="max-h-[260px] overflow-y-auto">
               {topRows.length > 0 ? topRows.map((row) => {
@@ -144,8 +155,8 @@ export function ProductPerformanceComparison({
                       <div className="truncate font-medium text-foreground" title={row.productName}>{row.productName}</div>
                       <div className="mt-0.5 text-[10px] text-muted-foreground">
                         {row.hasRateVolume
-                          ? `${rateVarianceLabel}: ${formatSigned(row.rateVariance ?? 0)} · ${volumeVarianceLabel}: ${formatSigned(row.volumeVariance ?? 0)}`
-                          : "Price/volume unavailable"}
+                          ? `${rateVarianceLabel}: ${formatSigned(row.rateVariance ?? 0)} · ${volumeLabel}: ${formatSigned(row.volumeVariance ?? 0)}`
+                          : t("priceVolumeUnavailable")}
                       </div>
                     </div>
                     <span className="font-mono tabular-nums text-foreground">{formatShort(row.actualAmount)}</span>
@@ -157,7 +168,7 @@ export function ProductPerformanceComparison({
                 )
               }) : (
                 <div className="px-3 py-8 text-center text-xs text-muted-foreground">
-                  No product rows available for comparison.
+                  {t("productComparisonEmpty")}
                 </div>
               )}
             </div>
@@ -205,12 +216,14 @@ function MonthlyComparisonTooltip({
   label,
   amountLabel,
   favorable,
+  labels,
 }: {
   active?: boolean
   payload?: Array<{ dataKey?: string | number; value?: number }>
   label?: string
   amountLabel: string
   favorable: "up" | "down"
+  labels: { budget: string; actual: string; variance: string }
 }) {
   if (!active || !payload?.length) return null
   const budget = payload.find((item) => item.dataKey === "budget")?.value ?? 0
@@ -221,9 +234,9 @@ function MonthlyComparisonTooltip({
   return (
     <div className="min-w-[200px] rounded-lg border bg-popover p-3 text-xs text-popover-foreground shadow-lg">
       <div className="mb-2 border-b pb-1.5 font-semibold">{amountLabel} · {label}</div>
-      <TooltipRow label="Budget" value={budget} color={BUDGET_COLORS.planIndigo} />
-      <TooltipRow label="Actual" value={actual} color={BUDGET_COLORS.actualGreen} />
-      <TooltipRow label="Variance" value={variance} color={good ? BUDGET_COLORS.positive : BUDGET_COLORS.negative} signed />
+      <TooltipRow label={labels.budget} value={budget} color={BUDGET_COLORS.planIndigo} />
+      <TooltipRow label={labels.actual} value={actual} color={BUDGET_COLORS.actualGreen} />
+      <TooltipRow label={labels.variance} value={variance} color={good ? BUDGET_COLORS.positive : BUDGET_COLORS.negative} signed />
     </div>
   )
 }

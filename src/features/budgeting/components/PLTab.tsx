@@ -634,7 +634,7 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
         <div className="flex items-center gap-2">
           <Button size="sm" variant="ghost" onClick={toggleAll} className="text-xs">
             {allExpanded ? <List className="h-3.5 w-3.5 mr-1" /> : <LayoutGrid className="h-3.5 w-3.5 mr-1" />}
-            {allExpanded ? "Collapse All" : "Expand All"}
+            {allExpanded ? t("plCollapseAll") : t("plExpandAll")}
           </Button>
           <Button size="sm" variant="outline" onClick={() => setShowAddSection(v => !v)}>
             <Plus className="h-3.5 w-3.5 mr-1" /> {t("btnAddSection")}
@@ -778,7 +778,7 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
       {/* D&A / Finance / Tax — below-EBITDA items */}
       {belowEbitdaRows.length > 0 && (
         <>
-          {renderSection("D&A, Finance & Tax", belowEbitdaRows, "auto-below-ebitda", <Banknote className="h-4 w-4" />, "bg-slate-50/60 dark:bg-slate-950/20", false, 0, 0, true, belowEbitdaGrouped)}
+          {renderSection(t("pnlBelowEbitdaSection"), belowEbitdaRows, "auto-below-ebitda", <Banknote className="h-4 w-4" />, "bg-slate-50/60 dark:bg-slate-950/20", false, 0, 0, true, belowEbitdaGrouped)}
 
           {/* Net Profit */}
           {(() => {

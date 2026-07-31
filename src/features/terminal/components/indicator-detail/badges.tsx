@@ -211,12 +211,15 @@ export function TrustAuditStrip(props: {
   const notReconciledLabel = lookup('indicatorDetail.trust.notReconciled', 'Ещё не сверено · Not yet reconciled');
   const sourceNotRecorded = lookup('indicatorDetail.trust.sourceNotRecorded', 'Источник не зафиксирован · Source not recorded');
 
+  // Localized via the same soft-fail lookup as the rest of the strip — the
+  // labels used to be hardcoded English while their neighbours were
+  // translated, so an AZ/RU user saw "LOW EXTREME" mid-sentence.
   const sanityLabel: Record<NonNullable<typeof sanityBand>, string> = {
-    normal: 'normal',
-    low_extreme: 'low extreme',
-    high_extreme: 'high extreme',
-    missing_input: 'missing input',
-    no_band: 'no band',
+    normal: lookup('indicatorDetail.trust.sanity.normal', 'normal'),
+    low_extreme: lookup('indicatorDetail.trust.sanity.low_extreme', 'low extreme'),
+    high_extreme: lookup('indicatorDetail.trust.sanity.high_extreme', 'high extreme'),
+    missing_input: lookup('indicatorDetail.trust.sanity.missing_input', 'missing input'),
+    no_band: lookup('indicatorDetail.trust.sanity.no_band', 'no band'),
   };
   const sanityTone: Record<NonNullable<typeof sanityBand>, string> = {
     normal: 'border-emerald-500/40 text-emerald-600 dark:text-emerald-400/80 bg-emerald-500/5',

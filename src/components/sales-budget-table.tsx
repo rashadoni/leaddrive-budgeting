@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
@@ -16,7 +17,6 @@ import { BudgetStackTooltip } from "@/components/budget-stack-tooltip"
 import { ProductPerformanceComparison } from "@/components/product-performance-comparison"
 import type { ProductVarianceInputLine } from "@/lib/budgeting/product-variance"
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
 
 function fmtNum(n: number): string {
@@ -53,6 +53,8 @@ interface SalesResponseEnvelope {
 }
 
 export function SalesBudgetTable({ planId }: { planId: string }) {
+  const t = useTranslations("budgeting")
+  const MONTHS = t("monthsShort").split(",")
   const { data: session } = useSession()
   const router = useRouter()
   const orgId = session?.user?.organizationId
@@ -102,12 +104,12 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
       <Card>
         <CardContent className="p-12 text-center">
           <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium text-foreground">No sales data in this plan</p>
+          <p className="font-medium text-foreground">{t("salesEmptyTitle")}</p>
           <p className="text-sm mt-1 text-muted-foreground">
-            The selected plan exists, but it has no revenue rows yet. Creating a plan only creates an empty container.
+            {t("salesEmptyDescription")}
           </p>
           <Button className="mt-5" onClick={() => router.push("/budgeting/admin/ai-import")}>
-            <Upload className="h-4 w-4 mr-1" /> Import Excel data
+            <Upload className="h-4 w-4 mr-1" /> {t("balanceSheetImport")}
           </Button>
         </CardContent>
       </Card>
@@ -172,18 +174,18 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
     <div className="space-y-4">
       {fromBudgetLines && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300">
-          Showing imported P&L revenue rows because the dedicated sales-budget product table is empty.
+          {t("salesFallbackBanner")}
         </div>
       )}
       <ProductPerformanceComparison
-        title="Actual vs Budget Revenue"
-        description="Monthly revenue execution and the products driving variance."
+        title={t("salesComparisonTitle")}
+        description={t("salesComparisonSubtitle")}
         budgetLines={comparisonBudgetLines}
         actualLines={comparisonActualLines}
         missingData={data?.comparison?.missingData}
-        amountLabel="Revenue"
-        rateVarianceLabel="Price variance"
-        volumeVarianceLabel="Volume variance"
+        amountLabel={t("plRevenue")}
+        rateVarianceLabel={t("priceVarianceLabel")}
+        volumeVarianceLabel={t("volumeVarianceLabel")}
         favorable="up"
       />
       {/* KPI Strip — Power BI dark scorecards */}
@@ -191,39 +193,39 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200 dark:from-indigo-950/30 dark:to-indigo-900/20 dark:border-indigo-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-indigo-200 dark:bg-indigo-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <DollarSign className="h-3.5 w-3.5" /> Total Revenue
+            <DollarSign className="h-3.5 w-3.5" /> {t("salesKpiTotalRevenue")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-indigo-700 dark:text-indigo-300">{fmtNum(totalRevenue)} <span className="text-sm font-normal text-muted-foreground">AZN</span></p>
-          <p className="text-[10px] text-muted-foreground mt-1">Annual sales budget</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{t("salesKpiTotalRevenueHint")}</p>
         </div>
 
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200 dark:from-amber-950/30 dark:to-amber-900/20 dark:border-amber-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-amber-200 dark:bg-amber-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <Package className="h-3.5 w-3.5" /> Total Volume
+            <Package className="h-3.5 w-3.5" /> {t("salesKpiTotalVolume")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-amber-700 dark:text-amber-300">{fmtNum(totalQty)}</p>
-          <p className="text-[10px] text-muted-foreground mt-1">Units sold across all products</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{t("salesKpiTotalVolumeHint")}</p>
         </div>
 
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 dark:from-blue-950/30 dark:to-blue-900/20 dark:border-blue-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-blue-200 dark:bg-blue-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <TrendingUp className="h-3.5 w-3.5" /> Avg Unit Price
+            <TrendingUp className="h-3.5 w-3.5" /> {t("salesKpiAvgPrice")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-blue-700 dark:text-blue-300">{avgPrice.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">AZN</span></p>
-          <p className="text-[10px] text-muted-foreground mt-1">Weighted average</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{t("salesKpiAvgPriceHint")}</p>
         </div>
 
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-violet-50 to-violet-100 border border-violet-200 dark:from-violet-950/30 dark:to-violet-900/20 dark:border-violet-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200 dark:bg-violet-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-violet-600 dark:text-violet-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <ShoppingCart className="h-3.5 w-3.5" /> Top Product
+            <ShoppingCart className="h-3.5 w-3.5" /> {t("salesKpiTopProduct")}
           </div>
           <p className="text-lg font-bold tracking-tight truncate text-violet-700 dark:text-violet-300">{topProduct?.name || "—"}</p>
           <div className="flex items-center gap-1 mt-1">
             <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium">{topProduct ? ((topProduct.totalAmount / totalRevenue) * 100).toFixed(0) + "%" : ""}</span>
-            <span className="text-[10px] text-muted-foreground">of revenue</span>
+            <span className="text-[10px] text-muted-foreground">{t("pctOfRevenueLabel")}</span>
           </div>
         </div>
       </div>
@@ -232,7 +234,7 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* Stacked Bar with Total trend line */}
         <div className="lg:col-span-3 rounded-xl border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Monthly Revenue by Product</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-3">{t("salesChartMonthlyByProduct")}</h3>
           <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={0}>
             <ComposedChart data={monthlyData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -249,7 +251,7 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
 
         {/* Donut Chart */}
         <div className="lg:col-span-2 rounded-xl border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Revenue Mix</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-3">{t("salesChartMix")}</h3>
           <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={0}>
             <PieChart>
               <Pie data={pieData} cx="50%" cy="50%" outerRadius={75} innerRadius={45} paddingAngle={2} dataKey="value" stroke="none">
@@ -277,7 +279,7 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
 
       {/* Product Ranking Bar */}
       <div className="rounded-xl border bg-card p-4">
-        <h3 className="text-sm font-semibold text-foreground mb-3">Product Ranking</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">{t("salesRankingTitle")}</h3>
         <div className="space-y-2">
           {productRevenues.map((p, i) => {
             const pct = totalRevenue > 0 ? (p.totalAmount / totalRevenue) * 100 : 0
@@ -308,8 +310,8 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
       {/* Collapsible Product Detail Tables */}
       <div className="rounded-xl border bg-card">
         <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="text-sm font-semibold text-foreground">Product Details</h3>
-          <Badge variant="outline" className="text-[10px]">{productCount} products</Badge>
+          <h3 className="text-sm font-semibold text-foreground">{t("productDetailsTitle")}</h3>
+          <Badge variant="outline" className="text-[10px]">{t("productsCountBadge", { count: productCount })}</Badge>
         </div>
 
         {productRevenues.map((product) => {
@@ -329,18 +331,18 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
                 <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: product.color }} />
                 <span className="text-xs font-semibold text-foreground">{product.name}</span>
                 <Badge variant="outline" className="text-[9px] h-4">{product.unit}</Badge>
-                <span className="text-[10px] text-muted-foreground">{pct}% share</span>
+                <span className="text-[10px] text-muted-foreground">{t("productShareLabel", { pct })}</span>
                 <div className="ml-auto flex items-center gap-4">
                   <div className="text-right">
-                    <span className="text-[10px] text-muted-foreground block">Volume</span>
+                    <span className="text-[10px] text-muted-foreground block">{t("colVolume")}</span>
                     <span className="text-xs font-semibold tabular-nums">{fmtNum(product.totalQty)}</span>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] text-muted-foreground block">Avg Price</span>
+                    <span className="text-[10px] text-muted-foreground block">{t("colAvgPrice")}</span>
                     <span className="text-xs font-semibold tabular-nums">{avgProductPrice.toFixed(1)}</span>
                   </div>
                   <div className="text-right min-w-[80px]">
-                    <span className="text-[10px] text-muted-foreground block">Revenue</span>
+                    <span className="text-[10px] text-muted-foreground block">{t("plRevenue")}</span>
                     <span className="text-xs font-bold tabular-nums" style={{ color: product.color }}>{fmtNum(product.totalAmount)} AZN</span>
                   </div>
                 </div>
@@ -352,16 +354,16 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-muted/30">
-                        <th className="px-3 py-2 text-left font-semibold w-24">Metric</th>
+                        <th className="px-3 py-2 text-left font-semibold w-24">{t("colMetric")}</th>
                         {MONTHS.map(m => (
                           <th key={m} className="px-2 py-2 text-right font-semibold">{m}</th>
                         ))}
-                        <th className="px-3 py-2 text-right font-bold bg-muted/50">Total</th>
+                        <th className="px-3 py-2 text-right font-bold bg-muted/50">{t("totalLabel")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr className="border-b">
-                        <td className="px-3 py-1.5 font-medium">Qty</td>
+                        <td className="px-3 py-1.5 font-medium">{t("quantityLabel")}</td>
                         {MONTHS.map((_, i) => (
                           <td key={i} className="px-2 py-1.5 text-right tabular-nums">
                             {product.months[i + 1]?.qty ? fmtNum(product.months[i + 1].qty) : "—"}
@@ -370,7 +372,7 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
                         <td className="px-3 py-1.5 text-right font-bold bg-muted/50 tabular-nums">{fmtNum(product.totalQty)}</td>
                       </tr>
                       <tr className="border-b">
-                        <td className="px-3 py-1.5 font-medium text-muted-foreground">Price</td>
+                        <td className="px-3 py-1.5 font-medium text-muted-foreground">{t("colPrice")}</td>
                         {MONTHS.map((_, i) => (
                           <td key={i} className="px-2 py-1.5 text-right text-muted-foreground tabular-nums">
                             {product.months[i + 1]?.price ? product.months[i + 1].price.toFixed(2) : "—"}
@@ -379,7 +381,7 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
                         <td className="px-3 py-1.5 text-right bg-muted/50 text-muted-foreground tabular-nums">{avgProductPrice.toFixed(2)}</td>
                       </tr>
                       <tr className="bg-emerald-50/50 dark:bg-emerald-950/20 font-semibold">
-                        <td className="px-3 py-1.5">Revenue</td>
+                        <td className="px-3 py-1.5">{t("plRevenue")}</td>
                         {MONTHS.map((_, i) => (
                           <td key={i} className="px-2 py-1.5 text-right text-emerald-700 dark:text-emerald-400 tabular-nums">
                             {product.months[i + 1]?.amount ? fmtNum(product.months[i + 1].amount) : "—"}

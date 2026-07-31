@@ -594,7 +594,12 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                 className="text-[9px] uppercase tracking-widest text-gray-500 px-1 py-1 mt-1 first:mt-0 border-b border-gray-800/40"
                 data-testid={`sector-header-${industry}`}
               >
-                {INDUSTRY_LABEL.get(industry) ?? industry}{" "}
+                {/* 'Other' is a sentinel bucket key, not an industry code —
+                    INDUSTRY_LABEL has no entry for it, so it used to fall
+                    through to the raw English literal. */}
+                {industry === 'Other'
+                  ? t('companyTree.sectorOther')
+                  : (INDUSTRY_LABEL.get(industry) ?? industry)}{" "}
                 <span className="text-gray-600">({roots.length})</span>
               </div>
               <ul role="group" className="space-y-0.5">

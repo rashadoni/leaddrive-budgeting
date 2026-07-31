@@ -22,6 +22,7 @@ import { useTranslations, useLocale } from "next-intl"
 import { Loader2, Check, AlertTriangle, Plus } from "lucide-react"
 import { getOperationalRule } from "@/lib/risk/metric-validation-rules"
 import { checkMetricValue } from "@/features/budgeting/components/data-entry-validation"
+import { useValidationText } from "./use-validation-text"
 
 export interface RecomputeSummary {
   ok: number
@@ -93,6 +94,7 @@ export function InlineFactEntry({
   onSaved: () => void
 }) {
   const t = useTranslations("adminIndicatorHealth.inlineEntry")
+  const vt = useValidationText()
   const locale = useLocale()
   const rule = getOperationalRule(metric)
 
@@ -155,19 +157,27 @@ export function InlineFactEntry({
       if (!res.ok) {
         const errs =
           Array.isArray(json.errors) && json.errors.length > 0
-            ? (json.errors as string[]).join("; ")
-            : ((json.error as string) ?? `HTTP ${res.status}`)
+            ? vt.list(json.errorMessages, json.errors as string[]).join("; ")
+            : vt.one(
+                json.errorKey ? { key: json.errorKey as string } : null,
+                (json.error as string) ?? `HTTP ${res.status}`,
+              )
         setFeedback({ kind: "error", message: errs })
         return
       }
       if (json.requiresConfirm === true) {
+        const rawWarnings = Array.isArray(json.warnings)
+          ? (json.warnings as string[])
+          : []
+        const rawAnomaly =
+          typeof json.anomalyWarning === "string"
+            ? (json.anomalyWarning as string)
+            : null
         setFeedback({
           kind: "confirm",
-          warnings: Array.isArray(json.warnings) ? (json.warnings as string[]) : [],
+          warnings: vt.list(json.warningMessages, rawWarnings),
           anomalyWarning:
-            typeof json.anomalyWarning === "string"
-              ? (json.anomalyWarning as string)
-              : null,
+            rawAnomaly === null ? null : vt.one(json.anomalyMessage, rawAnomaly),
         })
         return
       }

@@ -156,7 +156,7 @@ export function TemplatesTab() {
                         type="button"
                         onClick={() => toggleActive(tpl)}
                         aria-pressed={tpl.isActive}
-                        aria-label={tpl.isActive ? "Deactivate template" : "Activate template"}
+                        aria-label={tpl.isActive ? t("templatesDeactivateAria") : t("templatesActivateAria")}
                         className={`inline-block w-8 h-4 rounded-full transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${tpl.isActive ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
                       >
                         <span className={`block w-3 h-3 rounded-full bg-white transition-transform mx-0.5 ${tpl.isActive ? "translate-x-4" : "translate-x-0"}`} />
