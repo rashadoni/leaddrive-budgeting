@@ -26,18 +26,25 @@
  * Parent rows have aggregate values (sum of children) — including them
  * causes ~3× double-counting. Leaf detection: dot-count === 3 (4 segments).
  *
- * --- Account type from PLF prefix ---
+ * --- Account type from PLF code ---
  *
- *   PLF.01.*  → revenue
- *   PLF.02.*  → cogs
- *   PLF.03.*  → expense (sales & marketing)
- *   PLF.04.*  → expense (admin)
- *   PLF.05.*  → expense (other operating + depreciation/amortization)
- *   PLF.06.*  → expense (subsidies / income — neg expense)
- *   PLF.07.*  → expense (other income)
- *   PLF.08.*  → expense (interest)
- *   PLF.09.*  → expense (tax)
- *   PLF.10    → SKIP (computed Net Profit)
+ * Read from `src/lib/budgeting/plf-chart.ts`, which is the ONE statement of
+ * what each PLF code is. It is not derived from the section number here (or
+ * anywhere) any more: section 07 is titled "OTHER OPERATING INCOME/EXPENSES"
+ * and holds both natures, so typing it from `/^0[3-9]$/ -> expense` sent
+ * 13,453,098 AZN of subsidies and interest income into the cost-sign pass and
+ * stored it NEGATIVE. See that file's header for the full chain.
+ *
+ * --- Which chart of accounts the sheet is written in ---
+ *
+ * A sheet whose 12-month band resolves to 2025 is read against the 2025 chart
+ * and translated into current terms by `plf-legacy-chart.ts` BEFORE it is
+ * typed. `actual-budget-v1.xlsx` renumbered 155 codes between 2025 and 2026,
+ * and `chart_of_accounts` is unique on `(organizationId, code)` with no year —
+ * so importing 2025 untranslated files 48,735,978 AZN under 2026's names, and
+ * leaves 2025's D&A (which the 2025 sheet keeps inside `PLF.05`) above the
+ * EBITDA line. Translating first is what makes `plfAccountType` answer for the
+ * account the row actually IS. See that file's header.
  *
  * --- CF code prefix (for cash_flow_entries imports) ---
  *
@@ -60,17 +67,58 @@ import {
   selectLeafMostCashFlowBridgeCodes,
   type CashFlowStoredActivity,
 } from "../cf-bridge"
+import { plfNature, plfOtherOperatingSide } from "../../budgeting/plf-chart"
+import {
+  resolveLegacyAccount,
+  type LegacyMappingKind,
+} from "./plf-legacy-chart"
+import {
+  PLF_2025_CHART_BY_KEY,
+  PLF_LEGACY_CHART_YEAR,
+} from "./plf-2025-chart-map.generated"
 
 export type PlfAccountType = "revenue" | "cogs" | "expense"
 export type CfActivityType = CashFlowStoredActivity
 export type CfEntryType = "inflow" | "outflow"
 
 export interface ParsedPlfLine {
+  /** The account this row is STORED under — not necessarily the code the
+   *  sheet wrote. See `legacyChart`. */
   code: string
   label: string
   accountType: PlfAccountType
   perMonth: number[]
   totalAnnual: number
+  /**
+   * Set when the row came off a sheet written under a SUPERSEDED chart of
+   * accounts and this parse re-pointed it at the current one.
+   *
+   * `code` above is where the money goes; `sourceCode` is what the sheet
+   * said. They differ for a renumbered account, and for a 2025 account whose
+   * code the 2026 chart reuses for something else (`kind: "own_account"` with
+   * a year-qualified code). Kept on the line so an importer can report the
+   * translation instead of the operator discovering it in the ledger.
+   */
+  legacyChart?: {
+    chartYear: number
+    sourceCode: string
+    kind: LegacyMappingKind
+  }
+}
+
+/**
+ * How many unmapped legacy codes are listed individually before the rest
+ * become a count. Ten is enough to recognise a genuine gap in the map and few
+ * enough that a foreign chart cannot drown the blocking warnings.
+ */
+const LEGACY_UNKNOWN_WARNING_CAP = 10
+
+/** One code the legacy-chart map re-pointed, for the caller's report. */
+export interface PlfLegacyChartRewrite {
+  sourceCode: string
+  storedCode: string
+  name: string
+  kind: LegacyMappingKind
 }
 
 export interface ParsedCfLine {
@@ -102,6 +150,16 @@ export interface PlfParseResult {
    * had every cost sign flipped, turning gross profit into revenue PLUS cost.
    */
   signConvention?: CostSignDecision
+  /**
+   * Defect 5 (2026-08-01) — present when the sheet was read against a
+   * superseded chart of accounts. `rewrites` lists every code that moved,
+   * so the operator sees the translation up front rather than reverse-
+   * engineering it from account names afterwards.
+   */
+  legacyChart?: {
+    chartYear: number
+    rewrites: PlfLegacyChartRewrite[]
+  }
 }
 
 export interface CfParseResult {
@@ -111,36 +169,43 @@ export interface CfParseResult {
 }
 
 /**
- * Rows that state a COMPUTED SUBTOTAL rather than a posting account (11.74).
+ * PLF code → the sign convention this row is STORED under.
  *
- * `PLF.10` NET PROFIT was already skipped below, at section level. These two
- * were not, and they are childless in this chart of accounts — so once
- * leafness stopped being decided by code depth alone (11.70), nothing else
- * separated them from a real expense line and they were emitted as one:
- * 34,393,596 AZN of phantom cost in `PLF Budget 2026` alone.
+ * The nature comes from `plfNature`; this only translates it into the three
+ * `lineType` values the write path knows, which is what decides whether the
+ * cost-sign pass below negates the cell:
  *
- * Matched EXACTLY, never by section prefix: `PLF.08.01` is Shareholders'
- * expense (174,491 AZN, AZSF actual 2025), a real account sitting beneath the
- * EBITDA line, and it must still import. This is the second of two independent
- * guards — `buildLeafPredicate` also refuses to rescue a one-segment section —
- * because a subtotal reaching `budget_lines` is silent, and money that lands
- * twice is harder to notice than money that never lands.
+ *   revenue → never flipped, so income stays POSITIVE
+ *   cogs / expense → flipped when the file stores costs negative, so cost
+ *                    reaches the database POSITIVE
+ *
+ * Other-operating INCOME (`PLF.07.01/.02`) is therefore `revenue`-conventioned
+ * even though it is not revenue: the two facts a lineType carries are "which
+ * P&L line" and "which sign", and only the second one lives here. Which line
+ * it lands on is `pnlSectionFromCode`'s answer, and that says `otherOperating`.
+ * Before this, income was `expense`-conventioned and stored negative — which
+ * is the whole 13.45M defect.
+ *
+ * A subtotal row returns `null` and is skipped. This is the second of two
+ * independent guards — `buildLeafPredicate` also refuses to rescue a
+ * one-segment section — because a subtotal reaching `budget_lines` is silent,
+ * and money that lands twice is harder to notice than money that never lands.
  */
-const COMPUTED_SUBTOTAL_CODES = new Set(["PLF.03", "PLF.08"])
-
-// PLF prefix → accountType map
 function plfAccountType(code: string): PlfAccountType | null {
-  const trimmed = code.trim()
-  if (COMPUTED_SUBTOTAL_CODES.has(trimmed)) return null
-  const m = trimmed.match(/^PLF\.(\d{2})/)
-  if (!m) return null
-  const section = m[1]
-  if (section === "01") return "revenue"
-  if (section === "02") return "cogs"
-  if (section === "10") return null // computed Net Profit — skip
-  if (/^0[3-9]$/.test(section)) return "expense"
-  if (section === "12") return "expense" // PROVISIONS (Unused Vacations, Impairment, etc.)
-  return null
+  switch (plfNature(code)) {
+    case "revenue":
+    case "other_operating_income":
+      return "revenue"
+    case "cogs":
+      return "cogs"
+    case "opex":
+    case "other_operating_expense":
+    case "below_ebitda":
+      return "expense"
+    case "subtotal":
+    case null:
+      return null
+  }
 }
 
 /** Excel serial → {year, month0Based} or null. Wrapping `excelSerialToMonth`
@@ -260,6 +325,19 @@ export function parsePlfPlSheet(
      * over every row and passes the verdict down.
      */
     signOverride?: CostSignDecision
+    /**
+     * Defect 5 (2026-08-01) — which chart of accounts this sheet is written
+     * in, when it is not the current one.
+     *
+     * `undefined` (the default) decides from the resolved header year: a
+     * sheet whose 12-month band is 2025 is read against the 2025 chart. That
+     * has to be the default, because the whole failure mode is an operator
+     * importing 2025 without knowing the codes moved.
+     *
+     * `null` disables the translation — for a caller that has already done
+     * it, or a test that wants the raw codes.
+     */
+    legacyChartYear?: number | null
   },
 ): PlfParseResult {
   const sheet = workbook.Sheets[sheetName]
@@ -274,6 +352,21 @@ export function parsePlfPlSheet(
   }
   const { row: headerRowIdx, monthCols } = header
 
+  // Defect 5 — a sheet in the 2025 chart of accounts is translated into 2026
+  // terms. Only 2025 has a map; any other year (including 2026) is already
+  // current and passes through untouched.
+  const legacyChartYear =
+    opts?.legacyChartYear === undefined
+      ? header.year === PLF_LEGACY_CHART_YEAR
+        ? PLF_LEGACY_CHART_YEAR
+        : null
+      : opts.legacyChartYear
+  const legacyRewrites: PlfLegacyChartRewrite[] = []
+  /** Codes the map does not describe — warned once each, up to the cap. */
+  const legacyUnknown = new Set<string>()
+  /** Duplicate-name warnings, once per code. */
+  const legacyWarned = new Set<string>()
+
   const lines: ParsedPlfLine[] = []
   // Phase 11.9b — raw per-row annuals feeding the cost-sign classifier.
   const cogsRawAnnuals: number[] = []
@@ -281,6 +374,8 @@ export function parsePlfPlSheet(
   const cogsLabels: string[] = []
   const expenseLabels: string[] = []
   const warnings: PlfParseWarning[] = []
+  /** PLF.07 branches with no chart entry — warned once each, not once per row. */
+  const unmappedOtherOperating = new Set<string>()
 
   // 11.70 — leafness needs the WHOLE sheet, not one row at a time. "Has no
   // children" cannot be decided from a code in isolation, and deciding it
@@ -295,14 +390,27 @@ export function parsePlfPlSheet(
   for (let r = headerRowIdx + 1; r < aoa.length; r++) {
     const row = aoa[r] ?? []
     const codeRaw = row[0]
-    const code = typeof codeRaw === "string" ? codeRaw.trim() : ""
-    if (!code) continue
-    if (!isLeafCode(code)) continue // only leaves
-    const accountType = plfAccountType(code)
-    if (!accountType) continue
+    const sourceCode = typeof codeRaw === "string" ? codeRaw.trim() : ""
+    if (!sourceCode) continue
+    if (!isLeafCode(sourceCode)) continue // only leaves
 
     const labelRaw = row[1]
-    const label = typeof labelRaw === "string" ? labelRaw.trim() : code
+    const sourceLabel = typeof labelRaw === "string" ? labelRaw.trim() : sourceCode
+
+    // ── Legacy chart translation ──────────────────────────────────────────
+    // Runs BEFORE `plfAccountType`, and that ordering is the point: the 2025
+    // chart files D&A inside `PLF.05` (opex) while the 2026 chart puts it at
+    // `PLF.09.03` (below EBITDA). Typing the row from the code the SHEET
+    // wrote would keep 8,578,368 AZN of depreciation above the EBITDA line
+    // and leave 2025 unable to reconcile to its own PLF.08 row.
+    const legacy =
+      legacyChartYear === null
+        ? null
+        : resolveLegacyAccount(PLF_2025_CHART_BY_KEY, sourceCode, sourceLabel)
+    const code = legacy ? legacy.code : sourceCode
+    const label = legacy ? legacy.name : sourceLabel
+    const accountType = plfAccountType(code)
+    if (!accountType) continue
 
     // Phase 11.9b (2026-07-29) — pass 1 keeps RAW values. The cogs/expense
     // sign convention is INFERRED from the file after this loop and applied
@@ -328,9 +436,69 @@ export function parsePlfPlSheet(
     }
     if (allZero) continue
 
+    // Legacy-chart reporting, raised only for rows that actually carry money.
+    // A code the map does not describe is the dangerous case: it keeps the
+    // code the sheet wrote, and if the CURRENT chart reuses that code the row
+    // posts under the current account's name — which is Defect 5 itself,
+    // arriving through the one door the map does not cover.
+    if (legacyChartYear !== null && !legacy && !legacyUnknown.has(sourceCode)) {
+      legacyUnknown.add(sourceCode)
+      // Capped: a sheet from a DIFFERENT client that happens to use `PLF.*`
+      // codes matches nothing here, and one warning per leaf would bury the
+      // channel that carries the blocking ones. The tail is summarised after
+      // the loop, so the count is never hidden — only the list is.
+      if (legacyUnknown.size <= LEGACY_UNKNOWN_WARNING_CAP) {
+        warnings.push({
+          row: r + 1,
+          reason:
+            `${sourceCode} ("${sourceLabel}") is a leaf on a ${legacyChartYear} sheet that the ` +
+            `${legacyChartYear} chart map does not describe — imported under its own code, so it ` +
+            `will post under whatever the current chart already calls that code. Re-derive the map: ` +
+            `npx tsx scripts/derive-plf-2025-chart-map.ts <workbook>`,
+        })
+      }
+    }
+    if (legacy?.duplicateOfCurrentCodes && !legacyWarned.has(sourceCode)) {
+      legacyWarned.add(sourceCode)
+      warnings.push({
+        row: r + 1,
+        reason:
+          `${sourceCode} ("${legacy.name}") keeps its own ${legacyChartYear} account, but the ` +
+          `current chart already carries that name at ${legacy.duplicateOfCurrentCodes.join(", ")} — ` +
+          `two accounts, one meaning.`,
+      })
+    }
+    if (
+      legacy?.rewritten &&
+      !legacyRewrites.some((w) => w.sourceCode === sourceCode)
+    ) {
+      legacyRewrites.push({
+        sourceCode,
+        storedCode: code,
+        name: label,
+        kind: legacy.kind,
+      })
+    }
+
+    // A PLF.07 branch the chart map does not know carries money under a
+    // guessed nature. It keeps the historical expense treatment so nothing is
+    // dropped, but it must not pass in silence — half of section 07 is income
+    // and the guess is wrong half the time.
+    if (plfOtherOperatingSide(code) === "unmapped" && !unmappedOtherOperating.has(code)) {
+      unmappedOtherOperating.add(code)
+      warnings.push({
+        row: r + 1,
+        reason:
+          `${code} is a PLF.07 branch with no entry in the chart map — treated as other-operating ` +
+          `EXPENSE. Section 07 holds both income and expense; classify it in src/lib/budgeting/plf-chart.ts.`,
+      })
+    }
+
     // 2026-07-30 — labels travel with the annuals so the sign classifier can
-    // drop income lines filed under a cost section (PLF.07 is titled "OTHER
-    // OPERATING INCOME/EXPENSES" and holds Subsidies + Interest Income).
+    // drop income lines filed under a cost section. Income under PLF.07 no
+    // longer reaches this population at all (it types as `revenue` now), but
+    // the label filter stays: the next client's chart will file income under a
+    // cost section too, and its codes will not be `PLF.xx`.
     if (accountType === "cogs") {
       cogsRawAnnuals.push(rawAnnual)
       cogsLabels.push(label)
@@ -339,7 +507,22 @@ export function parsePlfPlSheet(
       expenseLabels.push(label)
     }
 
-    lines.push({ code, label, accountType, perMonth, totalAnnual: rawAnnual })
+    lines.push({
+      code,
+      label,
+      accountType,
+      perMonth,
+      totalAnnual: rawAnnual,
+      ...(legacy
+        ? {
+            legacyChart: {
+              chartYear: legacyChartYear as number,
+              sourceCode,
+              kind: legacy.kind,
+            },
+          }
+        : {}),
+    })
   }
 
   // ── Pass 2: apply the INFERRED cost-sign convention ────────────────────
@@ -363,6 +546,16 @@ export function parsePlfPlSheet(
     for (let m = 0; m < 12; m++) line.perMonth[m] = -line.perMonth[m]
     line.totalAnnual = -line.totalAnnual
   }
+  if (legacyUnknown.size > LEGACY_UNKNOWN_WARNING_CAP) {
+    warnings.push({
+      row: 0,
+      reason:
+        `${legacyUnknown.size} leaves on this ${legacyChartYear} sheet are not in the ` +
+        `${legacyChartYear} chart map (${LEGACY_UNKNOWN_WARNING_CAP} listed above). At this ` +
+        `scale the sheet is probably not the chart the map describes, and NOTHING was translated ` +
+        `— check the workbook before trusting the account names.`,
+    })
+  }
   // `warnings` is a row-level PROBLEM channel — callers treat an empty list as
   // "clean parse" — so the routine verdict travels on the result instead, and
   // only a genuinely blocking one is raised as a warning.
@@ -370,7 +563,15 @@ export function parsePlfPlSheet(
     warnings.push({ row: 0, reason: `BLOCKED: ${signDecision.blockedReason}` })
   }
 
-  return { sheetName, lines, warnings, signConvention: signDecision }
+  return {
+    sheetName,
+    lines,
+    warnings,
+    signConvention: signDecision,
+    ...(legacyChartYear !== null
+      ? { legacyChart: { chartYear: legacyChartYear, rewrites: legacyRewrites } }
+      : {}),
+  }
 }
 
 /** Parse CF_X sheet → ParsedCfLine[] (only leaves).

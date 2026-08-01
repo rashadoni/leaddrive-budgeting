@@ -22,23 +22,13 @@
  * one classifier covers every entity. New leaf-codes added by Workbook
  * inherit their parent's classification automatically.
  *
- * Code map (top-level sections):
- *   PLF.01    revenue
- *   PLF.02    cogs
- *   PLF.03    SKIP — Gross Margin (computed = revenue − cogs)
- *   PLF.04    expense (Sales & Marketing functions)
- *   PLF.05    expense (G&A — head office + regions)
- *   PLF.07.01 revenue (interest income, non-operating)
- *   PLF.07.02 revenue (non-operating income)
- *   PLF.07.03 expense (non-operating expenses)
- *   PLF.07.04 expense (gain/loss on disposal — net, classified as expense)
- *   PLF.08    SKIP — EBITDA (computed)
- *   PLF.09.01 expense (shareholders' expense)
- *   PLF.09.02 expense (interest expense, finance cost)
- *   PLF.09.03 expense (D&A)
- *   PLF.09.04 expense (profit tax)
- *   PLF.10    SKIP — Net Profit (computed)
- *   PLF.12    expense (provisions)
+ * The PLF code map is NOT restated here. It lives in
+ * `src/lib/budgeting/plf-chart.ts`, which the importer and the reporting layer
+ * also read — this file only translates that classification into the
+ * `WorkbookAccountType` union. Restating it is what produced three
+ * independent answers for `PLF.07` and one 13,453,098 AZN defect.
+ *
+ * Code map (non-PLF sections, which this file still owns):
  *   BS.01     asset
  *   BS.02     equity
  *   BS.03     liability
@@ -47,6 +37,8 @@
  *   CF.03     financing
  *   CF.04-07  SKIP — bridge rows (FX change, net change, opening, closing)
  */
+
+import { plfNature } from "../budgeting/plf-chart";
 
 export type WorkbookAccountType =
   | "revenue"
@@ -91,48 +83,31 @@ export function classifyWorkbookCode(code: string): WorkbookAccountType {
   if (!isWorkbookCode(code)) return "skip";
   const norm = code.trim();
 
-  // PLF — P&L Forecast
+  // PLF — P&L Forecast.
+  //
+  // 2026-08-01 — this branch used to restate the section map inline, and it
+  // was the THIRD copy of it in the repo. It happened to be the one that got
+  // PLF.07 right (income under `.01/.02`) while `azseker-plf.ts` typed the
+  // same codes as expense from the section number — one chart, two answers,
+  // 13,453,098 AZN. Both now read `plf-chart.ts`.
   if (norm.startsWith("PLF.")) {
-    // Computed totals — not stored.
-    if (
-      norm === "PLF.03" ||
-      norm.startsWith("PLF.03.") ||
-      norm === "PLF.08" ||
-      norm.startsWith("PLF.08.") ||
-      norm === "PLF.10" ||
-      norm.startsWith("PLF.10.")
-    ) {
-      return "skip";
+    switch (plfNature(norm)) {
+      case "revenue":
+      case "other_operating_income":
+        return "revenue";
+      case "cogs":
+        return "cogs";
+      case "opex":
+      case "other_operating_expense":
+      case "below_ebitda":
+        return "expense";
+      case "subtotal":
+        return "skip";
+      case null:
+        // Unrecognised PLF section — bias to expense (conservative; AI Mapper
+        // surfaces it as an anomaly to the reviewer).
+        return "expense";
     }
-    // Revenue family.
-    if (norm.startsWith("PLF.01")) return "revenue";
-    // COGS.
-    if (norm.startsWith("PLF.02")) return "cogs";
-    // S&M + G&A — expenses.
-    if (norm.startsWith("PLF.04") || norm.startsWith("PLF.05")) {
-      return "expense";
-    }
-    // Other operating: 07.01 interest income + 07.02 non-op income
-    // are revenue; 07.03 non-op expense + 07.04 gain/loss on disposal
-    // are expense.
-    if (norm.startsWith("PLF.07.01") || norm.startsWith("PLF.07.02")) {
-      return "revenue";
-    }
-    if (
-      norm.startsWith("PLF.07.03") ||
-      norm.startsWith("PLF.07.04") ||
-      norm === "PLF.07"
-    ) {
-      // Parent "PLF.07 OTHER OPERATING INCOME/EXPENSES" header — skip.
-      return norm === "PLF.07" ? "skip" : "expense";
-    }
-    // Below EBITDA: finance + tax + D&A — expense.
-    if (norm.startsWith("PLF.09")) return "expense";
-    // Provisions.
-    if (norm.startsWith("PLF.12")) return "expense";
-    // Unrecognised PLF leaf — bias to expense (conservative; AI Mapper
-    // surfaces as anomaly to reviewer).
-    return "expense";
   }
 
   // BS — Balance Sheet

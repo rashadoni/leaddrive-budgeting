@@ -41,6 +41,7 @@ const BRIDGE_LABEL_KEYS: Record<EbitdaBridgeStep["key"], string> = {
   revenue: "pnlBridgeRevenueVariance",
   cogs: "pnlBridgeCogsVariance",
   opex: "pnlBridgeOpexVariance",
+  otherOperating: "pnlBridgeOtherOperatingVariance",
   da: "pnlBridgeDaAddBack",
   actual: "pnlBridgeActualEbitda",
 }

@@ -44,12 +44,14 @@ vi.mock("../store/terminalStore", () => ({
 const MATRIX = {
   period: "2026",
   companies: [{ id: "co_eden", code: "EDEN", name: "Eden", industry: "Agri" }],
-  indicators: [
-    { id: "ind_a", code: "IND_A", nameEn: "A", unit: "%", direction: "higher_better" },
-  ],
-  cells: [
-    { indicatorValueId: "iv1", companyId: "co_eden", indicatorId: "ind_a", value: 50, status: "green" },
-  ],
+  // 11.81 — four indicators so the company clears the coverage floor; the
+  // riskTag-penalty parity this file locks is unchanged.
+  indicators: ["ind_a", "ind_b", "ind_c", "ind_d"].map((id) => ({
+    id, code: id.toUpperCase(), nameEn: id, unit: "%", direction: "higher_better",
+  })),
+  cells: ["ind_a", "ind_b", "ind_c", "ind_d"].map((indicatorId, n) => ({
+    indicatorValueId: `iv${n}`, companyId: "co_eden", indicatorId, value: 50, status: "green",
+  })),
 };
 
 beforeEach(() => {

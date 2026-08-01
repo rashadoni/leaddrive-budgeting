@@ -192,3 +192,80 @@ describe("computeActualEbitda — actuals path", () => {
     expect(r.ebitda).toBe(175)
   })
 })
+
+describe("other operating income/(expense) — above EBITDA, outside gross profit", () => {
+  // The four numbers are the `PLF Budget 2026` totals for the four imported
+  // entities, and each derived figure equals the workbook's own subtotal row:
+  // PLF.03 = 20,180,179.07 · PLF.08 = 15,890,431.51 · PLF.10 = 3,829,841.70.
+  const FO_2026 = {
+    totalRevenue: 58_880_102.23,
+    totalCogs: 38_699_923.16,
+    totalOpex: 17_366_026.69,
+    totalOtherOperating: 13_076_279.14,
+    totalBelowEbitda: 12_060_589.81,
+    daInCogs: 0,
+    daInOpex: 0,
+  }
+
+  it("leaves gross profit untouched by the 13.45M of subsidies", () => {
+    const r = computeEbitda(FO_2026)
+    // The client was shown 33,633,277 here, because PLF.07 income was revenue.
+    expect(r.grossProfit).toBeCloseTo(20_180_179.07, 2)
+  })
+
+  it("adds it to EBITDA", () => {
+    const r = computeEbitda(FO_2026)
+    expect(r.ebitda).toBeCloseTo(15_890_431.52, 2)
+  })
+
+  it("leaves net profit where it already was", () => {
+    const r = computeEbitda(FO_2026)
+    expect(r.netProfit).toBeCloseTo(3_829_841.71, 2)
+  })
+
+  it("is absent-safe: a chart without the line behaves exactly as before", () => {
+    const withField = computeEbitda({
+      totalRevenue: 1000, totalCogs: 400, totalOpex: 250,
+      totalOtherOperating: 0, totalBelowEbitda: 50, daInCogs: 0, daInOpex: 0,
+    })
+    const withoutField = computeEbitda({
+      totalRevenue: 1000, totalCogs: 400, totalOpex: 250,
+      totalBelowEbitda: 50, daInCogs: 0, daInOpex: 0,
+    })
+    expect(withoutField).toEqual(withField)
+  })
+
+  it("buckets both natures of PLF.07 despite their opposite accountTypes", () => {
+    // The income half is `revenue`-typed and the expense half `expense`-typed.
+    // A filter on `accountType === "expense"` — which is how opex and
+    // below-EBITDA are collected — would drop the income and lose 13.45M.
+    const rows = [
+      { accountCode: "PLF.01.01.01", accountType: "revenue", total: 15_836_740 },
+      { accountCode: "PLF.07.02.04", accountType: "revenue", total: 9_231_957 },
+      { accountCode: "PLF.07.01.01", accountType: "revenue", total: 300_000 },
+      { accountCode: "PLF.07.03.01", accountType: "expense", total: 376_818.97 },
+      { accountCode: "PLF.05.01.01", accountType: "expense", total: 1_000_000 },
+      { accountCode: "PLF.09.03.98", accountType: "expense", total: 9_060_558.81 },
+    ]
+    const out = aggregateRowsForEbitda({ rows, totalRevenue: 15_836_740, totalCogs: 0 })
+    expect(out.otherOperatingRows.map((r) => r.accountCode).sort()).toEqual([
+      "PLF.07.01.01",
+      "PLF.07.02.04",
+      "PLF.07.03.01",
+    ])
+    expect(out.totals.totalOtherOperating).toBeCloseTo(9_155_138.03, 2)
+    // ...and PLF.07.03 no longer leaks into the below-EBITDA bucket.
+    expect(out.belowEbitdaRows.map((r) => r.accountCode)).toEqual(["PLF.09.03.98"])
+    expect(out.totals.totalOpex).toBe(1_000_000)
+  })
+
+  it("carries the actuals bucket through computeActualEbitda", () => {
+    const r = computeActualEbitda({
+      sectionActuals: { revenue: 800, cogs: 300, opex: 250, otherOperating: 100, belowEbitda: 40 },
+      actualByKey: {},
+    })
+    expect(r.grossProfit).toBe(500)
+    expect(r.ebitda).toBe(350) // 500 − 250 + 100
+    expect(r.netProfit).toBe(310) // 350 − 40
+  })
+})

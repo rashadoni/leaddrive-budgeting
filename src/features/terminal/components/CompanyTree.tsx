@@ -129,6 +129,28 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
       const score = fullById.get(co.id);
       if (score) out.set(co.code, score);
     }
+    // 11.81 — the holding root never reached this map. `matrix.companies` is
+    // level-2 operational rows plus level-1 rows with `role === 'operational'`;
+    // AZSEKER is `role = 'holding'`, so it is in neither list, and the root's
+    // `<CompositeMini composite={compositeByCode.get(root.code) ?? null} />`
+    // received null for as long as the chip has existed. The score itself was
+    // always computed — `deriveParentComposites` keys `childrenByParent` off
+    // the children's `parentCompanyId`, so `fullById` has an entry under the
+    // holding's id — it simply had no code to be found under. Walking the tree
+    // prop (which does carry the root) closes that, and does it here rather
+    // than by widening the matrix endpoint's entity universe: adding the
+    // holding to `matrixEntities` would also give it applicability rows,
+    // synthetic rollup cells and a HeatMap row, none of which this needs.
+    const walk = (nodes: readonly CompanyNode[]) => {
+      for (const n of nodes) {
+        if (!out.has(n.code)) {
+          const score = fullById.get(n.id);
+          if (score) out.set(n.code, score);
+        }
+        if (n.children?.length) walk(n.children);
+      }
+    };
+    walk(companies);
     return out;
   }, [matrix, companies]);
   // Phase 8 A4 — per-company data-freshness, keyed by code: MAX(computedAt)

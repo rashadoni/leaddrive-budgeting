@@ -56,32 +56,33 @@ const FIXTURE_MATRIX = {
       industry: "Hospitality",
     },
   ],
-  indicators: [
-    {
-      id: "ind_gross",
-      code: "IND_GROSS_MARGIN",
-      nameEn: "Gross Margin",
-      unit: "%",
-      direction: "higher_better",
-    },
-  ],
+  // 11.81 — four indicators, not one. A subscription rule «fire when composite
+  // < 50» evaluates against a published score, and the coverage floor publishes
+  // none below four contributing cells.
+  indicators: ["ind_gross", "ind_net", "ind_opex", "ind_fx"].map((id) => ({
+    id,
+    code: id.toUpperCase(),
+    nameEn: id,
+    unit: "%",
+    direction: "higher_better",
+  })),
   cells: [
     // Force AAC composite to be very low (red — score ≈ 0)
-    {
-      indicatorValueId: "iv1",
+    ...["ind_gross", "ind_net", "ind_opex", "ind_fx"].map((indicatorId, n) => ({
+      indicatorValueId: `iv_aac_${n}`,
       companyId: "co_aac",
-      indicatorId: "ind_gross",
+      indicatorId,
       value: 5,
       status: "red",
-    },
+    })),
     // ATL all-green (score = 100)
-    {
-      indicatorValueId: "iv2",
+    ...["ind_gross", "ind_net", "ind_opex", "ind_fx"].map((indicatorId, n) => ({
+      indicatorValueId: `iv_atl_${n}`,
       companyId: "co_atl",
-      indicatorId: "ind_gross",
+      indicatorId,
       value: 50,
       status: "green",
-    },
+    })),
   ],
 };
 
@@ -645,12 +646,12 @@ describe("AISubscriptions (Tier-3 sub-30)", () => {
             companies: [
               { id: "co_eden", code: "EDEN", name: "Eden", industry: "Agri" },
             ],
-            indicators: [
-              { id: "ind_a", code: "IND_A", nameEn: "A", unit: "%", direction: "higher_better" },
-            ],
-            cells: [
-              { indicatorValueId: "iv1", companyId: "co_eden", indicatorId: "ind_a", value: 50, status: "green" },
-            ],
+            indicators: ["ind_a", "ind_b", "ind_c", "ind_d"].map((id) => ({
+              id, code: id.toUpperCase(), nameEn: id, unit: "%", direction: "higher_better",
+            })),
+            cells: ["ind_a", "ind_b", "ind_c", "ind_d"].map((indicatorId, n) => ({
+              indicatorValueId: `iv${n}`, companyId: "co_eden", indicatorId, value: 50, status: "green",
+            })),
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );

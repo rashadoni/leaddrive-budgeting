@@ -44,6 +44,17 @@ export interface TrendPoint {
    *  (distinct from "unknown" which signals data-present-but-
    *  unscorable). The chart treats null as a gap. */
   band: CompositeBand | null;
+  /**
+   * 11.81 — how many sub-cos this point actually averaged, and how many were
+   * in scope. This is the ONE site where the coverage floor can MANUFACTURE a
+   * false trend rather than merely blank one: the cohort silently shrinks
+   * 4 → 2 between 2026-05 and 2026-06 and the line still plots a solid,
+   * connected, confident point. A step in the line caused by companies
+   * entering or leaving the mean is not a change in risk, and until now
+   * nothing on the chart said which kind of step you were looking at.
+   */
+  contributingCompanies: number;
+  totalCompanies: number;
 }
 
 /** Extract `YYYY-MM` from a flexible period input. Annual "2026"
@@ -178,6 +189,8 @@ export async function buildTrendSeries(
       period,
       score: null,
       band: null,
+      contributingCompanies: 0,
+      totalCompanies: input.operationalIds.length,
     }));
   }
 
@@ -231,7 +244,13 @@ export async function buildTrendSeries(
   return periods.map((period): TrendPoint => {
     const monthRows = byPeriod.get(period);
     if (!monthRows || monthRows.length === 0) {
-      return { period, score: null, band: null };
+      return {
+        period,
+        score: null,
+        band: null,
+        contributingCompanies: 0,
+        totalCompanies: input.operationalIds.length,
+      };
     }
     const cells: HeatMapCell[] = monthRows.map((r) => ({
       companyId: r.companyId,
@@ -253,13 +272,31 @@ export async function buildTrendSeries(
     let sum = 0;
     let count = 0;
     for (const c of composites.values()) {
-      if (typeof c.score === "number" && Number.isFinite(c.score)) {
+      // 11.81 — `coverage === 'full'` is the same set as `score !== null`;
+      // stated so the cohort this point averages is explicit at the point
+      // where it is counted.
+      if (c.coverage === "full" && typeof c.score === "number" && Number.isFinite(c.score)) {
         sum += c.score;
         count++;
       }
     }
-    if (count === 0) return { period, score: null, band: null };
+    const totalCompanies = input.operationalIds.length;
+    if (count === 0) {
+      return {
+        period,
+        score: null,
+        band: null,
+        contributingCompanies: 0,
+        totalCompanies,
+      };
+    }
     const score = Math.round(sum / count);
-    return { period, score, band: scoreToBand(score) };
+    return {
+      period,
+      score,
+      band: scoreToBand(score),
+      contributingCompanies: count,
+      totalCompanies,
+    };
   });
 }

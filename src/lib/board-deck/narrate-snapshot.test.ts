@@ -72,11 +72,11 @@ function makeSnapshot(
     compositeByCompany: new Map([
       [
         "co_1",
-        { score: 42, band: "amber", contributingCount: 5, totalCount: 5 },
+        { score: 42, band: "amber", contributingCount: 5, totalCount: 5, coverage: "full" as const },
       ],
       [
         "co_2",
-        { score: 78, band: "green", contributingCount: 5, totalCount: 5 },
+        { score: 78, band: "green", contributingCount: 5, totalCount: 5, coverage: "full" as const },
       ],
     ]),
     countsByCompany: new Map(),
@@ -261,6 +261,7 @@ describe("buildNarrationPrompt", () => {
       isActive: true,
       role: "operational" as const,
       sortOrder: i,
+      revenue: 0,
     }));
     const compositeByCompany = new Map(
       operational.map((c, i) => [
@@ -270,6 +271,7 @@ describe("buildNarrationPrompt", () => {
           band: "red" as const,
           contributingCount: 5,
           totalCount: 5,
+          coverage: "full" as const,
         },
       ]),
     );

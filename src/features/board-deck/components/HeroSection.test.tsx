@@ -38,6 +38,7 @@ const HEALTHY_COMPOSITE: HoldingComposite = {
   contributingCount: 7,
   totalCount: 7,
   band: "green",
+  revenueCoveredPct: 100,
 };
 
 const NULL_COMPOSITE: HoldingComposite = {
@@ -45,6 +46,16 @@ const NULL_COMPOSITE: HoldingComposite = {
   contributingCount: 0,
   totalCount: 7,
   band: null,
+  revenueCoveredPct: 0,
+};
+
+/** 11.81 — some sub-cos scored, some withheld for thin coverage. */
+const PARTIAL_COMPOSITE: HoldingComposite = {
+  score: 74,
+  contributingCount: 4,
+  totalCount: 6,
+  band: "green",
+  revenueCoveredPct: 88,
 };
 
 const NARRATION: NarrationOutput = {
@@ -169,16 +180,38 @@ describe("HeroSection — happy path (narration present)", () => {
     expect(attr.textContent).toContain("v1");
   });
 
-  it("contributing-count helper renders X of Y when score is non-null", async () => {
+  it("the caption discloses how many subsidiaries and how much revenue the score covers", async () => {
+    // 11.81 — was "{contributing} of {total} sub-cos scored". Removing
+    // children can make a holding look BETTER, so the caption also carries
+    // the revenue share the mean actually saw.
     await renderHero({
       org: ORG,
       period: PERIOD,
       generatedAt: GENERATED_AT,
-      composite: HEALTHY_COMPOSITE,
+      composite: PARTIAL_COMPOSITE,
       narration: NARRATION,
     });
     const section = screen.getByTestId("board-deck-hero");
-    expect(section.textContent).toContain("7 of 7 sub-cos scored");
+    expect(section.textContent).toContain(
+      "4 of 6 subsidiaries scored · 88% of holding revenue",
+    );
+  });
+
+  it("11.81 — a null holding score explains itself instead of rendering a bare dash", async () => {
+    // A "—" at 96px with nothing under it reads as a broken page, not as a
+    // measured shortfall.
+    await renderHero({
+      org: ORG,
+      period: PERIOD,
+      generatedAt: GENERATED_AT,
+      composite: NULL_COMPOSITE,
+      narration: NARRATION,
+    });
+    const caption = screen.getByTestId("hero-score-caption");
+    expect(caption.textContent).toContain("Not enough data to score");
+    expect(caption.textContent).toContain(
+      "No holding score — none of the 7 subsidiaries has enough data to score.",
+    );
   });
 });
 

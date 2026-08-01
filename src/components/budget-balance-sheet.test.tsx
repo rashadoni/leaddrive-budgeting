@@ -143,3 +143,134 @@ describe("Budget Balance Sheet evidence UI", () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 })
+
+/**
+ * Defect 3 (2026-08-01) — the tab added four legal entities and said nothing.
+ * At 2026-05 that printed 373,152,064 as "Total assets" against a consolidated
+ * 249,951,210: 123,200,854 of intercompany balances counted twice, and a D/E
+ * ratio built on both an inflated numerator (intragroup payables) and an
+ * inflated denominator (parent investments in subsidiaries).
+ */
+describe("Balance Sheet basis labelling", () => {
+  beforeEach(() => vi.stubGlobal("fetch", vi.fn()))
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  const fourEntityMonth = () => {
+    const assets = [row("ppe", "asset", 5, 373152064.18)]
+    const liabilities = [row("debt", "liability", 5, -28390247.06)]
+    const equity = [row("capital", "equity", 5, -344761817.12)]
+    return { assets, liabilities, equity, all: [...assets, ...liabilities, ...equity] }
+  }
+
+  it("labels an un-eliminated multi-entity sum and withholds the D/E verdict", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...fourEntityMonth(),
+        meta: {
+          sourceYear: 2026,
+          fellBack: false,
+          consolidated: false,
+          basis: "sum_of_entities",
+          entityCount: 4,
+          eliminationsApplied: false,
+          entityNames: ["AZSF", "CPC", "EDEN", "ProMalt"],
+          holding: { id: "h1", name: "AZSEKER", code: "AZSEKER" },
+          holdingHasConsolidatedBs: false,
+        },
+      }),
+    } as Response)
+
+    renderBalanceSheet()
+
+    // The warning exists at all — this is the guard the absent holding used to
+    // skip straight past.
+    const banner = await screen.findByTestId("balance-sheet-unconsolidated")
+    expect(banner.textContent).toContain("balanceSheetUnconsolidatedTitle")
+    expect(banner.textContent).toContain("balanceSheetUnconsolidatedBody")
+    // It names WHICH entities were added, and that the holding is the gap.
+    expect(screen.getByTestId("balance-sheet-unconsolidated-entities").textContent).toContain(
+      "balanceSheetUnconsolidatedEntities",
+    )
+    expect(screen.getByTestId("balance-sheet-unconsolidated-holding")).toBeTruthy()
+
+    // The headline is no longer called "Total assets"...
+    const assetsCard = screen.getByTestId("balance-sheet-kpi-assets")
+    expect(assetsCard.textContent).toContain("balanceSheetSummedAssets")
+    expect(assetsCard.textContent).not.toContain("balanceSheetTotalAssets")
+    // ...but the number itself is still shown; the sum is real, just not the group.
+    expect(assetsCard.textContent).toContain("373.2M")
+
+    // The ratio is withheld outright — it is corrupted on both sides.
+    const de = screen.getByTestId("balance-sheet-kpi-debt-equity")
+    expect(de.textContent).toContain("—")
+    expect(de.textContent).toContain("balanceSheetRatioUnavailableUnconsolidated")
+    expect(de.textContent).not.toContain("x")
+  })
+
+  it("says nothing extra when the holding carries the official consolidated sheet", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...fourEntityMonth(),
+        meta: {
+          sourceYear: 2026,
+          fellBack: false,
+          consolidated: true,
+          basis: "consolidated_holding",
+          entityCount: 1,
+          eliminationsApplied: true,
+          entityNames: [],
+          holding: { id: "h1", name: "AZSEKER", code: "AZSEKER" },
+          holdingHasConsolidatedBs: true,
+        },
+      }),
+    } as Response)
+
+    renderBalanceSheet()
+
+    expect(await screen.findByTestId("balance-sheet-consolidated")).toBeTruthy()
+    expect(screen.queryByTestId("balance-sheet-unconsolidated")).toBeNull()
+    expect(screen.getByTestId("balance-sheet-kpi-assets").textContent).toContain(
+      "balanceSheetTotalAssets",
+    )
+    // D/E is published again: 28,390,247 / 344,761,817 ≈ 0.08x.
+    expect(screen.getByTestId("balance-sheet-kpi-debt-equity").textContent).toContain("0.08x")
+  })
+
+  it("a response from before this field existed keeps the old behaviour", async () => {
+    // meta.eliminationsApplied undefined must NOT be read as false, or every
+    // cached/legacy payload starts shouting.
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...fourEntityMonth(), meta: { sourceYear: 2026, fellBack: false } }),
+    } as Response)
+
+    renderBalanceSheet()
+
+    await screen.findByTestId("balance-sheet-kpi-assets")
+    expect(screen.queryByTestId("balance-sheet-unconsolidated")).toBeNull()
+    expect(screen.getByTestId("balance-sheet-kpi-debt-equity").textContent).toContain("0.08x")
+  })
+})
+
+describe("Balance Sheet basis strings exist in the catalogue", () => {
+  it("every key the basis banner renders is a real en.json key", async () => {
+    const en = (await import("../../messages/en.json")).default as unknown as {
+      budgeting: Record<string, string>
+    }
+    for (const key of [
+      "balanceSheetUnconsolidatedTitle",
+      "balanceSheetUnconsolidatedBody",
+      "balanceSheetUnconsolidatedEntities",
+      "balanceSheetHoldingNoConsolidated",
+      "balanceSheetSummedAssets",
+      "balanceSheetRatioUnavailableUnconsolidated",
+    ]) {
+      expect(en.budgeting[key], key).toBeTruthy()
+    }
+  })
+})

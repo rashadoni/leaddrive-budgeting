@@ -8,21 +8,24 @@ export interface PnlPerformancePoint {
   executionPct: number | null
 }
 
+interface EbitdaBridgeSide {
+  revenue: number
+  cogs: number
+  opex: number
+  /**
+   * Other operating income/(expense) — signed, income-positive. Optional so
+   * charts of accounts without such a line keep their five-step bridge; when
+   * it is present it must be included, or budget→actual no longer adds up to
+   * the actual EBITDA endpoint.
+   */
+  otherOperating?: number
+  da: number
+  ebitda: number
+}
+
 export interface EbitdaBridgeInput {
-  budget: {
-    revenue: number
-    cogs: number
-    opex: number
-    da: number
-    ebitda: number
-  }
-  actual: {
-    revenue: number
-    cogs: number
-    opex: number
-    da: number
-    ebitda: number
-  }
+  budget: EbitdaBridgeSide
+  actual: EbitdaBridgeSide
 }
 
 /**
@@ -31,7 +34,14 @@ export interface EbitdaBridgeInput {
  * locale-agnostic so it can run in pure unit tests and on the server.
  */
 export interface EbitdaBridgeStep {
-  key: "budget" | "revenue" | "cogs" | "opex" | "da" | "actual"
+  key:
+    | "budget"
+    | "revenue"
+    | "cogs"
+    | "opex"
+    | "otherOperating"
+    | "da"
+    | "actual"
   range: [number, number]
   delta: number
   value: number
@@ -88,6 +98,11 @@ export function buildEbitdaBridge(input: EbitdaBridgeInput): EbitdaBridgeStep[] 
   addStep("revenue", input.actual.revenue - input.budget.revenue)
   addStep("cogs", input.budget.cogs - input.actual.cogs)
   addStep("opex", input.budget.opex - input.actual.opex)
+  const budgetOther = input.budget.otherOperating ?? 0
+  const actualOther = input.actual.otherOperating ?? 0
+  if (budgetOther !== 0 || actualOther !== 0) {
+    addStep("otherOperating", actualOther - budgetOther)
+  }
   addStep("da", input.actual.da - input.budget.da)
 
   steps.push({

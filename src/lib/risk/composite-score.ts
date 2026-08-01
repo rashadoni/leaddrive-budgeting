@@ -38,8 +38,53 @@ import type { IndicatorStatus } from './formula-engine';
 
 export type CompositeBand = 'green' | 'amber' | 'red' | 'unknown';
 
+/**
+ * 11.81 — coverage floor. A composite is a mean, and below four observations
+ * one indicator decides the band: at n=3 the assignment [red, green, green]
+ * averages to 66.67 → rounds to 67 → GREEN, and flipping one green to red
+ * gives 33.33 → 33 → RED. One cell, two bands apart. At n=4 no assignment
+ * permits a single-cell green→red flip; with the production weight range
+ * (0.7–1.5) the maximum single-cell influence falls to 25.0–30.2%, the first
+ * value below the 33-point amber band, so amber finally works as the buffer
+ * it was drawn to be.
+ *
+ * The integer is read off the data, not chosen. Cross-tabbing the 143 scored
+ * (company, period) pairs on production against `indicatorProvenance()`:
+ * every pair with 1, 2 or 3 contributing cells contains ZERO client-supplied
+ * figures — it is entirely commodity feeds and a rainfall forecast, computed
+ * whether or not the client ever uploaded anything. 4 is the first count at
+ * which a score rests on a number the client supplied (9 of 18 such pairs).
+ * So N≥4 withholds every purely-external low-coverage score and destroys none
+ * that contains a client figure. N≥3 leaves 18 external-only scores standing
+ * (`3/23 → 83 green`, a clean bill of health from three commodity feeds);
+ * N≥5 destroys 9 scores that do rest on client data, including EDEN's
+ * genuine customer-concentration reading.
+ *
+ * Deliberately a module constant, NOT org config. `criticalComposite.scoreMax`
+ * is per-org; a configurable coverage floor is a knob an org can use to
+ * configure its way back into one-cell scores. When a second customer arrives
+ * with a different taxonomy the correct shape is `makeCompositeScorer(config)`
+ * resolved once per request — not a twelfth call site passing a threshold.
+ */
+export const MIN_SCORING_CELLS = 4;
+
+/**
+ * Why there is (or is not) a score.
+ *   - `none`         — not one applicable indicator has a figure.
+ *   - `insufficient` — some do, but fewer than `MIN_SCORING_CELLS`.
+ *   - `full`         — enough to publish a number.
+ *
+ * REQUIRED on `CompositeScore`, and that is the point: five surfaces have to
+ * print different sentences for `none` and `insufficient` ("none of the 28
+ * applicable indicators has figures" vs "2 of 28 — at least 4 needed"), and
+ * re-deriving that predicate at five sites is 11.66's failure mode
+ * transcribed into copy. Making it required turns `tsc --noEmit` into the
+ * checklist.
+ */
+export type CompositeCoverage = 'none' | 'insufficient' | 'full';
+
 export interface CompositeScore {
-  /** 0-100, or null if no scoreable cells. */
+  /** 0-100, or null whenever `coverage !== 'full'`. */
   score: number | null;
   /** Band classifier; 'unknown' when score is null. */
   band: CompositeBand;
@@ -47,6 +92,12 @@ export interface CompositeScore {
   contributingCount: number;
   /** Total cells inspected (for "X of Y indicators" UX). */
   totalCount: number;
+  /**
+   * 11.81 — REQUIRED. Invariant every consumer may rely on:
+   * `score === null` ⟺ `coverage !== 'full'`. Every pre-existing
+   * `if (score === null)` branch therefore keeps its exact present meaning.
+   */
+  coverage: CompositeCoverage;
   /**
    * Phase 7.N wiring (2026-05-26) — qualitative risk-tag penalty.
    * When riskTags are passed in, the score is reduced by the sum of
@@ -57,6 +108,12 @@ export interface CompositeScore {
   scoreBeforeTags?: number;
   /** Sum of penalties applied (≥0). */
   riskTagPenalty?: number;
+  /**
+   * 11.81 — set ONLY by `deriveParentComposites`. A board reads "4 of 6
+   * subsidiaries", not "41 of 153 indicators"; `revenueCoveredPct` says how
+   * much of the holding's money the mean actually saw.
+   */
+  children?: { scored: number; total: number; revenueCoveredPct: number };
 }
 
 /**
@@ -163,12 +220,22 @@ export function computeCompositeScore(
   // `cells.length` — the two mechanisms must agree while both exist, or the
   // terminal and the board deck report different denominators for one company.
   const totalCount = cells.length - nonScoringCount;
-  if (contributingCount === 0) {
+  // 11.81 — the coverage floor, at the same chokepoint and for the same
+  // reason as the 11.71 scoring gate. DASTAN and SAF read «0 / 100, critical»
+  // on the board deck because exactly one red cell — a rainfall forecast —
+  // was all there was. That is a statement about missing data wearing the
+  // costume of a risk verdict, and it fired RULE_COMPANY_CRITICAL_COMPOSITE,
+  // which persists an AlertEvent row. Below the floor we publish no number at
+  // all: a reader who wants a number and does not get one can ask why, and
+  // the fraction next to the blank answers them. A reader who gets a number
+  // that is not one never asks.
+  if (contributingCount < MIN_SCORING_CELLS) {
     return {
       score: null,
       band: 'unknown',
-      contributingCount: 0,
+      contributingCount,
       totalCount,
+      coverage: contributingCount === 0 ? 'none' : 'insufficient',
     };
   }
   const baseScore = Math.round(weightedSum / totalWeight);
@@ -179,6 +246,7 @@ export function computeCompositeScore(
     band: scoreToBand(score),
     contributingCount,
     totalCount,
+    coverage: 'full',
     ...(penalty > 0 ? { scoreBeforeTags: baseScore, riskTagPenalty: penalty } : {}),
   };
 }
@@ -280,32 +348,92 @@ export function deriveParentComposites(
   }
   let progressed = true;
   let safety = 8; // depth cap (fixpoint for >2-level hierarchies)
+  // 11.81 — a parent whose children ALL fell below the coverage floor now
+  // gets an explicit no-score entry rather than no entry at all, so it can be
+  // told apart from "not a parent" downstream. `resolved` keeps that entry
+  // from being mistaken for "still pending" by the bottom-up deferral below.
+  const resolved = new Set<string>();
   while (progressed && safety-- > 0) {
     progressed = false;
     for (const [parentId, kidIds] of childrenByParent) {
+      if (resolved.has(parentId)) continue;
       const existing = out.get(parentId);
       if (existing && existing.score !== null) continue; // already scored
       // Defer until every child that is ITSELF a parent has resolved
       // (correct bottom-up order for multi-level holdings).
       const childParentsPending = kidIds.some(
-        (id) => childrenByParent.has(id) && (out.get(id)?.score ?? null) === null,
+        (id) =>
+          childrenByParent.has(id) &&
+          !resolved.has(id) &&
+          (out.get(id)?.score ?? null) === null,
       );
       if (childParentsPending) continue;
+      // 11.81 — the drop is explicit on `coverage`, not implicit in `score`.
+      // Same set today (insufficient ⇒ null) and it cannot drift if the null
+      // invariant is ever relaxed.
       const kids = kidIds
         .map((id) => ({ s: out.get(id), rev: revById.get(id) ?? 0 }))
-        .filter((k): k is { s: CompositeScore; rev: number } => !!k.s && k.s.score !== null);
-      if (kids.length === 0) continue;
-      const totalRev = kids.reduce((acc, k) => acc + k.rev, 0);
+        .filter(
+          (k): k is { s: CompositeScore; rev: number } =>
+            !!k.s && k.s.coverage === 'full' && k.s.score !== null,
+        );
+      // 11.81 — `totalCount` sums over ALL children, `contributingCount` only
+      // over the included ones. Before this, both summed over included
+      // children, so a subsidiary dropped for thin coverage vanished from the
+      // denominator too — the code picked "drop, and conceal the drop".
+      // AZSEKER 2026 is 41/153, not 41/97; 153 is the truth, that most of the
+      // holding's indicator surface is empty. Consistent with 11.71, not
+      // against it: 11.71 shrank the denominator for cells that could NEVER
+      // score, and an under-covered child COULD, so it stays in the frame.
+      const totalCountAllKids = kidIds.reduce(
+        (acc, id) => acc + (out.get(id)?.totalCount ?? 0),
+        0,
+      );
+      const allKidsRev = kidIds.reduce((acc, id) => acc + (revById.get(id) ?? 0), 0);
+      const scoredRev = kids.reduce((acc, k) => acc + k.rev, 0);
+      const children = {
+        scored: kids.length,
+        total: kidIds.length,
+        // 100 when nobody carries revenue — the mean falls back to unweighted
+        // there anyway, so "materiality covered" is vacuously complete.
+        revenueCoveredPct:
+          allKidsRev > 0 ? Math.round((scoredRev / allKidsRev) * 100) : 100,
+      };
+      if (kids.length === 0) {
+        // Averaging the withheld children in at their own low-coverage scores
+        // is the reported bug at holding scale: the deck hero read 49 for the
+        // 2026 annual precisely because DASTAN's and SAF's rainfall forecasts
+        // were averaged in as two whole zeros. Excluding them gives 74. So we
+        // drop — and when there is nobody left to average, we say so.
+        out.set(parentId, {
+          score: null,
+          band: 'unknown',
+          contributingCount: 0,
+          totalCount: totalCountAllKids,
+          coverage: 'none',
+          children,
+        });
+        resolved.add(parentId);
+        progressed = true;
+        continue;
+      }
       const score =
-        totalRev > 0
-          ? Math.round(kids.reduce((acc, k) => acc + (k.s.score as number) * k.rev, 0) / totalRev)
+        scoredRev > 0
+          ? Math.round(kids.reduce((acc, k) => acc + (k.s.score as number) * k.rev, 0) / scoredRev)
           : Math.round(kids.reduce((acc, k) => acc + (k.s.score as number), 0) / kids.length);
       out.set(parentId, {
         score,
         band: scoreToBand(score),
         contributingCount: kids.reduce((acc, k) => acc + k.s.contributingCount, 0),
-        totalCount: kids.reduce((acc, k) => acc + k.s.totalCount, 0),
+        totalCount: totalCountAllKids,
+        // MIN_SCORING_CELLS deliberately does NOT apply here: the parent's
+        // unit is children, not cells, and this branch builds its result as an
+        // object literal rather than calling `computeCompositeScore`, so the
+        // leaf gate reaches every leaf and no parent by construction.
+        coverage: 'full',
+        children,
       });
+      resolved.add(parentId);
       progressed = true;
     }
   }

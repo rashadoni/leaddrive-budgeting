@@ -7,7 +7,7 @@ import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { looksLikeCode } from "@/lib/import/keywords"
 import {
   deriveRoleFromCode,
-  isContraRevenueCode,
+  otherOperatingContribution,
   pnlSectionFromCode,
   pnlSectionFromRole,
   revenueContribution,
@@ -145,7 +145,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         success: true,
         sections: [], rows: [], monthlyRevenue: {}, monthlyCogs: {},
+        monthlyOtherOperating: {},
         monthlyActualRevenue: {}, monthlyActualCogs: {}, monthlyActualOpex: {},
+        monthlyActualOtherOperating: {},
         monthlyActualBelowEbitda: {}, monthlyActualDa: {}, actualByKey: {},
         actualMonthlyByKey: {}, sectionActuals: {}, year, hasActuals: false,
         _emptyReason: "subgroup_no_children",
@@ -197,14 +199,17 @@ export async function GET(req: NextRequest) {
   // Monthly totals will be computed from budget_lines after filtering parents
   const monthlyRevenue: Record<number, number> = {}
   const monthlyCogs: Record<number, number> = {}
+  // Other operating income/(expense) — signed, income-positive.
+  const monthlyOtherOperating: Record<number, number> = {}
   for (let m = 1; m <= 12; m++) {
     monthlyRevenue[m] = 0
     monthlyCogs[m] = 0
+    monthlyOtherOperating[m] = 0
   }
 
   // Build P&L rows grouped by account code + department name
   // This ensures products sharing the same SAP code (e.g. 601-01-02) appear as separate rows
-  const accountMap = new Map<string, { code: string; name: string; type: string; storedAs: string; sortOrder: number; monthlyAmounts: Record<number, number> }>()
+  const accountMap = new Map<string, { code: string; name: string; type: string; sortOrder: number; monthlyAmounts: Record<number, number> }>()
 
   type BL = BudgetLineRow
   budgetLines.forEach((bl: BL) => {
@@ -242,10 +247,10 @@ export async function GET(req: NextRequest) {
         code,
         name,
         type: accountType,
-        // Sign convention the importer wrote this row under — see
-        // `revenueContribution`. Deliberately NOT `accountType`: other
-        // operating income is accountType=revenue but stored lineType=expense.
-        storedAs: bl.lineType,
+        // `storedAs: bl.lineType` used to live here, feeding
+        // `revenueContribution`'s sign flip. Both are gone: the importer no
+        // longer writes other-operating income under the cost convention, so
+        // there is one convention per section and nothing to reconcile.
         sortOrder: bl.sortOrder,
         monthlyAmounts: {},
       })
@@ -311,20 +316,23 @@ export async function GET(req: NextRequest) {
   // Compute monthlyRevenue and monthlyCogs from leaf-level budget_lines
   // 602 (returns) and 603 (discounts) are contra-revenue — subtract from net revenue
   // COGS stored as positive in DB, but P&L view expects negative (GP = Revenue + COGS)
-  // 2026-07-15 — classify by pnlSectionFromCode, NOT by accountType. Other
-  // operating income (subsidies / interest) is imported as an expense-typed
-  // row carrying a negative amount; keying off accountType left it out of
-  // revenue while the cost buckets ignored it too, so it vanished from the
-  // P&L (13.45M of FO subsidies; Net Profit read −10.6M vs the file's +3.83M).
-  // `revenueContribution` reconciles the two sign conventions.
+  // 2026-07-15 — classify by pnlSectionFromCode, NOT by accountType.
+  // 2026-08-01 — and other operating income no longer lands in `revenue`.
+  // It used to: the importer stored PLF.07.01/.02 negative under the expense
+  // convention, `pnlSectionFromCode` routed it into revenue and
+  // `revenueContribution` flipped the sign back. Net Profit came out right and
+  // Revenue read 72,333,200 against the workbook's 58,880,102. Both halves of
+  // that compensation are gone; the money is its own line above EBITDA.
   leafAccounts.forEach((acct) => {
     const section = pnlSectionFromCode(acct.code, acct.type)
     for (let m = 1; m <= 12; m++) {
       const val = acct.monthlyAmounts[m] || 0
       if (section === "revenue") {
-        monthlyRevenue[m] += revenueContribution(acct.code, acct.storedAs, val)
+        monthlyRevenue[m] += revenueContribution(acct.code, val)
       } else if (section === "cogs") {
         monthlyCogs[m] -= val // negative for P&L subtraction
+      } else if (section === "otherOperating") {
+        monthlyOtherOperating[m] += otherOperatingContribution(acct.code, val)
       }
     }
   })
@@ -371,10 +379,11 @@ export async function GET(req: NextRequest) {
 
   const actualByKey: Record<string, number> = {}
   const actualMonthlyByKey: Record<string, Record<number, number>> = {}
-  const sectionActuals = { revenue: 0, cogs: 0, opex: 0, belowEbitda: 0 }
+  const sectionActuals = { revenue: 0, cogs: 0, opex: 0, otherOperating: 0, belowEbitda: 0 }
   const monthlyActualRevenue: Record<number, number> = {}
   const monthlyActualCogs: Record<number, number> = {}
   const monthlyActualOpex: Record<number, number> = {}
+  const monthlyActualOtherOperating: Record<number, number> = {}
   const monthlyActualBelowEbitda: Record<number, number> = {}
   const monthlyActualDa: Record<number, number> = {}
   let hasActualRowsForYear = false
@@ -382,6 +391,7 @@ export async function GET(req: NextRequest) {
     monthlyActualRevenue[m] = 0
     monthlyActualCogs[m] = 0
     monthlyActualOpex[m] = 0
+    monthlyActualOtherOperating[m] = 0
     monthlyActualBelowEbitda[m] = 0
     monthlyActualDa[m] = 0
   }
@@ -404,20 +414,22 @@ export async function GET(req: NextRequest) {
     // Section aggregation. Phase 7.G Turn LXXV (Phase 5.1) — uses canonical
     // `pnlSectionFromRole(deriveRoleFromCode(code))` instead of inline
     // prefix matching. Contra-revenue (602/603) still folds into `revenue`
-    // section but with sign-flip — `isContraRevenueCode` is the explicit
-    // predicate.
+    // with a sign flip, inside `revenueContribution`.
     const section = pnlSectionFromCode(code, a.lineType)
     if (isDaCode(code)) {
       monthlyActualDa[month] += Math.abs(amount)
     }
     if (section === "revenue") {
-      // 2026-07-15 — same two-convention reconciliation as the plan side.
-      const signed = revenueContribution(code, a.lineType, amount)
+      const signed = revenueContribution(code, amount)
       sectionActuals.revenue += signed
       monthlyActualRevenue[month] += signed
     } else if (section === "cogs") {
       sectionActuals.cogs += amount
       monthlyActualCogs[month] += amount
+    } else if (section === "otherOperating") {
+      const signed = otherOperatingContribution(code, amount)
+      sectionActuals.otherOperating += signed
+      monthlyActualOtherOperating[month] += signed
     } else if (section === "opex") {
       sectionActuals.opex += amount
       monthlyActualOpex[month] += amount
@@ -431,6 +443,7 @@ export async function GET(req: NextRequest) {
     copyMonthlyValues(monthlyActualRevenue, actualLineComparison.monthlyRevenue)
     copyMonthlyValues(monthlyActualCogs, actualLineComparison.monthlyCogs)
     copyMonthlyValues(monthlyActualOpex, actualLineComparison.monthlyOpex)
+    copyMonthlyValues(monthlyActualOtherOperating, actualLineComparison.monthlyOtherOperating)
     copyMonthlyValues(monthlyActualBelowEbitda, actualLineComparison.monthlyBelowEbitda)
     copyMonthlyValues(monthlyActualDa, actualLineComparison.monthlyDa)
     Object.assign(sectionActuals, actualLineComparison.sectionTotals)
@@ -447,9 +460,11 @@ export async function GET(req: NextRequest) {
     rows: pnlRows,
     monthlyRevenue,
     monthlyCogs,
+    monthlyOtherOperating,
     monthlyActualRevenue,
     monthlyActualCogs,
     monthlyActualOpex,
+    monthlyActualOtherOperating,
     monthlyActualBelowEbitda,
     monthlyActualDa,
     actualByKey,
@@ -465,6 +480,7 @@ export async function GET(req: NextRequest) {
             monthlyRevenue: monthlyActualRevenue,
             monthlyCogs: monthlyActualCogs,
             monthlyOpex: monthlyActualOpex,
+            monthlyOtherOperating: monthlyActualOtherOperating,
             monthlyBelowEbitda: monthlyActualBelowEbitda,
             monthlyDa: monthlyActualDa,
             sectionTotals: sectionActuals,
@@ -491,9 +507,17 @@ interface PnlLineComparisonBuckets {
   monthlyRevenue: MonthlyMap
   monthlyCogs: MonthlyMap
   monthlyOpex: MonthlyMap
+  /** Other operating income/(expense) — SIGNED, income-positive. */
+  monthlyOtherOperating: MonthlyMap
   monthlyBelowEbitda: MonthlyMap
   monthlyDa: MonthlyMap
-  sectionTotals: { revenue: number; cogs: number; opex: number; belowEbitda: number }
+  sectionTotals: {
+    revenue: number
+    cogs: number
+    opex: number
+    otherOperating: number
+    belowEbitda: number
+  }
   byKey: Record<string, number>
   hasRows: boolean
 }
@@ -513,9 +537,10 @@ function aggregateBudgetLinesForComparison(lines: BudgetLineRow[]): PnlLineCompa
     monthlyRevenue: emptyMonthlyMap(),
     monthlyCogs: emptyMonthlyMap(),
     monthlyOpex: emptyMonthlyMap(),
+    monthlyOtherOperating: emptyMonthlyMap(),
     monthlyBelowEbitda: emptyMonthlyMap(),
     monthlyDa: emptyMonthlyMap(),
-    sectionTotals: { revenue: 0, cogs: 0, opex: 0, belowEbitda: 0 },
+    sectionTotals: { revenue: 0, cogs: 0, opex: 0, otherOperating: 0, belowEbitda: 0 },
     byKey: {},
     hasRows: false,
   }
@@ -536,11 +561,13 @@ function aggregateBudgetLinesForComparison(lines: BudgetLineRow[]): PnlLineCompa
     if (isDaCode(code)) buckets.monthlyDa[month] += Math.abs(amount)
 
     if (section === "revenue") {
-      // 2026-07-15 — expense-typed income (subsidies/interest) stores its
-      // income NEGATIVE; revenueContribution reconciles both conventions.
-      const signedAmount = revenueContribution(code, line.lineType, amount)
+      const signedAmount = revenueContribution(code, amount)
       buckets.monthlyRevenue[month] += signedAmount
       buckets.sectionTotals.revenue += signedAmount
+    } else if (section === "otherOperating") {
+      const signedAmount = otherOperatingContribution(code, amount)
+      buckets.monthlyOtherOperating[month] += signedAmount
+      buckets.sectionTotals.otherOperating += signedAmount
     } else if (section === "cogs") {
       buckets.monthlyCogs[month] += amount
       buckets.sectionTotals.cogs += amount
@@ -563,6 +590,10 @@ function aggregateBudgetLinesForComparison(lines: BudgetLineRow[]): PnlLineCompa
   // already abs's the summed total, so the same route disagreed with itself.
   // Abs on the total keeps the original defensive intent — a section stored
   // wholly negative still reads positive — without eating reversals.
+  //
+  // `otherOperating` is deliberately NOT in this list: it is the one signed
+  // bucket (income positive, expense negative), and a net-expense period is a
+  // real outcome, not a stored-sign accident.
   for (const s of ["cogs", "opex", "belowEbitda"] as const) {
     if (buckets.sectionTotals[s] >= 0) continue
     buckets.sectionTotals[s] = -buckets.sectionTotals[s]

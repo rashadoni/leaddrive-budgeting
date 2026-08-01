@@ -1,6 +1,11 @@
 /**
  * Phase C5 — composite risk score tests.
  *
+ * 11.81 — every fixture below that used 2 or 3 cells was padded to at least
+ * MIN_SCORING_CELLS while preserving its arithmetic intent: these tests are
+ * about the weighted mean and its rounding, not about coverage. The coverage
+ * floor itself is exercised in its own describe block at the bottom.
+ *
  * Locks in:
  *   - All-green → score 100, band green
  *   - All-red → score 0, band red
@@ -18,6 +23,7 @@ import {
   computeCompositeByCompany,
   deriveParentComposites,
   scoreToBand,
+  MIN_SCORING_CELLS,
   RISK_TAG_PENALTY_TABLE,
   type CompositeScore,
 } from './composite-score';
@@ -34,44 +40,71 @@ function cell(status: HeatMapCell['status']): HeatMapCell {
 
 describe('computeCompositeScore (Phase C5)', () => {
   it('all-green → score 100, band green', () => {
-    const result = computeCompositeScore([cell('green'), cell('green')]);
+    const result = computeCompositeScore([
+      cell('green'),
+      cell('green'),
+      cell('green'),
+      cell('green'),
+    ]);
     expect(result.score).toBe(100);
     expect(result.band).toBe('green');
-    expect(result.contributingCount).toBe(2);
-    expect(result.totalCount).toBe(2);
+    expect(result.contributingCount).toBe(4);
+    expect(result.totalCount).toBe(4);
+    expect(result.coverage).toBe('full');
   });
 
   it('all-red → score 0, band red', () => {
-    const result = computeCompositeScore([cell('red'), cell('red'), cell('red')]);
+    const result = computeCompositeScore([
+      cell('red'),
+      cell('red'),
+      cell('red'),
+      cell('red'),
+    ]);
     expect(result.score).toBe(0);
     expect(result.band).toBe('red');
   });
 
   it('all-amber → score 50, band amber', () => {
-    const result = computeCompositeScore([cell('amber'), cell('amber')]);
+    const result = computeCompositeScore([
+      cell('amber'),
+      cell('amber'),
+      cell('amber'),
+      cell('amber'),
+    ]);
     expect(result.score).toBe(50);
     expect(result.band).toBe('amber');
   });
 
-  it('mixed: 1g+1r → 50, amber band', () => {
-    const result = computeCompositeScore([cell('green'), cell('red')]);
-    expect(result.score).toBe(50);
-    expect(result.band).toBe('amber');
-  });
-
-  it('mixed: 2g+1r → round((100+100+0)/3) = 67 → green band', () => {
+  it('mixed: 2g+2r → 50, amber band', () => {
     const result = computeCompositeScore([
       cell('green'),
       cell('green'),
+      cell('red'),
+      cell('red'),
+    ]);
+    expect(result.score).toBe(50);
+    expect(result.band).toBe('amber');
+  });
+
+  it('mixed: 4g+2r → round((400+0)/6) = 67 → green band', () => {
+    const result = computeCompositeScore([
+      cell('green'),
+      cell('green'),
+      cell('green'),
+      cell('green'),
+      cell('red'),
       cell('red'),
     ]);
     expect(result.score).toBe(67);
     expect(result.band).toBe('green');
   });
 
-  it('mixed: 1g+2r → round((100+0+0)/3) = 33 → red band', () => {
+  it('mixed: 2g+4r → round((200+0)/6) = 33 → red band', () => {
     const result = computeCompositeScore([
       cell('green'),
+      cell('green'),
+      cell('red'),
+      cell('red'),
       cell('red'),
       cell('red'),
     ]);
@@ -88,19 +121,22 @@ describe('computeCompositeScore (Phase C5)', () => {
     expect(result.band).toBe('unknown');
     expect(result.contributingCount).toBe(0);
     expect(result.totalCount).toBe(2);
+    expect(result.coverage).toBe('none');
   });
 
   it('mix scoreable + unknown → average over scoreable only', () => {
     const result = computeCompositeScore([
       cell('green'), // 100
+      cell('green'), // 100
       cell('unknown'), // ignored (no DB-emitted "missing"; unknown is the catch-all)
+      cell('red'), // 0
       cell('red'), // 0
       cell('unknown'), // ignored
     ]);
-    // Avg over (green, red) = (100+0)/2 = 50
+    // Avg over (2 green, 2 red) = 200/4 = 50
     expect(result.score).toBe(50);
-    expect(result.contributingCount).toBe(2);
-    expect(result.totalCount).toBe(4);
+    expect(result.contributingCount).toBe(4);
+    expect(result.totalCount).toBe(6);
   });
 
   it('empty cells → score null, totalCount 0', () => {
@@ -109,6 +145,7 @@ describe('computeCompositeScore (Phase C5)', () => {
     expect(result.band).toBe('unknown');
     expect(result.contributingCount).toBe(0);
     expect(result.totalCount).toBe(0);
+    expect(result.coverage).toBe('none');
   });
 });
 
@@ -120,10 +157,12 @@ describe('REGRESSION: sub-group rollup-cell exclusion (architect Round-1 ⚠️ 
   it('helper averages all input cells regardless of isSubgroupRollup flag (caller responsibility)', () => {
     const cells: HeatMapCell[] = [
       { ...cell('green') },
+      { ...cell('green') },
       { ...cell('red'), kind: 'synthetic-rollup' as const}, // would skew avg if not pre-filtered
+      { ...cell('red'), kind: 'synthetic-rollup' as const},
     ];
     const result = computeCompositeScore(cells);
-    // Helper sees both → avg = 50, NOT 100. This proves caller filtering
+    // Helper sees all four → avg = 50, NOT 100. This proves caller filtering
     // is the contract — composite-score.ts stays a pure averager.
     expect(result.score).toBe(50);
   });
@@ -161,7 +200,12 @@ describe('computeCompositeByCompany — shared HeatMap + Board Deck aggregator',
   it('sparse mode (no companyIds): only companies with cells appear', () => {
     const cells: HeatMapCell[] = [
       cellWith('co_a', 'green'),
+      cellWith('co_a', 'green'),
       cellWith('co_a', 'red'),
+      cellWith('co_a', 'red'),
+      cellWith('co_b', 'amber'),
+      cellWith('co_b', 'amber'),
+      cellWith('co_b', 'amber'),
       cellWith('co_b', 'amber'),
     ];
     const result = computeCompositeByCompany(cells);
@@ -173,6 +217,8 @@ describe('computeCompositeByCompany — shared HeatMap + Board Deck aggregator',
 
   it('dense mode (companyIds arg): every listed id appears, missing → null score', () => {
     const cells: HeatMapCell[] = [
+      cellWith('co_a', 'green'),
+      cellWith('co_a', 'green'),
       cellWith('co_a', 'green'),
       cellWith('co_a', 'green'),
     ];
@@ -189,12 +235,14 @@ describe('computeCompositeByCompany — shared HeatMap + Board Deck aggregator',
     const cells: HeatMapCell[] = [
       cellWith('co_a', 'green'),
       cellWith('co_a', 'green'),
+      cellWith('co_a', 'green'),
+      cellWith('co_a', 'green'),
       // Synthetic rollup row that should NOT contribute to the average.
       { ...cellWith('co_a', 'red'), kind: 'synthetic-rollup' as const},
     ];
     const result = computeCompositeByCompany(cells);
-    // 2 green + 0 red (rollup skipped) = 100, NOT 67 (which would be
-    // (100+100+0)/3 if rollup leaked through).
+    // 4 green + 0 red (rollup skipped) = 100, NOT 80 (which would be
+    // (400+0)/5 if rollup leaked through).
     expect(result.get('co_a')?.score).toBe(100);
   });
 
@@ -203,6 +251,9 @@ describe('computeCompositeByCompany — shared HeatMap + Board Deck aggregator',
     // endpoint emits these for level=1 wrappers). After filter the
     // sub-group has zero cells; dense mode returns score=null.
     const cells: HeatMapCell[] = [
+      cellWith('co_a', 'green'),
+      cellWith('co_a', 'green'),
+      cellWith('co_a', 'green'),
       cellWith('co_a', 'green'),
       { ...cellWith('subgroup_x', 'amber'), kind: 'synthetic-rollup' as const},
     ];
@@ -221,6 +272,8 @@ describe('computeCompositeByCompany — shared HeatMap + Board Deck aggregator',
     // 100/green) which violates the documented "sub-groups are
     // navigation rollups, not measurable entities" invariant.
     const cells: HeatMapCell[] = [
+      cellWith('co_a', 'green'),
+      cellWith('co_a', 'green'),
       cellWith('co_a', 'green'),
       cellWith('co_a', 'green'),
       // Real parent IV from sub-44 prereq #1 — would skew the composite
@@ -305,31 +358,55 @@ describe('Phase 7.N C5 v2 — weighted composite', () => {
   }
 
   it('equal weights behave identically to unweighted average', () => {
-    // 1g + 1r with weight=1 → (100×1 + 0×1) / 2 = 50 → amber
-    const result = computeCompositeScore([wcell('green', 1.0), wcell('red', 1.0)]);
+    // 2g + 2r with weight=1 → (200×1 + 0×1) / 4 = 50 → amber
+    const result = computeCompositeScore([
+      wcell('green', 1.0),
+      wcell('green', 1.0),
+      wcell('red', 1.0),
+      wcell('red', 1.0),
+    ]);
     expect(result.score).toBe(50);
     expect(result.band).toBe('amber');
   });
 
   it('high-weight red pulls score lower than low-weight red', () => {
-    // Scenario A: 1g(w=1.5) + 1r(w=0.7)
-    //   = (100×1.5 + 0×0.7) / (1.5+0.7) = 150/2.2 ≈ 68 → green
-    const a = computeCompositeScore([wcell('green', 1.5), wcell('red', 0.7)]);
-    // Scenario B: 1g(w=0.7) + 1r(w=1.5)
-    //   = (100×0.7 + 0×1.5) / (0.7+1.5) = 70/2.2 ≈ 32 → red
-    const b = computeCompositeScore([wcell('green', 0.7), wcell('red', 1.5)]);
+    // Scenario A: 2g(w=1.5) + 2r(w=0.7)
+    //   = (200×1.5 + 0×0.7) / (3.0+1.4) = 300/4.4 ≈ 68 → green
+    const a = computeCompositeScore([
+      wcell('green', 1.5),
+      wcell('green', 1.5),
+      wcell('red', 0.7),
+      wcell('red', 0.7),
+    ]);
+    // Scenario B: 2g(w=0.7) + 2r(w=1.5)
+    //   = (200×0.7 + 0×1.5) / (1.4+3.0) = 140/4.4 ≈ 32 → red
+    const b = computeCompositeScore([
+      wcell('green', 0.7),
+      wcell('green', 0.7),
+      wcell('red', 1.5),
+      wcell('red', 1.5),
+    ]);
     expect(a.score).toBeGreaterThan(b.score!);
     expect(a.band).toBe('green');
     expect(b.band).toBe('red');
   });
 
   it('cells without weight field treated as 1.0 (back-compat)', () => {
-    // 1 unweighted green + 1 unweighted red → same as weight=1 both
-    const cellA = cell('green'); // no weight field
-    const cellB = cell('red');   // no weight field
-    const r1 = computeCompositeScore([cellA, cellB]);
-    const r2 = computeCompositeScore([wcell('green', 1.0), wcell('red', 1.0)]);
+    // 2 unweighted green + 2 unweighted red → same as weight=1 on all four
+    const r1 = computeCompositeScore([
+      cell('green'),
+      cell('green'),
+      cell('red'),
+      cell('red'),
+    ]);
+    const r2 = computeCompositeScore([
+      wcell('green', 1.0),
+      wcell('green', 1.0),
+      wcell('red', 1.0),
+      wcell('red', 1.0),
+    ]);
     expect(r1.score).toBe(r2.score);
+    expect(r1.score).toBe(50);
   });
 
   it('single heavy-weight red among many greens drags composite below unweighted result', () => {
@@ -348,17 +425,26 @@ describe('Phase 7.N C5 v2 — weighted composite', () => {
   });
 
   it('unknown cells excluded from weighted sum AND from total weight denominator', () => {
-    // 1g(w=1.4) + 1unknown(w=1.4) → score = 100×1.4 / 1.4 = 100 (unknown excluded)
-    const result = computeCompositeScore([wcell('green', 1.4), wcell('unknown', 1.4)]);
+    // 4g(w=1.4) + 4unknown(w=1.4) → score = 400×1.4 / 5.6 = 100 (unknown excluded)
+    const result = computeCompositeScore([
+      wcell('green', 1.4),
+      wcell('green', 1.4),
+      wcell('green', 1.4),
+      wcell('green', 1.4),
+      wcell('unknown', 1.4),
+      wcell('unknown', 1.4),
+      wcell('unknown', 1.4),
+      wcell('unknown', 1.4),
+    ]);
     expect(result.score).toBe(100);
-    expect(result.contributingCount).toBe(1);
-    expect(result.totalCount).toBe(2);
+    expect(result.contributingCount).toBe(4);
+    expect(result.totalCount).toBe(8);
   });
 });
 
 describe('Phase 7.N — riskTag composite penalty', () => {
   it('no riskTags → no penalty, no scoreBeforeTags/riskTagPenalty fields', () => {
-    const r = computeCompositeScore([cell('green'), cell('green')]);
+    const r = computeCompositeScore([cell('green'), cell('green'), cell('green'), cell('green')]);
     expect(r.score).toBe(100);
     expect(r.scoreBeforeTags).toBeUndefined();
     expect(r.riskTagPenalty).toBeUndefined();
@@ -367,20 +453,20 @@ describe('Phase 7.N — riskTag composite penalty', () => {
   it('subsidy_dependency penalises -5 (matches live AZSEKER-EDEN diff)', () => {
     // all-green base = 100; EDEN observed 57/57 vs penalised 52 on real
     // data — the -5 delta is the subsidy_dependency tag.
-    const r = computeCompositeScore([cell('green'), cell('green')], ['subsidy_dependency']);
+    const r = computeCompositeScore([cell('green'), cell('green'), cell('green'), cell('green')], ['subsidy_dependency']);
     expect(r.score).toBe(95);
     expect(r.scoreBeforeTags).toBe(100);
     expect(r.riskTagPenalty).toBe(5);
   });
 
   it('non_transparent_structure penalises -8', () => {
-    const r = computeCompositeScore([cell('green')], ['non_transparent_structure']);
+    const r = computeCompositeScore([cell('green'), cell('green'), cell('green'), cell('green')], ['non_transparent_structure']);
     expect(r.score).toBe(92);
     expect(r.riskTagPenalty).toBe(8);
   });
 
   it('data_absence penalises -12', () => {
-    const r = computeCompositeScore([cell('green')], ['data_absence']);
+    const r = computeCompositeScore([cell('green'), cell('green'), cell('green'), cell('green')], ['data_absence']);
     expect(r.score).toBe(88);
     expect(r.riskTagPenalty).toBe(12);
   });
@@ -388,7 +474,7 @@ describe('Phase 7.N — riskTag composite penalty', () => {
   it('stacked non_transparent + data_absence = -20 (matches live AZSEKER-AZSF diff)', () => {
     // AZSF observed 30 (penalised) vs 50 (unpenalised) on real data → -20.
     const r = computeCompositeScore(
-      [cell('green'), cell('green')],
+      [cell('green'), cell('green'), cell('green'), cell('green')],
       ['non_transparent_structure', 'data_absence'],
     );
     expect(r.riskTagPenalty).toBe(20);
@@ -398,7 +484,7 @@ describe('Phase 7.N — riskTag composite penalty', () => {
   it('stacked subsidy + non_transparent = -13 (matches live AZSEKER-CPC diff)', () => {
     // CPC observed 49 (penalised) vs 62 (unpenalised) → -13.
     const r = computeCompositeScore(
-      [cell('green')],
+      [cell('green'), cell('green'), cell('green'), cell('green')],
       ['subsidy_dependency', 'non_transparent_structure'],
     );
     expect(r.riskTagPenalty).toBe(13);
@@ -406,7 +492,7 @@ describe('Phase 7.N — riskTag composite penalty', () => {
 
   it('all three tags = max -25 penalty', () => {
     const r = computeCompositeScore(
-      [cell('green')],
+      [cell('green'), cell('green'), cell('green'), cell('green')],
       ['subsidy_dependency', 'non_transparent_structure', 'data_absence'],
     );
     expect(r.riskTagPenalty).toBe(25);
@@ -416,7 +502,7 @@ describe('Phase 7.N — riskTag composite penalty', () => {
   it('penalty floors the score at 0, never negative', () => {
     // all-red base = 0; -25 would be -25 but Math.max clamps to 0.
     const r = computeCompositeScore(
-      [cell('red')],
+      [cell('red'), cell('red'), cell('red'), cell('red')],
       ['subsidy_dependency', 'non_transparent_structure', 'data_absence'],
     );
     expect(r.score).toBe(0);
@@ -425,14 +511,14 @@ describe('Phase 7.N — riskTag composite penalty', () => {
   });
 
   it('unrecognised tag strings contribute 0 penalty', () => {
-    const r = computeCompositeScore([cell('green')], ['totally_made_up_tag']);
+    const r = computeCompositeScore([cell('green'), cell('green'), cell('green'), cell('green')], ['totally_made_up_tag']);
     expect(r.score).toBe(100);
     expect(r.scoreBeforeTags).toBeUndefined();
     expect(r.riskTagPenalty).toBeUndefined();
   });
 
   it('empty riskTags array → no penalty', () => {
-    const r = computeCompositeScore([cell('green')], []);
+    const r = computeCompositeScore([cell('green'), cell('green'), cell('green'), cell('green')], []);
     expect(r.score).toBe(100);
     expect(r.riskTagPenalty).toBeUndefined();
   });
@@ -449,6 +535,10 @@ describe('Phase 7.N — riskTag composite penalty', () => {
     const cells = [
       coCell('co_a', 'green'),
       coCell('co_a', 'green'),
+      coCell('co_a', 'green'),
+      coCell('co_a', 'green'),
+      coCell('co_b', 'green'),
+      coCell('co_b', 'green'),
       coCell('co_b', 'green'),
       coCell('co_b', 'green'),
     ];
@@ -478,6 +568,15 @@ describe('deriveParentComposites — revenue-weighted holding roll-up', () => {
     band: scoreToBand(score),
     contributingCount: 5,
     totalCount: 5,
+    coverage: 'full',
+  });
+  /** 11.81 — a child that fell below the coverage floor. */
+  const withheld = (contributing: number, total: number): CompositeScore => ({
+    score: null,
+    band: 'unknown',
+    contributingCount: contributing,
+    totalCount: total,
+    coverage: contributing === 0 ? 'none' : 'insufficient',
   });
 
   it('weights children by revenue — a 0-revenue shell cannot inflate the parent', () => {
@@ -527,5 +626,161 @@ describe('deriveParentComposites — revenue-weighted holding roll-up', () => {
     const companies = [{ id: 'solo', parentCompanyId: null, revenue: 500 }];
     const out = deriveParentComposites(companies, new Map([['solo', leaf(73)]]));
     expect(out.get('solo')?.score).toBe(73);
+  });
+
+  it('drops a child below the coverage floor from the mean, keeps it in the denominator', () => {
+    // The reported bug at holding scale. Averaging DASTAN's and SAF's single
+    // rainfall cells in as two whole zeros is what made the deck hero read 49.
+    const companies = [
+      { id: 'p', parentCompanyId: null },
+      { id: 'a', parentCompanyId: 'p', revenue: 100 },
+      { id: 'b', parentCompanyId: 'p', revenue: 100 },
+      { id: 'thin', parentCompanyId: 'p', revenue: 0 },
+    ];
+    const out = deriveParentComposites(
+      companies,
+      new Map([
+        ['a', leaf(70)],
+        ['b', leaf(78)],
+        ['thin', withheld(1, 28)],
+      ]),
+    );
+    const p = out.get('p')!;
+    // Mean over the two scored children only.
+    expect(p.score).toBe(74);
+    expect(p.coverage).toBe('full');
+    // The dropped child stays in the FRAME: 5 + 5 + 28 = 38, not 10.
+    expect(p.totalCount).toBe(38);
+    expect(p.contributingCount).toBe(10);
+    expect(p.children).toEqual({ scored: 2, total: 3, revenueCoveredPct: 100 });
+  });
+
+  it('reports the revenue share the parent mean actually saw', () => {
+    const companies = [
+      { id: 'p', parentCompanyId: null },
+      { id: 'big', parentCompanyId: 'p', revenue: 750 },
+      { id: 'thin', parentCompanyId: 'p', revenue: 250 },
+    ];
+    const out = deriveParentComposites(
+      companies,
+      new Map([['big', leaf(60)], ['thin', withheld(2, 23)]]),
+    );
+    expect(out.get('p')?.score).toBe(60);
+    expect(out.get('p')?.children?.revenueCoveredPct).toBe(75);
+  });
+
+  it('a parent whose every child is below the floor is disclosed, not omitted', () => {
+    const companies = [
+      { id: 'p', parentCompanyId: null },
+      { id: 'x', parentCompanyId: 'p', revenue: 10 },
+      { id: 'y', parentCompanyId: 'p', revenue: 10 },
+    ];
+    const out = deriveParentComposites(
+      companies,
+      new Map([['x', withheld(1, 28)], ['y', withheld(0, 23)]]),
+    );
+    const p = out.get('p');
+    // Present in the map with an explicit no-score, so "do not hide a
+    // company" holds at parent level too.
+    expect(p).toBeDefined();
+    expect(p!.score).toBeNull();
+    expect(p!.coverage).toBe('none');
+    expect(p!.totalCount).toBe(51);
+    expect(p!.children).toEqual({ scored: 0, total: 2, revenueCoveredPct: 0 });
+  });
+
+  it('MIN_SCORING_CELLS does not apply at parent level — the unit is children', () => {
+    // One scored child is enough for a parent. The leaf gate reaches every
+    // leaf and no parent by construction.
+    const companies = [
+      { id: 'p', parentCompanyId: null },
+      { id: 'only', parentCompanyId: 'p', revenue: 100 },
+    ];
+    const out = deriveParentComposites(companies, new Map([['only', leaf(88)]]));
+    expect(out.get('p')?.score).toBe(88);
+    expect(out.get('p')?.children?.scored).toBe(1);
+  });
+});
+
+describe('11.81 — the coverage floor', () => {
+  it('MIN_SCORING_CELLS is 4', () => {
+    // Pinned deliberately. Three independent arguments land on this integer
+    // (provenance boundary, single-cell band influence, external-feed floor);
+    // moving it is a product decision, not a refactor.
+    expect(MIN_SCORING_CELLS).toBe(4);
+  });
+
+  it('the DASTAN/SAF shape — one red cell out of 28 — publishes no score', () => {
+    // Before the floor this returned score 0, band 'red', which fired
+    // RULE_COMPANY_CRITICAL_COMPOSITE and persisted an AlertEvent row saying
+    // «composite score 0/100 (1/28 indicators)».
+    const cells = [cell('red'), ...Array.from({ length: 27 }, () => cell('unknown'))];
+    const r = computeCompositeScore(cells);
+    expect(r.score).toBeNull();
+    expect(r.band).toBe('unknown');
+    expect(r.coverage).toBe('insufficient');
+    expect(r.contributingCount).toBe(1);
+    expect(r.totalCount).toBe(28);
+  });
+
+  it('three contributing cells are withheld; four are published', () => {
+    // The boundary, both sides. At n=3 one cell moves the band two steps
+    // (2g+1r rounds to 67 green; 1g+2r rounds to 33 red).
+    const three = computeCompositeScore([cell('green'), cell('green'), cell('red')]);
+    expect(three.score).toBeNull();
+    expect(three.coverage).toBe('insufficient');
+    expect(three.contributingCount).toBe(3);
+
+    const four = computeCompositeScore([
+      cell('green'),
+      cell('green'),
+      cell('green'),
+      cell('red'),
+    ]);
+    expect(four.score).toBe(75);
+    expect(four.band).toBe('green');
+    expect(four.coverage).toBe('full');
+  });
+
+  it('distinguishes "none" from "insufficient"', () => {
+    // Five surfaces print different sentences for these two. The discriminant
+    // is on the object, not re-derived per surface.
+    expect(computeCompositeScore([cell('unknown'), cell('unknown')]).coverage).toBe('none');
+    expect(computeCompositeScore([cell('green'), cell('unknown')]).coverage).toBe(
+      'insufficient',
+    );
+  });
+
+  it('score === null if and only if coverage !== full', () => {
+    // The invariant every consumer relies on, so that pre-existing
+    // `if (score === null)` branches keep their exact present meaning.
+    const cases = [
+      computeCompositeScore([]),
+      computeCompositeScore([cell('red')]),
+      computeCompositeScore([cell('green'), cell('green'), cell('red')]),
+      computeCompositeScore([cell('green'), cell('green'), cell('green'), cell('red')]),
+      computeCompositeScore(Array.from({ length: 9 }, () => cell('amber'))),
+    ];
+    for (const c of cases) {
+      expect(c.score === null).toBe(c.coverage !== 'full');
+    }
+  });
+
+  it('the risk-tag penalty cannot resurrect a withheld company', () => {
+    // A penalty is applied to a number; below the floor there is no number.
+    const r = computeCompositeScore([cell('red'), cell('green')], ['data_absence']);
+    expect(r.score).toBeNull();
+    expect(r.riskTagPenalty).toBeUndefined();
+    expect(r.scoreBeforeTags).toBeUndefined();
+  });
+
+  it('non-scoring cells (11.71) do not count toward the floor', () => {
+    // Four cells, but every one of them is a governance/constant cell the
+    // 11.71 gate excludes. Coverage is 'none', not 'full'.
+    const gov = (): HeatMapCell => ({ ...cell('red'), scoring: false });
+    const r = computeCompositeScore([gov(), gov(), gov(), gov()]);
+    expect(r.score).toBeNull();
+    expect(r.coverage).toBe('none');
+    expect(r.totalCount).toBe(0);
   });
 });

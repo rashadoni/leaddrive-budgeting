@@ -41,6 +41,7 @@ import { useCompanies, buildRiskTagsByCompanyId } from "../hooks/use-companies";
 import { useExpertViewport } from "../hooks/use-expert-viewport";
 import {
   computeCompositeByCompany,
+  MIN_SCORING_CELLS,
   type CompositeScore,
 } from "@/lib/risk/composite-score";
 
@@ -526,6 +527,19 @@ export function AISubscriptions() {
                 data-testid="subscriptions-threshold"
               />
             </div>
+            {/* 11.81 — `evaluateSubscription` already skipped null composites,
+                so a rule «notify when X composite < 50» has always been silent
+                for a company with no score. The coverage floor makes that far
+                more common (145 null pairs instead of 61), so the silence is
+                stated in the editor rather than discovered in production. A
+                coverage-collapse detector — "was ≥4, now <4" — belongs with
+                the drift watchdog and is not built here. */}
+            <p
+              className="text-[10px] text-gray-500 leading-snug"
+              data-testid="subscriptions-coverage-note"
+            >
+              {t("composite.subscriptionCoverageNote", { min: MIN_SCORING_CELLS })}
+            </p>
             <button
               type="submit"
               disabled={!label.trim()}

@@ -192,6 +192,9 @@ export async function GET(req: NextRequest) {
   const holdingComposite = computeHoldingComposite(
     snapshot.compositeByCompany,
     operationalIds,
+    // 11.81 — same materiality disclosure the on-screen deck carries, so a
+    // PPTX pasted into an email cannot claim more coverage than the page.
+    new Map(snapshot.operational.map((co) => [co.id, co.revenue])),
   );
   let trendSeries: Awaited<ReturnType<typeof buildTrendSeries>> = [];
   try {
@@ -388,14 +391,16 @@ async function renderBoardDeckPptx(
     valign: "top",
   });
   cover.addText(
+    // 11.81 — the cover caption mirrors the on-screen hero: when there is no
+    // score it says why, and when there is one it says how many subsidiaries
+    // and how much revenue it covers. "0 of 6 contributing" under a "—" told
+    // the reader nothing they could act on.
     holdingComposite.score === null
-      ? tx("boardDeck.pptx.contributing", {
-          contributing: 0,
+      ? tx("composite.parentNoScore", { total: holdingComposite.totalCount })
+      : tx("composite.parentCoverage", {
+          scored: holdingComposite.contributingCount,
           total: holdingComposite.totalCount,
-        })
-      : tx("boardDeck.pptx.contributing", {
-          contributing: holdingComposite.contributingCount,
-          total: holdingComposite.totalCount,
+          revenuePct: holdingComposite.revenueCoveredPct,
         }),
     {
       x: 0.9,
@@ -582,10 +587,11 @@ async function renderBoardDeckPptx(
       accent: heroBandHex,
       context:
         holdingComposite.score === null
-          ? tx("boardDeck.pptx.noContributors")
-          : tx("boardDeck.pptx.contributing", {
-              contributing: holdingComposite.contributingCount,
+          ? tx("composite.parentNoScore", { total: holdingComposite.totalCount })
+          : tx("composite.parentCoverage", {
+              scored: holdingComposite.contributingCount,
               total: holdingComposite.totalCount,
+              revenuePct: holdingComposite.revenueCoveredPct,
             }),
     },
     {
@@ -790,11 +796,17 @@ async function renderBoardDeckPptx(
     const lastPoint = trendSeries[trendSeries.length - 1];
     if (lastPoint && lastPoint.score !== null) {
       trendSlide.addText(
-        tx("boardDeck.pptx.latest", {
+        // 11.81 — the callout carries the cohort. A "latest" number averaged
+        // over 2 of 6 subsidiaries and one averaged over 6 look identical on
+        // a slide otherwise.
+        `${tx("boardDeck.pptx.latest", {
           period: lastPoint.period,
           score: lastPoint.score,
           band: lastPoint.band ? tx(`boardDeck.pptx.bands.${lastPoint.band}`) : "",
-        }),
+        })} · ${tx("boardDeck.hero.contributingCount", {
+          contributing: lastPoint.contributingCompanies,
+          total: lastPoint.totalCompanies,
+        })}`,
         {
           x: 0.6,
           y: 6.55,

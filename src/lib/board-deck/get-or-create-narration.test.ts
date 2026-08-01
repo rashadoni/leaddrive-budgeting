@@ -61,7 +61,7 @@ function makeSnapshot(
     compositeByCompany: new Map([
       [
         "co_1",
-        { score: 42, band: "amber", contributingCount: 5, totalCount: 5 },
+        { score: 42, band: "amber", contributingCount: 5, totalCount: 5, coverage: "full" as const },
       ],
     ]),
     countsByCompany: new Map(),
@@ -185,9 +185,10 @@ describe("snapshotHash", () => {
             "co_1",
             {
               score: 50, // moved
-              band: "amber",
+              band: "amber" as const,
               contributingCount: 5,
               totalCount: 5,
+              coverage: "full" as const,
             },
           ],
         ]),

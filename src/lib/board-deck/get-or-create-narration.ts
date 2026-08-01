@@ -74,6 +74,11 @@ export function snapshotHash(snapshot: BoardSnapshot): string {
         industry: co.industry,
         score: c?.score ?? null,
         band: c?.band ?? "unknown",
+        // 11.81 — the hash must move when coverage moves. A company can go
+        // from `insufficient` to `full` while landing on the same score, and
+        // the prompt now says something different about it; without this the
+        // cached narration would outlive the sentence it was written from.
+        coverage: c?.coverage ?? "none",
       };
     })
     // Sort to ensure deterministic ordering even if upstream changes.

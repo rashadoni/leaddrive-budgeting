@@ -194,6 +194,18 @@ export async function CompositeTrendChart({
               key={`pt-${p.period}`}
               data-testid={`trend-point-${p.period}`}
             >
+              {/* 11.81 — the cohort behind each point, on hover and in the
+                  accessibility tree. Without it a step caused by two
+                  subsidiaries leaving the mean is indistinguishable from a
+                  step caused by risk moving. */}
+              <title>
+                {t("boardDeck.metrics.trendPointCoverage", {
+                  period: p.period,
+                  score: p.score,
+                  contributing: p.contributingCompanies,
+                  total: p.totalCompanies,
+                })}
+              </title>
               <circle
                 cx={x}
                 cy={y}

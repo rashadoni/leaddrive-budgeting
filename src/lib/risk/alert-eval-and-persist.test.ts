@@ -239,7 +239,16 @@ describe('evaluateAndPersistAlertsForPeriods', () => {
     );
 
     expect(prismaMock.alertEvent.deleteMany).toHaveBeenCalledTimes(1);
-    expect(prismaMock.alertEvent.createMany).not.toHaveBeenCalled();
+    // 11.81 — the disabled pair still contributes NOTHING: no red-derived
+    // alert exists. What the company does get is `company-low-coverage`,
+    // which is the correct reading of "this entity has no usable data" and
+    // is exactly the signal that used to be missing. Assert on the rule ids
+    // rather than on createMany being untouched, so this test keeps testing
+    // the disabled-pair contract instead of the alert count.
+    const created = prismaMock.alertEvent.createMany.mock.calls.flatMap(
+      (call) => (call[0] as { data: Array<{ ruleId: string }> }).data,
+    );
+    expect(created.map((e) => e.ruleId)).toEqual(['company-low-coverage']);
   });
 
   it('allows an explicitly enabled cross-industry pair to create alerts', async () => {

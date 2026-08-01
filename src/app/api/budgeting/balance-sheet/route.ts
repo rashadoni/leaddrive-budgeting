@@ -6,6 +6,7 @@ import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 // Phase 5.2 Stage 2 Tier 3 (2026-05-21) — RLS wrap for balance_sheet_lines + budget_plans reads/writes.
 import { withOrgScope } from "@/lib/db/with-org-scope"
 import { resolveBalanceSheetSourcePlan } from "@/lib/budgeting/statement-plan-fallback"
+import { resolveBalanceSheetScope } from "@/lib/budgeting/balance-sheet-evidence"
 
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
@@ -19,6 +20,16 @@ export async function GET(req: NextRequest) {
   // plan, show ONLY those (the official ~253M) — NOT the naive cross-company sum
   // (~339M) that double-counts intercompany "Investments in Joint Ventures".
   // `?companyId=` drills into one entity's standalone balance sheet.
+  //
+  // Defect 3 (2026-08-01) — that branch was an OPTIMISTIC one. When the holding
+  // carried no BS rows of its own (AZSEKER has none: the client's workbook has
+  // `BS Actual 2025`/`BS Actual 2026` per entity and no consolidated `BS` tab
+  // at all), `companyFilter` stayed `{}` and the route silently returned every
+  // company's rows to be added together — 373,152,064 of "Total Assets" for
+  // 2026-05 against a consolidated 249,951,210, i.e. 123,200,854 counted twice.
+  // The response now always DECLARES its basis (`meta.basis` /
+  // `meta.eliminationsApplied`) so the un-eliminated sum can never again be
+  // presented as the group's balance sheet. See `resolveBalanceSheetScope`.
   const requestedCompanyId = searchParams.get("companyId")
 
   const result = await withOrgScope(orgId, async (tx) => {
@@ -62,6 +73,10 @@ export async function GET(req: NextRequest) {
     let companyFilter: { companyId?: string } = {}
     let consolidated = false
     let viewCompanyId: string | null = null
+    // null = not applicable (a company was requested, or there is no unique
+    // holding). false = there IS a holding and it carries no consolidated
+    // balance sheet for this plan — the actionable half of the warning below.
+    let holdingHasConsolidatedBs: boolean | null = null
     if (requestedCompanyId) {
       companyFilter = { companyId: requestedCompanyId }
       viewCompanyId = requestedCompanyId
@@ -74,6 +89,7 @@ export async function GET(req: NextRequest) {
           deletedAt: null,
         },
       })
+      holdingHasConsolidatedBs = holdingLines > 0
       if (holdingLines > 0) {
         companyFilter = { companyId: holding.id }
         consolidated = true
@@ -100,6 +116,24 @@ export async function GET(req: NextRequest) {
       // account breakdown is keyed off `account.name`/`account.code` now.
       include: { account: { select: { code: true, name: true } } },
     })
+
+    // Defect 3 — state what the rows ARE before anyone adds them up. Derived
+    // from the rows actually returned, so it stays true regardless of which
+    // branch above selected them.
+    const scope = resolveBalanceSheetScope(lines, { holdingConsolidated: consolidated })
+    // Name the contributors so the banner can say WHICH four entities were
+    // added, not just how many. Only worth a query when there is more than one.
+    const entityNames =
+      scope.basis === "sum_of_entities" && scope.companyIds.length > 0
+        ? (
+            await tx.company.findMany({
+              where: { organizationId: orgId, id: { in: scope.companyIds } },
+              select: { name: true },
+              orderBy: { name: "asc" },
+            })
+          ).map((c: { name: string }) => c.name)
+        : []
+
     return {
       lines,
       sourcePlanId,
@@ -109,10 +143,25 @@ export async function GET(req: NextRequest) {
       holding,
       viewCompanyId,
       currencyCode: consolidated ? holding?.baseCurrencyCode ?? null : null,
+      scope,
+      entityNames,
+      holdingHasConsolidatedBs,
     }
   })
 
-  const { lines, sourcePlanId, fellBack, sourceYear, consolidated, holding, viewCompanyId, currencyCode } = result
+  const {
+    lines,
+    sourcePlanId,
+    fellBack,
+    sourceYear,
+    consolidated,
+    holding,
+    viewCompanyId,
+    currencyCode,
+    scope,
+    entityNames,
+    holdingHasConsolidatedBs,
+  } = result
   // Group by lineType
   type BSRow = (typeof lines)[number]
   const assets = lines.filter((l: BSRow) => l.lineType === "asset")
@@ -126,7 +175,24 @@ export async function GET(req: NextRequest) {
     all: lines,
     // Provenance so the client can note "showing the <year> Actuals balance
     // sheet" when a budget plan fell back. Non-breaking additive field.
-    meta: { requestedPlanId: planId, sourcePlanId, fellBack, sourceYear, consolidated, holding, viewCompanyId, currencyCode },
+    meta: {
+      requestedPlanId: planId,
+      sourcePlanId,
+      fellBack,
+      sourceYear,
+      consolidated,
+      holding,
+      viewCompanyId,
+      currencyCode,
+      // Defect 3 — the basis is part of the payload, not a UI inference.
+      // `consolidated` above is kept for back-compat and is exactly
+      // `basis === "consolidated_holding"`.
+      basis: scope.basis,
+      entityCount: scope.entityCount,
+      eliminationsApplied: scope.eliminationsApplied,
+      entityNames,
+      holdingHasConsolidatedBs,
+    },
   })
 }
 

@@ -97,7 +97,11 @@ describe("findBuColumn", () => {
     expect(findBuColumn(rows, aliasMap)).toBe(-1)
   })
 
-  it("splits the budget shape into 5 blocks via BU_3 (AJE skipped as elimination)", () => {
+  // 11.83 — this used to assert `action: "skip", reason: "elimination"` for
+  // AJE. On the real file that block is 394 rows carrying −1,677,014.63 AZN of
+  // EDEN's non-recoverable VAT, and BU_1 says EDEN on every one of them. The
+  // old assertion was the defect written down as an expectation.
+  it("splits the budget shape into 4 entity sheets via BU_3 and FOLDS AJE into its BU_1 owner", () => {
     const ws = XLSX.utils.aoa_to_sheet(budgetShapeRows)
     const wb = wbWith("PLF Budget 2026", ws)
     const res = applyBuColumnSplit(wb, XLSX, {
@@ -114,16 +118,48 @@ describe("findBuColumn", () => {
       "AZSEKER-CPC",
     ])
     expect(res.sheetMapEntries.every((e) => e.planKind === "budget")).toBe(true)
+    // AJE is reported as a WRITE against EDEN — the rows are imported.
     expect(res.mapping).toContainEqual({
-      sheetName: "PLF Budget 2026",
-      entityCode: null,
+      sheetName: "PLF Budget 2026 [AZSEKER-EDEN]",
+      entityCode: "AZSEKER-EDEN",
       buValue: "AJE",
       rowCount: 4,
-      action: "skip",
-      reason: "elimination",
+      action: "write",
+      foldedInto: { entityCode: "AZSEKER-EDEN", viaHeader: "BU_1" },
     })
+    // No AJE sheet of its own: a second sheet for the same company would be
+    // clean-slated away by the first (one archive per sheet, per plan × year).
+    expect(res.sheetMapEntries).toHaveLength(4)
     expect(wb.SheetNames).not.toContain("PLF Budget 2026")
     expect(wb.SheetNames).toContain("PLF Budget 2026 [AZSEKER-CPC]")
+    expect(wb.SheetNames.filter((n) => n.includes("AZSEKER-EDEN"))).toEqual([
+      "PLF Budget 2026 [AZSEKER-EDEN]",
+    ])
+  })
+
+  it("the AJE rows physically land in EDEN's virtual sheet, none are lost", () => {
+    const ws = XLSX.utils.aoa_to_sheet(budgetShapeRows)
+    const wb = wbWith("PLF Budget 2026", ws)
+    applyBuColumnSplit(wb, XLSX, {
+      sheetName: "PLF Budget 2026",
+      dataType: "PLF",
+      planKind: "budget",
+      aliasMap,
+    })
+    const eden = XLSX.utils.sheet_to_json<unknown[]>(
+      wb.Sheets["PLF Budget 2026 [AZSEKER-EDEN]"],
+      { header: 1, raw: true, blankrows: false },
+    ) as unknown[][]
+    // header + EDEN's own 4 rows + AJE's 4 rows.
+    expect(eden).toHaveLength(9)
+    const bu3 = eden.slice(1).map((r) => r[5])
+    expect(bu3).toEqual(["EDEN", "EDEN", "EDEN", "EDEN", "AJE", "AJE", "AJE", "AJE"])
+    // CPC's sheet is untouched by the fold.
+    const cpc = XLSX.utils.sheet_to_json<unknown[]>(
+      wb.Sheets["PLF Budget 2026 [AZSEKER-CPC]"],
+      { header: 1, raw: true, blankrows: false },
+    ) as unknown[][]
+    expect(cpc).toHaveLength(5)
   })
 })
 
@@ -189,6 +225,86 @@ describe("splitByBuColumn", () => {
       ["CPC", "AZSEKER-CPC", undefined],
       ["EJE", null, "elimination"],
       ["EDEN", "AZSEKER-EDEN", undefined],
+    ])
+  })
+
+  // ── 11.83 — adjustment blocks ────────────────────────────────────────
+  //
+  // `makeConsolidated` builds a sheet with ONE BU column, which is the
+  // unattributable case: there is no parent dimension to read, so an AJE block
+  // must stay skipped — but it must say why, and it must not be filed as an
+  // elimination.
+  it("keeps an AJE block skipped when the sheet has no parent BU dimension — loudly", () => {
+    const wb = wbWith(
+      "PLF Actual 2025",
+      makeConsolidated([["CPC", 4], ["AJE", 4], ["EDEN", 4]]),
+    )
+    const { blocks, warnings } = splitByBuColumn(wb, "PLF Actual 2025", XLSX, aliasMap)
+    const aje = blocks.find((b) => b.buValue === "AJE")!
+    expect(aje.entityCode).toBeNull()
+    expect(aje.skipReason).toBe("adjustment")
+    expect(aje.foldedInto).toBeUndefined()
+    expect(
+      warnings.some(
+        (w) => w.includes('"AJE"') && w.includes("NOT imported") && w.includes("adjustment"),
+      ),
+    ).toBe(true)
+  })
+
+  it("never folds an EJE block, even when its parent column names a company", () => {
+    // The real EJE blocks are their own parent, but the guard must not depend
+    // on that: an elimination is unattributable by definition.
+    const rows: unknown[][] = [
+      ["Code", "Name", "Jan", "BU_1", "BU_3"],
+      ...Array.from({ length: 4 }, () => ["PLF.01.01.01", "r", 10, "EDEN", "EDEN"]),
+      ...Array.from({ length: 4 }, () => ["PLF.01.01.01", "elim", -3, "EDEN", "EJE"]),
+    ]
+    const wb = wbWith("PLF Actual 2026", XLSX.utils.aoa_to_sheet(rows))
+    const { blocks } = splitByBuColumn(wb, "PLF Actual 2026", XLSX, aliasMap)
+    const eje = blocks.find((b) => b.buValue === "EJE")!
+    expect(eje.entityCode).toBeNull()
+    expect(eje.skipReason).toBe("elimination")
+    expect(eje.foldedInto).toBeUndefined()
+    const eden = blocks.find((b) => b.buValue === "EDEN")!
+    expect(eden.foldedFrom).toBeUndefined()
+  })
+
+  it("skips an AJE block whose owner has no block on this sheet", () => {
+    // BU_3 is the entity column (3 known vs BU_1's 1); AJE's BU_1 names AZSF,
+    // which has no block here — so there is nothing to fold into.
+    const rows: unknown[][] = [
+      ["Code", "Name", "Jan", "BU_1", "BU_3"],
+      ...(["EDEN", "CPC", "PROMALT"] as const).flatMap((e) =>
+        Array.from({ length: 3 }, () => ["PLF.01.01.01", "r", 10, "GROUP", e]),
+      ),
+      ...Array.from({ length: 3 }, () => ["PLF.05.12.06", "VAT", -1000, "AZSF", "AJE"]),
+    ]
+    const wb = wbWith("PLF Budget 2026", XLSX.utils.aoa_to_sheet(rows))
+    const { blocks, warnings } = splitByBuColumn(wb, "PLF Budget 2026", XLSX, aliasMap)
+    expect(blocks.map((b) => b.buValue)).toEqual(["EDEN", "CPC", "PROMALT", "AJE"])
+    const aje = blocks.find((b) => b.buValue === "AJE")!
+    expect(aje.foldedInto).toBeUndefined()
+    expect(aje.skipReason).toBe("adjustment")
+    expect(
+      warnings.some((w) => w.includes("has no block on this sheet") && w.includes("NOT imported")),
+    ).toBe(true)
+  })
+
+  it("records the fold on both sides (foldedInto / foldedFrom)", () => {
+    const rows: unknown[][] = [
+      ["Code", "Name", "Jan", "BU_1", "BU_3"],
+      ...Array.from({ length: 4 }, () => ["PLF.01.01.01", "r", 10, "EDEN", "EDEN"]),
+      ...Array.from({ length: 3 }, () => ["PLF.05.12.06", "VAT", -1000, "EDEN", "AJE"]),
+    ]
+    const wb = wbWith("PLF Budget 2026", XLSX.utils.aoa_to_sheet(rows))
+    const { blocks } = splitByBuColumn(wb, "PLF Budget 2026", XLSX, aliasMap)
+    expect(blocks.find((b) => b.buValue === "AJE")!.foldedInto).toEqual({
+      entityCode: "AZSEKER-EDEN",
+      viaHeader: "BU_1",
+      label: "EDEN",
+    })
+    expect(blocks.find((b) => b.buValue === "EDEN")!.foldedFrom).toEqual([
+      { buValue: "AJE", rowCount: 3, viaHeader: "BU_1" },
     ])
   })
 

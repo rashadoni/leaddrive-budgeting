@@ -35,7 +35,15 @@
 import type * as XLSX from "xlsx"
 import type { SheetDataType } from "./sheet-classifier"
 import type { PlanKind, SheetMapEntry } from "./sheet-routing"
-import { isEliminationLikeEntityValue } from "./entity-alias-utils"
+import {
+  isAdjustmentEntityValue,
+  isEliminationLikeEntityValue,
+} from "./entity-alias-utils"
+import {
+  findBuDimensionColumns,
+  resolveAdjustmentOwner,
+  BU_DIMENSION_SCAN_ROWS,
+} from "./bu-adjustment"
 
 /** Header label (exact, case-insensitive) that marks the owning-entity column. */
 const BU_HEADER = "BU"
@@ -168,12 +176,21 @@ export interface BuBlock {
   /** Resolved canonical entity code, or null when the BU value is not a known alias. */
   entityCode: string | null
   /** Why a null-entity block is skipped. */
-  skipReason?: "elimination" | "unknown_alias"
+  skipReason?: "elimination" | "unknown_alias" | "adjustment"
+  /**
+   * 11.83 — a management-adjustment block (AJE) whose rows were APPENDED to
+   * the named entity's virtual worksheet instead of being dropped. The block
+   * keeps `entityCode: null` because it is not an entity of its own; the rows
+   * are written under `foldedInto.entityCode`. See `bu-adjustment.ts`.
+   */
+  foldedInto?: { entityCode: string; viaHeader: string; label: string }
   /** Inclusive 0-based AOA row range of the block's own rows (excludes preamble). */
   rowStart: number
   rowEnd: number
   rowCount: number
-  /** Virtual worksheet = shared preamble + this block's rows. */
+  /** BU labels whose rows were folded INTO this block's worksheet (owner side). */
+  foldedFrom?: Array<{ buValue: string; rowCount: number; viaHeader: string }>
+  /** Virtual worksheet = shared preamble + this block's rows (+ folded rows). */
   worksheet: XLSX.WorkSheet
 }
 
@@ -268,7 +285,17 @@ export function splitByBuColumn(
   }
 
   const warnings: string[] = []
-  const blocks: BuBlock[] = []
+
+  // ── Pass 1: classify every surviving run ────────────────────────────────
+  interface Classified {
+    run: Run
+    rowCount: number
+    entityCode: string | null
+    skipReason?: "elimination" | "unknown_alias" | "adjustment"
+    foldedInto?: { entityCode: string; viaHeader: string; label: string }
+  }
+  const dimensionColumns = findBuDimensionColumns(aoa, BU_DIMENSION_SCAN_ROWS)
+  const classified: Classified[] = []
   for (const run of runs) {
     const rowCount = run.end - run.start + 1
     if (rowCount < minBlockRows) {
@@ -277,22 +304,115 @@ export function splitByBuColumn(
       )
       continue
     }
-    const isElimination = isEliminationLikeEntityValue(run.buValue)
-    const entityCode = isElimination ? null : (aliasMap[run.buValue] ?? null)
-    const blockRows = aoa.slice(run.start, run.end + 1)
-    const worksheet = xlsx.utils.aoa_to_sheet([...preamble, ...blockRows])
-    blocks.push({
-      buValue: run.buValue,
-      entityCode,
-      ...(entityCode
-        ? {}
-        : { skipReason: isElimination ? "elimination" : "unknown_alias" }),
-      rowStart: run.start,
-      rowEnd: run.end,
+    const entityCode = isEliminationLikeEntityValue(run.buValue)
+      ? null
+      : (aliasMap[run.buValue] ?? null)
+    if (entityCode) {
+      classified.push({ run, rowCount, entityCode })
+      continue
+    }
+    // 11.83 — before calling a non-entity block an elimination, ask whether the
+    // sheet's own BU hierarchy attributes it to a company. EJE is its own
+    // parent and stays skipped; AJE's parent is a real entity, and dropping it
+    // is what removed 1,677,015 AZN of EDEN's cost from the group.
+    if (isAdjustmentEntityValue(run.buValue)) {
+      const owner = resolveAdjustmentOwner({
+        buValue: run.buValue,
+        blockRows: aoa.slice(run.start, run.end + 1),
+        entityColumn: buCol,
+        dimensionColumns,
+        resolveEntity: (label) => aliasMap[label] ?? null,
+      })
+      if (owner.ok) {
+        classified.push({
+          run,
+          rowCount,
+          entityCode: null,
+          skipReason: "adjustment",
+          foldedInto: {
+            entityCode: owner.entityCode,
+            viaHeader: owner.viaHeader,
+            label: owner.label,
+          },
+        })
+      } else {
+        classified.push({ run, rowCount, entityCode: null, skipReason: "adjustment" })
+        warnings.push(
+          `Sheet "${sheetName}": BU block "${run.buValue}" (${rowCount} rows) is a management ` +
+            `adjustment, not an elimination, but ${owner.reason} — NOT imported. Its amounts are ` +
+            `missing from the group until the owning company is named.`,
+        )
+      }
+      continue
+    }
+    classified.push({
+      run,
       rowCount,
-      worksheet,
+      entityCode: null,
+      skipReason: isEliminationLikeEntityValue(run.buValue) ? "elimination" : "unknown_alias",
     })
   }
+
+  // ── Pass 2: attach each folded adjustment to its owner's FIRST block ─────
+  // First, not "a new sheet of its own": one entity gets one virtual sheet per
+  // batch because the write path clean-slates by (plan × company × year) per
+  // sheet — a second sheet for the same company would archive the first one's
+  // rows. Appending keeps it a single write; duplicate account codes inside a
+  // sheet are already summed per (entity, code, period) by the PLF handler.
+  const ownerIndex = new Map<string, number>()
+  classified.forEach((c, i) => {
+    if (c.entityCode && !ownerIndex.has(c.entityCode)) ownerIndex.set(c.entityCode, i)
+  })
+  const foldedRowsByOwnerIndex = new Map<number, Classified[]>()
+  for (const c of classified) {
+    if (!c.foldedInto) continue
+    const idx = ownerIndex.get(c.foldedInto.entityCode)
+    if (idx === undefined) {
+      warnings.push(
+        `Sheet "${sheetName}": BU block "${c.run.buValue}" (${c.rowCount} rows) is attributed to ` +
+          `${c.foldedInto.entityCode} by column "${c.foldedInto.viaHeader}", but that company has no ` +
+          `block on this sheet — NOT imported.`,
+      )
+      delete c.foldedInto
+      continue
+    }
+    const list = foldedRowsByOwnerIndex.get(idx) ?? []
+    list.push(c)
+    foldedRowsByOwnerIndex.set(idx, list)
+    warnings.push(
+      `Sheet "${sheetName}": BU block "${c.run.buValue}" (${c.rowCount} rows) is a management ` +
+        `adjustment attributed to "${c.foldedInto.label}" by column "${c.foldedInto.viaHeader}" — ` +
+        `folded into ${c.foldedInto.entityCode} (it is not an elimination and must not be dropped).`,
+    )
+  }
+
+  // ── Pass 3: materialise the virtual worksheets ──────────────────────────
+  const blocks: BuBlock[] = classified.map((c, i) => {
+    const folded = foldedRowsByOwnerIndex.get(i) ?? []
+    const blockRows = [
+      ...aoa.slice(c.run.start, c.run.end + 1),
+      ...folded.flatMap((f) => aoa.slice(f.run.start, f.run.end + 1)),
+    ]
+    return {
+      buValue: c.run.buValue,
+      entityCode: c.entityCode,
+      ...(c.skipReason ? { skipReason: c.skipReason } : {}),
+      ...(c.foldedInto ? { foldedInto: c.foldedInto } : {}),
+      rowStart: c.run.start,
+      rowEnd: c.run.end,
+      rowCount: c.rowCount,
+      ...(folded.length > 0
+        ? {
+            foldedFrom: folded.map((f) => ({
+              buValue: f.run.buValue,
+              rowCount: f.rowCount,
+              viaHeader: f.foldedInto!.viaHeader,
+            })),
+          }
+        : {}),
+      worksheet: xlsx.utils.aoa_to_sheet([...preamble, ...blockRows]),
+    }
+  })
 
   return { buColumn: buCol, blocks, warnings }
 }
@@ -307,7 +427,10 @@ export interface BuColumnSplitApplied {
     buValue: string
     rowCount: number
     action: "write" | "skip"
-    reason?: "elimination" | "unknown_alias"
+    reason?: "elimination" | "unknown_alias" | "adjustment"
+    /** Set when an adjustment block's rows were folded into another block's
+     *  sheet: `entityCode` is the owner and `action` is "write". */
+    foldedInto?: { entityCode: string; viaHeader: string }
   }>
   warnings: string[]
 }
@@ -363,28 +486,22 @@ export function applyBuColumnSplit(
     return out
   }
 
+  // Pass 1 — materialise a sheet per entity block, remembering the sheet each
+  // entity landed on so a folded adjustment can point at it (its rows are
+  // already inside that sheet; see splitByBuColumn pass 2).
   const usedNames = new Set<string>(workbook.SheetNames)
+  const sheetNameByBlock = new Map<BuBlock, string>()
+  const firstSheetByEntity = new Map<string, string>()
   for (const block of split.blocks) {
-    if (!block.entityCode) {
-      out.warnings.push(
-        block.skipReason === "elimination"
-          ? `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) looks like elimination/consolidation — skipped (not imported)`
-          : `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) is not a known entity alias — skipped (not imported)`,
-      )
-      out.mapping.push({
-        sheetName,
-        entityCode: null,
-        buValue: block.buValue,
-        rowCount: block.rowCount,
-        action: "skip",
-        reason: block.skipReason ?? "unknown_alias",
-      })
-      continue
-    }
+    if (!block.entityCode) continue
     let newName = `${sheetName} [${block.entityCode}]`
     let n = 2
     while (usedNames.has(newName)) newName = `${sheetName} [${block.entityCode}] #${n++}`
     usedNames.add(newName)
+    sheetNameByBlock.set(block, newName)
+    if (!firstSheetByEntity.has(block.entityCode)) {
+      firstSheetByEntity.set(block.entityCode, newName)
+    }
 
     workbook.Sheets[newName] = block.worksheet
     workbook.SheetNames.push(newName)
@@ -395,12 +512,52 @@ export function applyBuColumnSplit(
       role: "source",
       entityCode: block.entityCode,
     })
+  }
+
+  // Pass 2 — the reviewer-facing mapping, in document order.
+  for (const block of split.blocks) {
+    const written = sheetNameByBlock.get(block)
+    if (written && block.entityCode) {
+      out.mapping.push({
+        sheetName: written,
+        entityCode: block.entityCode,
+        buValue: block.buValue,
+        rowCount: block.rowCount,
+        action: "write",
+      })
+      continue
+    }
+    if (block.foldedInto) {
+      // Folded: the rows ARE written, under the owner's sheet. Reported as a
+      // write so nobody reads the grid as "these rows were dropped" — the bug
+      // this replaces was exactly that, silently.
+      out.mapping.push({
+        sheetName: firstSheetByEntity.get(block.foldedInto.entityCode) ?? sheetName,
+        entityCode: block.foldedInto.entityCode,
+        buValue: block.buValue,
+        rowCount: block.rowCount,
+        action: "write",
+        foldedInto: {
+          entityCode: block.foldedInto.entityCode,
+          viaHeader: block.foldedInto.viaHeader,
+        },
+      })
+      continue
+    }
+    out.warnings.push(
+      block.skipReason === "elimination"
+        ? `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) looks like elimination/consolidation — skipped (not imported)`
+        : block.skipReason === "adjustment"
+          ? `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) is a management adjustment with no resolvable owner — skipped (not imported)`
+          : `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) is not a known entity alias — skipped (not imported)`,
+    )
     out.mapping.push({
-      sheetName: newName,
-      entityCode: block.entityCode,
+      sheetName,
+      entityCode: null,
       buValue: block.buValue,
       rowCount: block.rowCount,
-      action: "write",
+      action: "skip",
+      reason: block.skipReason ?? "unknown_alias",
     })
   }
 

@@ -25,6 +25,7 @@ import { describe, it, expect } from "vitest";
 import {
   RULE_COMPANY_MOSTLY_RED,
   RULE_COMPANY_CRITICAL_COMPOSITE,
+  RULE_COMPANY_LOW_COVERAGE,
   RULE_SECTOR_AMBER_CLUSTER,
   RULE_SECTOR_RED_SPREAD,
   RULE_CRITICAL_INDICATOR_ORG_WIDE,
@@ -114,10 +115,10 @@ describe("alert message i18n drift guard (sub-35)", () => {
     expect(formatted).toBe(m.message);
   });
 
-  it("RULE_COMPANY_CRITICAL_COMPOSITE — EN template formats to engine `message`", () => {
+  it("RULE_COMPANY_LOW_COVERAGE — EN template formats to engine `message`", () => {
     const ctx: AlertContext = {
       companies: [
-        { id: "c1", code: "BAD-CO", name: "Bad", industry: "Industrial" },
+        { id: "c1", code: "AZSEKER-DASTAN", name: "Dastan", industry: "agro_crops" },
       ],
       indicators: [
         { id: "i1", code: "X1" },
@@ -125,7 +126,35 @@ describe("alert message i18n drift guard (sub-35)", () => {
       ],
       cells: [
         { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "red" },
+        { indicatorValueId: "iv2", companyId: "c1", indicatorId: "i2", value: 0, status: "unknown" },
+      ],
+    };
+    const [m] = RULE_COMPANY_LOW_COVERAGE.match(ctx, mergeWithDefaults(undefined));
+    const formatted = formatTemplate(
+      enMessages["company-low-coverage"],
+      m.messageParams,
+    );
+    expect(formatted).toBe(m.message);
+  });
+
+  it("RULE_COMPANY_CRITICAL_COMPOSITE — EN template formats to engine `message`", () => {
+    const ctx: AlertContext = {
+      companies: [
+        { id: "c1", code: "BAD-CO", name: "Bad", industry: "Industrial" },
+      ],
+      // 11.81 — four cells, so the company clears the coverage floor and the
+      // rule actually emits a match to compare against.
+      indicators: [
+        { id: "i1", code: "X1" },
+        { id: "i2", code: "X2" },
+        { id: "i3", code: "X3" },
+        { id: "i4", code: "X4" },
+      ],
+      cells: [
+        { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "red" },
         { indicatorValueId: "iv2", companyId: "c1", indicatorId: "i2", value: 0, status: "red" },
+        { indicatorValueId: "iv3", companyId: "c1", indicatorId: "i3", value: 0, status: "red" },
+        { indicatorValueId: "iv4", companyId: "c1", indicatorId: "i4", value: 0, status: "red" },
       ],
     };
     const [m] = RULE_COMPANY_CRITICAL_COMPOSITE.match(ctx, mergeWithDefaults(undefined));

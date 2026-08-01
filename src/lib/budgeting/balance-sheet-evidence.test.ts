@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest"
 import {
+  balanceSheetDebtToEquity,
   getBalanceSheetSectionData,
   getLatestBalanceSheetEvidenceMonth,
   normalizeBalanceSheetMonth,
+  resolveBalanceSheetScope,
   type BalanceSheetEvidenceLine,
 } from "./balance-sheet-evidence"
 
@@ -50,6 +52,7 @@ describe("Balance Sheet evidence semantics", () => {
       liabilities: 40,
       equity: 60,
       convention: "trial_balance",
+      eliminationsApplied: true,
     })
   })
 
@@ -65,6 +68,7 @@ describe("Balance Sheet evidence semantics", () => {
       liabilities: null,
       equity: null,
       convention: null,
+      eliminationsApplied: true,
     })
   })
 
@@ -80,6 +84,7 @@ describe("Balance Sheet evidence semantics", () => {
       liabilities: 40,
       equity: 60,
       convention: "natural",
+      eliminationsApplied: true,
     })
   })
 
@@ -95,6 +100,137 @@ describe("Balance Sheet evidence semantics", () => {
       liabilities: null,
       equity: null,
       convention: null,
+      eliminationsApplied: true,
     })
+  })
+})
+
+/**
+ * Defect 3 — the balance sheet tab silently summed four legal entities.
+ *
+ * The figures below are the client's own, read out of `BS Actual 2026` of
+ * `actual-budget-v1.xlsx` at 2026-05 (the latest populated month, which is
+ * what the page shows):
+ *
+ *   AZSF     134,234,695.76
+ *   EDEN     177,351,644.55
+ *   CPC       25,184,079.11
+ *   ProMalt   36,381,644.76
+ *   ------------------------
+ *   Σ        373,152,064.18   ← what the page printed as "Total assets"
+ *   consolidated 249,951,210.07
+ *   double-counted 123,200,854.11
+ */
+describe("Balance Sheet basis (Defect 3 — un-eliminated cross-entity sums)", () => {
+  const bsLine = (companyId: string | null) => ({ companyId })
+
+  it("flags a multi-entity sum as un-eliminated instead of passing it off as consolidated", () => {
+    const scope = resolveBalanceSheetScope(
+      [bsLine("azsf"), bsLine("eden"), bsLine("cpc"), bsLine("promalt"), bsLine("eden")],
+      { holdingConsolidated: false },
+    )
+
+    expect(scope.basis).toBe("sum_of_entities")
+    expect(scope.entityCount).toBe(4)
+    expect(scope.eliminationsApplied).toBe(false)
+    expect(scope.companyIds).toEqual(["azsf", "cpc", "eden", "promalt"])
+  })
+
+  it("a single entity has nothing to eliminate", () => {
+    const scope = resolveBalanceSheetScope([bsLine("eden"), bsLine("eden")], {
+      holdingConsolidated: false,
+    })
+
+    expect(scope.basis).toBe("single_entity")
+    expect(scope.entityCount).toBe(1)
+    expect(scope.eliminationsApplied).toBe(true)
+  })
+
+  it("the holding's own consolidated rows are eliminated at source", () => {
+    const scope = resolveBalanceSheetScope([bsLine("holding")], {
+      holdingConsolidated: true,
+    })
+
+    expect(scope.basis).toBe("consolidated_holding")
+    expect(scope.eliminationsApplied).toBe(true)
+  })
+
+  it("counts legacy unscoped rows as a contributor of their own", () => {
+    // Pre-Phase-7.O rows carry companyId null. Mixed with per-entity rows they
+    // are precisely the case where the sum is unsafe, so they must not be
+    // silently folded into whichever entity happens to be present.
+    const scope = resolveBalanceSheetScope([bsLine("eden"), bsLine(null)], {
+      holdingConsolidated: false,
+    })
+
+    expect(scope.basis).toBe("sum_of_entities")
+    expect(scope.entityCount).toBe(2)
+    expect(scope.companyIds).toEqual(["eden"])
+  })
+
+  it("no rows at all is not a multi-entity sum", () => {
+    const scope = resolveBalanceSheetScope([], { holdingConsolidated: false })
+
+    expect(scope.basis).toBe("single_entity")
+    expect(scope.entityCount).toBe(0)
+    expect(scope.eliminationsApplied).toBe(true)
+  })
+
+  it("the A=L+E residual gate cannot see the double-count — four balanced sheets sum to a balanced sheet", () => {
+    // This is the whole reason the defect survived every automated check.
+    // Two entities, each internally balanced, each holding the other side of a
+    // 30 intercompany investment. The sum balances perfectly and the totals are
+    // still overstated by that 30.
+    const assets = getBalanceSheetSectionData([
+      line("parent-assets", 5, 100),
+      line("sub-assets", 5, 30),
+    ])
+    const liabilities = getBalanceSheetSectionData([
+      line("parent-liab", 5, -40, "liability"),
+      line("sub-liab", 5, -10, "liability"),
+    ])
+    const equity = getBalanceSheetSectionData([
+      line("parent-equity", 5, -60, "equity"),
+      line("sub-equity", 5, -20, "equity"),
+    ])
+    const scope = resolveBalanceSheetScope(
+      [{ companyId: "parent" }, { companyId: "sub" }],
+      { holdingConsolidated: false },
+    )
+
+    const totals = normalizeBalanceSheetMonth(assets, liabilities, equity, 5, scope)
+
+    // Balanced — the gate is satisfied and reports a clean convention...
+    expect(totals.convention).toBe("trial_balance")
+    expect(totals.assets).toBe(130)
+    // ...and yet the basis says the number must not be read as the group's.
+    expect(totals.eliminationsApplied).toBe(false)
+  })
+
+  it("keeps the honest sum but withholds the D/E verdict built on it", () => {
+    const assets = getBalanceSheetSectionData([line("assets", 5, 100)])
+    const liabilities = getBalanceSheetSectionData([
+      line("liabilities", 5, -40, "liability"),
+    ])
+    const equity = getBalanceSheetSectionData([line("equity", 5, -60, "equity")])
+
+    const eliminated = normalizeBalanceSheetMonth(assets, liabilities, equity, 5)
+    const summed = normalizeBalanceSheetMonth(assets, liabilities, equity, 5, {
+      eliminationsApplied: false,
+    })
+
+    // The totals are identical — the sum is not falsified, only qualified.
+    expect(summed.assets).toBe(eliminated.assets)
+    expect(summed.liabilities).toBe(eliminated.liabilities)
+
+    expect(balanceSheetDebtToEquity(eliminated)).toBeCloseTo(40 / 60, 10)
+    expect(balanceSheetDebtToEquity(summed)).toBeNull()
+  })
+
+  it("D/E stays null on the pre-existing unusable-input cases", () => {
+    expect(balanceSheetDebtToEquity({ liabilities: 40, equity: null })).toBeNull()
+    expect(balanceSheetDebtToEquity({ liabilities: null, equity: 60 })).toBeNull()
+    expect(balanceSheetDebtToEquity({ liabilities: 40, equity: 0 })).toBeNull()
+    expect(balanceSheetDebtToEquity({ liabilities: 40, equity: -60 })).toBeNull()
   })
 })

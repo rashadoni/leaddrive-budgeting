@@ -10,6 +10,7 @@ import {
   DEFAULT_ALERT_RULES,
   RULE_COMPANY_MOSTLY_RED,
   RULE_COMPANY_CRITICAL_COMPOSITE,
+  RULE_COMPANY_LOW_COVERAGE,
   RULE_SECTOR_AMBER_CLUSTER,
   RULE_SECTOR_RED_SPREAD,
   RULE_CRITICAL_INDICATOR_ORG_WIDE,
@@ -23,6 +24,7 @@ import {
   mergeWithDefaults,
   type ResolvedAlertThresholds,
 } from './alert-thresholds-config';
+import { MIN_SCORING_CELLS } from './composite-score';
 import type { HeatMapCell } from './heatmap-matrix';
 
 function company(
@@ -183,29 +185,34 @@ describe('RULE_COMPANY_MOSTLY_RED (Phase C6)', () => {
 
 describe('RULE_COMPANY_CRITICAL_COMPOSITE (Phase C6)', () => {
   it('triggers when composite score < 40', () => {
-    // 1 green + 2 red = avg (100+0+0)/3 = 33 → below 40
+    // 11.81 — padded from 3 cells to 4 so the company clears the coverage
+    // floor and the rule is testing the THRESHOLD, not coverage.
+    // 1 green + 3 red = avg (100+0+0+0)/4 = 25 → below 40
     const ctx: AlertContext = {
       companies: [company('co_aac', 'AAC-MAIN')],
-      indicators: [IND_GROSS, IND_NET, IND_OPEX],
+      indicators: [IND_GROSS, IND_NET, IND_OPEX, IND_FX],
       cells: [
         cell('co_aac', 'ind_gross', 'green'),
         cell('co_aac', 'ind_net', 'red'),
         cell('co_aac', 'ind_opex', 'red'),
+        cell('co_aac', 'ind_fx', 'red'),
       ],
     };
     const matches = RULE_COMPANY_CRITICAL_COMPOSITE.match(ctx, DEFAULT_ALERT_THRESHOLDS);
     expect(matches).toHaveLength(1);
-    expect(matches[0].message).toContain('33/100');
+    expect(matches[0].message).toContain('25/100');
   });
 
   it('does NOT trigger at score = 50 (above threshold)', () => {
-    // 1 green + 1 red = avg 50 → at threshold (< 40 only)
+    // 2 green + 2 red = avg 50 → above threshold (< 40 only)
     const ctx: AlertContext = {
       companies: [company('co_aac', 'AAC-MAIN')],
-      indicators: [IND_GROSS, IND_NET],
+      indicators: [IND_GROSS, IND_NET, IND_OPEX, IND_FX],
       cells: [
         cell('co_aac', 'ind_gross', 'green'),
-        cell('co_aac', 'ind_net', 'red'),
+        cell('co_aac', 'ind_net', 'green'),
+        cell('co_aac', 'ind_opex', 'red'),
+        cell('co_aac', 'ind_fx', 'red'),
       ],
     };
     expect(RULE_COMPANY_CRITICAL_COMPOSITE.match(ctx, DEFAULT_ALERT_THRESHOLDS)).toHaveLength(0);
@@ -218,6 +225,111 @@ describe('RULE_COMPANY_CRITICAL_COMPOSITE (Phase C6)', () => {
       cells: [cell('co_aac', 'ind_gross', 'unknown')],
     };
     expect(RULE_COMPANY_CRITICAL_COMPOSITE.match(ctx, DEFAULT_ALERT_THRESHOLDS)).toHaveLength(0);
+  });
+
+  it('11.81 — cannot fire below the coverage floor, however red the one cell is', () => {
+    // The reported bug. One red cell of 28 used to yield composite 0/100 and
+    // persist «AZSEKER-DASTAN composite score 0/100 (1/28 indicators)» as a
+    // critical AlertEvent. Withheld at source: there is no score to compare.
+    const ctx: AlertContext = {
+      companies: [company('co_dastan', 'AZSEKER-DASTAN')],
+      indicators: [IND_GROSS, IND_NET, IND_OPEX],
+      cells: [
+        cell('co_dastan', 'ind_gross', 'red'),
+        cell('co_dastan', 'ind_net', 'unknown'),
+        cell('co_dastan', 'ind_opex', 'unknown'),
+      ],
+    };
+    expect(RULE_COMPANY_CRITICAL_COMPOSITE.match(ctx, DEFAULT_ALERT_THRESHOLDS)).toHaveLength(0);
+  });
+
+  it('11.81 — three all-red cells stay silent; the fourth turns the rule on', () => {
+    const base = [
+      cell('co_aac', 'ind_gross', 'red'),
+      cell('co_aac', 'ind_net', 'red'),
+      cell('co_aac', 'ind_opex', 'red'),
+    ];
+    const three: AlertContext = {
+      companies: [company('co_aac', 'AAC-MAIN')],
+      indicators: [IND_GROSS, IND_NET, IND_OPEX, IND_FX],
+      cells: base,
+    };
+    expect(RULE_COMPANY_CRITICAL_COMPOSITE.match(three, DEFAULT_ALERT_THRESHOLDS)).toHaveLength(0);
+    const four: AlertContext = {
+      ...three,
+      cells: [...base, cell('co_aac', 'ind_fx', 'red')],
+    };
+    const matches = RULE_COMPANY_CRITICAL_COMPOSITE.match(four, DEFAULT_ALERT_THRESHOLDS);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].message).toContain('0/100');
+  });
+});
+
+describe('RULE_COMPANY_LOW_COVERAGE (11.81)', () => {
+  it('fires for a company with figures for fewer than 4 indicators', () => {
+    const ctx: AlertContext = {
+      companies: [company('co_dastan', 'AZSEKER-DASTAN')],
+      indicators: [IND_GROSS, IND_NET, IND_OPEX],
+      cells: [
+        cell('co_dastan', 'ind_gross', 'red'),
+        cell('co_dastan', 'ind_net', 'unknown'),
+        cell('co_dastan', 'ind_opex', 'unknown'),
+      ],
+    };
+    const matches = RULE_COMPANY_LOW_COVERAGE.match(ctx, DEFAULT_ALERT_THRESHOLDS);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].severity).toBe('warning');
+    expect(matches[0].messageKey).toBe('alerts.messages.company-low-coverage');
+    expect(matches[0].messageParams).toEqual({
+      code: 'AZSEKER-DASTAN',
+      contributing: 1,
+      total: 3,
+      min: MIN_SCORING_CELLS,
+    });
+  });
+
+  it('fires for a company with NO figures at all — the stronger version of the fact', () => {
+    const ctx: AlertContext = {
+      companies: [company('co_x', 'X')],
+      indicators: [IND_GROSS],
+      cells: [cell('co_x', 'ind_gross', 'unknown')],
+    };
+    const matches = RULE_COMPANY_LOW_COVERAGE.match(ctx, DEFAULT_ALERT_THRESHOLDS);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].messageParams?.contributing).toBe(0);
+  });
+
+  it('stays silent once the company clears the floor', () => {
+    const ctx: AlertContext = {
+      companies: [company('co_aac', 'AAC-MAIN')],
+      indicators: [IND_GROSS, IND_NET, IND_OPEX, IND_FX],
+      cells: [
+        cell('co_aac', 'ind_gross', 'green'),
+        cell('co_aac', 'ind_net', 'green'),
+        cell('co_aac', 'ind_opex', 'red'),
+        cell('co_aac', 'ind_fx', 'red'),
+      ],
+    };
+    expect(RULE_COMPANY_LOW_COVERAGE.match(ctx, DEFAULT_ALERT_THRESHOLDS)).toHaveLength(0);
+  });
+
+  it('coexists with company-mostly-red — observation and inference are separate', () => {
+    // "We cannot grade you, and everything we can see is red" is more
+    // informative than either statement alone. mostly-red counts OBSERVED
+    // cells and is deliberately untouched by the coverage floor.
+    const ctx: AlertContext = {
+      companies: [company('co_x', 'X', 'Industrial')],
+      indicators: [IND_GROSS, IND_NET, IND_OPEX],
+      cells: [
+        cell('co_x', 'ind_gross', 'red'),
+        cell('co_x', 'ind_net', 'red'),
+        cell('co_x', 'ind_opex', 'red'),
+      ],
+    };
+    const ruleIds = evaluateAlertRules(DEFAULT_ALERT_RULES, ctx).map((m) => m.ruleId);
+    expect(ruleIds).toContain('company-low-coverage');
+    expect(ruleIds).toContain('company-mostly-red');
+    expect(ruleIds).not.toContain('company-critical-composite');
   });
 });
 
@@ -469,10 +581,18 @@ describe('RULE_CRITICAL_INDICATOR_ORG_WIDE (Phase C6)', () => {
 
 describe('evaluateAlertRules (Phase C6 engine)', () => {
   it('returns empty array when no rules match', () => {
+    // 11.81 — padded to 4 green cells. With one cell the company is below the
+    // coverage floor and `company-low-coverage` correctly fires, which is a
+    // rule matching, not the empty case this test is about.
     const ctx: AlertContext = {
       companies: [company('co_a', 'A', 'Industrial')],
-      indicators: [IND_GROSS],
-      cells: [cell('co_a', 'ind_gross', 'green')],
+      indicators: [IND_GROSS, IND_NET, IND_OPEX, IND_FX],
+      cells: [
+        cell('co_a', 'ind_gross', 'green'),
+        cell('co_a', 'ind_net', 'green'),
+        cell('co_a', 'ind_opex', 'green'),
+        cell('co_a', 'ind_fx', 'green'),
+      ],
     };
     expect(evaluateAlertRules(DEFAULT_ALERT_RULES, ctx)).toEqual([]);
   });
@@ -481,11 +601,12 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
     // Setup that triggers both mostly-red AND critical-composite
     const ctx: AlertContext = {
       companies: [company('co_a', 'A', 'Industrial')],
-      indicators: [IND_GROSS, IND_NET, IND_OPEX],
+      indicators: [IND_GROSS, IND_NET, IND_OPEX, IND_FX],
       cells: [
         cell('co_a', 'ind_gross', 'red'),
         cell('co_a', 'ind_net', 'red'),
         cell('co_a', 'ind_opex', 'red'),
+        cell('co_a', 'ind_fx', 'red'),
       ],
     };
     const matches = evaluateAlertRules(DEFAULT_ALERT_RULES, ctx);
@@ -687,8 +808,9 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
 });
 
 describe('DEFAULT_ALERT_RULES (Phase C6)', () => {
-  it('exports 5 default rules', () => {
-    expect(DEFAULT_ALERT_RULES).toHaveLength(5);
+  it('exports 6 default rules', () => {
+    // 11.81 added `company-low-coverage`.
+    expect(DEFAULT_ALERT_RULES).toHaveLength(6);
   });
 
   it('each default rule has unique id', () => {
@@ -975,14 +1097,16 @@ describe('Phase C6 v2 — externalised thresholds', () => {
   });
 
   it('RULE_COMPANY_CRITICAL_COMPOSITE honors raised score floor', () => {
-    // 1 green + 1 red = composite 50 (>= 40 default → no trigger).
+    // 2 green + 2 red = composite 50 (>= 40 default → no trigger).
     // Raise scoreMax to 60 → 50 < 60 → trigger.
     const ctx: AlertContext = {
       companies: [company('co_a', 'A')],
-      indicators: [IND_GROSS, IND_NET],
+      indicators: [IND_GROSS, IND_NET, IND_OPEX, IND_FX],
       cells: [
         cell('co_a', 'ind_gross', 'green'),
-        cell('co_a', 'ind_net', 'red'),
+        cell('co_a', 'ind_net', 'green'),
+        cell('co_a', 'ind_opex', 'red'),
+        cell('co_a', 'ind_fx', 'red'),
       ],
     };
     const looseConfig: ResolvedAlertThresholds = {
@@ -1104,20 +1228,21 @@ describe('Phase C6 v2 — externalised thresholds', () => {
     // every rule, not just the overridden ones.
     const ctx: AlertContext = {
       companies: [company('co_a', 'A', 'Industrial')],
-      indicators: [IND_GROSS, IND_NET, IND_OPEX],
+      indicators: [IND_GROSS, IND_NET, IND_OPEX, IND_FX],
       cells: [
         cell('co_a', 'ind_gross', 'red'),
         cell('co_a', 'ind_net', 'red'),
         cell('co_a', 'ind_opex', 'red'),
+        cell('co_a', 'ind_fx', 'red'),
       ],
     };
     const matches = evaluateAlertRules(DEFAULT_ALERT_RULES, ctx, {
       mostlyRed: { redCountMin: 5 }, // raise — should suppress mostly-red trigger
     });
     const ruleIds = matches.map((m) => m.ruleId);
-    // mostly-red is suppressed (3 reds < 5 threshold)
+    // mostly-red is suppressed (4 reds < 5 threshold)
     expect(ruleIds).not.toContain('company-mostly-red');
-    // composite still uses default 40 — 1 green=0 + 3 red=0 → 0 < 40 → fires
+    // composite still uses default 40 — 4 red = 0 < 40 → fires
     expect(ruleIds).toContain('company-critical-composite');
   });
 });
@@ -1160,16 +1285,18 @@ describe('Sub-35 — alert messageKey / messageParams contract', () => {
         { id: 'i1', code: 'X1' },
         { id: 'i2', code: 'X2' },
         { id: 'i3', code: 'X3' },
+        { id: 'i4', code: 'X4' },
       ],
       cells: [
         { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red' },
         { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red' },
         { indicatorValueId: 'iv3', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'red' },
+        { indicatorValueId: 'iv4', companyId: 'c1', indicatorId: 'i4', value: 0, status: 'red' },
       ],
     };
     const [m] = RULE_COMPANY_CRITICAL_COMPOSITE.match(ctx, mergeWithDefaults(undefined));
     expect(m.messageKey).toBe('alerts.messages.company-critical-composite');
-    expect(m.messageParams).toEqual({ code: 'BAD-CO', score: 0, contributing: 3, total: 3 });
+    expect(m.messageParams).toEqual({ code: 'BAD-CO', score: 0, contributing: 4, total: 4 });
   });
 
   it('RULE_SECTOR_AMBER_CLUSTER emits {industry, amberCount, companyCount}', () => {

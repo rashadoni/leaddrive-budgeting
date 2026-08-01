@@ -20,9 +20,18 @@ import type { CompanyRow } from "./types"
 
 export function RemoveCompanyTask({
   companies,
+  onClearYears,
   onDone,
 }: {
   companies: ReadonlyArray<CompanyRow>
+  /**
+   * 11.82 — the picker here is single-select on purpose: this operation takes
+   * one company and ALL of its years, which is the "sold or closed" case. An
+   * operator who arrives wanting several companies finds radio buttons and no
+   * explanation, and the screen owes them the way out rather than making them
+   * guess it. Asked in as many words: «как выбрать все компании».
+   */
+  onClearYears?: () => void
   onDone: () => void
 }) {
   const t = useTranslations("adminDataDelete")
@@ -77,6 +86,21 @@ export function RemoveCompanyTask({
           onChange={pick}
           single
         />
+        {onClearYears && (
+          <p
+            className="mt-2 text-xs leading-relaxed text-muted-foreground"
+            data-testid="remove-company-multi-hint"
+          >
+            {t("removeCompany.multiHint")}{" "}
+            <button
+              type="button"
+              onClick={onClearYears}
+              className="font-medium text-primary underline underline-offset-2 hover:no-underline"
+            >
+              {t("task.clearYears.title")}
+            </button>
+          </p>
+        )}
       </section>
 
       {selected.length === 1 && (

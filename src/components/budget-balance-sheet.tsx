@@ -9,9 +9,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  balanceSheetDebtToEquity,
   getBalanceSheetSectionData,
   getLatestBalanceSheetEvidenceMonth,
   normalizeBalanceSheetMonth,
+  type BalanceSheetBasis,
   type BalanceSheetEvidenceLine,
   type BalanceSheetSectionData,
 } from "@/lib/budgeting/balance-sheet-evidence"
@@ -57,6 +59,15 @@ interface BSResponse {
     holding?: { id: string; name: string; code: string } | null
     viewCompanyId?: string | null
     currencyCode?: string | null
+    // Defect 3 (2026-08-01): the basis of the figures, declared by the API.
+    // `sum_of_entities` means N legal entities were ADDED with no
+    // eliminations — 123,200,854 of double-counted intercompany balances on
+    // the client's own 2026-05 data. It must be labelled, never shown bare.
+    basis?: BalanceSheetBasis
+    entityCount?: number
+    eliminationsApplied?: boolean
+    entityNames?: string[]
+    holdingHasConsolidatedBs?: boolean | null
   }
 }
 
@@ -163,19 +174,23 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
   const asOfYear = data.meta?.sourceYear ?? "—"
   const currencyCode = data.meta?.currencyCode ?? null
   const currencySuffix = currencyCode ? ` ${currencyCode}` : ""
+  // Defect 3: an un-eliminated cross-entity sum is still shown (each row is
+  // real and the drill-down needs it) but it is never presented as the group
+  // position, and the ratio built on top of it is withheld outright.
+  const eliminationsApplied = data.meta?.eliminationsApplied !== false
+  const summedEntityCount = data.meta?.entityCount ?? 0
+  const summedEntityNames = data.meta?.entityNames ?? []
   const latestTotals = normalizeBalanceSheetMonth(
     assetsData,
     liabilitiesData,
     equityData,
     latestMonth,
+    { eliminationsApplied },
   )
   const totalAssets = latestTotals.assets
   const totalLiabilities = latestTotals.liabilities
   const totalEquity = latestTotals.equity
-  const debtToEquity =
-    totalLiabilities !== null && totalEquity !== null && totalEquity > 0
-      ? totalLiabilities / totalEquity
-      : null
+  const debtToEquity = balanceSheetDebtToEquity(latestTotals)
 
   // Trend: Assets growth from Jan to the latest populated month
   const janAssets = assetsData.sectionTotals[1]
@@ -302,6 +317,34 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
           })}
         </div>
       )}
+      {/* Defect 3 — an absent holding used to fall through to plain addition
+          with nothing said about it. This banner is the guard: the totals
+          below are a sum of legal entities and the intercompany balances
+          inside them have NOT been eliminated. */}
+      {!eliminationsApplied && (
+        <div
+          data-testid="balance-sheet-unconsolidated"
+          role="status"
+          className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+        >
+          <p className="font-semibold">
+            {t("balanceSheetUnconsolidatedTitle", { count: summedEntityCount })}
+          </p>
+          <p className="mt-1">{t("balanceSheetUnconsolidatedBody")}</p>
+          {summedEntityNames.length > 0 && (
+            <p className="mt-1" data-testid="balance-sheet-unconsolidated-entities">
+              {t("balanceSheetUnconsolidatedEntities", {
+                entities: summedEntityNames.join(", "),
+              })}
+            </p>
+          )}
+          {data.meta?.holdingHasConsolidatedBs === false && data.meta?.holding?.name && (
+            <p className="mt-1" data-testid="balance-sheet-unconsolidated-holding">
+              {t("balanceSheetHoldingNoConsolidated", { holding: data.meta.holding.name })}
+            </p>
+          )}
+        </div>
+      )}
       {canEdit && (
         <div data-testid="balance-sheet-edit-warning" className="text-[11px] text-muted-foreground">
           {t("balanceSheetEditHint")}
@@ -317,7 +360,10 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
         <div data-testid="balance-sheet-kpi-assets" className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 dark:from-blue-950/30 dark:to-blue-900/20 dark:border-blue-800 p-4">
           <div className="absolute top-0 right-0 w-20 h-20 bg-blue-200 dark:bg-blue-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
-            <TrendingUp className="h-3.5 w-3.5" /> {t("balanceSheetTotalAssets")}
+            <TrendingUp className="h-3.5 w-3.5" />{" "}
+            {eliminationsApplied
+              ? t("balanceSheetTotalAssets")
+              : t("balanceSheetSummedAssets", { count: summedEntityCount })}
           </div>
           <p className="text-2xl font-bold tracking-tight text-blue-700 dark:text-blue-300">{totalAssets === null ? "—" : fmtNum(totalAssets, locale)} {totalAssets !== null && currencyCode && <span className="text-sm font-normal text-muted-foreground">{currencyCode}</span>}</p>
           <div className="flex items-center gap-1 mt-1">
@@ -359,7 +405,11 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
             <Scale className="h-3.5 w-3.5" /> {t("balanceSheetDebtEquityRatio")}
           </div>
           <p className={`text-2xl font-bold tracking-tight ${debtToEquity === null ? "text-muted-foreground" : debtToEquity <= 2 ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>{debtToEquity === null ? "—" : `${debtToEquity.toFixed(2)}x`}</p>
-          <p className="text-[10px] text-muted-foreground mt-1">{t("balanceSheetDebtToEquity")}</p>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            {eliminationsApplied
+              ? t("balanceSheetDebtToEquity")
+              : t("balanceSheetRatioUnavailableUnconsolidated")}
+          </p>
         </div>
       </div>
 

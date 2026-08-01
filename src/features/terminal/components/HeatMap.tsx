@@ -25,7 +25,7 @@ import { formatFreshness } from '../lib/relative-time';
 import { inputToSourceCode } from '../hooks/use-drift-health';
 import { PeriodChips } from './PeriodChips';
 import { TimeMachineSlider } from './TimeMachineSlider';
-import { type CompositeScore } from '@/lib/risk/composite-score';
+import { MIN_SCORING_CELLS, type CompositeScore } from '@/lib/risk/composite-score';
 import { clearAISummaryCache } from './heat-map/ai-summary';
 // Re-export for the existing import path (consumers + tests import it here).
 export { clearAISummaryCache };
@@ -554,8 +554,14 @@ export function HeatMap({ period }: Props) {
                                       {statusShape(tooltipBandStatus)}
                                     </span>
                                   )}
+                                  {/* 11.81 — a withheld company is not "no
+                                      data"; it is a measured, insufficient
+                                      amount of it, and the fraction on the
+                                      next line says how much. */}
                                   {cs.score === null
-                                    ? t('heatMap.tooltipNoData')
+                                    ? cs.coverage === 'insufficient'
+                                      ? t('composite.insufficientLabel')
+                                      : t('heatMap.tooltipNoData')
                                     : `${cs.score} / 100`}
                                 </span>
                                 <span className="text-muted-foreground">
@@ -711,13 +717,46 @@ export function HeatMap({ period }: Props) {
 
 function CompositeBadge({ score }: { score: CompositeScore | null }) {
   const t = useTranslations('terminal');
+  // 11.81 — the coverage fraction moved ABOVE the early return. It used to
+  // render only in the scored branch, so the one number that explains the dash
+  // was dropped exactly when it mattered. Rendered in both branches now, and
+  // `heatMap.noScoreableIndicators` is NOT reused here: "No scoreable
+  // indicators" is factually false for a company with 2 of 28. That string
+  // stays scoped to the genuine `totalCount === 0` rollup case.
+  const coverage =
+    score && score.totalCount > 0 ? (
+      <span className="ml-1 font-normal opacity-60" data-testid="composite-coverage">
+        {score.contributingCount}/{score.totalCount}
+      </span>
+    ) : null;
   if (!score || score.score === null) {
+    const title = !score
+      ? t('heatMap.noScoreableIndicators')
+      : score.coverage === 'insufficient'
+        ? t('composite.insufficientTitle', {
+            contributing: score.contributingCount,
+            total: score.totalCount,
+            min: MIN_SCORING_CELLS,
+          })
+        : t('composite.noDataTitle', { total: score.totalCount });
     return (
       <span
         className="text-[9px] tabular-nums text-gray-500 shrink-0"
-        title={t('heatMap.noScoreableIndicators')}
+        title={title}
+        aria-label={
+          score
+            ? t('composite.insufficientAria', {
+                contributing: score.contributingCount,
+                total: score.totalCount,
+              })
+            : undefined
+        }
       >
-        —
+        <span aria-hidden="true" className="mr-0.5 opacity-70">
+          {statusShape('unknown')}
+        </span>
+        R—
+        {coverage}
       </span>
     );
   }
@@ -751,14 +790,7 @@ function CompositeBadge({ score }: { score: CompositeScore | null }) {
           already shown on hover, and nobody hovers during a demo: the one
           number that explains why a company scores at all was invisible in
           the room where it mattered. */}
-      {score.totalCount > 0 && (
-        <span
-          className="ml-1 font-normal opacity-60"
-          data-testid="composite-coverage"
-        >
-          {score.contributingCount}/{score.totalCount}
-        </span>
-      )}
+      {coverage}
     </span>
   );
 }

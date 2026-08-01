@@ -53,6 +53,17 @@ export interface BoardSnapshotCompany {
   isActive: boolean;
   role: string | null;
   sortOrder: number | null;
+  /**
+   * 11.81 — materiality basis for the holding-composite coverage disclosure
+   * ("4 of 6 subsidiaries scored · 88% of holding revenue"). Derived exactly
+   * as `matrix/route.ts` derives it — the max `inputs.resolved.revenue` across
+   * the company's IVs — so the deck and the terminal cannot disagree about how
+   * much of the holding a number covers. 0 when no P&L is loaded.
+   *
+   * It is a DISCLOSURE, not a weight and not a gate: the hero mean stays
+   * equal-weight, and no threshold is applied to this number.
+   */
+  revenue: number;
 }
 
 export interface BoardSnapshotIndicator {
@@ -208,6 +219,10 @@ export async function buildBoardSnapshot(args: {
             indicatorId: true,
             value: true,
             status: true,
+            // 11.81 — `resolved.revenue` is the materiality basis for the
+            // holding-composite coverage disclosure. Same field, same
+            // max-per-company reduction as `matrix/route.ts:516-527`.
+            inputs: true,
           },
         });
 
@@ -321,6 +336,19 @@ export async function buildBoardSnapshot(args: {
     totals.red += counts.red;
   }
 
+  // 11.81 — max `inputs.resolved.revenue` per company; a stray partial 0 must
+  // not win. 0 when no P&L is loaded, which makes the sub-co contribute
+  // nothing to the revenue-coverage percentage in either direction.
+  const revenueByCompanyId = new Map<string, number>();
+  for (const v of values as Array<{ companyId: string; inputs?: unknown }>) {
+    const rev = (v.inputs as { resolved?: { revenue?: unknown } } | null)
+      ?.resolved?.revenue;
+    if (typeof rev === 'number' && Number.isFinite(rev)) {
+      const cur = revenueByCompanyId.get(v.companyId) ?? -Infinity;
+      if (rev > cur) revenueByCompanyId.set(v.companyId, rev);
+    }
+  }
+
   return {
     org: {
       name: org.name,
@@ -329,7 +357,10 @@ export async function buildBoardSnapshot(args: {
     },
     period,
     generatedAt: new Date().toISOString(),
-    operational: operational as BoardSnapshotCompany[],
+    operational: operational.map((c) => ({
+      ...c,
+      revenue: Math.max(0, revenueByCompanyId.get(c.id) ?? 0),
+    })) as BoardSnapshotCompany[],
     indicators: indicators as BoardSnapshotIndicator[],
     cells,
     compositeByCompany,
