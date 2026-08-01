@@ -68,7 +68,26 @@ export function mapCounterpartyEntity(header: string, knownCodes: string[] = [])
 }
 
 const TURNOVER_RE = /turnover|dövriyyə|dovriyye|оборот|amount|məbləğ/i
-const TOTAL_RE = /^(total|cəmi|yekun|итого|grand total|ümumi)/i
+
+/**
+ * A row whose name cell is a TOTAL line rather than a counterparty.
+ *
+ * 2026-08-01 (11.85) — this used to be a prefix match, and a prefix match over
+ * a column of Azerbaijani surnames is a trap. `Cəmilov Alim Amil oğlu` — a real
+ * third-party customer at row 232 of the client's `Müştəri İcmalı` — begins
+ * with `Cəmi`, so it was silently dropped. Today that costs nothing only
+ * because the row happens to carry no turnover in any month; `Ümumi Ticarət
+ * MMC` or `Total Energies Azerbaijan` would be dropped WITH their money, which
+ * removes them from the denominator too and inflates every other share.
+ * Reproduced on two 500-turnover rows: the base came out 500 and the survivor
+ * took 100% instead of 50%.
+ *
+ * Anchored at both ends, so a total row still matches and a name that merely
+ * starts with one of these words does not. `cəmi` also gains the standalone
+ * `cəmi:` form these sheets actually use.
+ */
+const TOTAL_RE =
+  /^(total|cəmi|cemi|yekun|итого|grand total|ümumi|umumi)\s*[:.]?\s*$/i
 
 export function parseCounterpartyRegister(
   workbook: XLSXType.WorkBook,

@@ -100,3 +100,54 @@ describe("counterpartyRoleFromSheet", () => {
     expect(counterpartyRoleFromSheet("Random")).toBeNull()
   })
 })
+
+describe("TOTAL_RE — a surname is not a total row (11.85)", () => {
+  /**
+   * The register's name column holds Azerbaijani personal names. Matching
+   * total-row keywords by PREFIX over that column drops real customers.
+   * `Cəmilov Alim Amil oğlu` is row 232 of the client's own `Müştəri İcmalı`.
+   */
+  function sheetWith(names: Array<[string, number]>) {
+    const aoa: unknown[][] = [["AZƏRŞƏKƏR MMC", "Turnover"]]
+    for (const [n, v] of names) aoa.push([n, v])
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    return { SheetNames: ["S"], Sheets: { S: ws } } as never
+  }
+
+  it("keeps a customer whose name merely begins with a total keyword", () => {
+    const res = parseCounterpartyRegister(
+      sheetWith([
+        ["Cəmilov Alim Amil oğlu", 500],
+        ["Veysəloğlu MMC", 500],
+      ]),
+      "S",
+      XLSX,
+      "customer",
+    )
+    const names = res.blocks[0]?.counterparties.map((c) => c.name) ?? []
+    expect(names).toContain("Cəmilov Alim Amil oğlu")
+    // The share is the point: dropping the row removes it from the
+    // denominator too, so the survivor reads 100% of a halved base.
+    expect(res.blocks[0]?.totalTurnover).toBe(1000)
+    for (const cp of res.blocks[0]?.counterparties ?? []) {
+      expect(cp.sharePct).toBeCloseTo(50, 4)
+    }
+  })
+
+  it("still drops an actual total row, with or without a trailing colon", () => {
+    const res = parseCounterpartyRegister(
+      sheetWith([
+        ["Veysəloğlu MMC", 400],
+        ["Cəmi:", 400],
+        ["TOTAL", 400],
+        ["Ümumi", 400],
+      ]),
+      "S",
+      XLSX,
+      "customer",
+    )
+    expect(res.blocks[0]?.counterparties.map((c) => c.name)).toEqual([
+      "Veysəloğlu MMC",
+    ])
+  })
+})

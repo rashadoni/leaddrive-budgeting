@@ -4168,9 +4168,42 @@
           "other": "{n} digər qeyd — yoxlayın",
           "unit-fix": "{n} sütunun vahidi düzəldildi — rəqəmlər idxal zamanı dəyişdirildi",
           "dictionary": "{n} vərəqdə lüğətdən kənar məhsul adı — öz kodu ilə idxal edildi",
-          "off-year": "{n} vərəq başqa ilə aiddir — atlandı"
+          "off-year": "{n} vərəq başqa ilə aiddir — atlandı",
+          "by-design": "{n} vərəq bilərəkdən oxunmayıb — heç nə itməyib"
         },
-        "offYearHint": "({years}) — yuxarıdakı «bu yükləmədə …» xanasını işarələyin ki, onlar da yüklənsin"
+        "offYearHint": "({years}) — yuxarıdakı «bu yükləmədə …» xanasını işarələyin ki, onlar da yüklənsin",
+        "brief": {
+          "what": "İçində nə var:",
+          "lost": "Nə boş qalır:",
+          "todo": "Nə etməli:",
+          "raw": "İlkin mesaj"
+        },
+        "contains": {
+          "table": "{rows} məlumat sətri × {cols} sütun; başlıq ən yuxarı sətir deyil — onun üstündə {preamble} sətir dayanır.",
+          "tablePlain": "{rows} məlumat sətri × {cols} sütun, başlıq birinci sətirdədir.",
+          "noHeader": "{rows} sətir × {cols} sütun, başlıq sətri isə müəyyən edilə bilmədi.",
+          "unknown": "Bu vərəqin ölçüləri ilkin baxışa daxil deyil.",
+          "readAs": "{dataType} kimi oxundu, {pct}% əminlik.",
+          "readAsNone": "Təsnifatçı bu vərəqə tip təyin etmədi."
+        },
+        "stakes": {
+          "indicators": "{n} göstərici boş qalır: {codes}.",
+          "broad": "{dataType} oxuyucusu {n} müxtəlif göstəricini qidalandırır, ona görə bu vərəqin onlardan hansını dolduracağını qabaqcadan demək olmaz — itki saymazdan əvvəl «Faylların analizi» tabında vərəqin tipini yoxlayın.",
+          "none": "{dataType} vərəqinin yazdığını heç bir göstərici oxumur, deməli risk balı tərpənmir — amma rəqəmlərin özü yenə də yerinə çatmadı.",
+          "untyped": "Vərəqin tipi bilinmədən nəyin itdiyini demək mümkün deyil — düzəldilməli olan elə budur.",
+          "coveredElsewhere": "Bu vərəqin qidalandıracağı {n} göstəricinin hamısı bu idxaldakı digər vərəqlərdən artıq doldurulur — heç nə itmir."
+        },
+        "action": {
+          "expectedHeaders": "Oxuyucuya {expected} sütunları lazımdır — faylda onların adını dəyişin və ilkin baxışı yenidən işə salın.",
+          "roleOrDoctor": "«Yönləndirmə düzəlişləri» tabını açın: əgər bu rəqəmlər onsuz da başqa vərəqdən gəlirsə, Mənbə/Skip sahəsini «Summary atla» edin və ilkin baxışı yenidən işə salın. Əks halda bu vərəq üzərində İdxal diaqnostikasını işə salın — o, vərəqi oxuyub burada tətbiq edə biləcəyiniz düzəliş təklif edir.",
+          "manualNone": "Müştəri və təchizatçı dövriyyəsini əl ilə yazmaq üçün ekran yoxdur, ona görə bunu faylın özü daşımalıdır.",
+          "manualDataEntry": "«Məlumat daxiletmə» səhifəsi əməliyyat metriklərini əl ilə qəbul edir — bir rəqəmi düzəltməyə bəs edir, bütöv vərəqi əvəz etməyə yox.",
+          "backlog": "Heç nə səssizcə itmir: boş qalan hər şey «Göstərici Backlog» səhifəsində sadalanır."
+        },
+        "byDesign": {
+          "infoSummary": "İcmal və ya indeks vərəqi kimi oxundu ({dataType}), bu idxal isə belə vərəqdən heç vaxt yazmır — təfərrüat mənbə vərəqlərindən gəlir.",
+          "derived": "Törəmə icmal kimi işarələnib, ona görə bilərəkdən atlanır — təfərrüat mənbə vərəqlərindən gəlir."
+        }
       }
     },
     "single": {

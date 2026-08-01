@@ -20,8 +20,13 @@ import { useLocale, useTranslations } from "next-intl"
 import { localizedName } from "@/lib/i18n/localized-name"
 import {
   groupImportWarnings,
+  countRealWarnings,
   ACTIONABLE_GROUPS,
+  QUIET_GROUPS,
+  type I18nLine,
+  type WarningBriefing,
 } from "@/lib/onboarding/ai-import/warning-groups"
+import { buildWarningSheetFacts } from "./warning-facts"
 import {
   asImportTranslator,
   localizeImportMessage,
@@ -774,7 +779,16 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
   // conflict banner holds the only `forceOverride` checkbox, the Import
   // Doctor scrolls to refs inside these sections, and the suite queries
   // testids in them.
-  const warningCount = previewResult?.warnings.length ?? 0
+  // 11.82 — the badge counts WARNINGS, not lines. A sheet the pipeline chose
+  // not to read (INFO_SUMMARY, or a sheet routed derived_summary) is a
+  // statement of intent with no reader and no remedy; counting it reinflates
+  // exactly the number 11.69 set out to make meaningful.
+  const warningCount = countRealWarnings(
+    groupImportWarnings(
+      previewResult?.warnings ?? [],
+      buildWarningSheetFacts(previewResult),
+    ),
+  )
   const reviewTabDefs: ReviewTabDef[] = previewResult
     ? ([
         previewResult.perFile.length > 0
@@ -1481,6 +1495,75 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
       : shown
   }
 
+  /** Render an i18n descriptor produced by warning-groups.ts. */
+  function line(l: I18nLine): string {
+    return t(`warnings.${l.key}` as never, l.params as never)
+  }
+
+  /**
+   * 11.82 — the three questions an unread sheet has to answer.
+   *
+   * «как теперь финансисту решить, или отдельно добавить, или понять почему
+   * не смогло прочесть?» — the previous version answered none of them: it
+   * showed the server's own sentence and stopped. Each card now states what
+   * is in the sheet, what stays empty because it did not land, and the next
+   * action — and the original line is still there underneath, because a
+   * finance user forwarding this to an engineer needs the literal text.
+   */
+  function renderBriefing(b: WarningBriefing, i: number) {
+    return (
+      <li
+        key={i}
+        className="rounded border border-amber-300 bg-white/70 p-2 dark:bg-amber-950/20"
+        data-testid={`warning-brief-${b.sheetName ?? `line-${i}`}`}
+      >
+        {b.sheetName && (
+          <div className="font-semibold text-[12px] break-words">{b.sheetName}</div>
+        )}
+        <dl className="mt-1 space-y-1 text-[11px]">
+          {b.contains.length > 0 && (
+            <div>
+              <dt className="inline font-medium opacity-70">
+                {t("warnings.brief.what")}{" "}
+              </dt>
+              <dd className="inline break-words">
+                {b.contains.map(line).join(" ")}
+              </dd>
+            </div>
+          )}
+          {b.stakes && (
+            <div data-testid="warning-brief-stakes">
+              <dt className="inline font-medium opacity-70">
+                {t("warnings.brief.lost")}{" "}
+              </dt>
+              <dd className="inline break-words">{line(b.stakes)}</dd>
+            </div>
+          )}
+          {b.actions.length > 0 && (
+            <div data-testid="warning-brief-actions">
+              <dt className="inline font-medium opacity-70">
+                {t("warnings.brief.todo")}{" "}
+              </dt>
+              <dd className="inline break-words">
+                {b.actions.map(line).join(" ")}
+              </dd>
+            </div>
+          )}
+        </dl>
+        {/* The server's own sentence, kept verbatim and one click away. It is
+            what an engineer needs and what a screenshot has to contain. */}
+        <details className="mt-1">
+          <summary className="cursor-pointer text-[10px] opacity-60">
+            {t("warnings.brief.raw")}
+          </summary>
+          <p className="mt-1 break-words text-[10px] opacity-80">
+            {localizeImportMessage(tShared, b.message)}
+          </p>
+        </details>
+      </li>
+    )
+  }
+
   /**
    * Phase 11.3 (2026-07-29) — render `warnings`.
    *
@@ -1489,72 +1572,127 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
    * any of it: `warnings` was referenced exactly once, inside
    * buildDoctorContext, so the text only existed in the Import Doctor
    * payload. The user saw a verdict badge and nothing else.
+   *
+   * 11.82 — takes the whole response, not just the strings: the briefings
+   * need each sheet's dimensions, classification and indicator projection,
+   * which live elsewhere in the same payload (see `warning-facts.ts`).
    */
-  function renderWarnings(warnings: string[], testId = "apply-warnings") {
+  function renderWarnings(
+    res: MultiFileApiResponse | null,
+    testId = "apply-warnings",
+  ) {
+    const warnings = res?.warnings
     if (!warnings || warnings.length === 0) return null
+    const groups = groupImportWarnings(warnings, buildWarningSheetFacts(res))
+    const loud = groups.filter((g) => !QUIET_GROUPS.has(g.key))
+    const quiet = groups.filter((g) => QUIET_GROUPS.has(g.key))
+    const loudCount = countRealWarnings(groups)
+
     return (
-      <details
-        className="border rounded p-3 text-sm bg-amber-50 border-amber-300 dark:bg-amber-950/30 dark:border-amber-800"
-        data-testid={testId}
-        open={warnings.length <= 5}
-      >
-        <summary className="font-medium cursor-pointer">
-          ⚠️ {t("result.warningsTitle", { n: warnings.length })}
-        </summary>
-        {/* 11.69 — grouped by MEANING, not dumped in arrival order.
-            The live run put six identical "this sheet is about another year"
-            lines next to a real structural failure, in English, on an
-            Azerbaijani page: «тут ничего не поймёшь, всё так записано».
-            What must be acted on comes first; every original line is still
-            here verbatim, one click away. */}
-        <div className="mt-2 space-y-2">
-          {groupImportWarnings(warnings).map((g) => {
-            const actionable = ACTIONABLE_GROUPS.has(g.key)
-            return (
-              <details
-                key={g.key}
-                data-testid={`warning-group-${g.key}`}
-                data-actionable={actionable ? "true" : undefined}
-                className={`rounded border px-2 py-1.5 ${
-                  actionable
-                    ? "border-amber-400 bg-amber-100/60"
-                    : "border-amber-200 bg-white/50"
-                }`}
-              >
-                <summary className="cursor-pointer text-xs">
-                  <span className={actionable ? "font-semibold" : "font-medium"}>
-                    {t(
-                      `warnings.group.${g.key}` as never,
-                      { n: g.messages.length } as never,
-                    )}
-                  </span>
-                  {/* The remedy, stated where the problem is — these sheets
-                      load if the multi-year box is ticked. */}
-                  {g.key === "off-year" && g.years.length > 0 && (
-                    <span className="ml-1 opacity-80">
-                      {t(
-                        "warnings.offYearHint" as never,
-                        { years: g.years.join(", ") } as never,
+      <div className="space-y-2">
+        {loudCount > 0 && (
+          <details
+            className="border rounded p-3 text-sm bg-amber-50 border-amber-300 dark:bg-amber-950/30 dark:border-amber-800"
+            data-testid={testId}
+            open={loudCount <= 5}
+          >
+            <summary className="font-medium cursor-pointer">
+              ⚠️ {t("result.warningsTitle", { n: loudCount })}
+            </summary>
+            {/* 11.69 — grouped by MEANING, not dumped in arrival order.
+                The live run put six identical "this sheet is about another
+                year" lines next to a real structural failure, in English, on
+                an Azerbaijani page: «тут ничего не поймёшь, всё так записано».
+                What must be acted on comes first; every original line is
+                still here verbatim, one click away. */}
+            <div className="mt-2 space-y-2">
+              {loud.map((g) => {
+                const actionable = ACTIONABLE_GROUPS.has(g.key)
+                return (
+                  <details
+                    key={g.key}
+                    data-testid={`warning-group-${g.key}`}
+                    data-actionable={actionable ? "true" : undefined}
+                    open={actionable}
+                    className={`rounded border px-2 py-1.5 ${
+                      actionable
+                        ? "border-amber-400 bg-amber-100/60"
+                        : "border-amber-200 bg-white/50"
+                    }`}
+                  >
+                    <summary className="cursor-pointer text-xs">
+                      <span
+                        className={actionable ? "font-semibold" : "font-medium"}
+                      >
+                        {t(
+                          `warnings.group.${g.key}` as never,
+                          { n: g.messages.length } as never,
+                        )}
+                      </span>
+                      {/* The remedy, stated where the problem is — these
+                          sheets load if the multi-year box is ticked. */}
+                      {g.key === "off-year" && g.years.length > 0 && (
+                        <span className="ml-1 opacity-80">
+                          {t(
+                            "warnings.offYearHint" as never,
+                            { years: g.years.join(", ") } as never,
+                          )}
+                        </span>
                       )}
-                    </span>
-                  )}
-                </summary>
-                {/* 11.7x — the GROUP headline was translated while every
-                    line under it stayed raw server English. Grouping still
-                    keys on the untranslated text (warning-groups.ts patterns);
-                    only the rendered line is localized. */}
-                <ul className="mt-1.5 space-y-1 list-disc list-inside text-[11px]">
-                  {g.messages.map((w, i) => (
-                    <li key={i} className="break-words">
-                      {localizeImportMessage(tShared, w)}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )
-          })}
-        </div>
-      </details>
+                    </summary>
+                    {/* An actionable group gets the three-question briefing;
+                        an informational one stays a plain localized list —
+                        off-year and dictionary notes already read as
+                        sentences and have their own group hint. */}
+                    {actionable ? (
+                      <ul className="mt-1.5 space-y-2">
+                        {g.briefings.map(renderBriefing)}
+                      </ul>
+                    ) : (
+                      <ul className="mt-1.5 space-y-1 list-disc list-inside text-[11px]">
+                        {g.messages.map((w, i) => (
+                          <li key={i} className="break-words">
+                            {localizeImportMessage(tShared, w)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </details>
+                )
+              })}
+            </div>
+          </details>
+        )}
+
+        {/* 11.82 — deliberately not read. Grey, outside the amber block, and
+            not in the count: a sheet the pipeline decided to skip is a
+            statement of intent, and dressing it as a warning is what made
+            the owner ask why three unrelated events shared one heading. */}
+        {quiet.map((g) => (
+          <details
+            key={g.key}
+            data-testid={`warning-group-${g.key}`}
+            className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900/40"
+          >
+            <summary className="cursor-pointer text-xs text-slate-600 dark:text-slate-300">
+              {t("warnings.group.by-design" as never, { n: g.messages.length } as never)}
+            </summary>
+            <ul className="mt-1.5 space-y-1 text-[11px] text-slate-600 dark:text-slate-300">
+              {g.briefings.map((b, i) => (
+                <li key={i} className="break-words">
+                  <span className="font-medium">{b.sheetName ?? ""}</span>
+                  {b.sheetName ? " — " : ""}
+                  {b.byDesignReason ? line(b.byDesignReason) : ""}
+                  {/* Dimensions only. `contains` also carries "Read as
+                      INFO_SUMMARY, 74% confidence", which the reason line
+                      above has already said in words. */}
+                  {b.contains[0] && ` ${line(b.contains[0])}`}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ))}
+      </div>
     )
   }
 
@@ -2955,7 +3093,7 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
           text that already existed is finally displayed. */}
       {previewResult && (
         <div hidden={!showTab("warnings")}>
-          {renderWarnings(previewResult.warnings, "preview-warnings")}
+          {renderWarnings(previewResult, "preview-warnings")}
         </div>
       )}
 
@@ -3246,7 +3384,7 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
           {applyResult.safetyReceipt &&
             renderSafetyReceipt(applyResult.safetyReceipt, "applied")}
           {renderIncompleteness(applyResult)}
-          {renderWarnings(applyResult.warnings)}
+          {renderWarnings(applyResult)}
           {applyResult.perGroup.map((g) => (
             <div
               key={g.fileType}
