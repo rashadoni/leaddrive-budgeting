@@ -111,6 +111,18 @@ export interface MatrixIndicatorCol {
    * `IndicatorDefinition.requiredInputs`.
    */
   requiredInputs?: string[];
+  /**
+   * 11.71 — `IndicatorDefinition.category` ("operational", "commodity",
+   * "governance", …). Already on the wire (the matrix endpoint selects it for
+   * its internal-category render filter and emits the rows verbatim); this only
+   * declares what was always arriving.
+   *
+   * Feeds the composite scoring gate: the `governance` legal/compliance
+   * indicators are informational by product directive and must not move a
+   * financial score. Optional — a caller that does not project it gets the
+   * default that changes nothing (the indicator keeps scoring).
+   */
+  category?: string | null;
 }
 
 export interface MatrixApplicabilityOverride {

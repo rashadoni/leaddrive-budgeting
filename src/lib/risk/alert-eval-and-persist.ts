@@ -24,6 +24,7 @@ import {
 import { readAlertThresholdsFromOrgSettings } from './alert-thresholds-config';
 import { type HeatMapCell } from './heatmap-matrix';
 import { persistAlertEvents } from './alert-events';
+import { nonScoringIndicatorIds } from './indicator-provenance';
 import { loadPairApplicabilityResolver } from './pair-applicability';
 
 export interface EvalAndPersistArgs {
@@ -197,11 +198,20 @@ export async function evaluateAndPersistAlertsForPeriods(
         value: number | null;
         status: HeatMapCell['status'];
       }>;
+      // 11.71 — stamp the scoring gate before the rules run. This is the path
+      // that WRITES `AlertEvent` rows, and `company-critical-composite` embeds
+      // the score and the coverage fraction verbatim in the persisted message.
+      // Miss it here and the stored alert history argues with the live terminal
+      // about the same company, permanently, until the next recompute.
+      // `indicators` already carries `category` + `requiredInputs` from the
+      // select above.
+      const nonScoringIds = nonScoringIndicatorIds(indicators);
       const cells: HeatMapCell[] = values.map((v) => ({
         companyId: v.companyId,
         indicatorId: v.indicatorId,
         value: v.value as number,
         status: v.status,
+        ...(nonScoringIds.has(v.indicatorId) ? { scoring: false } : {}),
       }));
       const ctx: AlertContext = {
         companies: operational.map((c) => ({

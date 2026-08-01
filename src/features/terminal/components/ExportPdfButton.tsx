@@ -51,6 +51,11 @@ export function ExportPdfTrigger() {
         const riskTagsByCompanyId = companyTree
           ? buildRiskTagsByCompanyId(companyTree)
           : undefined;
+        // 11.71 — an exported composite must equal the one on the screen it
+        // was exported from. `matrix.cells` carry the `scoring` flag stamped by
+        // the matrix API (constants + the informational legal/compliance
+        // indicators the owner directed out of the financial score) and
+        // `computeCompositeScore` enforces it, so no filter belongs here.
         const compositesById = computeCompositeByCompany(
           matrix.cells,
           undefined,

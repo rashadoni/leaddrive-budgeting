@@ -33,6 +33,28 @@ export interface HeatMapCell {
    * Scale: 0.7 (ESG/sentiment) → 1.0 (default) → 1.5 (profitability/liquidity).
    */
   weight?: number;
+  /**
+   * 11.71 — does this cell move the composite risk score?
+   *
+   * `false` ⇒ `computeCompositeScore` skips it AND leaves it out of
+   * `totalCount`. Stamped by whoever builds the cell, from
+   * `markNonScoringCells(cells, indicators)` in `indicator-provenance.ts` —
+   * that helper owns the rule (constants; informational `governance`
+   * legal/compliance indicators, per the owner's directive that legal content
+   * must not interact with the financial part).
+   *
+   * Absent ⇒ the cell SCORES. Same back-compat default as `weight` and `kind`:
+   * a builder that has not been taught the field, or a test fixture that omits
+   * it, must not silently blank a score. The 11.66 predecessor of this rule
+   * cost four HeatMap fixtures their scores by guessing the other way.
+   *
+   * Deliberately a denormalized flag rather than a caller-side filter: the
+   * composite is computed at a dozen sites (terminal panels, exports, alert
+   * engine, board deck, PPTX, scenario simulator) and only the aggregator is
+   * common to all of them. Same reasoning as `kind` / `isAggregateRollup` —
+   * never re-derive this in consumer code, read the flag.
+   */
+  scoring?: boolean;
   /** Present only when the recompute pipeline stored an `error` in
    *  `IndicatorValue.inputs`. Gray cells on HeatMap use this to explain
    *  WHY to finance users (formula failure, missing data, out-of-range

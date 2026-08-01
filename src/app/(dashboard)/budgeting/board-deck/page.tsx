@@ -136,6 +136,7 @@ export default async function BoardDeckPage({
     totals,
     generatedAt,
     riskTagsByCompany,
+    nonScoringIndicatorIds,
   } = snapshot;
   type IndicatorShape = (typeof indicators)[number];
   // Phase 7.G Turn XLIX (v2 Turn 3) — `totals.*` consumed by the
@@ -166,6 +167,10 @@ export default async function BoardDeckPage({
         indicators.map((indicator) => [indicator.id, indicator.weight ?? 1]),
       ),
       riskTagsByCompany,
+      // 11.71 — the trend line must be computed on the same scoring rule as the
+      // hero number directly above it (legal/compliance indicators excluded
+      // from the financial composite by product directive).
+      nonScoringIndicatorIds,
     },
     { prisma },
   ).catch((err) => {

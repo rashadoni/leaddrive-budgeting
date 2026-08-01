@@ -10,6 +10,9 @@
  *   - amber  → 50 pts
  *   - red    → 0 pts
  *   - unknown / missing → ignored (no penalty for "data gap")
+ *   - `scoring === false` → skipped entirely, and dropped from `totalCount`
+ *     (11.71 — constants, and the informational legal/compliance indicators
+ *     the owner directed must not interact with the financial part)
  *
  * Phase 7.N C5 v2 — weighted average.
  * Each cell carries a `weight` (from `IndicatorDefinition.weight`, default 1.0).
@@ -117,7 +120,24 @@ export function computeCompositeScore(
   let weightedSum = 0;
   let totalWeight = 0;
   let contributingCount = 0;
+  let nonScoringCount = 0;
   for (const c of cells) {
+    // 11.71 — the single enforcement point for "this indicator does not move
+    // the score". Everything else in the repo either calls this function or
+    // re-aggregates its output, so a rule applied here cannot be forgotten by a
+    // caller — and there are twelve callers, across the terminal, both exports,
+    // the alert engine, the board deck, the PPTX route and the scenario
+    // simulator. Filtering at each of them is what 11.66 tried; it reached two.
+    //
+    // The flag is set by `markNonScoringCells` (indicator-provenance.ts), which
+    // owns the rule: constants, plus the informational `governance` category
+    // (court cases + audit findings). Product directive, not a bug fix — legal
+    // exposure is real and stays fully visible, it is simply not a term in a
+    // FINANCIAL score. Absent flag ⇒ the cell scores.
+    if (c.scoring === false) {
+      nonScoringCount++;
+      continue;
+    }
     const pts = STATUS_PTS[c.status];
     if (pts !== null) {
       const w = c.weight ?? 1.0;
@@ -126,12 +146,29 @@ export function computeCompositeScore(
       contributingCount++;
     }
   }
+  // Coverage denominator — a deliberate decision, and it is NOT the same
+  // decision for both exclusion reasons even though the arithmetic is.
+  //
+  // A constant leaves the denominator because it never could have scored. A
+  // governance cell leaves it because the fraction the UI renders ("5 / 104")
+  // reads as "of the indicators feeding this score, how many have data" — keep
+  // the four in the denominator and the fraction describes a population the
+  // numerator was never averaged against, which is a worse lie than a smaller
+  // total. The four remain fully counted where they are actually about
+  // coverage: the Compliance Hub, the indicator backlog, the freshness
+  // dashboard, and the matrix's own green/amber/red tallies.
+  //
+  // Shrinking also keeps this identical to pre-filtering with
+  // `excludeNonScoringCells`, which removes the cell and so shrinks
+  // `cells.length` — the two mechanisms must agree while both exist, or the
+  // terminal and the board deck report different denominators for one company.
+  const totalCount = cells.length - nonScoringCount;
   if (contributingCount === 0) {
     return {
       score: null,
       band: 'unknown',
       contributingCount: 0,
-      totalCount: cells.length,
+      totalCount,
     };
   }
   const baseScore = Math.round(weightedSum / totalWeight);
@@ -141,7 +178,7 @@ export function computeCompositeScore(
     score,
     band: scoreToBand(score),
     contributingCount,
-    totalCount: cells.length,
+    totalCount,
     ...(penalty > 0 ? { scoreBeforeTags: baseScore, riskTagPenalty: penalty } : {}),
   };
 }

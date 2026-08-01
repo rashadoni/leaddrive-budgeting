@@ -320,6 +320,9 @@ export async function GET(
         formula: i.formula,
         thresholds: i.thresholds,
         requiredInputs: i.requiredInputs ?? [],
+        // 11.71 — threaded through so the simulator's composite obeys the same
+        // scoring gate as every other surface (legal/compliance out).
+        category: i.category ?? null,
         weight: i.weight ?? null,
         unit: i.unit ?? null,
       })),

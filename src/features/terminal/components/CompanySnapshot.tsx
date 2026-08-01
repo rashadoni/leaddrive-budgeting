@@ -120,6 +120,16 @@ export function CompanySnapshot({ companyCode }: Props) {
     // 2026-05-30 — parent/holding rows get the SAME revenue-weighted roll-up
     // as Panel 1/2 (deriveParentComposites) so the composite badge is
     // identical across all three panels for a selected sub-group.
+    //
+    // 11.71 — no scoring filter here on purpose: `data.cells` arrive from the
+    // matrix API already stamped with `scoring: false` on the cells that must
+    // not move a composite (constants; the informational legal/compliance
+    // indicators the owner directed out of the financial number), and
+    // `computeCompositeScore` enforces the flag. Before the flag existed the
+    // "identical across all three panels" claim above was FALSE — Panels 1 and
+    // 2 called the 11.66 caller-side filter and this one did not, so a company
+    // with a constant cell showed two numbers on one screen. Do not re-add a
+    // local filter; the rule lives on the cell.
     const leafById = computeCompositeByCompany(data.cells, undefined, riskTagsByCompanyId);
     return deriveParentComposites(data.companies, leafById);
   }, [data, companyTree]);

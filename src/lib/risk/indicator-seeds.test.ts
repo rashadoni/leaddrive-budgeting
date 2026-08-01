@@ -97,6 +97,48 @@ describe("ALL_INDICATOR_SEEDS — catalog integrity", () => {
     // Loose lower bound — catches a regression that empties out a pack.
     expect(ALL_INDICATOR_SEEDS.length).toBeGreaterThanOrEqual(50)
   })
+
+  /**
+   * 11.71 tripwire — the `governance` category is the runtime key for "this
+   * indicator is informational and must not move a financial score" (owner's
+   * directive: legal/compliance content must be separate and must not interact
+   * with the financial part; rule lives in `countsTowardComposite`).
+   *
+   * Keying on the category rather than a code list is deliberate — a fifth
+   * legal or audit indicator inherits the exclusion by default instead of
+   * silently rejoining the score. The price of that is that a rename, or a
+   * seed miscategorised as `governance`, would change every composite on the
+   * terminal without anyone deciding to. This test is that price: it fails on
+   * a rename AND on an unreviewed addition, forcing the decision into review.
+   *
+   * If you are here because this test went red: the change is legitimate only
+   * if you INTEND the listed indicators to stop (or start) affecting scores.
+   */
+  it("the `governance` category is exactly the four legal/compliance codes", () => {
+    const governance = ALL_INDICATOR_SEEDS.filter(
+      (s) => s.category === "governance",
+    )
+      .map((s) => s.code)
+      .sort()
+    expect(
+      governance,
+      "governance = the non-scoring set (11.71). Adding/renaming one changes every composite score in the product — see countsTowardComposite.",
+    ).toEqual([
+      "AUDIT_CLOSED_PCT",
+      "AUDIT_MAJOR_OPEN",
+      "LEGAL_CASES_ACTIVE",
+      "LEGAL_CASES_TOTAL",
+    ])
+  })
+
+  it("no OTHER category is named like governance (typo guard)", () => {
+    // `countsTowardComposite` matches the category exactly — "Governance" or
+    // "governance " would silently score. Catch the typo at seed time.
+    const suspicious = [
+      ...new Set(ALL_INDICATOR_SEEDS.map((s) => s.category)),
+    ].filter((c) => c !== "governance" && /governance/i.test(c))
+    expect(suspicious).toEqual([])
+  })
 })
 
 describe("IndicatorSeed contract — required fields", () => {
