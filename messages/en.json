@@ -4168,9 +4168,42 @@
           "other": "{n} other note(s) — check these",
           "unit-fix": "{n} column(s) had their units corrected — the figures were changed on import",
           "dictionary": "{n} sheet(s) with product names outside the dictionary — imported under their own code",
-          "off-year": "{n} sheet(s) belong to another year — skipped"
+          "off-year": "{n} sheet(s) belong to another year — skipped",
+          "by-design": "{n} sheet(s) not read on purpose — nothing was lost"
         },
-        "offYearHint": "({years}) — tick “this upload contains …” above to load them too"
+        "offYearHint": "({years}) — tick “this upload contains …” above to load them too",
+        "brief": {
+          "what": "What is in it:",
+          "lost": "What stays empty:",
+          "todo": "What to do:",
+          "raw": "Original message"
+        },
+        "contains": {
+          "table": "{rows} data row(s) × {cols} column(s); the header is not the top row — {preamble} row(s) sit above it.",
+          "tablePlain": "{rows} data row(s) × {cols} column(s), header on the first row.",
+          "noHeader": "{rows} row(s) × {cols} column(s), and no header row could be identified.",
+          "unknown": "The preview does not carry the dimensions of this sheet.",
+          "readAs": "Read as {dataType}, {pct}% confidence.",
+          "readAsNone": "The classifier did not assign a type to this sheet."
+        },
+        "stakes": {
+          "indicators": "{n} indicator(s) stay empty: {codes}.",
+          "broad": "The {dataType} reader feeds {n} different indicators, so which of them this sheet would have filled cannot be predicted — check the sheet type on the “File analysis” tab before treating this as a loss.",
+          "none": "No indicator reads what a {dataType} sheet writes, so the risk score does not move — but the figures themselves still did not land.",
+          "untyped": "Without a sheet type nothing can be said about what is lost — that is itself the thing to fix.",
+          "coveredElsewhere": "All {n} indicator(s) this sheet would have fed are already filled from other sheets in this import — nothing is lost."
+        },
+        "action": {
+          "expectedHeaders": "The reader needs the columns {expected} — rename them in the file and run the preview again.",
+          "roleOrDoctor": "Open the “Guided fixes” tab: if these figures already arrive from another sheet, set Source/Skip to “Skip summary” and rerun the preview. Otherwise run Import Doctor on this sheet — it reads the sheet and proposes a correction you can apply here.",
+          "manualNone": "There is no screen for typing in customer or supplier turnover, so the file itself has to carry it.",
+          "manualDataEntry": "The Data entry page accepts operational metrics by hand — enough to correct one figure, not to replace a sheet.",
+          "backlog": "Nothing disappears silently: whatever stays empty is listed on the Indicator Backlog page."
+        },
+        "byDesign": {
+          "infoSummary": "Read as a summary or index sheet ({dataType}), and this import never writes from one — the detail comes from the source sheets.",
+          "derived": "Marked as a derived summary, so it is skipped on purpose — the detail comes from the source sheets."
+        }
       }
     },
     "single": {

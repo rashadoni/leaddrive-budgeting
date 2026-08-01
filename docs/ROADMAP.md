@@ -913,6 +913,41 @@ controls remain blocked by the serial-audit rule.
 
 ---
 
+## Phase 13: Import assistant — a tool, not a notification (NEW 2026-08-01, owner-requested)
+
+**Owner question that triggered this:** «тут пишет, что три листа не смог прочесть — как теперь финансисту решить, или отдельно добавить, или понять почему не смогло прочесть? тут нужна не просто ассистентность, а реальный рабочий инструмент, который будет работать, исправлять, просить добавлять вручную либо говорить, что и как дальше сделать, чтобы получить всю инфу».
+
+**The moment it was asked.** A live preview reported *"3 sheets could not be read — check them"* and listed `Tech`, `Satış İcmalı`, `Müştəri İcmalı` in one amber block. Two of the three cost nothing: `Tech` is a `Product | Yes/No` reference list with no financial data, and `Satış İcmalı` is a summary of what two other sheets already import in detail. The third cost four indicators — 371 customer rows reaching nothing — and had been failing on **every run since at least 2026-07-31**, where the identical warning sits verbatim in `warning-groups.test.ts`. Nothing on screen distinguished them.
+
+**The governing principle, and it is not negotiable: the model proposes a READING, deterministic code produces the NUMBERS, and the file's own subtotals are the referee.** The model emits a shape descriptor — header row, name column, value columns, dimension columns, orientation — which is data: showable, confirmable, storable in a template, diffable between runs. It never emits an amount.
+
+This is not caution for its own sake. Every defect closed on 2026-08-01 was found by comparing against a total the client had already computed: `PLF.03`, `PLF.08`, `PLF.10` and `Ümumi satış`. Each tied to the cent, and each disagreement was a real defect — 25,674,666 AZN of subsidies sitting in revenue, 1,677,015 of adjustments dropped, 132,770,310 about to land under the wrong account names. Net profit was correct throughout all of it.
+
+**Build order is 13.1 first, deliberately.** Cross-footing protects what already works *and* everything the model adds later. Shipping 13.2 before it would be a new way to be wrong.
+
+| # | Task | Evidence | Est. | Status |
+|---|------|----------|------|--------|
+| 13.1 | **The referee: cross-foot every sheet against the file's own totals, and say so when it agrees.** Generalise what was done by hand today. For each parsed sheet look for a subtotal the workbook computes itself and never imports (`PLF.03/08/10`, the `Ümumi satış` row, a balance-sheet total), compare it to the bottom-up sum, and report the comparison as a first-class result. Agreement must be *stated*, not implied by silence: "the sheet's own PLF.10 matched" is the sentence a finance director is looking for. Turns a green verdict from "I wrote what I parsed" into "I read what you have" — the gap 11.71 documents and the reason a parse-level loss can pass `db-readback`. A prior attempt was backed out for firing an 840.00 false alarm on undecided sign convention; that must be handled, not worked around | Done by hand 2026-08-01: `plf-workbook-dryrun.test.ts`, and the counterparty base tying to `Ümumi satış` at 24,401,350.00 / 8,346,815.29 exactly. Unwired helper at `src/lib/onboarding/adapters/plf-crossfoot.ts`; the blindness it covers is described in 11.71 | 2-3d | ⬜ |
+| 13.2 | **"I can read it": shape proposal, preview, confirm.** The archetype is `Müştəri İcmalı` — the parser knew two shapes and the workbook shipped a third, so 371 rows reached nothing. The right answer was never "tell the user the header is on row 6"; it was to notice and read it. Model returns a shape descriptor; the deterministic parser executes it; the user sees the first rows **exactly as they would be stored**, plus the total and, where 13.1 applies, the comparison against the sheet's own. Confirmation writes the descriptor into the workbook template, so it becomes the operator's decision rather than today's answer from the model | `counterparty-register.ts` now carries two hand-written shapes; a third file needs a third. Template machinery exists (`import-template-memory.ts`) and already stores approved routing | 1w | ⬜ |
+| 13.3 | **"Tell me one thing": the single-question gate.** When a reading is complete except for one fact, ask exactly that, inline, with options — never a free-text box. Live example: `Müştəri İcmalı` has no seller column anywhere, so 371 customers cannot be attributed; on 2026-08-01 the main session asked the owner in a dialog and got "the holding, group-wide". The product must ask that itself. Recurring shapes: whose company · which year when the file spans several · whether intragroup counts | The intragroup answer was later confirmed by the client's own arithmetic — excluding `Qrupdaxili` reproduces `Ümumi satış` to the cent for all 17 months — which is exactly the kind of check the assistant should run *before* asking, and skip the question when the file already answers it | 3-4d | ⬜ |
+| 13.4 | **"Here's what to fix": precise file guidance.** When no shape resolves, name the cell. Not `Missing required column(s): companyCode, metric, date, value, unit` but "row 6, column C must hold the metric name; it currently holds a date". Excel row numbers, not internal indices — `extractWorkbookMeta` reads with `blankrows: false`, so the index and the row number diverge, and 11.84 deliberately printed no row number rather than print a wrong one | Current text is the reader's own error string, surfaced verbatim | 2d | ⬜ |
+| 13.5 | **Manual entry, narrowly.** Only where the file genuinely cannot carry the data. Today the briefing card says, honestly, "there is no screen for typing in customer or supplier turnover, so the file itself has to carry it" — honest, and a dead end. Either a narrow entry surface for these cases, or the assistant accepts the answer in the dialogue and writes it | Deliberately last: it is the smallest slice of cases and the easiest to over-build | 3-4d | ⬜ |
+
+### What the assistant must never do
+
+Stated as prohibitions because each one has a dated cost in this repo.
+
+- **Never adjust a number.** The display-layer compensator in `coa-role.ts` that "fixed" a sign stood from 2026-07-15 and put 25,674,666 AZN in the wrong line while every total stayed correct.
+- **Never resolve an ambiguity silently.** The 2025 sheet files three different subsidy types under the single code `PLF.07.02.04`; a map keyed on the code alone had to get it wrong, and picking one would have been invisible.
+- **Never treat "the total agrees" as proof.** Net profit tied throughout every defect above. Composition is what breaks.
+- **Never let a classification be non-deterministic in a demo.** `Satış İcmalı` classified as `OPS_FACTS` in July and `INFO_SUMMARY` on 2026-08-01 — same sheet, same file, different runs. This is the argument for the model *proposing* and the template *deciding*.
+
+### Prerequisite already met
+
+11.84 shipped the briefing contract these stages fill in: **what is in it / what you lose / what to do**, with deliberately-skipped sheets demoted out of the amber block entirely. 13.2–13.5 exist to make the third part an action rather than advice.
+
+---
+
 ## Data completeness backlog (owner-requested audit, 2026-07-20)
 
 Live-prod audit of the terminal's «нет данных» cells (4 pilot companies × 117
