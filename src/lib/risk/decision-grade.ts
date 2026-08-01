@@ -27,11 +27,35 @@
  * demotion is an owner decision recorded in IMPLEMENTATION-STATUS.md — the
  * evidence is the 0/1269, not a preference.
  *
+ * **Update, 11.86 (2026-08-01) — the lineage half now has a real writer, and
+ * the reconciliation half still does not.** The live AI import records a
+ * `DataRevision` and stamps it on the observations it can prove it produced —
+ * every declared input in `requiredInputs` being workbook data that run wrote
+ * clean-slate (`lineage-coverage.ts`). Measured on production 2026-08-01: 252
+ * of the 1,428 coloured values, and 10 of the 56 coloured cells on the
+ * terminal's default 2025 matrix. The rest read a market feed, a rollup, a
+ * manual fact or a constant and remain untraced by construction. So `no_lineage` stops being
+ * universal, which is what makes the per-cell question answerable at all: at
+ * partial coverage, demotion is no longer a cutover that greys the whole matrix
+ * — it becomes the only mechanism that answers "which ones?".
+ *
+ * `no_reconciliation` did NOT move and was not made to. The import's post-write
+ * verdict (`evidence: "db-readback"`) proves the `budget_line` ROWS it wrote
+ * match what it parsed; `lastReconciledAt` is a claim about a DERIVED value,
+ * and most coloured cells read at least one input that verdict never examined.
+ * Recording it would be the false green this module exists to prevent.
+ *
+ * Two things outside this module still gate the banner, and neither is a data
+ * fact: `summarizeSurfaceGrade` counts synthetic rollup cells that have no
+ * `IndicatorValue` and therefore no reachable state in which they clear, and
+ * `/api/indicators/matrix` selects `computedAt` but never copies it onto the
+ * emitted cell — so `isStale` fails closed on every coloured cell on arrival.
+ *
  * The direction is always safe: this function can only ever *withhold*
  * decision-grade, never grant it.
  */
 
-import type { HeatMapCell } from './heatmap-matrix';
+import { isAggregateRollup, type HeatMapCell } from './heatmap-matrix';
 
 /**
  * Why an observation is not decision-grade. Ordered by how much it should
@@ -223,6 +247,25 @@ export function summarizeSurfaceGrade(
   let decisionGrade = 0;
 
   for (const cell of cells) {
+    // 11.87 — an aggregate is not an observation, and counting it here made
+    // the badge unreachable by construction.
+    //
+    // A synthetic rollup is computed on the client from its children's worst
+    // status: `indicatorValueId: null`, and therefore no `revisionId`, no
+    // `lastReconciledAt` and no `computedAt` — not "untraced yet" but
+    // untraceable, with no state of the world in which it clears. Nineteen of
+    // them sit on the terminal's default 2025 matrix, so `decisionGrade === 0`
+    // held no matter how much lineage the import wrote, and the banner could
+    // never move off `provisionalBadgeAll`.
+    //
+    // Its trustworthiness is exactly its children's, and its children are
+    // counted here already; grading the derivation separately double-counts
+    // the same doubt. Every other consumer of these cells — the composite
+    // score, the alert engine — already drops aggregates via
+    // `isAggregateRollup`. This is that rule, applied where it was missing,
+    // not a relaxation: no cell gains decision-grade from this change, the
+    // denominator simply stops containing rows that cannot answer.
+    if (isAggregateRollup(cell)) continue;
     if (!COLOURED_STATUSES.has(cell.status)) continue;
     coloured += 1;
     if (classifyObservationGrade(cell, now, opts).grade === 'decision-grade') {

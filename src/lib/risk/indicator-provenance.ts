@@ -57,7 +57,7 @@ export type IndicatorProvenance =
  * alone silently mis-classified `news.sentiment30d` as client data; caught by
  * the test that walks the real production families rather than a fixture.
  */
-function inputFamily(input: string): string {
+export function inputFamily(input: string): string {
   return input.split(/[:.]/)[0]
 }
 

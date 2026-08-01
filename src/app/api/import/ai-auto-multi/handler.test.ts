@@ -155,7 +155,14 @@ function defaultOrchResult() {
       promptVersion: "v1",
     },
     durationMs: 100,
-    recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+    recompute: { ok: 0, unknown: 0, failed: 0, targets: 0, traced: 0 },
+    lineage: {
+      revisionId: null as string | null,
+      created: false,
+      companyCodes: [] as string[],
+      families: [] as string[],
+      reason: "dryRun=true — nothing was written" as string | null,
+    },
     parseMetrics: {
       workbookSheets: 1,
       classifiedSheets: 0,
@@ -342,7 +349,7 @@ describe("POST /api/import/ai-auto-multi", () => {
     orchResult.perGroup[0].committed = true
     orchResult.perGroup[0].skipReason = null
     orchResult.perGroup[0].totalRowsInserted = 12
-    orchResult.recompute = { ok: 0, unknown: 0, failed: 1, targets: 1 }
+    orchResult.recompute = { ok: 0, unknown: 0, failed: 1, targets: 1, traced: 0 }
     orchestratorMock.runMultiFileImport.mockResolvedValue(orchResult)
 
     const res = await POST(
@@ -721,6 +728,116 @@ describe("POST /api/import/ai-auto-multi", () => {
       expect(res.status).toBe(400)
       expect((await res.json()).error).toMatch(/At most 6 years/)
       expect(orchestratorMock.runMultiFileImport).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("lineage (11.86)", () => {
+    it("hands the orchestrator a SHA-256 of the uploaded bytes", async () => {
+      // The digest has to be taken in the route, from `buf`, because that is
+      // the last point at which the original file exists: `XLSX.read` returns
+      // an object the deterministic splitters then mutate. Without it the
+      // orchestrator has only a filename, and two unrelated uploads are
+      // routinely both called budget.xlsx.
+      await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+      orchestratorMock.runMultiFileImport.mockResolvedValue(defaultOrchResult())
+
+      const res = await POST(makeMultipartRequest({ fileCount: 1 }) as never)
+
+      expect(res.status).toBe(200)
+      const call = orchestratorMock.runMultiFileImport.mock.calls[0]
+      const files = call[0].files as Array<{ contentSha256?: string }>
+      expect(files).toHaveLength(1)
+      expect(files[0].contentSha256).toMatch(/^[a-f0-9]{64}$/)
+    })
+
+    it("reports the revision per YEAR, not once for the whole request", async () => {
+      // `result` holds the LAST year processed while the receipt's `year` is
+      // `importYears[0]`. Collapsing lineage into one field would label the
+      // 2026 revision as 2025 — the same first-year-only conflation the period
+      // lock, stale-sibling and backlog checks already suffer from.
+      await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+      let n = 0
+      orchestratorMock.runMultiFileImport.mockImplementation(async () => {
+        n += 1
+        const r = defaultOrchResult()
+        r.perGroup[0].committed = true
+        r.perGroup[0].skipReason = null
+        r.recompute = { ok: 4, unknown: 0, failed: 0, targets: 4, traced: n }
+        r.lineage = {
+          revisionId: `rev_${2024 + n}`,
+          created: true,
+          companyCodes: ["AZSEKER-CPC"],
+          families: ["budgetLine"],
+          reason: null,
+        }
+        return r
+      })
+
+      const res = await POST(
+        makeMultipartRequest({
+          fileCount: 1,
+          apply: "1",
+          years: "2025,2026",
+        }) as never,
+      )
+
+      const body = (await res.json()) as {
+        safetyReceipt: {
+          lineage: Array<{
+            year: number
+            revisionId: string | null
+            tracedIndicatorValues: number
+            notRecordedReason: string | null
+          }>
+        }
+      }
+      expect(body.safetyReceipt.lineage).toEqual([
+        {
+          year: 2025,
+          revisionId: "rev_2025",
+          created: true,
+          companies: ["AZSEKER-CPC"],
+          families: ["budgetLine"],
+          tracedIndicatorValues: 1,
+          notRecordedReason: null,
+        },
+        {
+          year: 2026,
+          revisionId: "rev_2026",
+          created: true,
+          companies: ["AZSEKER-CPC"],
+          families: ["budgetLine"],
+          tracedIndicatorValues: 2,
+          notRecordedReason: null,
+        },
+      ])
+    })
+
+    it("says why no revision was written rather than omitting the field", async () => {
+      await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+      const r = defaultOrchResult()
+      r.lineage = {
+        revisionId: null,
+        created: false,
+        companyCodes: [],
+        families: [],
+        reason: "no committed PLF/BS/CF actual-plan writes",
+      }
+      orchestratorMock.runMultiFileImport.mockResolvedValue(r)
+
+      const res = await POST(makeMultipartRequest({ fileCount: 1 }) as never)
+      const body = (await res.json()) as {
+        safetyReceipt: {
+          lineage: Array<{
+            revisionId: string | null
+            notRecordedReason: string | null
+          }>
+        }
+      }
+      expect(body.safetyReceipt.lineage[0].revisionId).toBeNull()
+      expect(body.safetyReceipt.lineage[0].notRecordedReason).toMatch(
+        /no committed PLF\/BS\/CF/,
+      )
     })
   })
 })

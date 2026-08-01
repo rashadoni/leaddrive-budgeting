@@ -49,7 +49,10 @@ describe('createPrismaDataSource.upsertIndicatorValue — revision scope guard',
           { companyIds: { has: 'co_1' } },
         ],
       },
-      select: { id: true },
+      // `reason` is projected because the guard also refuses `external_refresh`
+      // revisions (11.86) — external evidence is shadow-only by construction
+      // and must never become an observation's lineage.
+      select: { id: true, reason: true },
     });
     expect(upsert).toHaveBeenCalledTimes(1);
     expect(upsert.mock.calls[0][0].create.revisionId).toBe('rev_1');

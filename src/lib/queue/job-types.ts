@@ -31,6 +31,26 @@ export interface RecomputeBatchJob {
   targets: ReadonlyArray<{ companyId: string; year: number }>
   actorUserId?: string
   reason?: string
+  /**
+   * Phase 11.86 — the import revision this batch may stamp, if the enqueuer
+   * holds one.
+   *
+   * The type is the SERIALISED form, not `ImportLineage`: BullMQ stores job
+   * data as JSON in Redis, and a `Map` round-trips to `{}` — silently, with no
+   * type error, producing a job that looks lineage-bearing and covers nobody.
+   * The processor rehydrates through `deserializeImportLineage`, which also
+   * drops family names a newer deploy invented, so a worker never vouches for
+   * coverage it does not understand.
+   *
+   * Omitted means untraced, which is what every enqueuer does today: the
+   * fan-out above `SYNC_THRESHOLD` in `POST /api/indicators` is triggered by an
+   * indicator-definition change, not by an import, and has no revision to
+   * carry. The AI import never reaches this queue at all — it recomputes
+   * in-process at the end of `runMultiFileImport`. The field exists so that the
+   * day an import-driven enqueuer appears, dropping the revision is a
+   * deliberate omission rather than an invisible one.
+   */
+  lineage?: import("@/lib/risk/lineage-coverage").SerializedImportLineage
 }
 
 /** Multi-file AI import job — wraps the existing `runMultiFileImport`

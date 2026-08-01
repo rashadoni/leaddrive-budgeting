@@ -128,6 +128,7 @@ describe('runRecomputeForCompanies', () => {
       unknown: 0,
       failed: 0,
       targets: 0,
+      traced: 0,
       alertEvents: {
         periodsPersisted: 0,
         totalCreated: 0,
@@ -183,6 +184,7 @@ describe('runRecomputeForCompanies', () => {
       unknown: 0,
       failed: 0,
       targets: 0,
+      traced: 0,
       alertEvents: {
         periodsPersisted: 0,
         totalCreated: 0,

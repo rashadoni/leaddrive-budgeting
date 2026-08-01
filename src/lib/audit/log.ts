@@ -148,7 +148,40 @@ export type AuditEventInput =
         reconciliationEvidence?: string;
         /** Did every uploaded file's data actually land (Phase 11.3)? */
         complete?: boolean;
-        recompute: { ok: number; unknown: number; failed: number; targets: number };
+        recompute: {
+          ok: number;
+          unknown: number;
+          failed: number;
+          targets: number;
+          /** Phase 11.86 — IndicatorValues written carrying a `revisionId`. */
+          traced?: number;
+        };
+        /**
+         * Phase 11.86 — the run ↔ revision join.
+         *
+         * `DataRevision` deliberately does NOT carry the run id: its content
+         * hash is the source-state identity, and a timestamped run id inside it
+         * would make every re-import of unchanged bytes look like a source
+         * change. So the link lives here, next to `evidenceRunId`, which makes
+         * this row the hinge between an observation's lineage
+         * (`IndicatorValue.revisionId`) and its import's reconciliation
+         * evidence (`import_batch_reports.runId`).
+         */
+        revisions?: Array<{
+          /** One entry per imported year — a revision's period range IS a year. */
+          year: number;
+          revisionId: string | null;
+          /** False when an identical revision already existed (unchanged re-import). */
+          created: boolean;
+          /** Company codes the revision attests to. */
+          companies: string[];
+          /** Families proved (`budgetLine` | `balanceSheetLine` | `cashFlow`). */
+          families: string[];
+          /** IndicatorValues written carrying this revision. */
+          tracedIndicatorValues: number;
+          /** Why no revision was written. Null when one was. */
+          notRecordedReason: string | null;
+        }>;
         // Phase 7.G Turn CXI (Phase 7.B v2 Day 4) — multi-sheet apply
         // emits this same enum value with these optional fields populated.
         // Reusing import_staging_apply (vs adding a new enum value) avoids

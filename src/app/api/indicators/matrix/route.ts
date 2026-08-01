@@ -624,6 +624,14 @@ export async function GET(request: NextRequest) {
           // audit run; null when not yet audited.
           ...(v.sanityBand ? { sanityBand: v.sanityBand as 'normal' | 'low_extreme' | 'high_extreme' | 'missing_input' | 'no_band' } : {}),
           ...(v.lastReconciledAt ? { lastReconciledAt: v.lastReconciledAt.toISOString() } : {}),
+          // 11.87 — the freshness stamp, which this route has selected since
+          // Stage A4 and never emitted. `isStale` fails CLOSED on an absent
+          // timestamp, so every coloured cell arrived at the client already
+          // stale and the decision-grade banner could not be cleared by any
+          // amount of lineage or reconciliation. Measured the day this landed:
+          // 0 of 6,460 rows were actually stale — all computed that morning.
+          // Three missing lines were holding the whole gate shut.
+          ...(v.computedAt ? { computedAt: v.computedAt.toISOString() } : {}),
         };
       });
 
@@ -751,6 +759,11 @@ export async function GET(request: NextRequest) {
         // Phase 10 / Stage B5 — same omit-when-untraced contract as the
         // operational cells above.
         ...(v.revisionId ? { revisionId: v.revisionId } : {}),
+        // 11.87 — both were selected for this builder and neither was emitted,
+        // so a real parent rollup could not clear `no_reconciliation` or
+        // `stale` even with the stamps present in its own row.
+        ...(v.lastReconciledAt ? { lastReconciledAt: v.lastReconciledAt.toISOString() } : {}),
+        ...(v.computedAt ? { computedAt: v.computedAt.toISOString() } : {}),
         // Sub-44 cont'd architect 💡 closure — discriminated-union
         // `kind` field replaces the legacy `isRealParentRollup` boolean.
         // Distinguishes from synthetic averages (different drill-down

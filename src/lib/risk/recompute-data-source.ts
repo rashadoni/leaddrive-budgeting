@@ -642,7 +642,7 @@ export function createPrismaDataSource(
               { companyIds: { has: companyId } },
             ],
           },
-          select: { id: true },
+          select: { id: true, reason: true },
         });
         if (!revision) {
           // One message for "missing", "belongs to another org", and "does
@@ -650,6 +650,27 @@ export function createPrismaDataSource(
           // revision scope by distinguishing the cases.
           throw new Error(
             `upsertIndicatorValue: revision ${revisionId} not found in organization ${organizationId}`,
+          );
+        }
+        // Phase 11.86 — external evidence must never become observation
+        // lineage. `external-source-lineage.ts` builds every feed artifact as
+        // `shadowOnly: true, decisionEligible: false` and says in its own
+        // header that "there is intentionally no switch that can make external
+        // evidence decision-grade". `revisionId` IS that switch: it is the one
+        // field A5's gate reads for the `no_lineage` reason, so stamping an
+        // `external_refresh` revision would hand a commodity feed the exact
+        // property the module was written to deny it.
+        //
+        // Enforced here rather than at the caller for the same reason the org
+        // check is: this adapter is the only place an IndicatorValue is
+        // written, so a rule kept upstream is a rule the next caller can skip.
+        // The message is distinct from the not-found one above — by this point
+        // the caller has already proved it can see the revision, so naming the
+        // reason leaks nothing and turns a silent false-provenance into a
+        // loud programming error.
+        if (revision.reason === 'external_refresh') {
+          throw new Error(
+            `upsertIndicatorValue: revision ${revisionId} is external_refresh — external evidence is shadow-only and cannot be stamped as observation lineage`,
           );
         }
       }
@@ -735,6 +756,28 @@ export function createPrismaDataSource(
           // gate will then report it. Presence therefore means "this revision
           // produced this number", never "some revision once did".
           revisionId: revisionId ?? null,
+          // Phase 11.86 — the same rule, applied to the field that was missing
+          // it. `lastReconciledAt` is the claim "this number was checked
+          // against its source"; `sanityBand` is the verdict of that check.
+          // Both are properties of the `value` seven lines up, exactly like
+          // `revisionId` — and until now `upsertIndicatorValue` never touched
+          // them, so a stamp outlived every number it certified. An audit run
+          // that verified 100 and a recompute that then wrote 140 left the row
+          // reading "Сверено · 01 Aug 2026" over the 140.
+          //
+          // Nothing re-supplies them here on purpose: recompute is not a
+          // reconciliation and must not pretend to perform one. The correct
+          // outcome of recomputing a value is that its reconciliation state
+          // reverts to unproven, and the next real check re-stamps it.
+          //
+          // Blast radius today is zero — production carries 0 rows with a
+          // reconciliation stamp — and the direction is fail-closed for all
+          // three consumers (`trust-status.ts` verified→partial,
+          // `/api/admin/drift` re-lists the company as stale-pending,
+          // `TrustAuditStrip` shows no audited date).
+          lastReconciledAt: null,
+          reconciledBy: null,
+          sanityBand: null,
         },
       });
     },

@@ -116,6 +116,19 @@ import {
   runRecomputeForCompanies,
   type RunRecomputeResult,
 } from "@/lib/risk/recompute-trigger"
+import {
+  aiSheetMappingVersionId,
+  buildAiImportRevisionScope,
+  LineageScopeError,
+  type AiSheetMappingDecision,
+} from "@/lib/risk/import-lineage"
+import { ensureDataRevision } from "@/lib/risk/data-revision-writer"
+import {
+  coverableFamilyForDataType,
+  planKindCoversFamily,
+  type ImportCoverableFamily,
+  type ImportLineage,
+} from "@/lib/risk/lineage-coverage"
 
 /** Hard cap on concurrent LLM calls — protects against Anthropic rate
  *  limits when uploading 10 files at once. Picked as 3 because per
@@ -220,6 +233,21 @@ export interface MultiFileImportInput {
     // Phase 8 D3 (2026-05-28) — tightened to XLSX.WorkBook so the
     // adapter chain doesn't need `as any` bridges.
     workbook: XLSXType.WorkBook
+    /**
+     * Phase 11.86 — SHA-256 of the ORIGINAL uploaded bytes, lowercase hex.
+     *
+     * The source-artifact identity of this file, and the only thing in the run
+     * that an auditor can resolve back to a byte sequence. Supplied by the
+     * caller because the orchestrator never sees the bytes: the route reads
+     * them, hands over a parsed `XLSX.WorkBook`, and the deterministic
+     * splitters then MUTATE that workbook's `SheetNames` — so a digest taken
+     * here would fingerprint a derivative that never existed on disk.
+     *
+     * Omit it and the run simply writes no `DataRevision` (with a warning).
+     * That is deliberate: a provenance record whose artifact is a filename
+     * would hash two unrelated `budget.xlsx` uploads to the same source state.
+     */
+    contentSha256?: string
     /** Per-FILE sheet-map (deterministic role/planKind/entity overrides) — set by
      *  the caller based on THIS file's shape (e.g. looksLikeReportingPack on its
      *  own tabs). Per-file, NOT request-wide, so a sibling file with a same-named
@@ -380,6 +408,29 @@ export interface MultiFileImportResult {
     unknown: number
     failed: number
     targets: number
+    /** Phase 11.86 — IndicatorValues written carrying `revisionId`. */
+    traced: number
+  }
+  /**
+   * Phase 11.86 — the provenance record this run wrote, and what it claims.
+   *
+   * `revisionId: null` with a `reason` is the normal shape for a dry run, a run
+   * that committed nothing, or a caller that supplied no byte digests. It is
+   * never an error — an import that cannot name its source honestly says so
+   * and leaves every value untraced, which is what the whole matrix looks like
+   * today.
+   */
+  lineage: {
+    revisionId: string | null
+    /** False when an identical revision already existed (re-import, no change). */
+    created: boolean
+    /** Company codes the revision attests to. */
+    companyCodes: string[]
+    /** Input families proved, unioned across companies. Per-company coverage is
+     *  finer and is what actually gated the stamps. */
+    families: string[]
+    /** Why no revision was written. Null when one was. */
+    reason: string | null
   }
   /** Dry-run benchmark counters. These are informational and never drive writes. */
   parseMetrics: MultiFileParseMetrics
@@ -437,6 +488,22 @@ export interface MultiFileImportDependencies {
 // ──────────────────────────────────────────────────────────────────────
 // Internal helpers
 // ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Phase 11.86 — the lineage shape for a run that wrote nothing.
+ *
+ * Pre-write aborts (blocked sheets, unresolved conflicts, year mismatch) return
+ * early with `perGroup: []`. `revisionId: null` there is not a degraded result:
+ * no rows committed, so there is no source state to pin, and a revision would
+ * attest to an import that did not happen.
+ */
+const NO_LINEAGE_ABORTED: MultiFileImportResult["lineage"] = {
+  revisionId: null,
+  created: false,
+  companyCodes: [],
+  families: [],
+  reason: "import aborted before any write — nothing to attest",
+}
 
 /** Lightweight p-limit replacement — caps concurrent promise execution. */
 async function withConcurrency<T, R>(
@@ -1355,7 +1422,8 @@ export async function runMultiFileImport(
       overallVerdict: "red",
       llmUsage: aggLlmUsage,
       durationMs: Date.now() - t0,
-      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0, traced: 0 },
+      lineage: NO_LINEAGE_ABORTED,
       parseMetrics,
       // Phase 11.3 — a pre-write abort writes NOTHING, so the run is
       // incomplete by definition; buildCompleteness() would otherwise see an
@@ -1411,7 +1479,8 @@ export async function runMultiFileImport(
       overallVerdict: "red",
       llmUsage: aggLlmUsage,
       durationMs: Date.now() - t0,
-      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0, traced: 0 },
+      lineage: NO_LINEAGE_ABORTED,
       parseMetrics,
       completeness: {
         complete: false,
@@ -1446,7 +1515,8 @@ export async function runMultiFileImport(
       overallVerdict: "red",
       llmUsage: aggLlmUsage,
       durationMs: Date.now() - t0,
-      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0, traced: 0 },
+      lineage: NO_LINEAGE_ABORTED,
       parseMetrics,
       completeness: {
         complete: false,
@@ -1487,6 +1557,24 @@ export async function runMultiFileImport(
 
   const perGroup: PerGroupResult[] = []
   const touchedCompanies = new Set<string>()
+
+  // ── Phase 11.86 — lineage bookkeeping ────────────────────────────
+  //
+  // Kept strictly apart from `touchedCompanies`, which is deliberately the
+  // WIDER set: recompute should refresh anything a group may have disturbed,
+  // including sheets that parsed zero rows and cross-entity registers. A
+  // revision may claim only what was proved, so these three collect committed
+  // write RESULTS and nothing else — populated inside the group transaction,
+  // merged only after `$transaction` returns. A rolled-back group contributes
+  // nothing because the merge never runs.
+  /** company code → the input families this run wrote clean-slate for it. */
+  const coveredFamiliesByCode = new Map<string, Set<ImportCoverableFamily>>()
+  /** company code → rows inserted, so `committedCompanyIds` can filter on >0. */
+  const insertedRowsByCode = new Map<string, number>()
+  /** Files that contributed at least one committed write. */
+  const committedFilenames = new Set<string>()
+  /** Sheet routing decisions behind those writes — the mapping fingerprint. */
+  const committedMappingDecisions: AiSheetMappingDecision[] = []
 
   for (const [fileType, filenames] of orderedGroups) {
     // Files of `unknown` type are flagged but never auto-applied —
@@ -1602,14 +1690,62 @@ export async function runMultiFileImport(
       (typeof groupRecords)[number],
       ReconciliationReport | null
     >()
+    /**
+     * Phase 11.86 — this group's proved writes, staged until the tx commits.
+     * Filled inside the callback, merged into the run-level maps only after
+     * `$transaction` resolves, so a rollback silently discards the claim.
+     */
+    let groupCoverage: Array<{
+      code: string
+      family: ImportCoverableFamily
+      inserted: number
+      decision: AiSheetMappingDecision
+      filename: string
+    }> = []
     try {
       await deps.prisma.$transaction(async (tx) => {
+        // Prisma does not retry an interactive transaction, but resetting is
+        // free and makes a re-entered callback impossible to double-count.
+        groupCoverage = []
         for (const r of groupRecords) {
           if (!r.adapterResult) continue
           const applied = await r.adapterResult.applyToDb(tx)
           totalRowsInserted += applied.rowsInserted
           for (const code of applied.touchedCompanyCodes ?? []) {
             adapterTouchedCodes.add(code)
+          }
+          // ── Lineage: does this write earn a claim? ──────────────
+          // Three conditions, all necessary:
+          //  • rows actually landed — a sheet that parsed to nothing changed
+          //    nothing, and `committedCompanyIds` would drop it anyway;
+          //  • the dataType maps to a family whose batch clean-slates the
+          //    (plan × company × year) scope (PLF/BS/CF — not KPI, SALES or a
+          //    settings blob, whose adapters make no such guarantee);
+          //  • the plan kind is the one the indicator resolvers read. A
+          //    `budget` plan is invisible to `listBudgetLines`, so writing one
+          //    produces no observation and must claim none.
+          const ec = writeEntity(r)
+          const family = coverableFamilyForDataType(r.classification.dataType)
+          if (
+            ec &&
+            family &&
+            applied.rowsInserted > 0 &&
+            planKindCoversFamily(r.effectivePlanKind)
+          ) {
+            groupCoverage.push({
+              code: ec,
+              family,
+              inserted: applied.rowsInserted,
+              filename: r.filename,
+              decision: {
+                filename: r.filename,
+                sheetName: r.classification.sheetName,
+                dataType: r.classification.dataType,
+                entityCode: ec,
+                planKind: r.effectivePlanKind ?? null,
+                role: r.classification.role ?? null,
+              },
+            })
           }
           // Phase 11.2 — capture the batch layer's post-write DB re-read.
           // `undefined` means this adapter writes nothing reconcilable (a
@@ -1725,6 +1861,23 @@ export async function runMultiFileImport(
         // 5000ms → "Transaction already closed"). 2026-06-22.
       }, { maxWait: 15_000, timeout: 120_000 })
 
+      // The transaction returned, so every write above is durable. Only now
+      // may the run-level lineage bookkeeping learn about them.
+      for (const c of groupCoverage) {
+        let families = coveredFamiliesByCode.get(c.code)
+        if (!families) {
+          families = new Set<ImportCoverableFamily>()
+          coveredFamiliesByCode.set(c.code, families)
+        }
+        families.add(c.family)
+        insertedRowsByCode.set(
+          c.code,
+          (insertedRowsByCode.get(c.code) ?? 0) + c.inserted,
+        )
+        committedFilenames.add(c.filename)
+        committedMappingDecisions.push(c.decision)
+      }
+
       perGroup.push({
         fileType,
         filenames,
@@ -1791,6 +1944,14 @@ export async function runMultiFileImport(
     unknown: 0,
     failed: 0,
     targets: 0,
+    traced: 0,
+  }
+  let lineageResult: MultiFileImportResult["lineage"] = {
+    revisionId: null,
+    created: false,
+    companyCodes: [],
+    families: [],
+    reason: input.dryRun ? "dryRun=true — nothing was written" : "no committed statement writes",
   }
   if (touchedCompanies.size > 0 && !input.dryRun) {
     try {
@@ -1799,12 +1960,130 @@ export async function runMultiFileImport(
           organizationId: input.organizationId,
           code: { in: Array.from(touchedCompanies) },
         },
-        select: { id: true },
+        select: { id: true, code: true },
       })
       const affected = companies.map((c) => ({
         companyId: c.id,
         year: input.year,
       }))
+
+      // ── Phase 11.86: name the source before recomputing from it ──
+      //
+      // Created here, between the last group commit and the recompute, and
+      // the ordering is the whole design. The staging routes put their
+      // `ensureDataRevision` inside the one transaction that writes the rows;
+      // this pipeline has no such transaction — it runs one per file-type
+      // group on purpose, so a failing BS group cannot roll back a good PLF
+      // group. There is no boundary to join, so the guarantee is restated in
+      // the direction that matters: the scope is built from `groupCoverage`
+      // entries that were merged only after their `$transaction` returned, so
+      // a revision can never describe data that rolled back. The converse —
+      // the process dying here, leaving committed rows untraced — is the
+      // benign failure, indistinguishable from every row in production today
+      // and repaired by the next import.
+      //
+      // Non-fatal throughout. Lineage is a record ABOUT an import; failing to
+      // write it must never fail the import that already committed.
+      let lineage: ImportLineage | undefined
+      try {
+        const idByCode = new Map(companies.map((c) => [c.code, c.id]))
+        const orgCompanyIds = new Set(companies.map((c) => c.id))
+        const artifactIds = input.files
+          .filter((f) => committedFilenames.has(f.filename))
+          .map((f) => f.contentSha256)
+          .filter((sha): sha is string => typeof sha === "string" && sha.length > 0)
+          .map((sha) => `workbook-sha256:${sha}`)
+
+        const coverageByCompanyId = new Map<string, Set<ImportCoverableFamily>>()
+        const writes: Array<{ companyId: string; inserted: number; deleted: number }> = []
+        for (const [code, families] of coveredFamiliesByCode) {
+          const id = idByCode.get(code)
+          // A code with no company row wrote nothing this process can name.
+          // Dropping it is fail-closed; `buildAiImportRevisionScope` would
+          // reject it as `cross_org_company` anyway.
+          if (!id) continue
+          coverageByCompanyId.set(id, families)
+          writes.push({
+            companyId: id,
+            // `committedCompanyIds` uses this only as a >0 predicate.
+            inserted: insertedRowsByCode.get(code) ?? 0,
+            deleted: 0,
+          })
+        }
+
+        if (coverageByCompanyId.size === 0) {
+          lineageResult = {
+            ...lineageResult,
+            reason:
+              "no committed PLF/BS/CF actual-plan writes — nothing an import revision can attest to",
+          }
+        } else if (artifactIds.length === 0) {
+          // Refusing rather than substituting a filename: two unrelated
+          // uploads are routinely both called budget.xlsx, and a
+          // filename-keyed revision would hand the second one the first's
+          // lineage (`import-lineage.ts` header).
+          lineageResult = {
+            ...lineageResult,
+            reason:
+              "caller supplied no workbook contentSha256 — a revision with no resolvable artifact would name no source",
+          }
+          warnings.push(
+            "Lineage not recorded: the import was called without workbook content hashes, " +
+              "so the values it produced cannot name the file they came from.",
+          )
+        } else {
+          const scope = buildAiImportRevisionScope({
+            organizationId: input.organizationId,
+            workbookArtifactIds: artifactIds,
+            mappingVersionId: aiSheetMappingVersionId(
+              committedMappingDecisions,
+              (input.semanticCoaMappings ?? []).map(
+                (m) => [m.sourceLabel, m.targetCode ?? ""] as const,
+              ),
+            ),
+            targetYear: input.year,
+            writes,
+            organizationCompanyIds: orgCompanyIds,
+          })
+          const ensured = await ensureDataRevision(deps.prisma, {
+            scope,
+            reason: "import",
+            createdById: input.actorUserId ?? null,
+          })
+          lineage = {
+            revisionId: ensured.id,
+            periodFrom: scope.periodFrom,
+            periodTo: scope.periodTo,
+            coverageByCompanyId,
+          }
+          const codeById = new Map(companies.map((c) => [c.id, c.code]))
+          lineageResult = {
+            revisionId: ensured.id,
+            created: ensured.created,
+            companyCodes: scope.companyIds
+              .map((id) => codeById.get(id) ?? id)
+              .sort(),
+            families: [
+              ...new Set(
+                [...coverageByCompanyId.values()].flatMap((s) => [...s]),
+              ),
+            ].sort(),
+            reason: null,
+          }
+        }
+      } catch (err) {
+        const msg =
+          err instanceof LineageScopeError
+            ? err.reasonCode
+            : err instanceof Error
+              ? err.message
+              : String(err)
+        lineageResult = { ...lineageResult, reason: `lineage failed: ${msg}` }
+        warnings.push(
+          `Lineage not recorded (non-fatal): ${msg}. The imported rows are committed; ` +
+            "the indicator values computed from them stay untraced.",
+        )
+      }
       const r: RunRecomputeResult = await runRecomputeForCompanies(
         deps.prisma,
         input.organizationId,
@@ -1821,6 +2100,9 @@ export async function runMultiFileImport(
           // the year period left every month/quarter indicator cell showing
           // its pre-import value and pre-import status colour indefinitely.
           granularity: "year+quarter+month",
+          // Phase 11.86 — `undefined` when no revision was written, which
+          // restores the pre-existing fully-untraced behaviour exactly.
+          lineage,
         },
       )
       recompute = {
@@ -1828,6 +2110,17 @@ export async function runMultiFileImport(
         unknown: r.unknown,
         failed: r.failed,
         targets: r.targets,
+        traced: r.traced,
+      }
+      if (lineage && r.traced === 0) {
+        // A revision exists and nothing carried it. Not a crash, but the run
+        // did not deliver what the revision implies, so it must not pass in
+        // silence.
+        warnings.push(
+          "A data revision was recorded but no indicator value could carry it — " +
+            "every recomputed indicator reads at least one input this import does not write " +
+            "(market feeds, rollups, manual facts) or falls outside the revision's period.",
+        )
       }
       // No silent caps: if the granular fan-out was too large it fell back to
       // year-only, and the user must know month/quarter cells are stale.
@@ -1854,6 +2147,7 @@ export async function runMultiFileImport(
     llmUsage: aggLlmUsage,
     durationMs: Date.now() - t0,
     recompute,
+    lineage: lineageResult,
     parseMetrics,
     completeness: buildCompleteness(perFile, perGroup, input.dryRun === true),
     warnings,
