@@ -29,6 +29,23 @@ import type { PrismaClient } from "@prisma/client"
  *  users in the Recently-Deleted UI. */
 export const SOFT_DELETE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
+/**
+ * The same window in days, for the copy that quotes it.
+ *
+ * 2026-07-31 — the Delete data screen used to quote a dead 90-day constant,
+ * so the previous pass removed the number from that screen entirely. Silence
+ * was the other kind of wrong: it made "can be brought back from this page"
+ * read as an offer with no expiry, on the one screen in the product that did
+ * not state the window (`budgeting.restoreSectionTitle` states it, correctly).
+ * The number is back, DERIVED, so it cannot drift from the job again.
+ *
+ * This module imports only `type PrismaClient`, so client components can
+ * import this constant without pulling Prisma into the browser bundle.
+ */
+export const SOFT_DELETE_RETENTION_DAYS = Math.round(
+  SOFT_DELETE_TTL_MS / (24 * 60 * 60 * 1000),
+)
+
 export interface CleanupCounts {
   budgetPlans: number
   cashFlowEntries: number

@@ -32,11 +32,19 @@ function fakePrisma(settings: Record<string, unknown>) {
       }),
     },
   }
+  const $transaction = vi.fn(
+    async (cb: (tx: unknown) => Promise<unknown>, _options?: unknown) => cb(tx),
+  )
   const prisma = {
     company: { findFirst: vi.fn(async () => ({ id: "co_1", settings })) },
-    $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(tx)),
+    $transaction,
   }
-  return { prisma: prisma as never, tx, getUpdatedSettings: () => updatedSettings }
+  return {
+    prisma: prisma as never,
+    tx,
+    $transaction,
+    getUpdatedSettings: () => updatedSettings,
+  }
 }
 
 describe("resetCompanyImportData", () => {
@@ -73,11 +81,26 @@ describe("resetCompanyImportData", () => {
       cashFlowEntry: 8,
       counterparty: 3,
       operationalFact: 12,
-      budgetActual: 4,
+      budgetActualImported: 4,
       salesBudgetLine: 6,
       indicatorValue: 9,
-      settingsKeys: 1,
     })
+    // 2026-07-31 — a YEAR-scoped reset does not touch the records tail. It
+    // used to delete all 14 settings keys regardless of year, so "clear 2026"
+    // destroyed every court case, audit finding, risk-register row and — the
+    // expensive part — every Compliance Hub close, assignment, deadline and
+    // comment, for all time. Those records carry no year; a year-scoped
+    // delete has no claim on them.
+    expect(tx.company.update).not.toHaveBeenCalled()
+    expect(res.breakdown.recordsCompliance).toBeUndefined()
+    expect(res.breakdown.settingsKeys).toBeUndefined()
+    // Hand-entered actuals (source: null) are kept unless asked for; only
+    // the imported ones go, and a re-upload brings those back.
+    const baArgs = tx.budgetActual.deleteMany.mock.calls as unknown as Array<
+      [{ where: Record<string, unknown> }]
+    >
+    expect(baArgs).toHaveLength(1)
+    expect(baArgs[0][0].where).toMatchObject({ source: { not: null } })
     // SalesBudgetLine has no companyId — scope travels through the
     // entity-namespaced ProductLine.code.
     const sblArg = tx.salesBudgetLine.deleteMany.mock.calls[0] as unknown as [
@@ -97,8 +120,89 @@ describe("resetCompanyImportData", () => {
       companyId: "co_1",
       period: { startsWith: "2025" },
     })
-    expect(res.rowsAffected).toBe(10 + 5 + 8 + 3 + 12 + 4 + 6 + 9 + 1)
+    expect(res.rowsAffected).toBe(10 + 5 + 8 + 3 + 12 + 4 + 6 + 9)
     expect(res.auditEventId).toBe("audit_1")
+  })
+
+  // ── 2026-07-31 — the transaction had no budget ──────────────────────
+  //
+  // Eight statements including a `ProductLine.code` relation subquery and two
+  // unindexed prefix scans, against Prisma's 5-second default. A P2028 rolls
+  // this company back while the LOOP above it has already committed others,
+  // so the operator is handed a 207 describing a half-reset holding. Every
+  // import path already asks for 60-120 s.
+  it("gives the transaction a real time budget", async () => {
+    const { prisma, $transaction } = fakePrisma({})
+    await resetCompanyImportData({
+      prisma,
+      actorUserId: "u1",
+      scope: { organizationId: "org1", companyCode: "AZSEKER-CPC", year: 2025 },
+    })
+    expect($transaction.mock.calls[0][1]).toEqual({
+      maxWait: 15_000,
+      timeout: 120_000,
+    })
+  })
+
+  it("clears the records tail on an ALL-YEARS reset, and names what went", async () => {
+    const { prisma, tx, getUpdatedSettings } = fakePrisma({
+      courtDisputes: [{ id: 1 }],
+      auditFindings: { items: [{ id: 1, assignedTo: "aida" }] },
+      landParcels: [],
+      riskTags: ["keep"],
+    })
+    const res = await resetCompanyImportData({
+      prisma,
+      actorUserId: "u1",
+      scope: { organizationId: "org1", companyCode: "AZSEKER-CPC" },
+    })
+    expect(tx.company.update).toHaveBeenCalled()
+    expect(getUpdatedSettings()).toEqual({ riskTags: ["keep"] })
+    expect(res.breakdown).toMatchObject({
+      recordsCompliance: 2,
+      recordsAssets: 1,
+      complianceWriteBacks: 1,
+    })
+  })
+
+  it("deletes hand-entered actuals ONLY when explicitly asked", async () => {
+    const { prisma, tx } = fakePrisma({})
+    const res = await resetCompanyImportData({
+      prisma,
+      actorUserId: "u1",
+      scope: {
+        organizationId: "org1",
+        companyCode: "AZSEKER-CPC",
+        includeManualActuals: true,
+      },
+    })
+    const baArgs = tx.budgetActual.deleteMany.mock.calls as unknown as Array<
+      [{ where: Record<string, unknown> }]
+    >
+    expect(baArgs).toHaveLength(2)
+    expect(baArgs[1][0].where).toMatchObject({ source: null })
+    expect(res.breakdown.budgetActualManual).toBe(4)
+  })
+
+  it("touches only the categories `include` names, plus indicators", async () => {
+    const { prisma, tx } = fakePrisma({ courtDisputes: [{ id: 1 }] })
+    const res = await resetCompanyImportData({
+      prisma,
+      actorUserId: "u1",
+      scope: {
+        organizationId: "org1",
+        companyCode: "AZSEKER-CPC",
+        include: ["balanceSheetLine"],
+      },
+    })
+    expect(tx.balanceSheetLine.updateMany).toHaveBeenCalled()
+    expect(tx.budgetLine.updateMany).not.toHaveBeenCalled()
+    expect(tx.operationalFact.deleteMany).not.toHaveBeenCalled()
+    expect(tx.company.update).not.toHaveBeenCalled()
+    // The invariant the server owns: clearing source rows without clearing
+    // the values derived from them leaves the terminal painting ghosts.
+    expect(tx.indicatorValue.deleteMany).toHaveBeenCalled()
+    expect(res.breakdown).toEqual({ balanceSheetLine: 5, indicatorValue: 9 })
   })
 
   it("removes EVERY import settings key but KEEPS config keys", async () => {

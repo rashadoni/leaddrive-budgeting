@@ -28,7 +28,7 @@ import {
   AlertTriangle,
   Stethoscope,
   ListChecks,
-  Archive,
+  Trash2,
   Lock,
   CheckSquare,
   Layers,
@@ -117,7 +117,9 @@ export const DATA_OPS_GROUP: AdminGroup = {
     { href: "/budgeting/admin/ai-import", key: "aiImport", icon: Brain, badge: "Phase 7.M" },
     { href: "/budgeting/admin/data-entry", key: "dataEntry", icon: ClipboardEdit },
     { href: "/budgeting/admin/reporting-pack", key: "reportingPack", icon: FileSpreadsheet },
-    { href: "/budgeting/admin/data-archive", key: "dataArchive", icon: Archive },
+    // 2026-07-31 — the page is "Delete data" now; an archive box icon next
+    // to the most destructive screen in the product read as storage.
+    { href: "/budgeting/admin/data-archive", key: "dataArchive", icon: Trash2 },
     { href: "/budgeting/admin/approval-requests", key: "approvals", icon: CheckSquare },
     { href: "/budgeting/admin/queue", key: "queue", icon: Layers },
   ],

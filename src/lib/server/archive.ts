@@ -21,14 +21,25 @@
  *  • Permissions checks belong to the route (it has the session); this
  *    helper just trusts the userId it's given.
  *  • Hard delete (physical row removal) is the cleanup job's concern
- *    — not exposed here so a finance user can't accidentally bypass
- *    the 90-day retention.
+ *    — not exposed here so a finance user can't accidentally bypass the
+ *    retention window (`SOFT_DELETE_RETENTION_DAYS`, 30 days; this comment
+ *    said 90 until 2026-07-31, matching no constant in the repository).
  */
 
 import type { PrismaClient } from "@prisma/client"
 import { logAuditEvent } from "@/lib/audit/log"
 import { archiveStamp, restoreStamp } from "./soft-delete"
 import { slugifyProductLabel } from "@/lib/onboarding/ai-import/product-identity"
+import {
+  IMPORT_RECORD_GROUPS,
+  normalizeResetYears,
+  resolveResetCategories,
+  type ImportResetSelection,
+} from "./import-reset-categories"
+// The metadata `year` decides whether the operator can undo this from the
+// Delete data screen, so the rule lives in ONE place and the UI reads the same
+// function. See `producesRestorableEvent`.
+import { auditYearFor } from "./delete-request"
 
 export type ArchiveEntityKind =
   | "BudgetLine"
@@ -93,6 +104,62 @@ export const IMPORT_FACT_SOURCES = [
   "import",
 ] as const
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Phase 11.76 (2026-07-31) — the preview and the reset share one vocabulary.
+ *
+ * The category list, the record groups and the selection shape live in
+ * `import-reset-categories.ts` so the HTTP layer can parse a request without
+ * pulling Prisma in. Re-exported here because every existing caller imports
+ * reset concepts from this module.
+ * ──────────────────────────────────────────────────────────────────────── */
+export {
+  IMPORT_RESET_CATEGORIES,
+  IMPORT_RECORD_GROUPS,
+  normalizeResetYears,
+  resolveResetCategories,
+} from "./import-reset-categories"
+export type {
+  ImportResetCategory,
+  ImportRecordGroup,
+  ImportResetSelection,
+} from "./import-reset-categories"
+
+/** `plan: { year: … }` relation filter, or undefined for all years. */
+function planYearFilter(years: number[]): Record<string, unknown> | undefined {
+  if (years.length === 0) return undefined
+  return { year: years.length === 1 ? years[0] : { in: years } }
+}
+
+/** Value for a plain integer `year` column. */
+function yearColumnFilter(years: number[]): unknown {
+  if (years.length === 0) return undefined
+  return years.length === 1 ? years[0] : { in: years }
+}
+
+/**
+ * `period` is a "YYYY" | "YYYY-Q2" | "YYYY-04" string, so a year scope is a
+ * prefix match. Several years become an OR of prefixes.
+ */
+function applyPeriodYearFilter(
+  where: Record<string, unknown>,
+  years: number[],
+): Record<string, unknown> {
+  if (years.length === 0) return where
+  if (years.length === 1) {
+    where.period = { startsWith: String(years[0]) }
+    return where
+  }
+  where.OR = years.map((y) => ({ period: { startsWith: String(y) } }))
+  return where
+}
+
+function yearWindow(year: number) {
+  return {
+    gte: new Date(`${year}-01-01T00:00:00.000Z`),
+    lt: new Date(`${year + 1}-01-01T00:00:00.000Z`),
+  }
+}
+
 export interface ArchiveScope {
   /** Tenant — required, defense-in-depth at the SQL level. */
   organizationId: string
@@ -126,6 +193,84 @@ export interface ArchiveActionArgs {
 export interface ArchiveResult {
   rowsAffected: number
   auditEventId: string | null
+  /**
+   * The exact `deletedAt` this operation stamped, ISO-8601. It is the RESTORE
+   * KEY — see `ARCHIVE_GENERATION_KEY` below. `null` when the operation
+   * soft-archived nothing (a restore, or an archive that matched no rows).
+   */
+  archivedAt: string | null
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * ARCHIVE_GENERATION_KEY — why `deletedAt` is the restore key
+ * ───────────────────────────────────────────────────────────────────────
+ *
+ * 2026-07-31. `restoreRows` used to un-archive by SCOPE alone:
+ *
+ *     delete where.deletedAt
+ *     where.deletedAt = { not: null }
+ *
+ * For BudgetLine the scope is `org + companyId + plan:{year}`. That is not an
+ * operation, it is a bucket — and production holds many GENERATIONS of rows in
+ * one bucket, because every re-import archives the version it replaces and
+ * deliberately leaves it in place (`import-batch.ts`, `purgeArchivedFirst` off:
+ * "pileup is harmless to reads"). Harmless to reads; not harmless to a blanket
+ * `deletedAt: { not: null }` UPDATE. Measured on the live database: 2026 budget
+ * alone carried three archived generations (2045 + 1234 + 811 rows) for one
+ * company-year, and 33,923 of 36,902 budget_lines were archived. Pressing
+ * "bring it back" would have made all three live at once and multiplied every
+ * financial statement derived from them.
+ *
+ * The key had to identify ONE archive operation. `deletedAt` does, exactly:
+ *
+ *  1. PER-OPERATION, not per-row. Every writer calls `archiveStamp(userId)`
+ *     ONCE and reuses the returned object for every `updateMany` in the
+ *     operation — `archiveRows` (one table), `resetCompanyImportData` (four
+ *     tables in one transaction), `archiveOrgOrphanBudgetLines`. So all rows of
+ *     one deletion carry a byte-identical timestamp, and rows of any other
+ *     deletion do not. Nothing else in the row identifies the operation:
+ *     `deletedBy` is the operator, who deletes repeatedly.
+ *
+ *  2. LOSSLESS THROUGH THE ROUND TRIP. `new Date()` is millisecond-precision;
+ *     Prisma maps `DateTime` to PostgreSQL `timestamp(3)`, also milliseconds.
+ *     We record `stamp.deletedAt.toISOString()` in the audit metadata and match
+ *     on `new Date(iso)` — the same instant, not an approximation, so no
+ *     window/tolerance is needed and none is used. A tolerance window is
+ *     exactly how the second generation would creep back in.
+ *
+ *  3. COLLISION-SAFE. Two operations sharing a millisecond would need to share
+ *     the scope to matter, and they cannot: the first archive takes every
+ *     matching live row, so the second matches nothing. The restore stays
+ *     scoped to org + company + year + table on top of the timestamp, so a
+ *     same-millisecond archive of a DIFFERENT company is out of reach anyway.
+ *
+ * FAIL CLOSED. Rows archived before this commit have a `deletedAt`, but no
+ * audit event records which one — the metadata did not carry it. There is no
+ * way to reconstruct the generation boundary after the fact, so `restoreRows`
+ * REFUSES without a key rather than falling back to the old scope-only sweep.
+ * Refusing to restore is recoverable (upload the workbook again); resurrecting
+ * five generations of financial statements is not.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Thrown when a restore is asked for without the exact archive timestamp that
+ * identifies the operation. The route turns this into a 400 with the same
+ * explanation, and the UI never offers the button in the first place.
+ */
+export class MissingArchiveKeyError extends Error {
+  readonly code = "MISSING_ARCHIVE_KEY"
+  constructor(message: string) {
+    super(message)
+    this.name = "MissingArchiveKeyError"
+  }
+}
+
+/** Breakdown key each archivable table is counted under, shared with the UI. */
+const BREAKDOWN_KEY_OF: Record<ArchiveEntityKind, string> = {
+  BudgetLine: "budgetLine",
+  BalanceSheetLine: "balanceSheetLine",
+  CashFlowEntry: "cashFlowEntry",
+  Counterparty: "counterparty",
 }
 
 /**
@@ -214,10 +359,14 @@ async function buildScopeWhere(
 }
 
 /**
- * Soft-archive every row matching the scope. Writes one audit event
- * with `metadata.rowsAffected`. Idempotent in the sense that running
- * twice has no effect on the second call (where clause excludes
- * already-archived rows).
+ * Soft-archive every row matching the scope. Writes one audit event with
+ * `metadata.rowsAffected`, `metadata.breakdown` and — load-bearing —
+ * `metadata.archivedAt`, the exact stamp that identifies THIS generation of
+ * rows so `restoreRows` can bring back this operation and nothing else. See
+ * ARCHIVE_GENERATION_KEY above.
+ *
+ * Idempotent in the sense that running twice has no effect on the second call
+ * (the where clause excludes already-archived rows).
  */
 export async function archiveRows(
   args: ArchiveActionArgs,
@@ -282,6 +431,13 @@ export async function archiveRows(
           year: scope.year,
           period: scope.period,
           rowsAffected,
+          // The restore key. Without it in the audit row the operation is
+          // unidentifiable afterwards and the restore refuses — see
+          // ARCHIVE_GENERATION_KEY.
+          archivedAt: stamp.deletedAt.toISOString(),
+          // A one-table archive knows exactly which table it took, so the
+          // Restore panel can name it instead of guessing all four kinds.
+          breakdown: { [BREAKDOWN_KEY_OF[scope.entityKind]]: rowsAffected },
           reason,
         },
       },
@@ -290,32 +446,53 @@ export async function archiveRows(
     return {
       rowsAffected,
       auditEventId: audit.ok ? audit.id : null,
+      archivedAt: rowsAffected > 0 ? stamp.deletedAt.toISOString() : null,
     }
   })
 }
 
 /**
- * Reverse of `archiveRows` — clears deletedAt/deletedBy on rows
- * matching the scope AND the original `deletedBy` (so a finance user
- * can only restore what THEY archived, unless an admin uses the
- * org-wide restore in the admin UI).
+ * Reverse of `archiveRows` — clears deletedAt/deletedBy on the rows ONE archive
+ * operation took, and on no others.
+ *
+ * `archivedAt` is REQUIRED and is the operation's exact `deletedAt` stamp, read
+ * off the `metadata.archivedAt` of the audit event the operator picked. The
+ * scope still applies on top of it (org + company + year + table), so this is
+ * an intersection, never a widening.
+ *
+ * There is no fallback. A deletion whose audit event carries no `archivedAt`
+ * — every deletion made before 2026-07-31 — throws `MissingArchiveKeyError`
+ * rather than reverting to the scope-only sweep that this parameter exists to
+ * kill. Read ARCHIVE_GENERATION_KEY above before relaxing that.
+ *
+ * (The doc comment here used to claim the restore matched "the original
+ * deletedBy". It did not: the only narrowing the signature offered,
+ * `matchDeletedBy`, was never passed by any caller in the repository, and the
+ * function un-archived by scope alone. The parameter is gone — `deletedBy` is
+ * the operator, and an operator deletes the same scope repeatedly, so it never
+ * identified an operation in the first place.)
  */
 export async function restoreRows(
-  args: ArchiveActionArgs & { matchDeletedBy?: string },
+  args: ArchiveActionArgs & { archivedAt: Date },
 ): Promise<ArchiveResult> {
-  const { prisma, actorUserId, reason, scope } = args
+  const { prisma, actorUserId, reason, scope, archivedAt } = args
+  if (!(archivedAt instanceof Date) || Number.isNaN(archivedAt.getTime())) {
+    throw new MissingArchiveKeyError(
+      "restoreRows: archivedAt is required — restoring by scope alone would un-archive every generation of rows ever deleted for this company and year, not the one deletion selected. Deletions recorded before archivedAt was captured cannot be restored from here; re-import the source file instead.",
+    )
+  }
   // Build the same scope but invert the soft-delete filter — we want
   // rows that ARE archived to be restored.
   const where = await buildScopeWhere(prisma, scope)
   if (!where) {
     throw new Error(`restoreRows: invalid scope for ${scope.entityKind}`)
   }
-  // Override the deletedAt: null filter — we want only archived rows.
+  // Override the `deletedAt: null` filter with the EXACT stamp of the operation
+  // being undone. Equality, not a range: a tolerance window is how a second
+  // generation creeps back in, and the stamp needs none (see (2) of
+  // ARCHIVE_GENERATION_KEY).
   delete (where as Record<string, unknown>).deletedAt
-  ;(where as Record<string, unknown>).deletedAt = { not: null }
-  if (args.matchDeletedBy) {
-    ;(where as Record<string, unknown>).deletedBy = args.matchDeletedBy
-  }
+  ;(where as Record<string, unknown>).deletedAt = archivedAt
   const stamp = restoreStamp()
   const entityId = `${scope.companyCode ?? "ALL"}:${scope.year ?? scope.period ?? "ALL"}`
 
@@ -369,6 +546,9 @@ export async function restoreRows(
           year: scope.year,
           period: scope.period,
           rowsAffected,
+          // Which generation was brought back — the trail has to name it, or
+          // "restored 2045 rows" cannot be matched to the deletion it undid.
+          archivedAt: archivedAt.toISOString(),
           reason,
         },
       },
@@ -377,6 +557,8 @@ export async function restoreRows(
     return {
       rowsAffected,
       auditEventId: audit.ok ? audit.id : null,
+      // A restore stamps nothing; the field belongs to archive operations.
+      archivedAt: null,
     }
   })
 }
@@ -386,6 +568,8 @@ export interface ResetResult {
   /** Per-source counts so the operator sees nothing was missed. */
   breakdown: Record<string, number>
   auditEventId: string | null
+  /** The restore key for the soft-archived half — see ARCHIVE_GENERATION_KEY. */
+  archivedAt: string
 }
 
 export interface ResetPreviewCompany {
@@ -397,17 +581,21 @@ export interface ResetPreviewCompany {
 
 export interface ResetPreviewResult {
   year?: number
+  /** Normalised scope — [] means "every year". */
+  years: number[]
   companies: ResetPreviewCompany[]
   breakdown: Record<string, number>
   rowsAffected: number
   orphanBudgetLine: number
   isWholeHolding: boolean
+  /** Present only when the caller asked for it (`yearIndex: true`). */
+  yearIndex?: Array<{ year: number; rows: number }>
 }
 
 function importOperationalFactWhere(args: {
   organizationId: string
   companyId: string
-  year?: number
+  years: number[]
 }): Record<string, unknown> {
   const where: Record<string, unknown> = {
     organizationId: args.organizationId,
@@ -419,25 +607,68 @@ function importOperationalFactWhere(args: {
       { source: { endsWith: ".xlsx" } },
     ],
   }
-  if (args.year) {
-    where.date = {
-      gte: new Date(`${args.year}-01-01T00:00:00.000Z`),
-      lt: new Date(`${args.year + 1}-01-01T00:00:00.000Z`),
-    }
+  if (args.years.length === 1) {
+    where.date = yearWindow(args.years[0])
+  } else if (args.years.length > 1) {
+    // The source `OR` is already spoken for, so the year windows go into an
+    // `AND` — otherwise the two ORs would merge and a manual fact in one of
+    // the selected years would be deleted.
+    where.AND = [{ OR: args.years.map((y) => ({ date: yearWindow(y) })) }]
   }
   return where
+}
+
+/**
+ * Count the Company.settings records the reset would clear, grouped, plus the
+ * write-backs a human made on audit findings (statuses, owners, deadlines,
+ * comments) — the single most expensive thing a reset destroys and the one no
+ * workbook restores.
+ */
+export function countCompanyRecords(settings: unknown): Record<string, number> {
+  const bag = (settings as Record<string, unknown> | null) ?? {}
+  const out: Record<string, number> = {}
+  for (const [group, keys] of Object.entries(IMPORT_RECORD_GROUPS)) {
+    const n = keys.filter((k) => k in bag).length
+    if (n > 0) out[group] = n
+  }
+  const writeBacks = countComplianceWriteBacks(bag.auditFindings)
+  if (writeBacks > 0) out.complianceWriteBacks = writeBacks
+  return out
+}
+
+function countComplianceWriteBacks(auditFindings: unknown): number {
+  const items = Array.isArray(auditFindings)
+    ? auditFindings
+    : Array.isArray((auditFindings as { items?: unknown } | null)?.items)
+      ? ((auditFindings as { items: unknown[] }).items)
+      : []
+  let n = 0
+  for (const raw of items) {
+    if (!raw || typeof raw !== "object") continue
+    const f = raw as Record<string, unknown>
+    const touched =
+      f.closed != null ||
+      f.closedAt != null ||
+      f.assignedTo != null ||
+      f.deadline != null ||
+      (Array.isArray(f.comments) && f.comments.length > 0) ||
+      (Array.isArray(f.mutations) && f.mutations.length > 0)
+    if (touched) n++
+  }
+  return n
 }
 
 async function countOrgOrphanBudgetLines(args: {
   prisma: PrismaClient
   organizationId: string
-  year?: number
+  years: number[]
 }): Promise<number> {
+  const planYear = planYearFilter(args.years)
   const attrWhere: Record<string, unknown> = {
     organizationId: args.organizationId,
     companyId: { not: null },
   }
-  if (args.year) attrWhere.plan = { year: args.year }
+  if (planYear) attrWhere.plan = planYear
   const mixedPlanIds = (
     await args.prisma.budgetLine.findMany({
       where: attrWhere as never,
@@ -462,7 +693,7 @@ async function countOrgOrphanBudgetLines(args: {
         deletedAt: null,
         plan: {
           deletedAt: { not: null },
-          ...(args.year ? { year: args.year } : {}),
+          ...(planYear ?? {}),
         },
       } as never,
       select: { planId: true },
@@ -478,7 +709,7 @@ async function countOrgOrphanBudgetLines(args: {
     planId: { in: countPlanIds },
     deletedAt: null,
   }
-  if (args.year) orphanWhere.plan = { year: args.year }
+  if (planYear) orphanWhere.plan = planYear
   return args.prisma.budgetLine.count({ where: orphanWhere as never })
 }
 
@@ -491,11 +722,17 @@ export async function previewCompanyImportReset(args: {
   organizationId: string
   companyCodes: string[]
   year?: number
-}): Promise<ResetPreviewResult> {
+  /** Ask for the per-year row counts that drive the year chips. */
+  yearIndex?: boolean
+} & ImportResetSelection): Promise<ResetPreviewResult> {
+  const years = normalizeResetYears(args)
+  const categories = resolveResetCategories(args.include)
+  const wantsManualActuals = args.includeManualActuals === true
   const codes = [...new Set(args.companyCodes.filter(Boolean))]
   if (codes.length === 0) {
     return {
       year: args.year,
+      years,
       companies: [],
       breakdown: {},
       rowsAffected: 0,
@@ -524,73 +761,109 @@ export async function previewCompanyImportReset(args: {
 
   const companies: ResetPreviewCompany[] = []
   const aggregate: Record<string, number> = {}
+  const planYear = planYearFilter(years)
+  const yearColumn = yearColumnFilter(years)
+  // The year-less records tail. A year-scoped delete never reaches it: those
+  // records carry no year of their own, so "clear 2026" must leave every
+  // Compliance Hub write-back exactly where it is.
+  const clearsRecords =
+    categories.has("records") && years.length === 0 && args.includeUnscoped !== false
 
   for (const company of targets) {
     const breakdown: Record<string, number> = {}
     const base = { organizationId: args.organizationId, companyId: company.id, deletedAt: null }
 
-    const blWhere: Record<string, unknown> = { ...base }
-    if (args.year) blWhere.plan = { year: args.year }
-    breakdown.budgetLine = await args.prisma.budgetLine.count({ where: blWhere as never })
-
-    const bsWhere: Record<string, unknown> = { ...base }
-    if (args.year) bsWhere.year = args.year
-    breakdown.balanceSheetLine = await args.prisma.balanceSheetLine.count({ where: bsWhere as never })
-
-    const cfWhere: Record<string, unknown> = {
-      organizationId: args.organizationId,
-      sourceId: { startsWith: `${company.code}::` },
-      deletedAt: null,
+    if (categories.has("budgetLine")) {
+      const blWhere: Record<string, unknown> = { ...base }
+      if (planYear) blWhere.plan = planYear
+      breakdown.budgetLine = await args.prisma.budgetLine.count({ where: blWhere as never })
     }
-    if (args.year) cfWhere.year = args.year
-    breakdown.cashFlowEntry = await args.prisma.cashFlowEntry.count({ where: cfWhere as never })
 
-    // Must mirror the reset's scope exactly, or the blast-radius preview
-    // under-reports what a "clear <year>" will actually archive.
-    const cpWhere: Record<string, unknown> = { ...base }
-    if (args.year) cpWhere.period = { startsWith: String(args.year) }
-    breakdown.counterparty = await args.prisma.counterparty.count({ where: cpWhere as never })
+    if (categories.has("balanceSheetLine")) {
+      const bsWhere: Record<string, unknown> = { ...base }
+      if (yearColumn !== undefined) bsWhere.year = yearColumn
+      breakdown.balanceSheetLine = await args.prisma.balanceSheetLine.count({
+        where: bsWhere as never,
+      })
+    }
 
-    breakdown.operationalFact = await args.prisma.operationalFact.count({
-      where: importOperationalFactWhere({
+    if (categories.has("cashFlowEntry")) {
+      const cfWhere: Record<string, unknown> = {
+        organizationId: args.organizationId,
+        sourceId: { startsWith: `${company.code}::` },
+        deletedAt: null,
+      }
+      if (yearColumn !== undefined) cfWhere.year = yearColumn
+      breakdown.cashFlowEntry = await args.prisma.cashFlowEntry.count({ where: cfWhere as never })
+    }
+
+    if (categories.has("counterparty")) {
+      // Must mirror the reset's scope exactly, or the blast-radius preview
+      // under-reports what a "clear <year>" will actually archive.
+      const cpWhere = applyPeriodYearFilter({ ...base }, years)
+      breakdown.counterparty = await args.prisma.counterparty.count({ where: cpWhere as never })
+    }
+
+    if (categories.has("operationalFact")) {
+      breakdown.operationalFact = await args.prisma.operationalFact.count({
+        where: importOperationalFactWhere({
+          organizationId: args.organizationId,
+          companyId: company.id,
+          years,
+        }) as never,
+      })
+    }
+
+    if (categories.has("budgetActual")) {
+      // Split by provenance. `source: null` means a human typed it — the
+      // schema says so, and nothing brings those back. The reset only takes
+      // them when explicitly asked, so the preview must count them apart.
+      const baWhere: Record<string, unknown> = {
         organizationId: args.organizationId,
         companyId: company.id,
-        year: args.year,
-      }) as never,
-    })
-
-    const baWhere: Record<string, unknown> = {
-      organizationId: args.organizationId,
-      companyId: company.id,
+      }
+      if (planYear) baWhere.plan = planYear
+      breakdown.budgetActualImported = await args.prisma.budgetActual.count({
+        where: { ...baWhere, source: { not: null } } as never,
+      })
+      if (wantsManualActuals) {
+        breakdown.budgetActualManual = await args.prisma.budgetActual.count({
+          where: { ...baWhere, source: null } as never,
+        })
+      }
     }
-    if (args.year) baWhere.plan = { year: args.year }
-    breakdown.budgetActual = await args.prisma.budgetActual.count({ where: baWhere as never })
 
     // Phase 11.6 — the preview MUST count exactly what the reset deletes.
     // It previously reported six tables while the reset also had a settings
     // tail and, after this phase, sales lines and indicator values: a user
     // reading "6 numbers" concluded the entity would be empty, then watched
     // the Sales tab keep rendering the pre-reset dataset.
-    const sblWhere: Record<string, unknown> = {
-      organizationId: args.organizationId,
-      ...salesLineCompanyScope(company.code),
+    if (categories.has("salesBudgetLine")) {
+      const sblWhere: Record<string, unknown> = {
+        organizationId: args.organizationId,
+        ...salesLineCompanyScope(company.code),
+      }
+      if (yearColumn !== undefined) sblWhere.year = yearColumn
+      breakdown.salesBudgetLine = await args.prisma.salesBudgetLine.count({
+        where: sblWhere as never,
+      })
     }
-    if (args.year) sblWhere.year = args.year
-    breakdown.salesBudgetLine = await args.prisma.salesBudgetLine.count({
-      where: sblWhere as never,
-    })
 
-    const ivWhere: Record<string, unknown> = {
-      organizationId: args.organizationId,
-      companyId: company.id,
+    if (categories.has("indicatorValue")) {
+      const ivWhere = applyPeriodYearFilter(
+        { organizationId: args.organizationId, companyId: company.id },
+        years,
+      )
+      breakdown.indicatorValue = await args.prisma.indicatorValue.count({
+        where: ivWhere as never,
+      })
     }
-    if (args.year) ivWhere.period = { startsWith: String(args.year) }
-    breakdown.indicatorValue = await args.prisma.indicatorValue.count({
-      where: ivWhere as never,
-    })
 
-    const settings = (company.settings as Record<string, unknown> | null) ?? {}
-    breakdown.settingsKeys = IMPORT_SETTINGS_KEYS.filter((k) => k in settings).length
+    if (clearsRecords) {
+      for (const [key, count] of Object.entries(countCompanyRecords(company.settings))) {
+        breakdown[key] = count
+      }
+    }
 
     const rowsAffected = Object.values(breakdown).reduce((sum, n) => sum + n, 0)
     for (const [key, count] of Object.entries(breakdown)) {
@@ -604,23 +877,116 @@ export async function previewCompanyImportReset(args: {
     })
   }
 
-  const orphanBudgetLine = isWholeHolding
-    ? await countOrgOrphanBudgetLines({
+  const orphanBudgetLine =
+    isWholeHolding && categories.has("budgetLine")
+      ? await countOrgOrphanBudgetLines({
+          prisma: args.prisma,
+          organizationId: args.organizationId,
+          years,
+        })
+      : 0
+  if (orphanBudgetLine > 0) aggregate.orphanBudgetLine = orphanBudgetLine
+
+  // 2026-07-31 — `salesForecast` was deleted by the whole-holding commit path
+  // and counted by NOBODY. The preview's own comment demanded parity while
+  // the table it forgot was the one the operator would notice first (the
+  // Sales tab going blank). Counted under the same gate the route deletes it.
+  if (isWholeHolding && categories.has("salesBudgetLine")) {
+    const sfWhere: Record<string, unknown> = { organizationId: args.organizationId }
+    if (yearColumn !== undefined) sfWhere.year = yearColumn
+    const salesForecast = await args.prisma.salesForecast.count({ where: sfWhere as never })
+    if (salesForecast > 0) aggregate.salesForecast = salesForecast
+  }
+
+  const yearIndex = args.yearIndex
+    ? await buildYearIndex({
         prisma: args.prisma,
         organizationId: args.organizationId,
-        year: args.year,
+        companyIds: targets.map((c) => c.id),
       })
-    : 0
-  if (orphanBudgetLine > 0) aggregate.orphanBudgetLine = orphanBudgetLine
+    : undefined
 
   return {
     year: args.year,
+    years,
     companies,
     breakdown: aggregate,
     rowsAffected: Object.values(aggregate).reduce((sum, n) => sum + n, 0),
     orphanBudgetLine,
     isWholeHolding,
+    ...(yearIndex ? { yearIndex } : {}),
   }
+}
+
+/**
+ * Per-year row counts for the selected companies, so the "which years?" chips
+ * can carry a real number instead of asking the operator to type into a box
+ * that means "all years" when blank.
+ *
+ * Independent of the year selection by design — it is what the operator reads
+ * BEFORE choosing. Independent of company count too: one grouped query per
+ * table, `companyId: { in: [...] }`.
+ */
+async function buildYearIndex(args: {
+  prisma: PrismaClient
+  organizationId: string
+  companyIds: string[]
+}): Promise<Array<{ year: number; rows: number }>> {
+  const { prisma, organizationId, companyIds } = args
+  const rowsByYear = new Map<number, number>()
+  const add = (year: number, rows: number) => {
+    if (!Number.isFinite(year) || rows <= 0) return
+    rowsByYear.set(year, (rowsByYear.get(year) ?? 0) + rows)
+  }
+
+  const [plans, blByPlan, baByPlan, bs, cf, iv, cp] = await Promise.all([
+    prisma.budgetPlan.findMany({
+      where: { organizationId } as never,
+      select: { id: true, year: true },
+    }),
+    prisma.budgetLine.groupBy({
+      by: ["planId"],
+      where: { organizationId, companyId: { in: companyIds }, deletedAt: null } as never,
+      _count: { _all: true },
+    } as never) as Promise<Array<{ planId: string; _count: { _all: number } }>>,
+    prisma.budgetActual.groupBy({
+      by: ["planId"],
+      where: { organizationId, companyId: { in: companyIds } } as never,
+      _count: { _all: true },
+    } as never) as Promise<Array<{ planId: string; _count: { _all: number } }>>,
+    prisma.balanceSheetLine.groupBy({
+      by: ["year"],
+      where: { organizationId, companyId: { in: companyIds }, deletedAt: null } as never,
+      _count: { _all: true },
+    } as never) as Promise<Array<{ year: number; _count: { _all: number } }>>,
+    prisma.cashFlowEntry.groupBy({
+      by: ["year"],
+      where: { organizationId, companyId: { in: companyIds }, deletedAt: null } as never,
+      _count: { _all: true },
+    } as never) as Promise<Array<{ year: number; _count: { _all: number } }>>,
+    prisma.indicatorValue.groupBy({
+      by: ["period"],
+      where: { organizationId, companyId: { in: companyIds } } as never,
+      _count: { _all: true },
+    } as never) as Promise<Array<{ period: string; _count: { _all: number } }>>,
+    prisma.counterparty.groupBy({
+      by: ["period"],
+      where: { organizationId, companyId: { in: companyIds }, deletedAt: null } as never,
+      _count: { _all: true },
+    } as never) as Promise<Array<{ period: string; _count: { _all: number } }>>,
+  ])
+
+  const yearOfPlan = new Map(plans.map((p) => [p.id, p.year]))
+  for (const row of blByPlan ?? []) add(yearOfPlan.get(row.planId) ?? NaN, row._count._all)
+  for (const row of baByPlan ?? []) add(yearOfPlan.get(row.planId) ?? NaN, row._count._all)
+  for (const row of bs ?? []) add(row.year, row._count._all)
+  for (const row of cf ?? []) add(row.year, row._count._all)
+  for (const row of iv ?? []) add(parseInt(row.period, 10), row._count._all)
+  for (const row of cp ?? []) add(parseInt(row.period, 10), row._count._all)
+
+  return [...rowsByYear.entries()]
+    .map(([year, rows]) => ({ year, rows }))
+    .sort((a, b) => b.year - a.year)
 }
 
 /**
@@ -679,10 +1045,13 @@ export async function resetOrgSalesForecast(args: {
   reason?: string
   organizationId: string
   year?: number
+  years?: number[]
 }): Promise<{ rowsAffected: number; auditEventId: string | null }> {
   const { prisma, actorUserId, reason, organizationId, year } = args
+  const years = normalizeResetYears(args)
   const where: Record<string, unknown> = { organizationId }
-  if (year) where.year = year
+  const yearColumn = yearColumnFilter(years)
+  if (yearColumn !== undefined) where.year = yearColumn
 
   // Hard delete: SalesForecast has no soft-delete column, same as
   // OperationalFact and BudgetActual.
@@ -695,12 +1064,13 @@ export async function resetOrgSalesForecast(args: {
     event: {
       action: "data_reset",
       entityType: "Company",
-      entityId: `org-sales-forecast:${year ?? "ALL"}`,
+      entityId: `org-sales-forecast:${years.length > 0 ? years.join(",") : "ALL"}`,
       metadata: {
         // Sentinel, matching archiveOrgOrphanBudgetLines: this is an
         // ORG-level sweep, so there is no company code to record.
         companyCode: "__ORG_SALES_FORECAST__",
-        year,
+        year: auditYearFor(years),
+        years: years.length > 0 ? years : undefined,
         breakdown: { salesForecast: del.count },
         rowsAffected: del.count,
         reason,
@@ -712,7 +1082,7 @@ export async function resetOrgSalesForecast(args: {
 
 export async function resetCompanyImportData(
   args: Omit<ArchiveActionArgs, "scope"> & {
-    scope: Omit<ArchiveScope, "entityKind">
+    scope: Omit<ArchiveScope, "entityKind"> & ImportResetSelection
   },
 ): Promise<ResetResult> {
   const { prisma, actorUserId, reason, scope } = args
@@ -730,27 +1100,49 @@ export async function resetCompanyImportData(
   const orgId = scope.organizationId
   const companyCode = scope.companyCode // narrowed to string by the guard above
   const stamp = archiveStamp(actorUserId)
+  const years = normalizeResetYears(scope)
+  const categories = resolveResetCategories(scope.include)
+  const planYear = planYearFilter(years)
+  const yearColumn = yearColumnFilter(years)
+  // Same rule the preview counts by — see `clearsRecords` there. A year-scoped
+  // delete must not reach the year-less records tail.
+  const clearsRecords =
+    categories.has("records") && years.length === 0 && scope.includeUnscoped !== false
 
+  // 2026-07-31 — explicit transaction budget.
+  //
+  // Eight statements, including a `ProductLine.code` relation subquery and two
+  // unindexed prefix scans, ran against Prisma's 5-second default. A P2028
+  // rolls the transaction back but the LOOP around it has already committed
+  // other companies, so the operator gets a 207 describing a half-reset
+  // holding. Every import path already uses 60–120 s; this is the one write
+  // that is strictly heavier than an import and it had the shortest budget.
   return prisma.$transaction(async (tx) => {
     const breakdown: Record<string, number> = {}
 
     // 1. Soft-archive financial + counterparty (reversible; reads exclude them).
-    const blWhere: Record<string, unknown> = { organizationId: orgId, companyId, deletedAt: null }
-    if (scope.year) blWhere.plan = { year: scope.year }
-    breakdown.budgetLine = (await tx.budgetLine.updateMany({ where: blWhere as never, data: stamp })).count
+    if (categories.has("budgetLine")) {
+      const blWhere: Record<string, unknown> = { organizationId: orgId, companyId, deletedAt: null }
+      if (planYear) blWhere.plan = planYear
+      breakdown.budgetLine = (await tx.budgetLine.updateMany({ where: blWhere as never, data: stamp })).count
+    }
 
-    const bsWhere: Record<string, unknown> = { organizationId: orgId, companyId, deletedAt: null }
-    if (scope.year) bsWhere.year = scope.year
-    breakdown.balanceSheetLine = (await tx.balanceSheetLine.updateMany({ where: bsWhere as never, data: stamp })).count
+    if (categories.has("balanceSheetLine")) {
+      const bsWhere: Record<string, unknown> = { organizationId: orgId, companyId, deletedAt: null }
+      if (yearColumn !== undefined) bsWhere.year = yearColumn
+      breakdown.balanceSheetLine = (await tx.balanceSheetLine.updateMany({ where: bsWhere as never, data: stamp })).count
+    }
 
     // cash_flow_entries has no companyId — scope by the "<code>::" sourceId prefix.
-    const cfWhere: Record<string, unknown> = {
-      organizationId: orgId,
-      sourceId: { startsWith: `${companyCode}::` },
-      deletedAt: null,
+    if (categories.has("cashFlowEntry")) {
+      const cfWhere: Record<string, unknown> = {
+        organizationId: orgId,
+        sourceId: { startsWith: `${companyCode}::` },
+        deletedAt: null,
+      }
+      if (yearColumn !== undefined) cfWhere.year = yearColumn
+      breakdown.cashFlowEntry = (await tx.cashFlowEntry.updateMany({ where: cfWhere as never, data: stamp })).count
     }
-    if (scope.year) cfWhere.year = scope.year
-    breakdown.cashFlowEntry = (await tx.cashFlowEntry.updateMany({ where: cfWhere as never, data: stamp })).count
 
     // 2026-07-29 — scope by YEAR, like every sibling table above.
     //
@@ -766,10 +1158,12 @@ export async function resetCompanyImportData(
     // `Counterparty.period` is a "YYYY" or "YYYY-MM" string, so a year scope
     // is a prefix match. An explicit `scope.period` still wins when a caller
     // genuinely wants one month.
-    const cpWhere: Record<string, unknown> = { organizationId: orgId, companyId, deletedAt: null }
-    if (scope.period) cpWhere.period = scope.period
-    else if (scope.year) cpWhere.period = { startsWith: String(scope.year) }
-    breakdown.counterparty = (await tx.counterparty.updateMany({ where: cpWhere as never, data: stamp })).count
+    if (categories.has("counterparty")) {
+      let cpWhere: Record<string, unknown> = { organizationId: orgId, companyId, deletedAt: null }
+      if (scope.period) cpWhere.period = scope.period
+      else cpWhere = applyPeriodYearFilter(cpWhere, years)
+      breakdown.counterparty = (await tx.counterparty.updateMany({ where: cpWhere as never, data: stamp })).count
+    }
 
     // 2. HARD-delete import-sourced OperationalFact only (no soft-delete column —
     //    the classic tail that kept indicators lit after a re-import). Matches by
@@ -780,19 +1174,38 @@ export async function resetCompanyImportData(
     //    manually-entered fact (Codex 2026-06-21). New import adapters must use
     //    one of these source prefixes (`multi-import:` / `import:` / `import` /
     //    `xlsx_multi_import` / a `*.xlsx` legacy file name) to be reset-clean.
-    const ofWhere = importOperationalFactWhere({
-      organizationId: orgId,
-      companyId,
-      year: scope.year,
-    })
-    breakdown.operationalFact = (await tx.operationalFact.deleteMany({ where: ofWhere as never })).count
+    if (categories.has("operationalFact")) {
+      const ofWhere = importOperationalFactWhere({
+        organizationId: orgId,
+        companyId,
+        years,
+      })
+      breakdown.operationalFact = (await tx.operationalFact.deleteMany({ where: ofWhere as never })).count
+    }
 
     // 2b. HARD-delete BudgetActual (no soft-delete column) — the BUDGET_ACTUALS
     //     import writes here. Scoped to this company; companyId-null rows are
     //     unattributable and intentionally left (Codex 2026-06-21).
-    const baWhere: Record<string, unknown> = { organizationId: orgId, companyId }
-    if (scope.year) baWhere.plan = { year: scope.year }
-    breakdown.budgetActual = (await tx.budgetActual.deleteMany({ where: baWhere as never })).count
+    //
+    //     2026-07-31 — split by provenance. `source: null` is a hand-entered
+    //     actual; the schema documents deleting one as unrecoverable, and
+    //     `@@index([planId, source])` already exists for exactly this filter.
+    //     The old statement took both kinds without saying so, so a "clear the
+    //     year" destroyed hand-keyed actuals that no re-upload restores.
+    if (categories.has("budgetActual")) {
+      const baWhere: Record<string, unknown> = { organizationId: orgId, companyId }
+      if (planYear) baWhere.plan = planYear
+      breakdown.budgetActualImported = (
+        await tx.budgetActual.deleteMany({
+          where: { ...baWhere, source: { not: null } } as never,
+        })
+      ).count
+      if (scope.includeManualActuals === true) {
+        breakdown.budgetActualManual = (
+          await tx.budgetActual.deleteMany({ where: { ...baWhere, source: null } as never })
+        ).count
+      }
+    }
 
     // 2c. HARD-delete SalesBudgetLine (no soft-delete column) for THIS
     //     company's products. See salesLineCompanyScope() for why the scope
@@ -803,14 +1216,16 @@ export async function resetCompanyImportData(
     //     upserts it back, and it is referenced by CostComponent / COGS* /
     //     TradeSku whose rows would cascade away with it. After this reset it
     //     simply carries no sales lines, so it renders nothing.
-    const sblWhere: Record<string, unknown> = {
-      organizationId: orgId,
-      ...salesLineCompanyScope(companyCode),
+    if (categories.has("salesBudgetLine")) {
+      const sblWhere: Record<string, unknown> = {
+        organizationId: orgId,
+        ...salesLineCompanyScope(companyCode),
+      }
+      if (yearColumn !== undefined) sblWhere.year = yearColumn
+      breakdown.salesBudgetLine = (
+        await tx.salesBudgetLine.deleteMany({ where: sblWhere as never })
+      ).count
     }
-    if (scope.year) sblWhere.year = scope.year
-    breakdown.salesBudgetLine = (
-      await tx.salesBudgetLine.deleteMany({ where: sblWhere as never })
-    ).count
 
     // 2d. HARD-delete IndicatorValue for this company (all granularities).
     //     Without this, month- and quarter-granular rows survive the reset
@@ -821,14 +1236,12 @@ export async function resetCompanyImportData(
     //     inside the same transaction, is both cheaper and more honest.
     //     `period` is a string: "2026" | "2026-Q2" | "2026-04", so a single
     //     `startsWith` covers all three shapes for a year.
-    const ivWhere: Record<string, unknown> = {
-      organizationId: orgId,
-      companyId,
+    if (categories.has("indicatorValue")) {
+      const ivWhere = applyPeriodYearFilter({ organizationId: orgId, companyId }, years)
+      breakdown.indicatorValue = (
+        await tx.indicatorValue.deleteMany({ where: ivWhere as never })
+      ).count
     }
-    if (scope.year) ivWhere.period = { startsWith: String(scope.year) }
-    breakdown.indicatorValue = (
-      await tx.indicatorValue.deleteMany({ where: ivWhere as never })
-    ).count
 
     // NOTE (Phase 11.6): `SalesForecast` is intentionally NOT reset here. It
     // is keyed by (organizationId, departmentId, year, month) and carries no
@@ -836,19 +1249,29 @@ export async function resetCompanyImportData(
     // company — deleting it would wipe the whole organization's forecast.
     // Giving it a company scope needs a schema change; tracked as 11.6b.
 
-    // 3. Clear import-derived Company.settings keys (the settings tail).
-    const settings = { ...((company.settings as Record<string, unknown>) ?? {}) }
-    let settingsKeysCleared = 0
-    for (const k of IMPORT_SETTINGS_KEYS) {
-      if (k in settings) {
-        delete settings[k]
-        settingsKeysCleared++
+    // 3. Clear import-derived Company.settings records (the year-less tail).
+    //
+    //    2026-07-31 — this used to run on EVERY reset, year-scoped or not, so
+    //    "clear 2026" deleted every audit finding, court case, risk-register
+    //    row and land parcel a company had — along with every close, assign,
+    //    deadline and comment entered in the Compliance Hub, for all time.
+    //    Those records carry no year, so a year-scoped delete has no claim on
+    //    them; only an all-years delete does.
+    if (clearsRecords) {
+      const settings = { ...((company.settings as Record<string, unknown>) ?? {}) }
+      const recordCounts = countCompanyRecords(settings)
+      let cleared = 0
+      for (const k of IMPORT_SETTINGS_KEYS) {
+        if (k in settings) {
+          delete settings[k]
+          cleared++
+        }
       }
+      if (cleared > 0) {
+        await tx.company.update({ where: { id: companyId }, data: { settings: settings as never } })
+      }
+      for (const [key, count] of Object.entries(recordCounts)) breakdown[key] = count
     }
-    if (settingsKeysCleared > 0) {
-      await tx.company.update({ where: { id: companyId }, data: { settings: settings as never } })
-    }
-    breakdown.settingsKeys = settingsKeysCleared
 
     const rowsAffected = Object.values(breakdown).reduce((s, n) => s + n, 0)
     const audit = await logAuditEvent(tx as PrismaClient, {
@@ -857,20 +1280,38 @@ export async function resetCompanyImportData(
       event: {
         action: "data_reset",
         entityType: "Company",
-        entityId: `${companyCode}:${scope.year ?? "ALL"}`,
+        entityId: `${companyCode}:${years.length > 0 ? years.join(",") : "ALL"}`,
         metadata: {
           companyCode,
-          year: scope.year,
+          year: auditYearFor(years),
+          years: years.length > 0 ? years : undefined,
           breakdown,
           rowsAffected,
+          // Every soft-archive above (budgetLine / balanceSheetLine /
+          // cashFlowEntry / counterparty) shares this ONE stamp, because
+          // `archiveStamp` was called once outside the transaction. That is
+          // what makes it a usable restore key — see ARCHIVE_GENERATION_KEY.
+          archivedAt: stamp.deletedAt.toISOString(),
           reason,
         },
       },
     })
 
-    return { rowsAffected, breakdown, auditEventId: audit.ok ? audit.id : null }
-  })
+    return {
+      rowsAffected,
+      breakdown,
+      auditEventId: audit.ok ? audit.id : null,
+      archivedAt: stamp.deletedAt.toISOString(),
+    }
+  }, RESET_TRANSACTION_OPTIONS)
 }
+
+/**
+ * Prisma's interactive-transaction default is a 5-second budget. This one
+ * holds eight statements over the widest tables in the schema. 120 s matches
+ * what every import path already asks for.
+ */
+export const RESET_TRANSACTION_OPTIONS = { maxWait: 15_000, timeout: 120_000 } as const
 
 export interface OrphanSweepResult {
   rowsAffected: number
@@ -904,8 +1345,11 @@ export async function archiveOrgOrphanBudgetLines(args: {
   reason?: string
   organizationId: string
   year?: number
+  years?: number[]
 }): Promise<OrphanSweepResult> {
-  const { prisma, actorUserId, reason, organizationId, year } = args
+  const { prisma, actorUserId, reason, organizationId } = args
+  const yearList = normalizeResetYears(args)
+  const year = planYearFilter(yearList)
   const stamp = archiveStamp(actorUserId)
   return prisma.$transaction(async (tx) => {
     // Plans that hold ANY company-attributed line (live OR archived — by the
@@ -915,7 +1359,7 @@ export async function archiveOrgOrphanBudgetLines(args: {
       organizationId,
       companyId: { not: null },
     }
-    if (year) attrWhere.plan = { year }
+    if (year) attrWhere.plan = year
     const mixedPlanIds = (
       await tx.budgetLine.findMany({
         where: attrWhere as never,
@@ -948,7 +1392,7 @@ export async function archiveOrgOrphanBudgetLines(args: {
         organizationId,
         companyId: null,
         deletedAt: null,
-        plan: { deletedAt: { not: null }, ...(year ? { year } : {}) },
+        plan: { deletedAt: { not: null }, ...(year ?? {}) },
       } as never,
       select: { planId: true },
       distinct: ["planId"],
@@ -965,7 +1409,7 @@ export async function archiveOrgOrphanBudgetLines(args: {
         planId: { in: sweepPlanIds },
         deletedAt: null,
       }
-      if (year) orphanWhere.plan = { year }
+      if (year) orphanWhere.plan = year
       rowsAffected = (await tx.budgetLine.updateMany({ where: orphanWhere as never, data: stamp }))
         .count
     }
@@ -980,12 +1424,18 @@ export async function archiveOrgOrphanBudgetLines(args: {
       event: {
         action: "data_reset",
         entityType: "Company",
-        entityId: `org-orphan-budgetlines:${year ?? "ALL"}`,
+        entityId: `org-orphan-budgetlines:${yearList.length > 0 ? yearList.join(",") : "ALL"}`,
         metadata: {
           companyCode: "__ORG_ORPHANS__",
-          year,
+          year: auditYearFor(yearList),
+          years: yearList.length > 0 ? yearList : undefined,
           breakdown: { orphanBudgetLine: rowsAffected },
           rowsAffected,
+          // No UI restore reaches companyId=NULL rows (the scope needs a
+          // company), so this is for the support path: it tells whoever
+          // un-stamps them by hand WHICH stamp to un-stamp, instead of
+          // clearing every archived orphan the org ever accumulated.
+          archivedAt: stamp.deletedAt.toISOString(),
           reason,
         },
       },

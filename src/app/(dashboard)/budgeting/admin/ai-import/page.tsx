@@ -10,9 +10,7 @@ import { redirect } from "next/navigation"
 import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
 import { ImportDataResetPanel } from "@/features/admin/components/ImportDataResetPanel"
-import { buildImportResetScopes } from "@/features/admin/lib/import-reset-scopes"
 import { AIImportTabs } from "./AIImportTabs"
 
 export const metadata = {
@@ -37,32 +35,15 @@ export default async function AIImportPage({
   const orgId = session?.user?.organizationId
   if (!orgId) redirect("/budgeting")
   const params = searchParams ? await searchParams : {}
-  const initialCompanyCode =
-    firstParam(params.forEntity) ?? firstParam(params.company) ?? undefined
+  // `?forEntity=` / `?company=` used to preselect the reset panel's company.
+  // The panel no longer deletes anything, so the parameter is ignored here;
+  // the import forms take their scope from the workbook.
   const initialYearRaw = firstParam(params.year)
   const initialYear =
     initialYearRaw && Number.isInteger(Number(initialYearRaw))
       ? Number(initialYearRaw)
       : undefined
   const importYear = initialYear ?? new Date().getFullYear()
-  const [organization, companies] = await Promise.all([
-    prisma.organization.findUnique({
-      where: { id: orgId },
-      select: { name: true },
-    }),
-    prisma.company.findMany({
-      where: {
-        organizationId: orgId,
-        isActive: true,
-      },
-      select: { id: true, code: true, name: true, level: true, parentCompanyId: true },
-      orderBy: [{ level: "asc" }, { code: "asc" }],
-    }),
-  ])
-  const resetScopes = buildImportResetScopes({
-    organizationName: organization?.name ?? t("reset.wholeHoldingFallback"),
-    companies,
-  })
 
   return (
     <div
@@ -94,11 +75,7 @@ export default async function AIImportPage({
       </div>
 
       <div className="mb-6" data-testid="ai-import-guide-cleanup">
-        <ImportDataResetPanel
-          scopes={resetScopes}
-          initialCompanyCode={initialCompanyCode}
-          initialYear={importYear}
-        />
+        <ImportDataResetPanel />
       </div>
 
       <div data-testid="ai-import-guide-workflows">

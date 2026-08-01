@@ -1626,7 +1626,8 @@
     "aiPdfAnalyst": "Analitik",
     "aiPdfFooterWithPlan": "«{plan}» planındakı məlumatlar əsasında hazırlanıb. Auditdən keçməyib. Yalnız daxili baxış üçündür.",
     "aiPdfFooterNoPlan": "Seçilmiş büdcə planındakı məlumatlar əsasında hazırlanıb. Auditdən keçməyib. Yalnız daxili baxış üçündür.",
-    "aiPdfExportFailed": "PDF ixracı alınmadı"
+    "aiPdfExportFailed": "PDF ixracı alınmadı",
+    "pnlMarginCaption": "marja"
   },
   "onboardingDashboard": {
     "title": "Onboarding Tamlığı",
@@ -3785,53 +3786,10 @@
       "safetyTitle": "Bu səhifəyə baxış heç nə yazmır; səhifədəki əməliyyatlar isə yazır.",
       "safetyBody": "Fayl seçimi lokal baş verir, lakin «AI analizi» onun məzmununu göndərə, pullu AI təchizatçısını çağıra və ilkin baxış və ya aralıq qeydlər yarada bilər. «Tətbiq et» idxal olunan maliyyə datasını yazır. Təmizləmə isə seçilmiş sahədə datanı arxivləyə və ya silə bilən ayrıca dağıdıcı əməliyyatdır. Hər əməliyyatı yalnız düzgün fayl, səlahiyyət və açıq niyyətlə istifadə edin."
     },
-    "reset": {
-      "title": "Təkrar yükləmədən əvvəl import təmizliyi",
-      "description": "Təkrar importdan əvvəl şirkət/ili təhlükəsiz təmizləyin. Əvvəlcə say preview-u göstərilir; yazı eyni audited Data Archive reset yolundan keçir və commit-dən sonra recompute edir.",
-      "openFullArchive": "Tam arxiv",
-      "defaultReason": "Təkrar AI importundan əvvəl seçilmiş məlumatları təmizləmək",
-      "scopeLabel": "Şirkət / holding",
-      "scopePlaceholder": "Şirkət və ya holding seçin",
-      "holdingGroupLabel": "Holdinglər",
-      "companyGroupLabel": "Şirkətlər",
-      "holdingOption": "{name} — bütün holding ({count} qurum)",
-      "yearLabel": "İl",
-      "allYearsPlaceholder": "Bütün illər",
-      "reasonLabel": "Audit səbəbi",
-      "previewReset": "Reset preview",
-      "previewRunning": "Preview hesablanır...",
-      "resetAndReimport": "Sıfırla və yenidən import et",
-      "rollbackSafePath": "Təhlükəsiz rollback",
-      "rollbackTitle": "Dəqiq son-import rollback üçün source-level provenance lazımdır; burada təhlükəsiz scoped reset istifadə olunur.",
-      "yearError": "İl boş və ya 2000-2100 arasında rəqəm olmalıdır.",
-      "scopeLine": "Sahə: {scope} · {count} qurum · {year}",
-      "allYears": "bütün illər",
-      "previewTitle": "Preview: {rows} sətir/açar təsirlənəcək",
-      "previewResetHint": "Yalnız seçilmiş şirkət sahəsini arxivləyir/sıfırlayır.",
-      "previewReimportHint": "Reset uğurlu olduqdan sonra replacement workbook-u aşağıda yükləyin.",
-      "previewRollbackHint": "Safe rollback seçilmiş şirkət/ili sıfırlayır, sonra düzgün faylı yenidən import edirsiniz.",
-      "wholeHoldingPreviewNote": "Bütün holdinq reset-i: seçilmiş bütün qurumlar ({count}) və varsa company-less orphan budget lines daxil edilir.",
-      "wholeHoldingFallback": "Bütün holdinq",
-      "breakdown": {
-        "budgetLine": "P&L",
-        "balanceSheetLine": "Balans",
-        "cashFlowEntry": "Pul axını",
-        "counterparty": "Qarşı tərəflər",
-        "operationalFact": "Import faktları",
-        "budgetActual": "Büdcə faktları",
-        "settingsKeys": "Parametr açarları",
-        "orphanBudgetLine": "Şirkətsiz P&L"
-      },
-      "irreversibleNote": "P&L, BS, CF və qarşı tərəflər arxivlənir və bərpa oluna bilir. Import facts, budget actuals və settings qalıqları silinir; bərpa təkrar importladır. Manual/inline facts saxlanılır.",
-      "confirmLabel": "Təsdiq üçün \"{value}\" yazın",
-      "confirmReset": "Reset-i təsdiqlə",
-      "confirmResetAndReimport": "Reset-i təsdiqlə, sonra re-import",
-      "confirmRollbackSafePath": "Safe rollback-i təsdiqlə",
-      "resetRunning": "Sıfırlanır...",
-      "successTitle": "Reset tamamlandı: {rows} təsirləndi",
-      "successRecompute": "Yenidən hesablanan indikatorlar: {n}",
-      "uploadReplacementHint": "İndi replacement workbook-u aşağıdakı import tablarında yükləyin.",
-      "error": "Xəta: {msg}"
+    "cleanup": {
+      "title": "Əvvəlcə nəyisə silmək lazımdırmı?",
+      "body": "Xeyr. Faylı yenidən yükləmək həmin faylın əhatə etdiyi illəri və şirkətləri əvəzləyir — həmin illər üzrə köhnə sətirlər avtomatik silinir. Məlumatı yalnız sistemdən tamamilə yox olmasını istədiyiniz halda silin.",
+      "link": "Məlumatları sil"
     },
     "tabs": {
       "ariaLabel": "AI İmport rejimi",
@@ -4389,75 +4347,259 @@
     }
   },
   "adminDataArchive": {
-    "title": "Data Arxivi",
-    "description": "Arxivləşdirmə dataları HeatMap, recompute və hesabatlardan gizlədir, lakin onları fiziki olaraq silmir. Bərpa 90 gün ərzində mümkündür. Bütün hərəkətlər IFRS auditi üçün audit trail-da qeyd olunur.",
-    "historyTitle": "Arxivləşdirmə tarixçəsi (son 20)",
-    "historyEmpty": "Hələ heç bir arxivləşdirmə hərəkəti qeyd olunmayıb.",
+    "title": "Məlumatların silinməsi və bərpası",
+    "description": "Silmə məlumatı risk matrisindən (HeatMap), göstərici hesablamalarından və hesabatlardan çıxarır. Bir hissəsi bu səhifədən geri qaytarıla bilər; bir hissəsi yalnız faylı yenidən yükləyəndə qayıdır; bir hissəsi isə həmişəlik itir. Hər əməliyyat audit izində qeyd olunur. Bu səhifə təsdiqdən əvvəl hansının hansı olduğunu göstərir.",
+    "metaTitle": "Məlumatların silinməsi · Admin · BudgetPro",
+    "historyTitle": "Son silmə və bərpalar (son 20)",
+    "historyEmpty": "Hələ heç nə silinməyib və bərpa olunmayıb.",
     "scopeAll": "hamısı",
-    "actionArchive": "arxivləşdirmə",
-    "actionRestore": "bərpa",
+    "actionArchive": "arxivləndi",
+    "actionRestore": "bərpa olundu",
+    "actionDelete": "silindi",
     "systemActor": "sistem",
     "col": {
-      "when": "Vaxt",
-      "action": "Hərəkət",
+      "when": "Nə vaxt",
+      "action": "Əməliyyat",
       "what": "Nə",
-      "scope": "Sahə",
+      "scope": "Əhatə",
       "rows": "Sətir",
       "who": "Kim",
       "reason": "Səbəb"
     },
-    "form": {
-      "modeLabel": "Hərəkət",
-      "modeArchive": "Arxivləşdir (hesablamalardan gizlə)",
-      "modeRestore": "Bərpa et (gizli sətirləri qaytar)",
-      "entityKindLabel": "Data tipi",
-      "entityKind": {
-        "BudgetLine": {
-          "label": "Büdcə sətirləri (P&L)",
-          "description": "Revenue / COGS / OPEX. Arxivləşdirmə onları göstərici hesablamalarından və HeatMap-dən silir."
-        },
-        "BalanceSheetLine": {
-          "label": "Balance Sheet sətirləri",
-          "description": "Assets / Liabilities / Equity. Arxivləşdirmə balansdan silir. Sahə — il, şirkət deyil."
-        },
-        "CashFlowEntry": {
-          "label": "Pul axını yazıları",
-          "description": "Gəlir/gediş. Sahə — il (təşkilat səviyyəsi); şirkət tətbiq olunmur."
-        },
-        "Counterparty": {
-          "label": "Qarşı tərəflər (müştərilər/təchizatçılar)",
-          "description": "Top-N müştəri və təchizatçı. HHI konsentrasiyasına və müştəri-təchizatçı riskinə təsir edir."
-        }
-      },
-      "companyLabel": "Şirkət",
-      "companyPickerPlaceholder": "— seçin —",
-      "yearLabel": "İl",
-      "periodLabel": "Dövr (məsələn, 2026 və ya 2026-Q1)",
-      "reasonLabel": "Səbəb (audit trail üçün)",
-      "reasonPlaceholder": "Məsələn: səhvən idxal edilən 2025-ci il sətirləri, faktiki məlumatlarla əvəz edirik",
-      "confirmLabel": "Təsdiq üçün \"{value}\" yazın",
-      "submitArchive": "Arxivləşdir",
-      "submitRestore": "Bərpa et",
-      "submitRunning": "İcra olunur…",
-      "resultOk": "Hazır. {action} {rows} sətir. Səhifə yenilənəcək…",
-      "resultArchived": "Arxivləşdirildi",
-      "resultRestored": "Bərpa edildi",
-      "resultError": "Xəta: {msg}",
-      "resetLabel": "🧹 Şirkət datasının tam sıfırlanması (hər şey, qalıqsız)",
-      "resetDesc": "İdxalın bir şirkət üçün yazdığı HƏR ŞEYİ təmizləyir: maliyyə (P&L/BS/CF) + qarşı tərəflər (arxivlənir, geri qaytarıla bilən) + idxal mənşəli əməliyyat faktları + settings-də audit/məhkəmə/risk/torpaq/CAPEX (silinir). Əl ilə daxil edilən faktlar (manual/inline) saxlanılır. İl opsionaldır (boş = bütün illər). Sıfırlamadan sonra göstəricilər yenidən hesablanır. Faktlar/settings üçün geri qaytarılmazdır — təkrar idxalla bərpa olunur.",
-      "resetRestoreNote": "Tam sıfırlama faktlar/settings üçün geri qaytarılmazdır — yalnız arxiv (bərpa = təkrar idxal).",
-      "yearOptionalAllYears": "(opsional — boş = bütün illər)",
-      "companyOptionalOrgYear": "(opsional — boş = il üzrə bütün təşkilat)",
-      "orgWideOption": "— bütün təşkilat (org-wide) —",
-      "resultReset": "Sıfırlandı: {rows} sətir (qalıqsız)",
-      "breakdownRecomputed": "↻ yenidən hesablanan göstəricilər: {n}",
-      "cfUnattributableNote": "⚠️ Bu il üçün {count} Cash Flow sətrində sourceId-də şirkət prefiksi yoxdur (əl ilə / idxaldan deyil) — şirkətə bağlamaq olmur, ona görə TOXUNULMADI. Təşkilat üzrə arxivdən istifadə edin və ya əl ilə redaktə edin.",
-      "submitReset": "🧹 Sıfırla — hər şeyi sil (qalıqsız)",
-      "selectAllHolding": "Bütün qrup (bütün şirkətlər)",
-      "selectedCount": "Seçildi: {n}",
-      "resultCompaniesReset": "sıfırlanan şirkətlər: {n}"
+    "entity": {
+      "Company": "Şirkətin məlumatları",
+      "BudgetLine": "Mənfəət və zərər sətirləri",
+      "BalanceSheetLine": "Balans sətirləri",
+      "CashFlowEntry": "Pul axını sətirləri",
+      "Counterparty": "Alıcılar və təchizatçılar",
+      "unknown": "Digər"
+    }
+  },
+  "adminDataDelete": {
+    "intro": "Məlumatın silinməsi onun yüklənməsindən ayrı bir qərardır. Faylı yenidən yükləməzdən əvvəl heç nə silmək lazım deyil — yeni idxal özü əhatə etdiyi illəri və şirkətləri əvəzləyir. Bu səhifədən yalnız məlumatın sistemdən tamamilə yox olmasını istədiyiniz halda istifadə edin.",
+    "introLink": "Məlumat idxalına keçin",
+    "chooser": {
+      "question": "Nə etmək istəyirsiniz?"
     },
-    "metaTitle": "Arxiv · Admin · BudgetPro"
+    "task": {
+      "clearYears": {
+        "title": "Bir ilin rəqəmlərini təmizləmək",
+        "body": "Bir və ya bir neçə ilin rəqəmləri səhvdir və onların silinməsini istəyirsiniz. Şirkətləri, illəri və dəqiq nəyin silinəcəyini özünüz seçirsiniz.",
+        "cta": "İli təmizlə"
+      },
+      "removeCompany": {
+        "title": "Bir şirkətin məlumatlarını silmək",
+        "body": "Şirkət bağlanıb, satılıb və ya səhvən yüklənib. Bu əməliyyat onun üçün bütün illər üzrə indiyədək yüklənmiş hər şeyi silir.",
+        "cta": "Şirkətin məlumatlarını sil"
+      },
+      "restore": {
+        "title": "Silinmiş məlumatı geri qaytarmaq",
+        "body": "Son vaxtlar nəyin silindiyini görün və geri qaytarıla bilənləri qaytarın.",
+        "cta": "Geri qaytar"
+      },
+      "deleteAll": {
+        "title": "Hər şeyi silib təmiz başlamaq",
+        "body": "Bütün qrupu boşaldır: hər şirkət, hər il, üstəlik qrup səviyyəsindəki satış proqnozu və hər şirkət üzrə saxlanan uyğunluq qeydləri. Sıfırdan başlamazdan əvvəl istifadə olunur.",
+        "cta": "Hamısını sil"
+      }
+    },
+    "dangerDivider": "Geri qaytarmaq mümkün deyil",
+    "breadcrumb": {
+      "root": "Məlumatların silinməsi",
+      "change": "Başqa əməliyyat seç"
+    },
+    "step": {
+      "companies": "1. Hansı şirkətlər?",
+      "years": "2. Hansı illər?",
+      "what": "3. Dəqiq nə?",
+      "check": "4. Silməzdən əvvəl yoxlayın"
+    },
+    "companies": {
+      "search": "Ad və ya kod üzrə axtarış",
+      "selectAll": "Hamısını seç ({count})",
+      "selected": "Seçilib: {count}",
+      "noData": "hələ məlumat yoxdur",
+      "dataRange": "{from}–{to} illəri üzrə məlumat",
+      "dataOneYear": "yalnız {year} ili üzrə məlumat",
+      "allSelectedNote": "Bütün şirkətləri seçmisiniz. Seçdiyiniz illər üzrə qrup səviyyəsində daha iki şey silinəcək: departamentlər üzrə satış proqnozu və heç bir şirkətə bağlı olmayan köhnə sətirlər. Hər ikisi aşağıdakı yoxlamada göstərilir."
+    },
+    "years": {
+      "question": "Bir və ya bir neçə il seçin. Rəqəmlər həmin ildə mövcud olan maliyyə sətirlərinin sayıdır; dəqiq say 4-cü addımda göstərilir.",
+      "chip": "{year} · {rows} sətir",
+      "allChip": "Bütün illər · {rows} sətir",
+      "allChipNote": "«Bütün illər» yuxarıdakı çiplərdə illər üzrə bölünməyən sətirləri də əhatə edir — əməliyyat göstəriciləri və satış planı. Audit tapıntıları, məhkəmə işləri və ilə bağlı olmayan digər qeydlər silinmir; onlar «Bir şirkətin məlumatlarını silmək» əməliyyatına aiddir.",
+      "locked": "{year} · bağlıdır",
+      "lockedTooltip": "{year} ili {date} tarixində {who} tərəfindən bağlanıb — \"{reason}\". Bu il üzrə heç nə silinə bilməz.",
+      "lockLink": "Dövr kilidlərinə keçin",
+      "allYearsLocked": "\"Bütün illər\" silinməsi bağlı dövrləri də əhatə edərdi, buna görə rədd edilir. Konkret açıq illəri seçin və ya əvvəlcə kilidi açın.",
+      "noIndex": "Seçilmiş şirkətlərdə ilə bağlı maliyyə sətri yoxdur — mövcud məlumat illər üzrə bölünmür. «Bütün illər» seçin, dəqiq sayı 4-cü addımda görəcəksiniz.",
+      "allChipNoIndex": "Bütün illər"
+    },
+    "what": {
+      "everything": "Həmin illər üzrə hər şey",
+      "statements": "Yalnız maliyyə hesabatları",
+      "statementsHint": "Mənfəət və zərər, balans, pul axını, alıcılar və təchizatçılar.",
+      "operational": "Yalnız fayldan yüklənmiş əməliyyat göstəriciləri və faktiki rəqəmlər",
+      "operationalHint": "Fayldan yüklənmiş ton, hektar, işçi sayı və faktiki rəqəmlər. Əl ilə daxil edilmiş göstəricilərə toxunulmur. Hesabatlara dəymir.",
+      "exact": "Dəqiq seçim",
+      "exactHint": "Silinməsini istədiyiniz məlumat növlərini işarələyin. Sağdakı rəqəm bütün illər üzrə ümumi saydır — seçdiyiniz illər üzrə dəqiq say 4-cü addımda göstərilir.",
+      "indicatorsLocked": "Həmişə daxildir. Hesablanmış göstəricilər hesablandıqları məlumatla birlikdə silinir və dərhal — qalan məlumat əsasında — yenidən hesablanır. Mənbə məlumatı da silinirsə, onlar boş qayıdır.",
+      "manualActuals": "Əl ilə daxil edilmiş faktiki rəqəmləri də sil ({count}). Faylı yenidən yükləmək bunları geri qaytarmayacaq.",
+      "recordsNote": "Audit tapıntıları, məhkəmə işləri, risk reyestri, torpaq, kapital planları və strategiya mətni illər üzrə saxlanmır, ona görə il-il silinmə onlara heç vaxt toxunmur. Onları silmək üçün \"Bir şirkətin məlumatlarını silmək\" əməliyyatından istifadə edin.",
+      "zeroHint": "0 — bu növ üzrə hazırda məlumat yoxdur."
+    },
+    "category": {
+      "budgetLine": "Mənfəət və zərər sətirləri (gəlir, maya dəyəri, xərclər)",
+      "balanceSheetLine": "Balans sətirləri",
+      "cashFlowEntry": "Pul axını sətirləri",
+      "counterparty": "Alıcılar və təchizatçılar",
+      "operationalFact": "Fayldan gələn əməliyyat göstəriciləri (ton, hektar, işçi sayı)",
+      "budgetActualImported": "Fayldan yüklənmiş faktiki rəqəmlər",
+      "budgetActualManual": "Əl ilə daxil edilmiş faktiki rəqəmlər",
+      "salesBudgetLine": "Məhsullar üzrə satış planı",
+      "salesForecast": "Departamentlər üzrə satış proqnozu (bütün qrup)",
+      "indicatorValue": "Hesablanmış göstəricilər və onların rəngləri",
+      "orphanBudgetLine": "Heç bir şirkətə bağlı olmayan köhnə sətirlər",
+      "recordsCompliance": "Audit tapıntıları, məhkəmə işləri və risk reyestri",
+      "complianceWriteBacks": "Audit tapıntılarına daxil etdiyiniz statuslar, məsul şəxslər, son tarixlər və şərhlər",
+      "recordsAssets": "Torpaq sahələri və kapital qoyuluşu planları",
+      "recordsDescription": "Şirkətin təsviri və strategiya mətni",
+      "unknown": "Digər məlumatlar"
+    },
+    "unit": {
+      "rows": "{count} sətir",
+      "items": "{count} qeyd"
+    },
+    "check": {
+      "button": "Nəyin silinəcəyini yoxla",
+      "running": "Hesablanır…",
+      "again": "Yenidən yoxla",
+      "checkedAt": "Yoxlanıb: {time}",
+      "stale": "Bu rəqəmlər bir neçə dəqiqə əvvəlkidir. Silməzdən əvvəl yenidən yoxlayın."
+    },
+    "radius": {
+      "headlineRecoverableClause": "Bu səhifədən geri qaytarıla bilər: {recoverable} sətir.",
+      "headlinePermanentClause": "Həmişəlik itir: {permanent} sətir.",
+      "scope": "{companies} şirkət və {years} il üzrə.",
+      "scopeAllYears": "{companies} şirkət üzrə, bütün illər.",
+      "group": {
+        "recoverable": "Bu səhifədən geri qaytarıla bilər",
+        "permanent": "Həmişəlik silinir — heç bir fayl bunu geri qaytarmır",
+        "reimport": "Yalnız həmin faylı yenidən yükləsəniz qayıdır",
+        "recomputed": "Silinir və avtomatik yenidən hesablanır",
+        "archived": "Sistemdən çıxarılır, bazada saxlanılır — bu səhifədən qaytarıla bilməz"
+      },
+      "zeroCollapse": "Daha {count} kateqoriyada silinəcək heç nə yoxdur",
+      "truth": "Bu siyahı bir neçə saniyə əvvəl sistemdə aparılmış hesablamanın dəqiq nəticəsidir. Bu siyahıdan kənarda heç nə silinmir. Bundan sonra iki şey dəyişir: bu şirkətlər üzrə göstəricilər yenidən hesablanır və həmin dövrlər üzrə xəbərdarlıq tarixçəsi bütün qrup üzrə yenidən qurulur.",
+      "caveat": {
+        "salesForecast": "Yalnız yeni faylda olan departamentlər bərpa olunur. Faylda olmayan departament silinmiş qalır.",
+        "counterparty": "Rüblük və aylıq sətirlər dövr-dövr geri qaytarılır.",
+        "orphan": "Bunları bu səhifədən geri qaytarmaq mümkün deyil. Bərpa üçün texniki dəstəyə müraciət etmək lazımdır.",
+        "archivedSupport": "Bir neçə ili və ya «bütün illər»i əhatə edən silmə bərpa siyahısına düşmür. Bu sətirləri yalnız texniki dəstək geri qaytara bilər.",
+        "retention": "Bu, daimi arxiv deyil. Gecə işləyən təmizləmə arxivlənmiş sətirləri silinmədən təxminən {days} gün sonra bazadan tamamilə çıxarır və ondan sonra onları texniki dəstək də qaytara bilmir. Həmin müddət ərzində bərpa edin və ya faylı yenidən yükləyin."
+      },
+      "recordsKept": "Audit tapıntıları, məhkəmə işləri, risk reyestri, torpaq, kapital planları və strategiya mətni saxlanılır. İl-il silinmə onlara heç vaxt toxunmur.",
+      "headlineLead": "{rows} sətir silinəcək",
+      "headlineReimportClause": "Yalnız faylı yenidən yükləməklə qayıdır: {reimport} sətir.",
+      "headlineRecomputedClause": "Avtomatik yenidən hesablanır: {recomputed} sətir — sizdən heç nə tələb olunmur.",
+      "headlineRecordsOnlyLead": "Silinəcək maliyyə sətri yoxdur — yalnız {records} qeyd silinir",
+      "headlineArchivedClause": "Sistemdən çıxarılır, lakin bazada saxlanılır: {archived} sətir — bu səhifədən geri qaytarmaq mümkün deyil.",
+      "headlineRecordsClause": "Üstəlik {records} qeyd silinir — bunlar sətir sayına daxil deyil.",
+      "headlineRecordsPermanentClause": "Həmin qeydlərdən həmişəlik itən: {permanent}.",
+      "headlineRecomputedEmptyClause": "Silinir və dərhal yenidən hesablanır: {recomputed} sətir — lakin onların hesablandığı məlumat da gedir, ona görə boş qayıdacaqlar və faylı yenidən yükləyənədək risk matrisi boz qalacaq."
+    },
+    "zero": {
+      "emptyCompany": "{company} üzrə hələ yüklənmiş məlumat yoxdur. Silinəcək heç nə yoxdur — məlumat idxalı səhifəsində fayl yükləyin.",
+      "emptyHolding": "Bütün qrup onsuz da boşdur. Silinəcək heç nə qalmayıb.",
+      "emptySelection": "Seçdiyiniz hər şey onsuz da boşdur. Silinəcək heç nə yoxdur."
+    },
+    "reason": {
+      "label": "Bunu niyə silirsiniz? (audit izində saxlanılır)",
+      "placeholder": "Məsələn: 2025 ili qaralama fayldan yüklənib, imzalanmış hesabatla əvəz edirik.",
+      "tooShort": "Bir qısa cümlə yazın — auditor məhz bunu oxuyacaq.",
+      "chip": {
+        "wrongFile": "Səhv fayl yüklənib",
+        "duplicate": "Məlumat iki dəfə yüklənib",
+        "freshYear": "Yeni ilə təmiz başlanılır"
+      }
+    },
+    "confirm": {
+      "tokenLabel": "Təsdiq üçün {code} yazın",
+      "tokenHintCompany": "Bu, şirkətin kodudur. Onu yazmaqla məhz bu şirkəti nəzərdə tutduğunuzu bildirirsiniz.",
+      "tokenHintAll": "Bu əməliyyat birdən çox şirkəti və ya bütün illəri əhatə edir.",
+      "permanentTick": "Başa düşürəm: {label} — {count} — həmişəlik itəcək.",
+      "arming": "{seconds} saniyədən sonra aktivləşir",
+      "blocked": "Silmək üçün: səbəbi yazın və təsdiq sahəsinə {code} daxil edin."
+    },
+    "submit": {
+      "rows": "{rows} sətri sil",
+      "rowsPermanent": "{rows} sətri sil ({permanent} sətir həmişəlik)",
+      "company": "{company} üzrə hər şeyi sil",
+      "everything": "Hər şeyi sil — {companies} şirkət, bütün illər",
+      "running": "Silinir…",
+      "runningNote": "Bütün qrup üçün bu, iki dəqiqəyədək çəkə bilər. Səhifəni bağlamayın."
+    },
+    "hardStop": {
+      "title": "Bu, \"Hamısını sil\" ilə eynidir.",
+      "body": "Bütün şirkətləri və bütün illəri seçmisiniz. \"Hamısını sil\" əməliyyatından istifadə edin — o, məhz bunun təsadüfən baş verməməsi üçün var.",
+      "cta": "\"Hamısını sil\"ə keç"
+    },
+    "result": {
+      "done": {
+        "title": "Hazırdır. {companies} şirkət üzrə {rows} sətir silindi.",
+        "recompute": "Göstəricilər yenidən hesablandı ({count} dəyər).",
+        "goImport": "Məlumat idxalına keçin",
+        "reimport": "Bunlardan {rows} sətir yalnız faylı yenidən yükləyəndə qayıdacaq. Fayl əlinizdə deyilsə, indi yoxlayın.",
+        "records": "Üstəlik {records} qeyd silindi — audit tapıntıları, məhkəmə işləri və onlara edilmiş yazılar."
+      },
+      "partial": {
+        "title": "Qismən yerinə yetirildi — məlumatın bir hissəsi silindi, bir hissəsi silinmədi.",
+        "deleted": "Silindi: {list}",
+        "untouched": "Silinmədi: {list}. Bu şirkətlərin rəqəmləri dəyişməyib — onlardan heç nə silinməyib.",
+        "orphan": "Qrup səviyyəsindəki təmizləmə başa çatmadı, ona görə bağlı olmayan bəzi köhnə sətirlər qalıb. Bunu yenidən işə salmaq təhlükəsizdir və işi tamamlayacaq.",
+        "retry": "Alınmayan {count} şirkət üçün yenidən cəhd et"
+      },
+      "drift": "Siz rəqəmləri oxuyarkən onlar dəyişdi. Heç nə silinmədi. Budur cari hesablama — davam etməzdən əvvəl onu yoxlayın.",
+      "rateLimited": "Son bir dəqiqədə həddindən çox silmə əməliyyatı olub. {seconds} saniyədən sonra yenidən cəhd edə bilərsiniz.",
+      "locked": "Heç nə silinmədi. {year} bağlı dövrdür.",
+      "failed": "Silmə başlamadı. Heç nə dəyişmədi. Yenidən cəhd etməzdən əvvəl yoxlayın.",
+      "failedDetail": "Texniki təfərrüat (dəstəyə göndərin):",
+      "driftNumbers": "Yoxlayanda: {expected} sətir · İndi: {actual} sətir"
+    },
+    "removeCompany": {
+      "fixedScope": "Bütün illər — bu şirkət üzrə indiyədək yüklənmiş hər şey.",
+      "permanentNote": "Bu, həm də bu şirkət üzrə qeyd olunmuş audit tapıntılarını, məhkəmə işlərini və risk reyestrini silir. Həmin qeydlərin özü faylı yenidən yükləyəndə qayıdır — lakin onlara daxil etdiyiniz statuslar, məsul şəxslər, son tarixlər və şərhlər qayıtmır, onları heç nə bərpa etmir.",
+      "keptNote": "Şirkətin özü sistemdə qalır — şirkət siyahısından, hesab planından və istifadəçi hüquqlarından silinmir. Bir növ məlumat da qalır: fayldan yüklənməyib, əl ilə daxil edilmiş əməliyyat göstəriciləri. Bu səhifədəki heç bir əməliyyat onları silmir və onlar göstəriciləri qidalandırmaqda davam edir — onları «Göstəricilərin sağlamlığı» səhifəsindən silin."
+    },
+    "deleteAll": {
+      "intro": "Bu, bütün qrupu boşaldır. Aşağıdakı hər şirkət, hər il, üstəlik heç bir konkret şirkətə aid olmayan iki qrup səviyyəli element.",
+      "groupLevel": "{name} — qrup səviyyəsi",
+      "counting": "Sistemdəki hər şey hesablanır…",
+      "keptNote": "Silinməyənlər: şirkətlərin özü, hesab planı, göstərici tərifləri və istifadəçilər. Qalan hər şey silinir — təkcə rəqəmlər deyil, həm də audit tapıntıları, məhkəmə işləri, risk reyestri, torpaq sahələri, kapital planları və strategiya mətni. Struktur qalır, sistem boş büdcə kimi açılır."
+    },
+    "restore": {
+      "empty": "Son vaxtlar heç nə silinməyib.",
+      "willReturn": "Bu əməliyyatdan geri qaytarıla bilənlər:",
+      "willNotReturn": "Bunlar geri qaytarılmayacaq:",
+      "cta": "Geri qaytar",
+      "running": "Geri qaytarılır…",
+      "done": "{rows} sətir geri qaytarıldı.",
+      "multiCall": "Bu, ardıcıl olaraq {count} ayrı əməliyyat kimi icra olunur.",
+      "emptyNotRestorable": "Son silmələrin heç biri bu səhifədən geri qaytarıla bilmir. Onların götürdüyünün bir hissəsi faylı yenidən yükləyəndə qayıdır; qalanını — əl ilə daxil edilmiş rəqəmləri və bir neçə ili əhatə edən silmələrin sətirlərini — yalnız texniki dəstək bərpa edə bilər.",
+      "doneNothing": "Heç nə qayıtmadı — həmin sətirlər artıq arxivdə yoxdur. Ya əvvəllər bərpa olunub, ya da gecə təmizləməsi onları silib. Rəqəmləri geri almaq üçün faylı yenidən yükləyin.",
+      "noRecompute": "Göstəricilər avtomatik yenidən hesablanmır. Sətirlər qayıtsa da, risk matrisindəki rəqəmlər yalnız növbəti hesablamadan sonra bərpa olunacaq.",
+      "widerCaveat": "Bu, məhz həmin bir silmənin götürdüyü sətirləri qaytarır — nə daha əvvəlki silmələri, nə də təkrar yükləmənin arxivdə qoyduğu köhnə versiyanı. Əgər həmin il ondan sonra yenidən yüklənibsə, qayıdan sətirlər cari sətirlərin yanına düşəcək; ona görə dərhal sonra mənfəət və zərər hesabatını mənbə faylı ilə tutuşdurun.",
+      "retention": "Təxminən {days} gündən köhnə silmələr artıq təmizlənmiş ola bilər. Qeyd bu siyahıda qalır, lakin geri qaytarılacaq heç nə olmaya bilər.",
+      "fate": {
+        "reimport": "yalnız həmin faylı yenidən yükləyəndə qayıdır",
+        "permanent": "bunu heç nə geri qaytarmır — nə bu səhifə, nə də fayl",
+        "recomputed": "bu bərpa ilə yox, növbəti hesablama ilə yenidən qurulur"
+      },
+      "legacy": {
+        "title": "Bunu bu səhifədən geri qaytarmaq mümkün deyil",
+        "body": "Bu silmə sistem hər silmənin hansı sətirləri götürdüyünü qeyd etməyə başlamazdan əvvəl yazılıb. Adətən eyni il bir neçə dəfə yüklənir və hər yükləmə əvəz etdiyi versiyanı arxivdə saxlayır — ona görə buradan bərpa yalnız bütün həmin versiyaları eyni anda qaytara bilər və rəqəmləri qatlayar. Bunun əvəzinə həmin ilin faylını yenidən yükləyin."
+      }
+    }
   },
   "adminDataSources": {
     "title": "Data Mənbələri Kataloqu",
@@ -4617,8 +4759,8 @@
         "desc": "Şirkət üzrə 7 sahə üzrə qiymətləndirmə səviyyələrlə (complete/good/partial/thin/empty). CSV ixracı."
       },
       "dataArchive": {
-        "title": "Məlumat arxivi",
-        "desc": "Self-servis arxiv və bərpa: büdcə sətirləri, balans, pul axını, qarşı tərəflər."
+        "title": "Məlumatların silinməsi",
+        "desc": "Bir ilin rəqəmlərini silin, şirkəti çıxarın və ya qrupu boşaldın — təsdiqdən əvvəl hesablama və geri qaytarıla bilənlər üçün bərpa ilə."
       },
       "intelHealth": {
         "title": "Intel sağlamlığı",

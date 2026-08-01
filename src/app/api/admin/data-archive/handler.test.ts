@@ -9,8 +9,16 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-const { prismaMock, archiveRowsMock, restoreRowsMock, resetMock, orphanSweepMock, recomputeMock } =
-  vi.hoisted(() => ({
+const {
+  prismaMock,
+  archiveRowsMock,
+  restoreRowsMock,
+  resetMock,
+  orphanSweepMock,
+  salesForecastMock,
+  previewMock,
+  recomputeMock,
+} = vi.hoisted(() => ({
     prismaMock: {
       cashFlowEntry: { count: vi.fn() },
       company: { findMany: vi.fn(), findFirst: vi.fn() },
@@ -24,6 +32,12 @@ const { prismaMock, archiveRowsMock, restoreRowsMock, resetMock, orphanSweepMock
     restoreRowsMock: vi.fn(),
     resetMock: vi.fn(),
     orphanSweepMock: vi.fn(),
+    // 2026-07-31 — this was MISSING from the mock, so every whole-holding
+    // test called `undefined(...)`, threw a TypeError, and the route swallowed
+    // it as "non-fatal". The org-level sales-forecast sweep was untested in
+    // every test that appeared to cover a whole-holding reset.
+    salesForecastMock: vi.fn(),
+    previewMock: vi.fn(),
     recomputeMock: vi.fn(),
   }))
 
@@ -42,11 +56,15 @@ vi.mock("@/lib/server/archive", () => ({
   restoreRows: restoreRowsMock,
   resetCompanyImportData: resetMock,
   archiveOrgOrphanBudgetLines: orphanSweepMock,
+  resetOrgSalesForecast: salesForecastMock,
+  previewCompanyImportReset: previewMock,
 }))
 vi.mock("@/lib/risk/recompute-trigger", () => ({ runRecomputeForCompanies: recomputeMock }))
 
 import { requireRole } from "@/lib/api-auth"
 import { POST } from "./route"
+import { gateFor, type TaskId } from "@/features/admin/lib/delete-data/tier"
+import { buildCommitRequest } from "@/features/admin/lib/delete-data/payload"
 
 const SESSION = { userId: "u1", orgId: "org1", role: "admin" as const }
 
@@ -72,6 +90,8 @@ beforeEach(() => {
   // Default: org-orphan sweep finds nothing (a no-op) so existing reset tests are
   // unaffected whether or not the whole-holding gate happens to fire.
   orphanSweepMock.mockResolvedValue({ rowsAffected: 0, auditEventId: null })
+  salesForecastMock.mockResolvedValue({ rowsAffected: 0, auditEventId: null })
+  previewMock.mockResolvedValue({ rowsAffected: 0, breakdown: {}, companies: [], years: [] })
   recomputeMock.mockResolvedValue({ ok: 3 })
   prismaMock.indicatorValue.findMany.mockResolvedValue([])
   // Default: no locked periods — pre-11.39 behaviour for every existing test.
@@ -117,11 +137,36 @@ describe("POST /api/admin/data-archive", () => {
   })
 
   it("does NOT compute unattributable count on restore", async () => {
-    const res = await POST(req({ mode: "restore", entityKind: "CashFlowEntry", companyCode: "AZSEKER-AZSF", year: 2026, confirmCode: "AZSEKER-AZSF" }))
+    const res = await POST(req({ mode: "restore", entityKind: "CashFlowEntry", companyCode: "AZSEKER-AZSF", year: 2026, confirmCode: "AZSEKER-AZSF", archivedAt: "2026-07-31T13:37:00.123Z" }))
     const body = await res.json()
     expect(res.status).toBe(200)
     expect(restoreRowsMock).toHaveBeenCalled()
     expect(prismaMock.cashFlowEntry.count).not.toHaveBeenCalled()
+  })
+
+  // ── The restore key ──────────────────────────────────────────────────
+  // Restoring by scope alone un-archives every generation of that
+  // company-year — on production, three import generations of the same P&L.
+  // The route refuses rather than widening. See ARCHIVE_GENERATION_KEY in
+  // `src/lib/server/archive.ts`.
+  it("REFUSES a restore that names no archive operation", async () => {
+    const res = await POST(req({ mode: "restore", entityKind: "BudgetLine", companyCode: "AZSEKER-AZSF", year: 2026, confirmCode: "AZSEKER-AZSF" }))
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.code).toBe("MISSING_ARCHIVE_KEY")
+    expect(restoreRowsMock).not.toHaveBeenCalled()
+  })
+
+  it("REFUSES an unparseable archivedAt instead of falling back to the scope", async () => {
+    const res = await POST(req({ mode: "restore", entityKind: "BudgetLine", companyCode: "AZSEKER-AZSF", year: 2026, confirmCode: "AZSEKER-AZSF", archivedAt: "last Tuesday" }))
+    expect(res.status).toBe(400)
+    expect(restoreRowsMock).not.toHaveBeenCalled()
+  })
+
+  it("hands the exact stamp through to restoreRows", async () => {
+    await POST(req({ mode: "restore", entityKind: "BudgetLine", companyCode: "AZSEKER-AZSF", year: 2026, confirmCode: "AZSEKER-AZSF", archivedAt: "2026-07-31T13:37:00.123Z" }))
+    const passed = restoreRowsMock.mock.calls[0][0].archivedAt as Date
+    expect(passed.toISOString()).toBe("2026-07-31T13:37:00.123Z")
   })
 })
 
@@ -444,5 +489,202 @@ describe("POST /api/admin/data-archive — AllImportData multi-company reset", (
       expect(res.status).toBe(200)
       expect(resetMock).toHaveBeenCalled()
     })
+
+    it("tests EVERY year in a multi-year delete, not just the first", async () => {
+      // A two-year delete whose second year is closed must be refused whole.
+      // Checking only the first would half-apply it, which is exactly the
+      // state a period lock exists to prevent.
+      prismaMock.organization.findUnique.mockResolvedValue({ lockedPeriods: [LOCK_2025] })
+      const res = await POST(req(resetBody({ years: [2026, 2025] })))
+      expect(res.status).toBe(423)
+      expect(resetMock).not.toHaveBeenCalled()
+    })
+
+    it("passes a multi-year delete when none of its years are closed", async () => {
+      prismaMock.organization.findUnique.mockResolvedValue({ lockedPeriods: [LOCK_2025] })
+      const res = await POST(req(resetBody({ years: [2026, 2027] })))
+      expect(res.status).toBe(200)
+      expect(resetMock.mock.calls[0][0].scope.years).toEqual([2026, 2027])
+    })
+  })
+
+  // ── 2026-07-31 — the drift guard ─────────────────────────────────────
+  //
+  // The operator confirms ONE number, read off a preview. Between reading it
+  // and pressing the button an import can land. Without this, the delete just
+  // runs and the result quietly differs from what was agreed to.
+  describe("expectRows drift guard", () => {
+    const body = (extra: Record<string, unknown>) => ({
+      mode: "archive",
+      entityKind: "AllImportData",
+      companyCodes: ["AZSEKER-CPC"],
+      confirmCode: "ALL",
+      ...extra,
+    })
+
+    beforeEach(() => {
+      prismaMock.company.findMany.mockResolvedValue([{ id: "c1", code: "AZSEKER-CPC" }])
+    })
+
+    it("409s and deletes NOTHING when the count has moved", async () => {
+      previewMock.mockResolvedValue({ rowsAffected: 1290, breakdown: {}, companies: [], years: [] })
+      const res = await POST(req(body({ expectRows: 1284 })))
+      expect(res.status).toBe(409)
+      expect(resetMock).not.toHaveBeenCalled()
+      const json = (await res.json()) as { actualRows: number; expectedRows: number }
+      expect(json).toMatchObject({ expectedRows: 1284, actualRows: 1290 })
+    })
+
+    it("proceeds when the recount matches what was on screen", async () => {
+      previewMock.mockResolvedValue({ rowsAffected: 1284, breakdown: {}, companies: [], years: [] })
+      const res = await POST(req(body({ expectRows: 1284 })))
+      expect(res.status).toBe(200)
+      expect(resetMock).toHaveBeenCalled()
+    })
+
+    it("skips the recount entirely when the client did not send a number", async () => {
+      const res = await POST(req(body({})))
+      expect(res.status).toBe(200)
+      expect(previewMock).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── 2026-07-31 — the org-level sweeps follow the category selection ──
+  describe("category selection", () => {
+    beforeEach(() => {
+      prismaMock.company.findMany.mockResolvedValue([
+        { id: "c1", code: "AZSEKER-CPC" },
+        { id: "c2", code: "AZSEKER-EDEN" },
+      ])
+    })
+
+    const wholeHolding = (extra: Record<string, unknown>) => ({
+      mode: "archive",
+      entityKind: "AllImportData",
+      companyCodes: ["AZSEKER-CPC", "AZSEKER-EDEN"],
+      confirmCode: "ALL",
+      ...extra,
+    })
+
+    it("sweeps the org sales forecast on a whole-holding delete", async () => {
+      salesForecastMock.mockResolvedValue({ rowsAffected: 24, auditEventId: "sf1" })
+      const res = await POST(req(wholeHolding({})))
+      expect(res.status).toBe(200)
+      const json = (await res.json()) as { breakdown: Record<string, number> }
+      expect(json.breakdown.salesForecast).toBe(24)
+    })
+
+    it("skips both org-level sweeps when their categories were not chosen", async () => {
+      // The preview counts `salesForecast` under the sales category and
+      // orphan lines under the P&L one. If the commit ignored `include` here,
+      // the preview would be promising a number the write does not honour.
+      await POST(req(wholeHolding({ include: ["balanceSheetLine"] })))
+      expect(salesForecastMock).not.toHaveBeenCalled()
+      expect(orphanSweepMock).not.toHaveBeenCalled()
+    })
+
+    it("reports ok:false when the sales-forecast sweep fails after a clean reset", async () => {
+      // It used to be caught, logged as "non-fatal" and reported as 200: a
+      // "no tails" delete that left a tail, called a success.
+      salesForecastMock.mockRejectedValue(new Error("deadlock"))
+      const res = await POST(req(wholeHolding({})))
+      expect(res.status).toBe(207)
+      const json = (await res.json()) as { ok: boolean; error: string }
+      expect(json.ok).toBe(false)
+      expect(json.error).toMatch(/sales-forecast/)
+    })
+  })
+})
+
+/**
+ * Phase 11.77 — the client/server boundary the old tests never crossed.
+ *
+ * `tier.test.ts` asserted the token the gate asks for. `payload.test.ts`
+ * asserted the body the button sends. Nothing asserted that the route accepts
+ * the one when given the other — and it did not: "Remove one company" sent
+ * `{companyCode:"ACME", confirmCode:"ALL"}` and got
+ * `400 confirmCode must equal "ACME"` every single time.
+ *
+ * This drives the REAL POST handler with the REAL client output. It fails the
+ * moment anybody re-introduces a second opinion about the token.
+ */
+describe("the confirmation token the client asks for is the one this route demands", () => {
+  const SHAPES: Array<{ label: string; codes: string[] }> = [
+    { label: "one company", codes: ["AZSEKER-CPC"] },
+    { label: "several companies", codes: ["AZSEKER-CPC", "AZSEKER-EDEN"] },
+  ]
+  const TASKS: TaskId[] = ["clearYears", "removeCompany", "restore", "deleteAll"]
+
+  for (const task of TASKS) {
+    for (const { label, codes } of SHAPES) {
+      for (const years of [[2026], [] as number[]]) {
+        const scope = years.length > 0 ? "named years" : "all years"
+        it(`${task} · ${label} · ${scope} — the gate's token is accepted`, async () => {
+          prismaMock.company.findMany.mockResolvedValue(
+            codes.map((code, i) => ({ id: `c${i}`, code })),
+          )
+          // The drift guard re-counts before writing; make the recount agree
+          // with the number the "operator" read, so the only thing this test
+          // can fail on is the token.
+          previewMock.mockResolvedValue({
+            rowsAffected: 100 * codes.length,
+            breakdown: {},
+            companies: codes,
+            years: [],
+          })
+          const gate = gateFor({
+            task,
+            companyCodes: codes,
+            allYears: years.length === 0,
+            hasPermanent: true,
+          })
+          const commit = buildCommitRequest({
+            task,
+            companyCodes: codes,
+            years,
+            bundle: "everything",
+            exactCategories: null,
+            includeManualActuals: false,
+            reason: "the 2026 file was the draft, not the signed accounts",
+            // The operator typed exactly what the screen told them to.
+            confirmToken: gate.token,
+            expectRows: 100 * codes.length,
+          })
+          const res = await POST(req(commit as unknown as Record<string, unknown>))
+          const body = await res.json()
+          expect(
+            res.status,
+            `expected the route to accept "${gate.token}" for ${task}/${label}; got ${res.status} ${JSON.stringify(body)}`,
+          ).toBe(200)
+          expect(body.ok).toBe(true)
+          expect(resetMock).toHaveBeenCalledTimes(codes.length)
+        })
+      }
+    }
+  }
+
+  it("still 400s when the operator types something the gate never offered", async () => {
+    prismaMock.company.findMany.mockResolvedValue([{ id: "c1", code: "AZSEKER-CPC" }])
+    const gate = gateFor({
+      task: "removeCompany",
+      companyCodes: ["AZSEKER-CPC"],
+      allYears: true,
+      hasPermanent: true,
+    })
+    const commit = buildCommitRequest({
+      task: "removeCompany",
+      companyCodes: ["AZSEKER-CPC"],
+      years: [],
+      bundle: "everything",
+      exactCategories: null,
+      includeManualActuals: false,
+      reason: "sold the subsidiary in June",
+      confirmToken: "ALL", // the pre-11.77 client's answer
+      expectRows: 100,
+    })
+    expect(gate.token).toBe("AZSEKER-CPC")
+    const res = await POST(req(commit as unknown as Record<string, unknown>))
+    expect(res.status).toBe(400)
+    expect(resetMock).not.toHaveBeenCalled()
   })
 })
