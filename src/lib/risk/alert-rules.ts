@@ -32,7 +32,7 @@
  */
 
 import { isAggregateRollup, type HeatMapCell } from './heatmap-matrix';
-import { computeCompositeScore } from './composite-score';
+import { computeCompositeScore, MIN_SCORING_CELLS } from './composite-score';
 import { INDUSTRIES } from '@/lib/industries/data';
 import {
   mergeWithDefaults,
@@ -297,7 +297,15 @@ export const RULE_COMPANY_CRITICAL_COMPOSITE: AlertRule = {
       if (co.isSubgroup) continue;
       const cells = cellsForCompany(ctx, co.id);
       const composite = computeCompositeScore(cells);
-      if (composite.score !== null && composite.score < threshold) {
+      // 11.81 — this rule is the one the bug report is about: DASTAN and SAF
+      // read «composite score 0/100 (1/28 indicators)» and each such reading
+      // persists an AlertEvent row. The `coverage === 'full'` clause is
+      // redundant against the CompositeScore null invariant and is written
+      // anyway — a rule should state its own precondition rather than inherit
+      // it. No new entry in alert-thresholds-config: the gate rides on the
+      // object the rule already computes, so the badge and the alert can
+      // never disagree about who is scorable.
+      if (composite.coverage === 'full' && composite.score !== null && composite.score < threshold) {
         out.push({
           ruleId: this.id,
           ruleName: this.name,
@@ -313,6 +321,53 @@ export const RULE_COMPANY_CRITICAL_COMPOSITE: AlertRule = {
           affectedCompanyIds: [co.id],
         });
       }
+    }
+    return out;
+  },
+};
+
+/**
+ * 11.81 — the replacement for what the coverage floor takes away.
+ *
+ * Removing an alert and shipping silence in its place is not an improvement:
+ * the brief's own constraint is that "not enough data" must read as a
+ * MEASURABLE FACT, and a company with one indicator generates no signal at
+ * all today. `warning`, not `critical`, because it is a state rather than a
+ * risk, and it must not compete with real risk in the list.
+ *
+ * Fires on BOTH `none` and `insufficient` — a company with zero indicator
+ * data is the stronger version of the same fact.
+ *
+ * Reads `MIN_SCORING_CELLS` directly so this rule and the gate that silences
+ * `company-critical-composite` cannot drift apart.
+ */
+export const RULE_COMPANY_LOW_COVERAGE: AlertRule = {
+  id: 'company-low-coverage',
+  name: 'Too few indicators to score',
+  description:
+    'Flags companies with figures for fewer than the minimum number of indicators needed to publish a composite score. No composite score exists for them, so company-critical-composite cannot fire — this rule carries the fact instead.',
+  severity: 'warning',
+  priority: 20,
+  match(ctx) {
+    const out: AlertMatch[] = [];
+    for (const co of ctx.companies) {
+      if (co.isSubgroup) continue;
+      const composite = computeCompositeScore(cellsForCompany(ctx, co.id));
+      if (composite.coverage === 'full') continue;
+      out.push({
+        ruleId: this.id,
+        ruleName: this.name,
+        severity: this.severity,
+        message: `${co.code} has figures for ${composite.contributingCount} of ${composite.totalCount} indicators — below the ${MIN_SCORING_CELLS} needed to publish a composite score`,
+        messageKey: `alerts.messages.${this.id}`,
+        messageParams: {
+          code: co.code,
+          contributing: composite.contributingCount,
+          total: composite.totalCount,
+          min: MIN_SCORING_CELLS,
+        },
+        affectedCompanyIds: [co.id],
+      });
     }
     return out;
   },
@@ -512,6 +567,12 @@ export const RULE_CRITICAL_INDICATOR_ORG_WIDE: AlertRule = {
 export const DEFAULT_ALERT_RULES: readonly AlertRule[] = [
   RULE_COMPANY_MOSTLY_RED,
   RULE_COMPANY_CRITICAL_COMPOSITE,
+  // 11.81 — `RULE_COMPANY_MOSTLY_RED` is deliberately untouched by the
+  // coverage floor: it counts OBSERVED red cells, and an observation is not
+  // an inference. Coverage gates inference. The two can therefore coexist on
+  // one company — "we cannot grade you, and everything we can see is red" is
+  // more informative than either statement alone.
+  RULE_COMPANY_LOW_COVERAGE,
   RULE_SECTOR_RED_SPREAD,
   RULE_SECTOR_AMBER_CLUSTER,
   RULE_CRITICAL_INDICATOR_ORG_WIDE,

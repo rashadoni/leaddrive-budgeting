@@ -43,7 +43,7 @@ import type {
   BoardSnapshotTotals,
 } from "@/lib/board-deck/build-snapshot"
 import type { AlertSeverity, AlertMatch } from "@/lib/risk/alert-rules"
-import type { CompositeScore } from "@/lib/risk/composite-score"
+import { MIN_SCORING_CELLS, type CompositeScore } from "@/lib/risk/composite-score"
 
 /**
  * Minimal snapshot shape the fact-checker needs. The full BoardSnapshot
@@ -140,6 +140,11 @@ export function verifyBatchNarrative(
     pct100: 100,
     halfPct: 50,
     quartile: 25,
+    // 11.81 — the coverage floor. The model is told "fewer than 4 indicators"
+    // and instructed to explain unscored entities; the moment it repeats the
+    // threshold it was given, the fact-checker would flag the 4 as a
+    // fabricated figure. It is a rule constant, not data.
+    minScoringCells: MIN_SCORING_CELLS,
   }
 
   // Pick a representative «result.value» — the narrative's headline

@@ -29,6 +29,7 @@ const SNAPSHOT: BatchNarrativeSnapshot = {
         band: "red",
         contributingCount: 19,
         totalCount: 28,
+        coverage: "full" as const,
       },
     ],
     [
@@ -38,6 +39,7 @@ const SNAPSHOT: BatchNarrativeSnapshot = {
         band: "amber",
         contributingCount: 21,
         totalCount: 33,
+        coverage: "full" as const,
       },
     ],
   ]),

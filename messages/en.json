@@ -2382,14 +2382,16 @@
         "company-critical-composite": "Composite score below threshold",
         "sector-amber-cluster": "Sector amber cluster",
         "sector-red-spread": "Sector red contagion",
-        "critical-indicator-org-wide": "Critical indicator org-wide"
+        "critical-indicator-org-wide": "Critical indicator org-wide",
+        "company-low-coverage": "Too few indicators to score"
       },
       "messages": {
         "company-mostly-red": "{code} has {redCount} red indicators — needs review",
         "company-critical-composite": "{code} composite score {score}/100 ({contributing}/{total} indicators)",
         "sector-amber-cluster": "{industry} sector: {amberCount} amber cells across {companyCount} companies",
         "sector-red-spread": "{industry} sector: {redCount} red cells across {companyCount} companies — possible contagion",
-        "critical-indicator-org-wide": "{code} red for {companyCount} companies — consolidated pressure on critical metric"
+        "critical-indicator-org-wide": "{code} red for {companyCount} companies — consolidated pressure on critical metric",
+        "company-low-coverage": "{code} has figures for {contributing} of {total} indicators — below the {min} needed to publish a composite score"
       }
     },
     "buttons": {
@@ -3202,7 +3204,7 @@
         "scopeFull": "Scope: all {companies} operational entities visible to this user.",
         "scopeRestricted": "Scope: {companies} operational entities allowed by this user's subgroup access.",
         "coverage": "Coverage: {observed} persisted indicator rows across {expected} expected matrix slots. Missing slots are absent, not zero or green.",
-        "scoreMethod": "Holding score: equal-weight mean of scored operational entities; unscored entities are excluded. Entity scores use configured indicator weights and qualitative penalties.",
+        "scoreMethod": "Holding score: equal-weight mean of operational entities that have figures for at least 4 indicators; entities below that floor are not scored and are excluded from the mean, from red-band counts and from composite alerts. Entity scores use configured indicator weights and qualitative penalties.",
         "alertBoundary": "Alerts are rules evaluated against this snapshot. No triggered rule does not prove that all data is green or complete.",
         "assembledAt": "Page assembled {timestamp} for selected period {period}; assembly time is not source freshness. This is an operational risk snapshot, not audited consolidated financial statements."
       },
@@ -3231,7 +3233,10 @@
         "trendAriaLabel": "12-month composite trend",
         "trendTitle": "Composite trend (12 months)",
         "trendEmpty": "No monthly data yet for this scope. The trend chart populates once 2+ monthly snapshots are recomputed.",
-        "trendBoundary": "Monthly persisted snapshots recalculated with current indicator weights and current qualitative penalties; gaps remain gaps and are not interpolated. A current-year view stops at the current Baku month."
+        "trendBoundary": "Monthly persisted snapshots recalculated with current indicator weights and current qualitative penalties; gaps remain gaps and are not interpolated. A current-year view stops at the current Baku month. Each point averages only the subsidiaries that met the coverage floor that month; the contributing count is shown per point and the cohort can change between months.",
+        "notScoredSubCos": "{count} not scored — not enough data",
+        "redSubCosScoredContext": "of {scored} scored ({excluded} not scored)",
+        "trendPointCoverage": "{period}: {score}/100 · averaged over {contributing} of {total} subsidiaries"
       },
       "riskFlags": {
         "title": "Qualitative risk flags",
@@ -3281,7 +3286,7 @@
           "red": "red",
           "unknown": "unknown"
         },
-        "trendBoundary": "0–100 scale · current weights and current qualitative penalties · gaps not interpolated · current year stops at current Baku month",
+        "trendBoundary": "0–100 scale · current weights and current qualitative penalties · gaps not interpolated · current year stops at current Baku month · each point averages only the subsidiaries that met the coverage floor that month",
         "noRulesTriggered": "No configured rule triggered",
         "rankedAlerts": "Critical-first configured-rule matches ({total} total)",
         "affected": "Affected codes: {codes}",
@@ -3713,12 +3718,25 @@
       "sheetMatrixStatus": "Matrix (status)",
       "sheetBrief": "Today's Brief",
       "xlsxFailed": "XLSX export failed: {message}",
-      "pdfFailed": "PDF export failed: {message}"
+      "pdfFailed": "PDF export failed: {message}",
+      "notScoredNote": "Companies marked \"Not scored\" have figures for fewer than {min} indicators; no composite score is published for them."
     },
     "sparkline": {
       "ariaNoData": "Sparkline (no data)",
       "ariaFlat": "Sparkline (flat at {value})",
       "ariaSeries": "Sparkline: {points} of {total} points, range {min}–{max}"
+    },
+    "composite": {
+      "insufficientLabel": "Not enough data to score",
+      "insufficientTitle": "Not enough data to score — {contributing} of {total} indicators have figures; at least {min} are needed.",
+      "noDataTitle": "No score — none of the {total} applicable indicators has figures.",
+      "coverage": "{contributing} of {total} indicators",
+      "insufficientAria": "Not enough data to score, {contributing} of {total} indicators",
+      "minCellsNote": "A composite score needs figures for at least {min} indicators. Below that, a single indicator would decide the verdict, so no score is published.",
+      "notScoredCell": "Not scored",
+      "parentCoverage": "{scored} of {total} subsidiaries scored · {revenuePct}% of holding revenue",
+      "parentNoScore": "No holding score — none of the {total} subsidiaries has enough data to score.",
+      "subscriptionCoverageNote": "This rule does not fire for a company with figures for fewer than {min} indicators — no score is published for it."
     }
   },
   "usersAdmin": {

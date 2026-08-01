@@ -304,14 +304,14 @@ describe("CompanySnapshot composite applies Phase 7.N riskTag penalties", () => 
             companies: [
               { id: "co_eden", code: "EDEN", name: "Eden", industry: "Agri" },
             ],
-            indicators: [
-              { id: "ind_a", code: "IND_A", nameEn: "A", unit: "%", direction: "higher_better" },
-              { id: "ind_b", code: "IND_B", nameEn: "B", unit: "%", direction: "higher_better" },
-            ],
-            cells: [
-              { indicatorValueId: "iv1", companyId: "co_eden", indicatorId: "ind_a", value: 50, status: "green" },
-              { indicatorValueId: "iv2", companyId: "co_eden", indicatorId: "ind_b", value: 50, status: "green" },
-            ],
+            // 11.81 — four indicators, so the company clears the coverage
+            // floor and the badge has a number for the penalty to move.
+            indicators: ["ind_a", "ind_b", "ind_c", "ind_d"].map((id) => ({
+              id, code: id.toUpperCase(), nameEn: id, unit: "%", direction: "higher_better",
+            })),
+            cells: ["ind_a", "ind_b", "ind_c", "ind_d"].map((indicatorId, n) => ({
+              indicatorValueId: `iv${n}`, companyId: "co_eden", indicatorId, value: 50, status: "green",
+            })),
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
@@ -339,5 +339,44 @@ describe("CompanySnapshot composite applies Phase 7.N riskTag penalties", () => 
     // The unpenalised 100 must NOT appear anywhere once the penalty applies —
     // this is the assertion that would have caught the original bug.
     expect(screen.queryByText("100")).toBeNull();
+  });
+
+  it("11.81 — a company below the coverage floor gets a named state, not a bare dash", async () => {
+    __resetMatrixCacheForTests();
+    __resetCompaniesCacheForTests();
+    global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes("/api/indicators/matrix")) {
+        return new Response(
+          JSON.stringify({
+            period: "2026",
+            companies: [
+              { id: "co_eden", code: "EDEN", name: "Eden", industry: "Agri" },
+            ],
+            indicators: ["ind_a", "ind_b", "ind_c", "ind_d"].map((id) => ({
+              id, code: id.toUpperCase(), nameEn: id, unit: "%", direction: "higher_better",
+            })),
+            // One figure out of four applicable indicators — the DASTAN shape.
+            cells: [
+              { indicatorValueId: "iv0", companyId: "co_eden", indicatorId: "ind_a", value: 50, status: "red" },
+              ...["ind_b", "ind_c", "ind_d"].map((indicatorId, n) => ({
+                indicatorValueId: `iv${n + 1}`, companyId: "co_eden", indicatorId, value: 0, status: "unknown",
+              })),
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    }) as never;
+    render(<CompanySnapshot companyCode="EDEN" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("composite-badge-big-unscored")).toBeTruthy();
+    });
+    const badge = screen.getByTestId("composite-badge-big-unscored");
+    expect(badge.textContent).toContain("Not enough data to score");
+    expect(badge.textContent).toContain("1 of 4 indicators");
+    // The old "0" verdict must not appear on the badge.
+    expect(badge.textContent).not.toContain("0/100");
   });
 });

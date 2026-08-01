@@ -51,12 +51,14 @@ vi.mock("../store/terminalStore", () => ({
 const MATRIX = {
   period: "2026",
   companies: [{ id: "co_eden", code: "EDEN", name: "Eden", industry: "Agri" }],
-  indicators: [
-    { id: "ind_a", code: "IND_A", nameEn: "A", unit: "%", direction: "higher_better" },
-  ],
-  cells: [
-    { indicatorValueId: "iv1", companyId: "co_eden", indicatorId: "ind_a", value: 50, status: "green" },
-  ],
+  // 11.81 — four indicators so the company clears the coverage floor; the
+  // riskTag-penalty parity this file locks is unchanged.
+  indicators: ["ind_a", "ind_b", "ind_c", "ind_d"].map((id) => ({
+    id, code: id.toUpperCase(), nameEn: id, unit: "%", direction: "higher_better",
+  })),
+  cells: ["ind_a", "ind_b", "ind_c", "ind_d"].map((indicatorId, n) => ({
+    indicatorValueId: `iv${n}`, companyId: "co_eden", indicatorId, value: 50, status: "green",
+  })),
 };
 
 beforeEach(() => {
@@ -112,6 +114,60 @@ describe("ExportXlsxTrigger composite riskTag penalty (Phase 7.N)", () => {
         const summaryRows = xlsxMock.aoaToSheet.mock.calls[0][0];
         const edenRow = summaryRows.find((r) => r[1] === "EDEN");
         expect(edenRow?.[2]).toBe(88);
+      },
+      { timeout: 8000 },
+    );
+  });
+});
+
+describe("ExportXlsxTrigger — a withheld composite is a token, never a blank (11.81)", () => {
+  beforeEach(() => {
+    __resetMatrixCacheForTests();
+    __resetCompaniesCacheForTests();
+    global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes("/api/indicators/matrix")) {
+        return new Response(
+          JSON.stringify({
+            ...MATRIX,
+            // One figure of four — below the coverage floor.
+            cells: [
+              { indicatorValueId: "iv0", companyId: "co_eden", indicatorId: "ind_a", value: 1, status: "red" },
+              ...["ind_b", "ind_c", "ind_d"].map((indicatorId, n) => ({
+                indicatorValueId: `ivx${n}`, companyId: "co_eden", indicatorId, value: 0, status: "unknown",
+              })),
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    }) as never;
+  });
+
+  it("writes a text token and a populated coverage column, not an empty cell", async () => {
+    // The real defect: `s?.score ?? ""` wrote an EMPTY cell, which is
+    // indistinguishable from "not computed", silently breaks the client's own
+    // AVERAGE/MIN, and sorts to whichever end Excel picks. This is the one
+    // export a client re-sorts themselves.
+    render(<ExportXlsxTrigger />);
+    await waitFor(
+      async () => {
+        xlsxMock.aoaToSheet.mockClear();
+        await act(async () => {
+          window.dispatchEvent(new Event("terminal:export-xlsx"));
+          await new Promise((r) => setTimeout(r, 0));
+        });
+        expect(xlsxMock.aoaToSheet).toHaveBeenCalled();
+        const summaryRows = xlsxMock.aoaToSheet.mock.calls[0][0];
+        const edenRow = summaryRows.find((r) => r[1] === "EDEN");
+        expect(edenRow?.[2]).toBe("Not scored");
+        expect(edenRow?.[3]).toBe("1/4");
+        // …and the sheet explains the token rather than leaving it dangling.
+        const note = summaryRows.find(
+          (r) => typeof r[0] === "string" && r[0].includes("Not scored"),
+        );
+        expect(note).toBeTruthy();
       },
       { timeout: 8000 },
     );

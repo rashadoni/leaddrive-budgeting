@@ -23,7 +23,7 @@ import { getLogger } from "@/lib/log";
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
 const log = getLogger("terminal:export-pdf");
-import { computeCompositeByCompany } from "@/lib/risk/composite-score";
+import { computeCompositeByCompany, MIN_SCORING_CELLS } from "@/lib/risk/composite-score";
 
 export function ExportPdfTrigger() {
   const locale = useLocale() as "en" | "ru" | "az";
@@ -120,6 +120,10 @@ export function ExportPdfTrigger() {
               sparkline: c.sparkline,
             }))}
             composites={composites}
+            coverageTexts={{
+              notScoredLabel: t("composite.insufficientLabel"),
+              minCellsNote: t("composite.minCellsNote", { min: MIN_SCORING_CELLS }),
+            }}
             brief={{
               worst: worst.slice(0, 3),
               movers: moverPool.slice(0, 3),

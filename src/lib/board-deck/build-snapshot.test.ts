@@ -148,6 +148,17 @@ describe('buildBoardSnapshot', () => {
         weight: 3,
         sortOrder: 3,
       },
+      // 11.81 — a fourth scoring indicator so both companies clear the
+      // coverage floor and this test keeps measuring the WEIGHTED composite.
+      {
+        id: 'ind_ccc',
+        code: 'IND_CASH_CONVERSION',
+        nameEn: 'Cash Conversion Cycle',
+        direction: 'lower_is_better',
+        unit: 'days',
+        weight: 1,
+        sortOrder: 4,
+      },
       // Phase 8 lock: an internal-category indicator. The deck must FILTER it
       // out (mirroring the matrix endpoint), so snap.indicators stays 3 codes
       // and totals.cells stays 6. If the internal-filter regresses, this
@@ -160,11 +171,11 @@ describe('buildBoardSnapshot', () => {
         unit: '₼',
         category: 'internal',
         requiredInputs: [],
-        sortOrder: 4,
+        sortOrder: 5,
       },
     ]);
     prismaMock.indicatorValue.findMany.mockResolvedValue([
-      // ALPHA: 2 green, 1 amber → composite ≈ (100+100+50)/3 = 83 → 'green'
+      // ALPHA: 3 green, 1 amber → weighted (100+100+150+100)/6 = 75 → 'green'
       {
         companyId: 'co_alpha',
         indicatorId: 'ind_gm',
@@ -183,7 +194,13 @@ describe('buildBoardSnapshot', () => {
         value: 45,
         status: 'amber',
       },
-      // BETA: 1 red, 2 unknown → composite = 0 → 'red'
+      {
+        companyId: 'co_alpha',
+        indicatorId: 'ind_ccc',
+        value: 20,
+        status: 'green',
+      },
+      // BETA: 4 red → composite = 0 → 'red'
       {
         companyId: 'co_beta',
         indicatorId: 'ind_gm',
@@ -194,13 +211,19 @@ describe('buildBoardSnapshot', () => {
         companyId: 'co_beta',
         indicatorId: 'ind_nm',
         value: 0,
-        status: 'unknown',
+        status: 'red',
       },
       {
         companyId: 'co_beta',
         indicatorId: 'ind_dso',
         value: 0,
-        status: 'unknown',
+        status: 'red',
+      },
+      {
+        companyId: 'co_beta',
+        indicatorId: 'ind_ccc',
+        value: 0,
+        status: 'red',
       },
     ]);
 
@@ -225,23 +248,25 @@ describe('buildBoardSnapshot', () => {
       'IND_GROSS_MARGIN',
       'IND_NET_MARGIN',
       'IND_DSO',
+      'IND_CASH_CONVERSION',
     ]);
-    expect(snap.totals.indicators).toBe(3);
-    expect(snap.totals.cells).toBe(6);
+    expect(snap.totals.indicators).toBe(4);
+    expect(snap.totals.cells).toBe(8);
 
-    // Composite: ALPHA = 70/green (WEIGHTED — dso amber carries weight 3;
-    // unweighted would be 83). Phase 8 lock: the deck must apply indicator
+    // Composite: ALPHA = 75/green (WEIGHTED — dso amber carries weight 3;
+    // unweighted would be 88). Phase 8 lock: the deck must apply indicator
     // weights, identical to the Risk Terminal. BETA = 0/red.
     const alpha = snap.compositeByCompany.get('co_alpha');
-    expect(alpha?.score).toBe(70);
+    expect(alpha?.score).toBe(75);
     expect(alpha?.band).toBe('green');
+    expect(alpha?.coverage).toBe('full');
     const beta = snap.compositeByCompany.get('co_beta');
     expect(beta?.score).toBe(0);
     expect(beta?.band).toBe('red');
 
     // Counts (per-co g/a/r/u)
     expect(snap.countsByCompany.get('co_alpha')).toEqual({
-      green: 2,
+      green: 3,
       amber: 1,
       red: 0,
       unknown: 0,
@@ -249,14 +274,14 @@ describe('buildBoardSnapshot', () => {
     expect(snap.countsByCompany.get('co_beta')).toEqual({
       green: 0,
       amber: 0,
-      red: 1,
-      unknown: 2,
+      red: 4,
+      unknown: 0,
     });
 
     // Totals roll up
-    expect(snap.totals.green).toBe(2);
+    expect(snap.totals.green).toBe(3);
     expect(snap.totals.amber).toBe(1);
-    expect(snap.totals.red).toBe(1);
+    expect(snap.totals.red).toBe(4);
 
     // matches bucket exists for every severity
     expect(Object.keys(snap.matchesBySeverity).sort()).toEqual([

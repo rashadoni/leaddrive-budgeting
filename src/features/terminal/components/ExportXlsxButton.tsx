@@ -23,7 +23,7 @@ import { getLogger } from "@/lib/log";
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
 const log = getLogger("terminal:export-xlsx");
-import { computeCompositeByCompany } from "@/lib/risk/composite-score";
+import { computeCompositeByCompany, MIN_SCORING_CELLS } from "@/lib/risk/composite-score";
 
 export function ExportXlsxTrigger() {
   const locale = useLocale() as "en" | "ru" | "az";
@@ -95,15 +95,23 @@ export function ExportXlsxTrigger() {
             t("export.composite"),
             t("export.contributingTotal"),
           ],
+          // 11.81 — `s?.score ?? ""` wrote an EMPTY cell, indistinguishable
+          // from "not computed", which broke the client's own AVERAGE/MIN
+          // invisibly and sorted to whichever end Excel picked. This is the
+          // one export a client re-sorts themselves. A text token is never
+          // silently averaged, and the coverage column is now always
+          // populated (it was also "" for a null score).
           ...matrix.companies.map((co) => {
             const s = compositesById.get(co.id);
             return [
               co.name,
               co.code,
-              s?.score ?? "",
-              s ? `${s.contributingCount}/${s.totalCount}` : "",
+              s && s.score !== null ? s.score : t("composite.notScoredCell"),
+              s ? `${s.contributingCount}/${s.totalCount}` : "0/0",
             ];
           }),
+          [],
+          [t("export.notScoredNote", { min: MIN_SCORING_CELLS })],
         ];
 
         // ---- Sheet 2: Matrix grid (companies × indicators) ----

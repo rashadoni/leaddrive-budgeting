@@ -150,6 +150,8 @@ export default async function BoardDeckPage({
   const holdingComposite = computeHoldingComposite(
     compositeByCompany,
     operational.map((c) => c.id),
+    // 11.81 — materiality disclosure only; the mean stays equal-weight.
+    new Map(operational.map((c) => [c.id, c.revenue])),
   );
 
   // Phase 7.G Turn XLIX (v2 Turn 3) — trailing 12-month composite
@@ -190,6 +192,14 @@ export default async function BoardDeckPage({
   const redSubCoCount = Array.from(compositeByCompany.values()).filter(
     (c) => c.band === "red",
   ).length;
+  // 11.81 — a withheld company's band is 'unknown', so it silently drops out
+  // of the filter above while the old context string kept saying "of 6
+  // operational". The card would have read 0 of 6 with two companies simply
+  // uncounted. Count them explicitly and name them.
+  const notScoredSubCoCount = Array.from(compositeByCompany.values()).filter(
+    (c) => c.coverage !== "full",
+  ).length;
+  const scoredSubCoCount = operational.length - notScoredSubCoCount;
   const tMetrics = await getTranslations("terminal");
 
   return (
@@ -284,9 +294,20 @@ export default async function BoardDeckPage({
           testId="metric-red-subcos"
           label={tMetrics("boardDeck.metrics.redSubCosLabel")}
           value={String(redSubCoCount)}
-          context={tMetrics("boardDeck.metrics.redSubCosContext", {
-            total: operational.length,
+          context={tMetrics("boardDeck.metrics.redSubCosScoredContext", {
+            scored: scoredSubCoCount,
+            excluded: notScoredSubCoCount,
           })}
+          delta={
+            notScoredSubCoCount > 0
+              ? {
+                  label: tMetrics("boardDeck.metrics.notScoredSubCos", {
+                    count: notScoredSubCoCount,
+                  }),
+                  tone: "neutral" as const,
+                }
+              : undefined
+          }
           accent={redSubCoCount > 0 ? "red" : null}
         />
         <MetricCard

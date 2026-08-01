@@ -70,6 +70,19 @@ export interface CompositeRow {
   totalCount: number;
 }
 
+/**
+ * 11.81 — the two coverage-floor strings. This document renders outside the
+ * next-intl provider (react-pdf runs in a worker-ish context and the file
+ * carries its own per-language dictionary from before the catalogues existed),
+ * so the caller — which DOES have `useTranslations` — resolves them and passes
+ * them in. That keeps the new copy in `messages/{en,az,ru}.json` with every
+ * other string rather than adding a fourth hand-maintained translation table.
+ */
+export interface CompositeCoverageTexts {
+  notScoredLabel: string;
+  minCellsNote: string;
+}
+
 export interface RiskMatrixPdfProps {
   orgName: string;
   period: string;
@@ -79,6 +92,7 @@ export interface RiskMatrixPdfProps {
   indicators: MatrixIndicator[];
   cells: MatrixCell[];
   composites: CompositeRow[];
+  coverageTexts?: CompositeCoverageTexts;
   brief: {
     worst: Array<{ companyCode: string; indicatorCode: string; value: number; unit: string }>;
     movers: Array<{ companyCode: string; indicatorCode: string; deltaPct: number }>;
@@ -476,8 +490,14 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
                   R{comp.score ?? "—"}
                 </Text>
               </Text>
+              {/* 11.81 — already the best-behaved consumer: R— in grey with
+                  the coverage line intact. It gains the sentence that says
+                  what the dash means. */}
               <Text style={styles.perCoMeta}>
                 {co.industry ?? ""} · {comp.contributingCount}/{comp.totalCount} {t.indicator.toLowerCase()}
+                {comp.score === null && props.coverageTexts
+                  ? ` · ${props.coverageTexts.notScoredLabel}`
+                  : ""}
               </Text>
               {coCells.length === 0 ? (
                 <Text style={{ color: "#9CA3AF", fontSize: 9 }}>—</Text>
@@ -500,6 +520,13 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
             </View>
           );
         })}
+
+        {/* 11.81 — the methodology sentence, once per document. */}
+        {props.coverageTexts && (
+          <Text style={{ color: "#6B7280", fontSize: 8, marginTop: 8 }}>
+            {props.coverageTexts.minCellsNote}
+          </Text>
+        )}
 
         <View style={styles.footer} fixed>
           <Text>{props.orgName} · {props.period}</Text>

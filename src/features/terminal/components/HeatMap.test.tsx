@@ -160,14 +160,21 @@ describe("HeatMap composite-by-company integration (Phase C5 sub-8 contract)", (
     await waitFor(() => {
       expect(screen.getByText("AAC")).toBeTruthy();
     });
-    // Sub-group's CompositeBadge renders "—" with title "No scoreable
+    // Sub-group's CompositeBadge renders "R—" with title "No scoreable
     // indicators" — proves rollup cells were filtered before the
     // helper computed the average. Without the filter the sub-group
     // would show ~50/100 (5 amber cells) and this test would fail.
+    //
+    // 11.81 — the glyph is now "◇R—" rather than a bare "—". The dash alone
+    // was the only marker in the product that said nothing about WHY it was
+    // a dash; "R" tags the scale as the risk score, and the shape carries the
+    // unknown band for colour-blind parity. `heatMap.noScoreableIndicators`
+    // stays scoped to exactly this case — `totalCount === 0` — and is NOT
+    // reused for a company that has some figures but too few.
     const dashBadges = screen.getAllByTitle("No scoreable indicators");
     // Exactly ONE dash badge (the sub-group). Ops cos have numeric badges.
     expect(dashBadges).toHaveLength(1);
-    expect(dashBadges[0].textContent).toBe("—");
+    expect(dashBadges[0].textContent).toBe("◇R—");
   });
 
   it("regression: rollup cells did NOT leak into ops co composite", async () => {
@@ -215,6 +222,52 @@ describe("HeatMap composite-by-company integration (Phase C5 sub-8 contract)", (
   });
 });
 
+describe("HeatMap composite below the coverage floor (11.81)", () => {
+  beforeEach(() => {
+    __resetMatrixCacheForTests();
+    __resetCompaniesCacheForTests();
+    global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes("/api/indicators/matrix")) {
+        return new Response(
+          JSON.stringify({
+            period: "2026",
+            companies: [
+              { id: "co_dastan", code: "DASTAN", name: "Dastan", industry: "Agri" },
+            ],
+            indicators: ["ind_a", "ind_b", "ind_c", "ind_d"].map((id) => ({
+              id, code: id.toUpperCase(), nameEn: id, direction: "higher_better", unit: "%",
+            })),
+            // The reported shape: one red figure, everything else absent.
+            cells: [
+              { companyId: "co_dastan", indicatorId: "ind_a", value: 1, status: "red" },
+              ...["ind_b", "ind_c", "ind_d"].map((ind) => ({
+                companyId: "co_dastan", indicatorId: ind, value: 0, status: "unknown",
+              })),
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    }) as never;
+  });
+
+  it("renders the coverage fraction instead of a 0/100 verdict, and never hides the row", async () => {
+    render(<HeatMap />);
+    await waitFor(() => {
+      expect(screen.getByText("DASTAN")).toBeTruthy();
+    });
+    const badge = screen.getByTitle(
+      "Not enough data to score — 1 of 4 indicators have figures; at least 4 are needed.",
+    );
+    // "R—" plus the measured fraction — a fact, not a blank and not a zero.
+    expect(badge.textContent).toBe("◇R—1/4");
+    // The band-coloured verdict must be gone.
+    expect(screen.queryByTitle(/^Composite 0\/100/)).toBeNull();
+  });
+});
+
 describe("HeatMap composite applies Phase 7.N riskTag penalties (Panel-1/Panel-2 parity)", () => {
   // Regression lock for the 2026-05-29 bug: the HeatMap row-header
   // composite ignored Company.settings.riskTags while the CompanyTree
@@ -237,13 +290,15 @@ describe("HeatMap composite applies Phase 7.N riskTag penalties (Panel-1/Panel-2
               // flagged company is penalised, not a global drop).
               { id: "co_clean", code: "CLEAN", name: "Clean Co", industry: "Agri" },
             ],
-            indicators: [
-              { id: "ind_a", code: "IND_A", nameEn: "A", direction: "higher_better", unit: "%" },
-              { id: "ind_b", code: "IND_B", nameEn: "B", direction: "higher_better", unit: "%" },
-            ],
+            // 11.81 — four indicators so both companies clear the coverage
+            // floor; the Panel-1/Panel-2 penalty parity under test is
+            // unchanged.
+            indicators: ["ind_a", "ind_b", "ind_c", "ind_d"].map((id) => ({
+              id, code: id.toUpperCase(), nameEn: id, direction: "higher_better", unit: "%",
+            })),
             cells: [
               ...["co_eden", "co_clean"].flatMap((co) =>
-                ["ind_a", "ind_b"].map((ind) => ({
+                ["ind_a", "ind_b", "ind_c", "ind_d"].map((ind) => ({
                   companyId: co,
                   indicatorId: ind,
                   value: 50,

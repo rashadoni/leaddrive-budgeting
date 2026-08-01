@@ -14,6 +14,7 @@ import React, { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Bell, Star } from "lucide-react";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
+import { MIN_SCORING_CELLS, type CompositeScore } from "@/lib/risk/composite-score";
 import { TRUST_COLOR, type TrustStatus } from "@/lib/risk/trust-status";
 import { formatFreshness } from "../../lib/relative-time";
 
@@ -195,12 +196,69 @@ export function ReadinessChip({
 export function CompositeMini({
   composite,
 }: {
-  composite: { score: number | null; contributingCount: number; totalCount: number } | null;
+  composite: CompositeScore | null;
 }) {
   const t = useTranslations('terminal');
   const score = composite?.score ?? null;
+  // 11.81 — the `return null` that used to live here was the one site in the
+  // product that violated "do not hide a company" outright: the row rendered
+  // code, trust badge and freshness with no risk marker at all, so a company
+  // we cannot score looked identical to one nobody had looked at. It now
+  // renders the same chip in grey with the coverage fraction, which is a
+  // measured fact rather than an absence.
   if (score === null) {
-    return null;
+    const tone = '#9CA3AF';
+    const isParent = composite?.children !== undefined;
+    const title = !composite
+      ? t('composite.insufficientLabel')
+      : isParent
+        ? composite.children!.scored === 0
+          ? t('composite.parentNoScore', { total: composite.children!.total })
+          : t('composite.parentCoverage', {
+              scored: composite.children!.scored,
+              total: composite.children!.total,
+              revenuePct: composite.children!.revenueCoveredPct,
+            })
+        : composite.coverage === 'insufficient'
+          ? t('composite.insufficientTitle', {
+              contributing: composite.contributingCount,
+              total: composite.totalCount,
+              min: MIN_SCORING_CELLS,
+            })
+          : t('composite.noDataTitle', { total: composite.totalCount });
+    return (
+      <span
+        className="font-mono tabular-nums text-[9px] px-1 py-0 rounded shrink-0 font-bold"
+        style={{
+          color: tone,
+          backgroundColor: `${tone}1A`,
+          border: `1px solid ${tone}33`,
+        }}
+        title={title}
+        aria-label={
+          composite
+            ? t('composite.insufficientAria', {
+                contributing: composite.contributingCount,
+                total: composite.totalCount,
+              })
+            : t('composite.insufficientLabel')
+        }
+        data-testid="composite-mini-unscored"
+      >
+        <span aria-hidden="true" className="mr-0.5 opacity-70">
+          {statusShape('unknown')}
+        </span>
+        <span className="opacity-60 mr-px">R</span>—
+        {composite && composite.totalCount > 0 && (
+          <span
+            className="ml-1 font-normal opacity-60"
+            data-testid="composite-coverage"
+          >
+            {composite.contributingCount}/{composite.totalCount}
+          </span>
+        )}
+      </span>
+    );
   }
   const tone =
     score >= 67 ? '#00D4AA' : score >= 34 ? '#FFB020' : '#FF4757';
@@ -217,7 +275,20 @@ export function CompositeMini({
         backgroundColor: `${tone}1A`,
         border: `1px solid ${tone}33`,
       }}
-      title={t('companyTree.compositeTitle', { score })}
+      title={
+        // 11.81 — a parent's number is a mean over children, so its
+        // disclosure counts children, not cells: "4 of 6 subsidiaries scored ·
+        // 88% of holding revenue". Removing data can make a holding look
+        // BETTER (2025 annual rises 57 → 70 once three amber children drop
+        // out for thin coverage), so the disclosure travels with the number.
+        composite?.children
+          ? `${t('companyTree.compositeTitle', { score })} · ${t('composite.parentCoverage', {
+              scored: composite.children.scored,
+              total: composite.children.total,
+              revenuePct: composite.children.revenueCoveredPct,
+            })}`
+          : t('companyTree.compositeTitle', { score })
+      }
       aria-label={t('companyTree.compositeAria', { score })}
     >
       <span aria-hidden="true" className="mr-0.5 opacity-70">

@@ -22,34 +22,46 @@ async function renderChart(series: TrendPoint[]) {
   render(tree as React.ReactElement);
 }
 
+/** 11.81 — every point now carries the cohort it averaged. `pt` keeps the
+ *  fixtures readable while satisfying the widened TrendPoint. */
+function pt(
+  period: string,
+  score: number | null,
+  band: TrendPoint["band"],
+  contributingCompanies = score === null ? 0 : 6,
+  totalCompanies = 6,
+): TrendPoint {
+  return { period, score, band, contributingCompanies, totalCompanies };
+}
+
 const HEALTHY_SERIES: TrendPoint[] = [
-  { period: "2025-05", score: 60, band: "amber" },
-  { period: "2025-06", score: 62, band: "amber" },
-  { period: "2025-07", score: 65, band: "amber" },
-  { period: "2025-08", score: 68, band: "green" },
-  { period: "2025-09", score: 70, band: "green" },
-  { period: "2025-10", score: 72, band: "green" },
-  { period: "2025-11", score: 75, band: "green" },
-  { period: "2025-12", score: 73, band: "green" },
-  { period: "2026-01", score: 74, band: "green" },
-  { period: "2026-02", score: 76, band: "green" },
-  { period: "2026-03", score: 78, band: "green" },
-  { period: "2026-04", score: 80, band: "green" },
+  pt("2025-05", 60, "amber"),
+  pt("2025-06", 62, "amber"),
+  pt("2025-07", 65, "amber"),
+  pt("2025-08", 68, "green"),
+  pt("2025-09", 70, "green"),
+  pt("2025-10", 72, "green"),
+  pt("2025-11", 75, "green"),
+  pt("2025-12", 73, "green"),
+  pt("2026-01", 74, "green"),
+  pt("2026-02", 76, "green"),
+  pt("2026-03", 78, "green"),
+  pt("2026-04", 80, "green"),
 ];
 
 const SPARSE_SERIES: TrendPoint[] = [
-  { period: "2025-05", score: null, band: null },
-  { period: "2025-06", score: null, band: null },
-  { period: "2025-07", score: null, band: null },
-  { period: "2025-08", score: 50, band: "amber" },
-  { period: "2025-09", score: null, band: null },
-  { period: "2025-10", score: null, band: null },
-  { period: "2025-11", score: 60, band: "amber" },
-  { period: "2025-12", score: null, band: null },
-  { period: "2026-01", score: null, band: null },
-  { period: "2026-02", score: null, band: null },
-  { period: "2026-03", score: null, band: null },
-  { period: "2026-04", score: 70, band: "green" },
+  pt("2025-05", null, null),
+  pt("2025-06", null, null),
+  pt("2025-07", null, null),
+  pt("2025-08", 50, "amber"),
+  pt("2025-09", null, null),
+  pt("2025-10", null, null),
+  pt("2025-11", 60, "amber"),
+  pt("2025-12", null, null),
+  pt("2026-01", null, null),
+  pt("2026-02", null, null),
+  pt("2026-03", null, null),
+  pt("2026-04", 70, "green"),
 ];
 
 const ALL_NULL_SERIES: TrendPoint[] = Array.from(
@@ -58,6 +70,8 @@ const ALL_NULL_SERIES: TrendPoint[] = Array.from(
     period: `2026-${String(i + 1).padStart(2, "0")}`,
     score: null,
     band: null,
+    contributingCompanies: 0,
+    totalCompanies: 6,
   }),
 );
 

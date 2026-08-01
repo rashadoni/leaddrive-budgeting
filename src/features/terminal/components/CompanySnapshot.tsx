@@ -39,7 +39,12 @@ import { useEventStream } from "@/lib/events/use-event-stream";
 import { useTerminalStore } from "../store/terminalStore";
 import { CompanyImpactForecastsCard } from "./CompanyImpactForecastsCard";
 import { CompanyStrategicContextCard } from "./CompanyStrategicContextCard";
-import { computeCompositeByCompany, deriveParentComposites } from "@/lib/risk/composite-score";
+import {
+  computeCompositeByCompany,
+  deriveParentComposites,
+  MIN_SCORING_CELLS,
+  type CompositeScore,
+} from "@/lib/risk/composite-score";
 import { DEFAULT_ALERT_RULE_IDS } from "@/lib/risk/alert-rules";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 
@@ -231,7 +236,7 @@ export function CompanySnapshot({ companyCode }: Props) {
           status chip strip. Density punch — one row of 4 chips covering
           Bloomberg's "everything at a glance" pattern. */}
       <div className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-800/60 bg-[#0A0E27]/60">
-        <CompositeBadgeBig score={composite?.score ?? null} />
+        <CompositeBadgeBig composite={composite ?? null} />
         {statusCounts && statusCounts.total > 0 && (
           <div className="flex items-center gap-1 text-[9px] tabular-nums">
             <StatusChip count={statusCounts.green} color="#00D4AA" label="G" shape={statusShape("green")} />
@@ -380,17 +385,43 @@ export function CompanySnapshot({ companyCode }: Props) {
   );
 }
 
-function CompositeBadgeBig({ score }: { score: number | null }) {
+// 11.81 — takes the whole `CompositeScore`, not just the number. It had no
+// coverage in either branch for exactly that reason: the caller unwrapped
+// `.score` at the call site and threw the rest away, so the panel could say
+// "—" and nothing else.
+function CompositeBadgeBig({ composite }: { composite: CompositeScore | null }) {
   // Round-11 architect closure — locale-aware label. Was hardcoded
   // English "Score" regardless of selected locale.
   const t = useTranslations("terminal");
+  const score = composite?.score ?? null;
   if (score === null) {
+    const parent = composite?.children;
+    const detail = !composite
+      ? null
+      : parent
+        ? parent.scored === 0
+          ? t("composite.parentNoScore", { total: parent.total })
+          : t("composite.parentCoverage", {
+              scored: parent.scored,
+              total: parent.total,
+              revenuePct: parent.revenueCoveredPct,
+            })
+        : t("composite.coverage", {
+            contributing: composite.contributingCount,
+            total: composite.totalCount,
+          });
     return (
-      <div className="flex flex-col items-center px-2 py-0.5 rounded border border-gray-800 bg-[#050814]">
-        <span className="text-[9px] text-gray-600 uppercase tracking-wider">
-          {t("snapshot.scoreLabel")}
+      <div
+        className="flex flex-col items-center px-2 py-0.5 rounded border border-gray-800 bg-[#050814]"
+        title={t("composite.minCellsNote", { min: MIN_SCORING_CELLS })}
+        data-testid="composite-badge-big-unscored"
+      >
+        <span className="text-[9px] text-gray-500 uppercase tracking-wider text-center">
+          {t("composite.insufficientLabel")}
         </span>
-        <span className="text-gray-700 font-mono text-base font-bold">—</span>
+        <span className="text-gray-400 font-mono text-[10px] tabular-nums">
+          {detail ?? "—"}
+        </span>
       </div>
     );
   }

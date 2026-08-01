@@ -2382,14 +2382,16 @@
         "company-critical-composite": "Kompozit bal həddən aşağıdır",
         "sector-amber-cluster": "Sektorun sarı klasteri",
         "sector-red-spread": "Sektorda qırmızının yayılması",
-        "critical-indicator-org-wide": "Holdinq üzrə kritik göstərici"
+        "critical-indicator-org-wide": "Holdinq üzrə kritik göstərici",
+        "company-low-coverage": "Qiymətləndirmə üçün göstərici azdır"
       },
       "messages": {
         "company-mostly-red": "{code}: {redCount} qırmızı göstərici — yoxlama tələb olunur",
         "company-critical-composite": "{code}: kompozit bal {score}/100 ({contributing}/{total} göstərici)",
         "sector-amber-cluster": "{industry} sektoru: {companyCount} şirkətdə {amberCount} sarı xana",
         "sector-red-spread": "{industry} sektoru: {companyCount} şirkətdə {redCount} qırmızı xana — yayılma riski var",
-        "critical-indicator-org-wide": "{code} {companyCount} şirkətdə qırmızı — kritik metrika üzrə konsolidasiya təzyiqi"
+        "critical-indicator-org-wide": "{code} {companyCount} şirkətdə qırmızı — kritik metrika üzrə konsolidasiya təzyiqi",
+        "company-low-coverage": "{code}: {total} göstəricidən {contributing} ədədində rəqəm var — kompozit balın dərci üçün tələb olunan {min} həddindən aşağı"
       }
     },
     "buttons": {
@@ -3202,7 +3204,7 @@
         "scopeFull": "Əhatə: bu istifadəçiyə görünən bütün {companies} əməliyyat şirkəti.",
         "scopeRestricted": "Əhatə: istifadəçinin alt-qrup icazəsində olan {companies} əməliyyat şirkəti.",
         "coverage": "Örtük: {expected} gözlənilən matris yerindən {observed} saxlanmış indikator sətri. Çatışmayan yer sıfır və ya yaşıl deyil.",
-        "scoreMethod": "Holding balı: yalnız hesablanmış əməliyyat şirkətlərinin bərabər çəkili ortasıdır; hesablanmayanlar çıxarılır. Şirkət balları konfiqurasiya edilmiş indikator çəkilərini və keyfiyyət cərimələrini nəzərə alır.",
+        "scoreMethod": "Holdinq balı: ən azı 4 göstəricidə rəqəmi olan əməliyyat şirkətlərinin bərabər çəkili ortasıdır; bu həddən aşağı olan şirkətlər qiymətləndirilmir və ortadan, qırmızı zolaq saylarından və kompozit siqnallardan çıxarılır. Şirkət balları konfiqurasiya edilmiş indikator çəkilərini və keyfiyyət cərimələrini nəzərə alır.",
         "alertBoundary": "Xəbərdarlıqlar bu snapshot üzərində qaydaların nəticəsidir. Sıfır nəticə bütün məlumatın tam və ya yaşıl olduğunu sübut etmir.",
         "assembledAt": "Səhifə {period} dövrü üçün {timestamp} vaxtında yığılıb; yığılma vaxtı mənbə təzəliyi deyil. Bu, əməliyyat risk snapshot-udur, audit olunmuş konsolidə maliyyə hesabatı deyil."
       },
@@ -3231,7 +3233,10 @@
         "trendAriaLabel": "12 aylıq mürəkkəb bal trendi",
         "trendTitle": "Mürəkkəb bal trendi (12 ay)",
         "trendEmpty": "Bu əhatə üçün aylıq məlumat yoxdur. Qrafik 2+ aylıq snapshot hesablandıqdan sonra dolacaq.",
-        "trendBoundary": "Aylıq saxlanmış snapshot-lar cari indikator çəkiləri və cari keyfiyyət cərimələri ilə yenidən hesablanır; boşluqlar interpolasiya edilmir. Cari il Bakı vaxtı ilə cari ayda dayanır."
+        "trendBoundary": "Aylıq saxlanmış snapshot-lar cari indikator çəkiləri və cari keyfiyyət cərimələri ilə yenidən hesablanır; boşluqlar interpolasiya edilmir. Cari il Bakı vaxtı ilə cari ayda dayanır. Hər nöqtə yalnız həmin ay üzrə əhatə həddinə çatmış törəmə şirkətlərin ortasını götürür; hər nöqtə üzrə iştirakçı sayı göstərilir və tərkib aydan aya dəyişə bilər.",
+        "notScoredSubCos": "{count} qiymətləndirilməyib — məlumat kifayət deyil",
+        "redSubCosScoredContext": "qiymətləndirilmiş {scored} şirkətdən ({excluded} qiymətləndirilməyib)",
+        "trendPointCoverage": "{period}: {score}/100 · {total} törəmə şirkətdən {contributing}-i üzrə orta"
       },
       "riskFlags": {
         "title": "Keyfiyyət risk işarələri",
@@ -3281,7 +3286,7 @@
           "red": "qırmızı",
           "unknown": "naməlum"
         },
-        "trendBoundary": "0–100 şkalası · cari çəkilər və keyfiyyət cərimələri · boşluqlar interpolasiya edilmir · cari il Bakı vaxtı ilə cari ayda dayanır",
+        "trendBoundary": "0–100 şkalası · cari çəkilər və keyfiyyət cərimələri · boşluqlar interpolasiya edilmir · cari il Bakı vaxtı ilə cari ayda dayanır · hər nöqtə yalnız həmin ay əhatə həddinə çatmış törəmə şirkətlərin ortasıdır",
         "noRulesTriggered": "Konfiqurasiya edilmiş qayda işə düşməyib",
         "rankedAlerts": "Critical-first konfiqurasiya edilmiş qayda uyğunluqları ({total})",
         "affected": "Təsirlənən kodlar: {codes}",
@@ -3713,12 +3718,25 @@
       "sheetMatrixStatus": "Matris (status)",
       "sheetBrief": "Bu günkü icmal",
       "xlsxFailed": "XLSX ixracı alınmadı: {message}",
-      "pdfFailed": "PDF ixracı alınmadı: {message}"
+      "pdfFailed": "PDF ixracı alınmadı: {message}",
+      "notScoredNote": "«Qiymətləndirilməyib» qeyd olunmuş şirkətlərin {min}-dən az göstəricidə rəqəmi var; onlar üzrə kompozit bal dərc olunmur."
     },
     "sparkline": {
       "ariaNoData": "Sparklayn (məlumat yoxdur)",
       "ariaFlat": "Sparklayn (düz xətt, {value})",
       "ariaSeries": "Sparklayn: {total} nöqtədən {points}-i, aralıq {min}–{max}"
+    },
+    "composite": {
+      "insufficientLabel": "Qiymətləndirmə üçün məlumat azdır",
+      "insufficientTitle": "Qiymətləndirmə üçün məlumat kifayət etmir — {total} göstəricidən {contributing} ədədində rəqəm var; ən azı {min} tələb olunur.",
+      "noDataTitle": "Bal yoxdur — {total} tətbiq olunan göstəricinin heç birində rəqəm yoxdur.",
+      "coverage": "{total} göstəricidən {contributing}",
+      "insufficientAria": "Qiymətləndirmə üçün məlumat azdır, {total} göstəricidən {contributing}",
+      "minCellsNote": "Kompozit bal üçün ən azı {min} göstəricinin rəqəmi olmalıdır. Bundan az olduqda nəticəni tək bir göstərici müəyyən edərdi, ona görə bal dərc olunmur.",
+      "notScoredCell": "Qiymətləndirilməyib",
+      "parentCoverage": "{total} törəmə şirkətdən {scored}-i qiymətləndirilib · holdinq gəlirinin {revenuePct}%-i",
+      "parentNoScore": "Holdinq balı yoxdur — {total} törəmə şirkətdən heç birinin qiymətləndirmə üçün kifayət qədər məlumatı yoxdur.",
+      "subscriptionCoverageNote": "Bu qayda {min}-dən az göstəricidə rəqəmi olan şirkət üçün işə düşmür — həmin şirkət üzrə bal dərc olunmur."
     }
   },
   "usersAdmin": {

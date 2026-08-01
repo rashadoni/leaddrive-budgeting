@@ -347,6 +347,33 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'boardDeck.hero.fallbackHeadline': '{org} · {period} period review',
   'boardDeck.hero.scoreLabel': 'Holding composite score / 100',
   'boardDeck.hero.contributingCount': '{contributing} of {total} sub-cos scored',
+  // 11.81 — coverage floor. Mirrors messages/en.json:terminal.composite.*
+  // verbatim so component tests assert on the copy a user actually reads,
+  // not on the mock's uppercased-key fallback.
+  'composite.insufficientLabel': 'Not enough data to score',
+  'composite.insufficientTitle':
+    'Not enough data to score — {contributing} of {total} indicators have figures; at least {min} are needed.',
+  'composite.noDataTitle':
+    'No score — none of the {total} applicable indicators has figures.',
+  'composite.coverage': '{contributing} of {total} indicators',
+  'composite.insufficientAria':
+    'Not enough data to score, {contributing} of {total} indicators',
+  'composite.minCellsNote':
+    'A composite score needs figures for at least {min} indicators. Below that, a single indicator would decide the verdict, so no score is published.',
+  'composite.notScoredCell': 'Not scored',
+  'composite.parentCoverage':
+    '{scored} of {total} subsidiaries scored · {revenuePct}% of holding revenue',
+  'composite.parentNoScore':
+    'No holding score — none of the {total} subsidiaries has enough data to score.',
+  'composite.subscriptionCoverageNote':
+    'This rule does not fire for a company with figures for fewer than {min} indicators — no score is published for it.',
+  'export.notScoredNote':
+    'Companies marked "Not scored" have figures for fewer than {min} indicators; no composite score is published for them.',
+  'boardDeck.metrics.notScoredSubCos': '{count} not scored — not enough data',
+  'boardDeck.metrics.redSubCosScoredContext':
+    'of {scored} scored ({excluded} not scored)',
+  'boardDeck.metrics.trendPointCoverage':
+    '{period}: {score}/100 · averaged over {contributing} of {total} subsidiaries',
   'boardDeck.hero.cta': 'Read full report',
   'boardDeck.hero.aiAttribution': 'AI-generated · {model} · prompt {version}',
   // Phase 7.G Turn XLIX (v2 Turn 3) — supporting-metrics row.

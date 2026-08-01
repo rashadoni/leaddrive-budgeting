@@ -11,7 +11,18 @@ import { computeHoldingComposite } from "./holding-composite";
 import type { CompositeScore } from "@/lib/risk/composite-score";
 
 function score(s: number, band: CompositeScore["band"]): CompositeScore {
-  return { score: s, band, contributingCount: 5, totalCount: 5 };
+  return { score: s, band, contributingCount: 5, totalCount: 5, coverage: "full" };
+}
+
+/** 11.81 — a sub-co withheld for thin coverage. */
+function unscored(contributing = 0, total = 5): CompositeScore {
+  return {
+    score: null,
+    band: "unknown",
+    contributingCount: contributing,
+    totalCount: total,
+    coverage: contributing === 0 ? "none" : "insufficient",
+  };
 }
 
 describe("computeHoldingComposite", () => {
@@ -56,10 +67,7 @@ describe("computeHoldingComposite", () => {
     const composites = new Map<string, CompositeScore>([
       ["co_1", score(80, "green")],
       ["co_2", score(70, "green")],
-      [
-        "co_3",
-        { score: null, band: "unknown", contributingCount: 0, totalCount: 5 },
-      ],
+      ["co_3", unscored()],
     ]);
     const result = computeHoldingComposite(composites, ["co_1", "co_2", "co_3"]);
     expect(result.score).toBe(75); // (80+70)/2; co_3 excluded
@@ -69,14 +77,8 @@ describe("computeHoldingComposite", () => {
 
   it("returns null score when all sub-cos lack data", () => {
     const composites = new Map<string, CompositeScore>([
-      [
-        "co_1",
-        { score: null, band: "unknown", contributingCount: 0, totalCount: 5 },
-      ],
-      [
-        "co_2",
-        { score: null, band: "unknown", contributingCount: 0, totalCount: 5 },
-      ],
+      ["co_1", unscored()],
+      ["co_2", unscored()],
     ]);
     const result = computeHoldingComposite(composites, ["co_1", "co_2"]);
     expect(result.score).toBeNull();
@@ -110,12 +112,12 @@ describe("computeHoldingComposite", () => {
       [
         "co_2",
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { score: NaN as any, band: "unknown", contributingCount: 0, totalCount: 0 },
+        { ...unscored(), score: NaN as any, coverage: "full" as const },
       ],
       [
         "co_3",
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { score: Infinity as any, band: "unknown", contributingCount: 0, totalCount: 0 },
+        { ...unscored(), score: Infinity as any, coverage: "full" as const },
       ],
     ]);
     const result = computeHoldingComposite(composites, ["co_1", "co_2", "co_3"]);
@@ -139,6 +141,44 @@ describe("computeHoldingComposite", () => {
     it("67 → green (boundary)", () => {
       const c = new Map<string, CompositeScore>([["co_1", score(67, "green")]]);
       expect(computeHoldingComposite(c, ["co_1"]).band).toBe("green");
+    });
+  });
+
+  describe("11.81 — coverage disclosure", () => {
+    it("reports the revenue share the mean actually saw", () => {
+      const composites = new Map<string, CompositeScore>([
+        ["big", score(60, "amber")],
+        ["thin", unscored(2, 28)],
+      ]);
+      const result = computeHoldingComposite(
+        composites,
+        ["big", "thin"],
+        new Map([
+          ["big", 900],
+          ["thin", 100],
+        ]),
+      );
+      expect(result.score).toBe(60);
+      expect(result.contributingCount).toBe(1);
+      expect(result.totalCount).toBe(2);
+      expect(result.revenueCoveredPct).toBe(90);
+    });
+
+    it("is 100 when no revenue basis is supplied — the mean is unweighted anyway", () => {
+      const composites = new Map<string, CompositeScore>([["co_1", score(70, "green")]]);
+      expect(computeHoldingComposite(composites, ["co_1"]).revenueCoveredPct).toBe(100);
+    });
+
+    it("drops a sub-co whose coverage is not full, even if a score somehow leaked in", () => {
+      // Belt-and-braces: the invariant says this pair cannot occur, and the
+      // filter reads `coverage` so it would still be excluded if it did.
+      const composites = new Map<string, CompositeScore>([
+        ["ok", score(80, "green")],
+        ["leaky", { ...unscored(1, 28), score: 0 }],
+      ]);
+      const result = computeHoldingComposite(composites, ["ok", "leaky"]);
+      expect(result.score).toBe(80);
+      expect(result.contributingCount).toBe(1);
     });
   });
 });

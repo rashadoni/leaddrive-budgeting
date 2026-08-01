@@ -36,12 +36,25 @@ const companies = [
   { id: 'c2', code: 'EDEN', name: 'Eden', parentCompanyId: 'p1', industry: 'agro_crops', revenue: 500 },
   { id: 'p1', code: 'AZSEKER', name: 'Holding', parentCompanyId: null, industry: null, revenue: null },
 ]
+// 11.81 — four P&L indicators, not one. The coverage floor withholds a score
+// below MIN_SCORING_CELLS contributing cells, and a scenario simulator that
+// prints "holding 83 → 0" needs both ends of that swing to exist. The
+// arithmetic under test (revenue-weighted parent roll-up) is unchanged: every
+// indicator here carries the same formula and weight, so a company's composite
+// is still exactly its single band.
 const indicators = [
   { id: 'i1', code: 'IND_EBITDA_MARGIN', formula: 'ebitda / revenue * 100', thresholds: {}, requiredInputs: ['budgetLine'], weight: 1.5 },
+  { id: 'i2', code: 'IND_EBITDA_MARGIN_B', formula: 'ebitda / revenue * 100', thresholds: {}, requiredInputs: ['budgetLine'], weight: 1.5 },
+  { id: 'i3', code: 'IND_EBITDA_MARGIN_C', formula: 'ebitda / revenue * 100', thresholds: {}, requiredInputs: ['budgetLine'], weight: 1.5 },
+  { id: 'i4', code: 'IND_EBITDA_MARGIN_D', formula: 'ebitda / revenue * 100', thresholds: {}, requiredInputs: ['budgetLine'], weight: 1.5 },
 ]
 const baselineIVs = [
-  { companyId: 'c1', indicatorId: 'i1', value: 20, status: 'green' as const },
-  { companyId: 'c2', indicatorId: 'i1', value: 10, status: 'amber' as const },
+  ...['i1', 'i2', 'i3', 'i4'].map((indicatorId) => ({
+    companyId: 'c1', indicatorId, value: 20, status: 'green' as const,
+  })),
+  ...['i1', 'i2', 'i3', 'i4'].map((indicatorId) => ({
+    companyId: 'c2', indicatorId, value: 10, status: 'amber' as const,
+  })),
 ]
 const scenario = { code: 'INPUT_COST_30', overrides: { shock: { inputCostShock: 0.3 } } }
 
@@ -120,13 +133,28 @@ describe('simulateByDrivers — financial-stress sub-composite', () => {
     { id: 'c1', code: 'CPC', name: 'CPC', parentCompanyId: 'p1', industry: 'food_processing', revenue: 1000 },
     { id: 'p1', code: 'AZSEKER', name: 'Holding', parentCompanyId: null, industry: null, revenue: null },
   ]
+  // 11.81 — four of each, so BOTH the full composite and the financial
+  // sub-composite clear the coverage floor. The 1:1 financial-to-operational
+  // mix the test is about is preserved exactly.
+  const FIN_IDS = ['i1', 'i2', 'i3', 'i4']
+  const OPS_IDS = ['o1', 'o2', 'o3', 'o4']
   const indicators = [
-    { id: 'i1', code: 'IND_EBITDA_MARGIN', formula: 'ebitda / revenue * 100', thresholds: {}, requiredInputs: ['budgetLine'], weight: 1 },
-    { id: 'i2', code: 'AGRO_YIELD', formula: 'yield_per_ha', thresholds: {}, requiredInputs: ['operationalFact:yield_per_ha'], weight: 1 },
+    ...FIN_IDS.map((id, n) => ({
+      id, code: `IND_EBITDA_MARGIN_${n}`, formula: 'ebitda / revenue * 100',
+      thresholds: {}, requiredInputs: ['budgetLine'], weight: 1,
+    })),
+    ...OPS_IDS.map((id, n) => ({
+      id, code: `AGRO_YIELD_${n}`, formula: 'yield_per_ha',
+      thresholds: {}, requiredInputs: ['operationalFact:yield_per_ha'], weight: 1,
+    })),
   ]
   const baselineIVs = [
-    { companyId: 'c1', indicatorId: 'i1', value: 20, status: 'green' as const },
-    { companyId: 'c1', indicatorId: 'i2', value: 5, status: 'green' as const },
+    ...FIN_IDS.map((indicatorId) => ({
+      companyId: 'c1', indicatorId, value: 20, status: 'green' as const,
+    })),
+    ...OPS_IDS.map((indicatorId) => ({
+      companyId: 'c1', indicatorId, value: 5, status: 'green' as const,
+    })),
   ]
   const scenario = { code: 'INPUT_COST_30', overrides: { shock: { inputCostShock: 0.3 } } }
 
@@ -134,17 +162,18 @@ describe('simulateByDrivers — financial-stress sub-composite', () => {
     const fakeBuildContext = vi.fn(async () => ({ context: { revenue: 1000, cogs: 600, opex: 200, gross_profit: 400, ebitda: 200, net_income: 150, da_total: 50, total_input_cost: 600, imported_input_cost: 0, yield_per_ha: 5 }, inputs: {}, functions: {} }) as never)
     // financial i1 → red under the cost shock; non-financial i2 (yield) → unchanged green.
     const fakeRecompute = vi.fn(async (_ds, args: { definition: { code?: string } }) =>
-      (args.definition.code === 'IND_EBITDA_MARGIN' ? { ok: true, value: -5, status: 'red' } : { ok: true, value: 5, status: 'green' }) as never,
+      (args.definition.code?.startsWith('IND_EBITDA_MARGIN') ? { ok: true, value: -5, status: 'red' } : { ok: true, value: 5, status: 'green' }) as never,
     )
     const r = await simulateByDrivers(
       noWriteDs,
       { organizationId: 'org1', scenario, period: '2026', companies, indicators, baselineIVs },
       { buildContext: fakeBuildContext, recomputeIndicator: fakeRecompute },
     )
-    // Full composite: 1 red + 1 green → 50. Financial composite: only i1 red → 0.
+    // Full composite: 4 red + 4 green → 50. Financial composite: the four
+    // P&L cells are all red → 0.
     expect(r.holdingScenarioScore).toBe(50)
-    expect(r.financialHoldingBaselineScore).toBe(100) // i1 green baseline
-    expect(r.financialHoldingScenarioScore).toBe(0) // i1 red scenario
+    expect(r.financialHoldingBaselineScore).toBe(100) // P&L green baseline
+    expect(r.financialHoldingScenarioScore).toBe(0) // P&L red scenario
     // Financial stress is more dramatic than the diluted full swing.
     expect(r.holdingBaselineScore! - r.holdingScenarioScore!).toBeLessThan(
       r.financialHoldingBaselineScore! - r.financialHoldingScenarioScore!,

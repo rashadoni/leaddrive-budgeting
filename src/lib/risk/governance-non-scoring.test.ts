@@ -75,6 +75,10 @@ const GOVERNANCE_INDICATORS = [
   },
 ]
 
+// 11.81 — four financial indicators, not two. The coverage floor withholds a
+// score below MIN_SCORING_CELLS contributing cells, so a fixture built to prove
+// "the governance cells did not move the number" needs enough financial cells
+// for there to BE a number. The rule under test here is unchanged.
 const FINANCIAL_INDICATORS = [
   {
     id: "f1",
@@ -87,6 +91,18 @@ const FINANCIAL_INDICATORS = [
     code: "DEBT_COVERAGE",
     category: "operational",
     requiredInputs: ["budgetLine.ebitda"],
+  },
+  {
+    id: "f3",
+    code: "NET_MARGIN",
+    category: "operational",
+    requiredInputs: ["budgetLine.netProfit"],
+  },
+  {
+    id: "f4",
+    code: "OPEX_RATIO",
+    category: "operational",
+    requiredInputs: ["budgetLine.opex"],
   },
 ]
 
@@ -173,6 +189,8 @@ describe("composite arithmetic — the chokepoint enforces it", () => {
       [
         cell("eden", "f1", "green"),
         cell("eden", "f2", "green"),
+        cell("eden", "f3", "green"),
+        cell("eden", "f4", "green"),
         cell("eden", "g1", "red"),
         cell("eden", "g2", "red"),
         cell("eden", "g3", "red"),
@@ -181,13 +199,13 @@ describe("composite arithmetic — the chokepoint enforces it", () => {
       ALL_INDICATORS,
     )
     const out = computeCompositeScore(cells)
-    // Two greens only. Without the rule this is round(200/6) = 33 — a red band.
+    // Four greens only. Without the rule this is round(400/8) = 50 — amber.
     expect(out.score).toBe(100)
     expect(out.band).toBe("green")
-    expect(out.contributingCount).toBe(2)
+    expect(out.contributingCount).toBe(4)
     // Coverage: the four leave the denominator too — see the dedicated
     // describe() below for why that is the deliberate choice.
-    expect(out.totalCount).toBe(2)
+    expect(out.totalCount).toBe(4)
   })
 
   it("a company with a MIX keeps every financial cell, including the bad ones", () => {
@@ -197,16 +215,18 @@ describe("composite arithmetic — the chokepoint enforces it", () => {
       [
         cell("cpc", "f1", "green"), // margin healthy
         cell("cpc", "f2", "red"), // debt coverage broken
+        cell("cpc", "f3", "green"), // net margin healthy
+        cell("cpc", "f4", "red"), // opex ratio broken
         cell("cpc", "g2", "red"), // active court cases
         cell("cpc", "k1", "amber"), // the constant
       ],
       ALL_INDICATORS,
     )
     const out = computeCompositeScore(cells)
-    expect(out.score).toBe(50) // (100 + 0) / 2
+    expect(out.score).toBe(50) // (100 + 0 + 100 + 0) / 4
     expect(out.band).toBe("amber")
-    expect(out.contributingCount).toBe(2)
-    expect(out.totalCount).toBe(2)
+    expect(out.contributingCount).toBe(4)
+    expect(out.totalCount).toBe(4)
   })
 
   it("a company with NOTHING but governance cells has no financial score at all", () => {
@@ -227,7 +247,12 @@ describe("composite arithmetic — the chokepoint enforces it", () => {
     // Symmetry check. If only the reds were dropped this would pass at 100 for
     // the wrong reason; a company with clean courts must not be rewarded on the
     // financial axis either.
-    const base = [cell("x", "f1", "red")]
+    const base = [
+      cell("x", "f1", "red"),
+      cell("x", "f2", "red"),
+      cell("x", "f3", "red"),
+      cell("x", "f4", "red"),
+    ]
     const withGreenLegal = markNonScoringCells(
       [...base, cell("x", "g1", "green"), cell("x", "g4", "green")],
       ALL_INDICATORS,
@@ -243,6 +268,9 @@ describe("composite arithmetic — the chokepoint enforces it", () => {
     // before `weight` is read.
     const cells: HeatMapCell[] = [
       { ...cell("w", "f1", "green"), weight: 1 },
+      { ...cell("w", "f2", "green"), weight: 1 },
+      { ...cell("w", "f3", "green"), weight: 1 },
+      { ...cell("w", "f4", "green"), weight: 1 },
       { ...cell("w", "g2", "red"), weight: 5, scoring: false },
     ]
     expect(computeCompositeScore(cells).score).toBe(100)
@@ -252,8 +280,14 @@ describe("composite arithmetic — the chokepoint enforces it", () => {
     const cells = markNonScoringCells(
       [
         cell("a", "f1", "green"),
+        cell("a", "f2", "green"),
+        cell("a", "f3", "green"),
+        cell("a", "f4", "green"),
         cell("a", "g2", "red"),
         cell("b", "f1", "red"),
+        cell("b", "f2", "red"),
+        cell("b", "f3", "red"),
+        cell("b", "f4", "red"),
         cell("b", "g2", "green"),
       ],
       ALL_INDICATORS,
@@ -267,9 +301,14 @@ describe("composite arithmetic — the chokepoint enforces it", () => {
     // Every pre-11.71 fixture and every builder not yet taught the flag must
     // behave exactly as before. This is the guard that four HeatMap fixtures
     // paid for in 11.66.
-    const cells = [cell("legacy", "f1", "green"), cell("legacy", "g2", "red")]
+    const cells = [
+      cell("legacy", "f1", "green"),
+      cell("legacy", "f2", "green"),
+      cell("legacy", "g1", "red"),
+      cell("legacy", "g2", "red"),
+    ]
     expect(computeCompositeScore(cells).score).toBe(50)
-    expect(computeCompositeScore(cells).totalCount).toBe(2)
+    expect(computeCompositeScore(cells).totalCount).toBe(4)
   })
 })
 
@@ -300,6 +339,8 @@ describe("coverage counts — the denominator decision", () => {
       [
         cell("c", "f1", "green"),
         cell("c", "f2", "amber"),
+        cell("c", "f3", "green"),
+        cell("c", "f4", "amber"),
         cell("c", "g1", "red"),
         cell("c", "g2", "red"),
         cell("c", "g3", "red"),
@@ -309,8 +350,8 @@ describe("coverage counts — the denominator decision", () => {
       ALL_INDICATORS,
     )
     const out = computeCompositeScore(cells)
-    expect(out.contributingCount).toBe(2)
-    expect(out.totalCount).toBe(2) // 7 cells − 4 governance − 1 constant
+    expect(out.contributingCount).toBe(4)
+    expect(out.totalCount).toBe(4) // 9 cells − 4 governance − 1 constant
   })
 
   it("marking and pre-filtering produce an identical score/coverage triple", () => {
@@ -320,6 +361,8 @@ describe("coverage counts — the denominator decision", () => {
     const raw = [
       cell("d", "f1", "green"),
       cell("d", "f2", "red"),
+      cell("d", "f3", "green"),
+      cell("d", "f4", "red"),
       cell("d", "g2", "amber"),
       cell("d", "k1", "amber"),
     ]
@@ -330,7 +373,7 @@ describe("coverage counts — the denominator decision", () => {
       excludeNonScoringCells(raw, ALL_INDICATORS),
     )
     expect(marked).toEqual(filtered)
-    expect(marked.totalCount).toBe(2)
+    expect(marked.totalCount).toBe(4)
   })
 })
 
@@ -356,7 +399,7 @@ describe("the four stay visible and queryable — only the score changes", () =>
     // the indicator search, IndicatorDetail and the exports all read the
     // catalogue, and all four must remain in it.
     const ids = nonScoringIndicatorIds(ALL_INDICATORS)
-    expect(ALL_INDICATORS).toHaveLength(7)
+    expect(ALL_INDICATORS).toHaveLength(9)
     expect([...ids].sort()).toEqual(["g1", "g2", "g3", "g4", "k1"])
   })
 
@@ -397,6 +440,9 @@ describe("every surface agrees — the alert engine reads the same flag", () => 
     const cells = markNonScoringCells(
       [
         cell("g", "f1", "green"),
+        cell("g", "f2", "green"),
+        cell("g", "f3", "green"),
+        cell("g", "f4", "green"),
         cell("g", "g1", "red"),
         cell("g", "g2", "red"),
         cell("g", "g3", "red"),
@@ -423,6 +469,8 @@ describe("every surface agrees — the alert engine reads the same flag", () => 
       [
         cell("h", "f1", "red"),
         cell("h", "f2", "red"),
+        cell("h", "f3", "red"),
+        cell("h", "f4", "red"),
         cell("h", "g2", "green"),
       ],
       ALL_INDICATORS,
@@ -443,6 +491,6 @@ describe("every surface agrees — the alert engine reads the same flag", () => 
     expect(matches[0]?.message).toBe(
       `AZS-H composite score ${badge.score}/100 (${badge.contributingCount}/${badge.totalCount} indicators)`,
     )
-    expect(matches[0]?.message).toContain("(2/2 indicators)")
+    expect(matches[0]?.message).toContain("(4/4 indicators)")
   })
 })

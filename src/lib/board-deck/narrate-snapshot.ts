@@ -51,7 +51,7 @@ const LANGUAGE_LABEL: Record<NarrationLanguage, string> = {
 
 /** Hand-bumped on any change to SYSTEM_PROMPT or
  *  buildNarrationPrompt structure. v1 = initial Phase E.2 ship. */
-export const NARRATION_PROMPT_VERSION = "v2";
+export const NARRATION_PROMPT_VERSION = "v3";
 
 export interface NarrationInput {
   snapshot: BoardSnapshot;
@@ -106,6 +106,7 @@ Hard constraints:
   - Never invent company scale, sector facts, market prices, trends, currency, materiality, root causes, source freshness, audit assurance, or transactions absent from the user message.
   - Expected matrix slots are not observed data. Missing slots are absent, never zero or green. Zero triggered rules does not prove all systems are green.
   - Composite scores are operational risk indicators, not audited financial results. Qualify recommendations accordingly.
+  - Entities marked NOT_SCORED have figures for too few indicators to support a verdict. Do not describe them as healthy, at risk, best or worst, and do not include them in any ranking. You may state only that their coverage is insufficient.
 
 Schema (use EXACTLY these field names):
   {
@@ -129,6 +130,9 @@ export function buildNarrationPrompt(input: NarrationInput): string {
     industry: string | null;
     score: number | null;
     band: string;
+    scored: boolean;
+    contributing: number;
+    total: number;
   }> = [];
   for (const co of snapshot.operational) {
     const composite = snapshot.compositeByCompany.get(co.id);
@@ -138,9 +142,18 @@ export function buildNarrationPrompt(input: NarrationInput): string {
       industry: co.industry,
       score: composite?.score ?? null,
       band: composite?.band ?? "unknown",
+      scored: composite?.coverage === "full",
+      contributing: composite?.contributingCount ?? 0,
+      total: composite?.totalCount ?? 0,
     });
   }
+  // 11.81 — nulls already sorted last, which is necessary and not sufficient:
+  // the model still saw `score=— band=unknown` in a block introduced as the
+  // worst-first ranking, while paragraph 2 is instructed to describe "risk
+  // concentration visible in supplied scores". Sort scored entities first by
+  // score ascending, then the withheld ones — they are never in a "worst" slot.
   compositeRows.sort((a, b) => {
+    if (a.scored !== b.scored) return a.scored ? -1 : 1;
     if (a.score === null && b.score === null) return 0;
     if (a.score === null) return 1;
     if (b.score === null) return -1;
@@ -149,11 +162,13 @@ export function buildNarrationPrompt(input: NarrationInput): string {
   const TOP_COMPOSITES = 12;
   const compositeBlock = compositeRows
     .slice(0, TOP_COMPOSITES)
-    .map(
-      (r) =>
-        `  ${r.code} (${r.industry ?? "—"}): score=${
-          r.score === null ? "—" : r.score
-        } band=${r.band}`,
+    .map((r) =>
+      r.scored
+        ? `  ${r.code} (${r.industry ?? "—"}): score=${r.score} band=${r.band} coverage=${r.contributing}/${r.total}`
+        : // The row carries its own state. `boardDeck.evidence.scoreMethod`
+          // has always told the human reader what an unscored entity is;
+          // nothing has ever told the model.
+          `  ${r.code} (${r.industry ?? "—"}): score=— coverage=${r.contributing}/${r.total} NOT_SCORED`,
     )
     .join("\n");
 

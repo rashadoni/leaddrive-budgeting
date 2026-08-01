@@ -113,15 +113,27 @@ export async function HeroSection({
           data-testid="hero-score-caption"
           className="mt-3 text-sm md:text-base text-muted-foreground tracking-wide"
         >
-          {t("boardDeck.hero.scoreLabel")}{" "}
-          {composite.score !== null && (
-            <span className="text-muted-foreground/70">
-              · {t("boardDeck.hero.contributingCount", {
-                contributing: composite.contributingCount,
-                total: composite.totalCount,
-              })}
-            </span>
-          )}
+          {composite.score === null
+            ? t("composite.insufficientLabel")
+            : t("boardDeck.hero.scoreLabel")}{" "}
+          {/* 11.81 — the `score !== null` guard is gone. A bare "—" at 96px
+              with nothing under it is the worst blank in the product: it
+              reads as a broken page, not as a measured shortfall. Score
+              present or absent, the caption now says how many subsidiaries
+              the number rests on and how much of the holding's revenue they
+              carry — because removing children can make the holding look
+              better, and a disclosure that only prints on good news is not
+              one. */}
+          <span className="text-muted-foreground/70">
+            ·{" "}
+            {composite.score === null
+              ? t("composite.parentNoScore", { total: composite.totalCount })
+              : t("composite.parentCoverage", {
+                  scored: composite.contributingCount,
+                  total: composite.totalCount,
+                  revenuePct: composite.revenueCoveredPct,
+                })}
+          </span>
         </p>
       </div>
 

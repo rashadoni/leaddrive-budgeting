@@ -201,38 +201,30 @@ describe("buildTrendSeries — averaging", () => {
     // 2 companies, 1 indicator, 2 months. Each company-month has
     // one cell; composite per company = score(0|100) collapsed to
     // band → composite score depends on internal algorithm.
+    // 11.81 — four indicators per company-month, so both companies clear the
+    // coverage floor and this test measures the AVERAGING, not coverage.
+    const IND_IDS = ["ind_1", "ind_2", "ind_3", "ind_4"];
+    const monthRows = (companyId: string, status: string, period: string) =>
+      IND_IDS.map((indicatorId) => ({
+        companyId,
+        indicatorId,
+        value: 5,
+        status,
+        period,
+      }));
     const rows = [
-      // Month 2026-03: co_1 green, co_2 amber → composite scores
-      // averaged.
-      {
-        companyId: "co_1",
-        indicatorId: "ind_1",
-        value: 5,
-        status: "green",
-        period: "2026-03",
-      },
-      {
-        companyId: "co_2",
-        indicatorId: "ind_1",
-        value: 5,
-        status: "amber",
-        period: "2026-03",
-      },
+      // Month 2026-03: co_1 green, co_2 amber → composite scores averaged.
+      ...monthRows("co_1", "green", "2026-03"),
+      ...monthRows("co_2", "amber", "2026-03"),
       // Month 2026-04: co_1 only.
-      {
-        companyId: "co_1",
-        indicatorId: "ind_1",
-        value: 5,
-        status: "red",
-        period: "2026-04",
-      },
+      ...monthRows("co_1", "red", "2026-04"),
     ];
     const result = await buildTrendSeries(
       {
         organizationId: "org_1",
         currentPeriod: "2026-04",
         operationalIds: ["co_1", "co_2"],
-        indicatorIds: ["ind_1"],
+        indicatorIds: IND_IDS,
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { prisma: makePrisma(rows) as any, monthsBack: 2 },
@@ -249,21 +241,19 @@ describe("buildTrendSeries — averaging", () => {
   });
 
   it("returns null score for months with no rows", async () => {
-    const rows = [
-      {
-        companyId: "co_1",
-        indicatorId: "ind_1",
-        value: 5,
-        status: "green",
-        period: "2026-04",
-      },
-    ];
+    const rows = ["ind_1", "ind_2", "ind_3", "ind_4"].map((indicatorId) => ({
+      companyId: "co_1",
+      indicatorId,
+      value: 5,
+      status: "green",
+      period: "2026-04",
+    }));
     const result = await buildTrendSeries(
       {
         organizationId: "org_1",
         currentPeriod: "2026-04",
         operationalIds: ["co_1"],
-        indicatorIds: ["ind_1"],
+        indicatorIds: ["ind_1", "ind_2", "ind_3", "ind_4"],
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { prisma: makePrisma(rows) as any, monthsBack: 3 },
@@ -273,44 +263,90 @@ describe("buildTrendSeries — averaging", () => {
     expect(result[0].score).toBeNull();
     expect(result[0].band).toBeNull();
     expect(result[1].score).toBeNull();
+    // 11.81 — an empty month reports its cohort as 0 of 1, not as nothing.
+    expect(result[0].contributingCompanies).toBe(0);
+    expect(result[0].totalCompanies).toBe(1);
     // Last month has data.
     expect(result[2].score).not.toBeNull();
+    expect(result[2].contributingCompanies).toBe(1);
+  });
+
+  it("11.81 — carries the cohort behind each point, so a shrinking mean is visible", () => {
+    // The one place the coverage floor can MANUFACTURE a trend instead of
+    // blanking one: the cohort shrinks between months and the line still
+    // plots a solid, connected point.
+    const four = ["ind_1", "ind_2", "ind_3", "ind_4"];
+    const rows = [
+      ...four.map((indicatorId) => ({
+        companyId: "co_1", indicatorId, value: 5, status: "green", period: "2026-03",
+      })),
+      ...four.map((indicatorId) => ({
+        companyId: "co_2", indicatorId, value: 5, status: "green", period: "2026-03",
+      })),
+      // 2026-04: co_2 drops to a single cell — below the floor, withheld.
+      ...four.map((indicatorId) => ({
+        companyId: "co_1", indicatorId, value: 5, status: "green", period: "2026-04",
+      })),
+      { companyId: "co_2", indicatorId: "ind_1", value: 5, status: "red", period: "2026-04" },
+    ];
+    return buildTrendSeries(
+      {
+        organizationId: "org_1",
+        currentPeriod: "2026-04",
+        operationalIds: ["co_1", "co_2"],
+        indicatorIds: four,
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { prisma: makePrisma(rows) as any, monthsBack: 2 },
+    ).then((result) => {
+      expect(result[0]).toMatchObject({
+        score: 100,
+        contributingCompanies: 2,
+        totalCompanies: 2,
+      });
+      // Same score, half the cohort — and the point now says so.
+      expect(result[1]).toMatchObject({
+        score: 100,
+        contributingCompanies: 1,
+        totalCompanies: 2,
+      });
+    });
   });
 
   it("uses current indicator weights and qualitative penalties like the hero score", async () => {
+    // 11.81 — padded to four cells so the company clears the coverage floor;
+    // the weighted arithmetic under test is unchanged.
     const rows = [
-      {
-        companyId: "co_1",
-        indicatorId: "green_heavy",
-        value: 1,
-        status: "green",
-        period: "2026-04",
-      },
-      {
-        companyId: "co_1",
-        indicatorId: "red_light",
-        value: 1,
-        status: "red",
-        period: "2026-04",
-      },
+      { companyId: "co_1", indicatorId: "green_heavy", value: 1, status: "green", period: "2026-04" },
+      { companyId: "co_1", indicatorId: "green_heavy_2", value: 1, status: "green", period: "2026-04" },
+      { companyId: "co_1", indicatorId: "red_light", value: 1, status: "red", period: "2026-04" },
+      { companyId: "co_1", indicatorId: "red_light_2", value: 1, status: "red", period: "2026-04" },
     ];
     const result = await buildTrendSeries(
       {
         organizationId: "org_1",
         currentPeriod: "2026-04",
         operationalIds: ["co_1"],
-        indicatorIds: ["green_heavy", "red_light"],
+        indicatorIds: ["green_heavy", "green_heavy_2", "red_light", "red_light_2"],
         weightByIndicatorId: new Map([
           ["green_heavy", 3],
+          ["green_heavy_2", 3],
           ["red_light", 1],
+          ["red_light_2", 1],
         ]),
         riskTagsByCompany: new Map([["co_1", ["data_absence"]]]),
       },
-      // (100*3 + 0*1) / 4 = 75, then data_absence penalty 12 => 63.
+      // (100*6 + 0*2) / 8 = 75, then data_absence penalty 12 => 63.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { prisma: makePrisma(rows) as any, monthsBack: 1 },
     );
-    expect(result[0]).toEqual({ period: "2026-04", score: 63, band: "amber" });
+    expect(result[0]).toEqual({
+      period: "2026-04",
+      score: 63,
+      band: "amber",
+      contributingCompanies: 1,
+      totalCompanies: 1,
+    });
   });
 
   it("query shape: WHERE org + period IN [12 months] + companyId IN + indicatorId IN", async () => {
@@ -388,10 +424,17 @@ describe("TrendPoint typing", () => {
  * informational and must not interact with the financial part.
  */
 describe("buildTrendSeries — non-scoring indicators (11.71)", () => {
+  // 11.81 — four financial cells so a gated company still clears the coverage
+  // floor and the 11.71 rule is what the assertions measure.
   const rowsFor = (period: string) => [
     { companyId: "co_1", indicatorId: "fin_1", value: 1, status: "green", period },
+    { companyId: "co_1", indicatorId: "fin_2", value: 1, status: "green", period },
+    { companyId: "co_1", indicatorId: "fin_3", value: 1, status: "green", period },
+    { companyId: "co_1", indicatorId: "fin_4", value: 1, status: "green", period },
     { companyId: "co_1", indicatorId: "gov_1", value: 9, status: "red", period },
     { companyId: "co_1", indicatorId: "gov_2", value: 9, status: "red", period },
+    { companyId: "co_1", indicatorId: "gov_3", value: 9, status: "red", period },
+    { companyId: "co_1", indicatorId: "gov_4", value: 9, status: "red", period },
   ];
 
   function run(nonScoring?: ReadonlySet<string>) {
@@ -403,7 +446,10 @@ describe("buildTrendSeries — non-scoring indicators (11.71)", () => {
         organizationId: "org_1",
         currentPeriod: "2026-04",
         operationalIds: ["co_1"],
-        indicatorIds: ["fin_1", "gov_1", "gov_2"],
+        indicatorIds: [
+          "fin_1", "fin_2", "fin_3", "fin_4",
+          "gov_1", "gov_2", "gov_3", "gov_4",
+        ],
         ...(nonScoring ? { nonScoringIndicatorIds: nonScoring } : {}),
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -412,22 +458,23 @@ describe("buildTrendSeries — non-scoring indicators (11.71)", () => {
   }
 
   it("excludes governance cells from every month of the series", async () => {
-    const result = await run(new Set(["gov_1", "gov_2"]));
-    // One green financial cell per month → 100. Ungated this is round(100/3)=33.
+    const result = await run(new Set(["gov_1", "gov_2", "gov_3", "gov_4"]));
+    // Four green financial cells per month → 100. Ungated this is
+    // round(400/8) = 50.
     expect(result.map((p) => p.score)).toEqual([100, 100]);
     expect(result.every((p) => p.band === "green")).toBe(true);
   });
 
   it("without the set nothing is excluded (back-compat default)", async () => {
     const result = await run();
-    expect(result.map((p) => p.score)).toEqual([33, 33]);
+    expect(result.map((p) => p.score)).toEqual([50, 50]);
   });
 
   it("applies the CURRENT rule to history, so the line has no artificial step", async () => {
     // Same treatment as `weightByIndicatorId`: re-scoring history under today's
     // formula is the point. A rule that switched on mid-series would draw a
     // cliff no company actually walked off.
-    const result = await run(new Set(["gov_1", "gov_2"]));
+    const result = await run(new Set(["gov_1", "gov_2", "gov_3", "gov_4"]));
     expect(new Set(result.map((p) => p.score)).size).toBe(1);
   });
 });
