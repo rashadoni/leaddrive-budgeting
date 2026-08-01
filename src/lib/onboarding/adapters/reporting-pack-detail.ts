@@ -40,6 +40,11 @@ import {
   parseWorkbookBsSheet,
   type ParsedBsLine,
 } from "./azseker-workbook-bs"
+import { isAdjustmentEntityValue } from "../ai-import/entity-alias-utils"
+import {
+  findBuDimensionColumns,
+  resolveAdjustmentOwner,
+} from "../ai-import/bu-adjustment"
 
 /** `BU` cell value → canonical Company.code in the FO Holding org. */
 export const REPORTING_PACK_BU_TO_ENTITY: Record<string, string> = {
@@ -51,12 +56,18 @@ export const REPORTING_PACK_BU_TO_ENTITY: Record<string, string> = {
 }
 
 /**
- * BU values that are NOT a standalone entity and must be excluded from a
- * per-entity load:
- *   • EJE / AJE — elimination / adjustment journal entries (the actuals
- *     sheets use "EJE", the budget P&L's BU_3 uses "AJE"); they only make
- *     sense against the consolidated view, so loading them as a real company
- *     would distort that company's statements.
+ * BU values that are NOT a standalone entity and must never be loaded AS a
+ * company:
+ *   • EJE — intragroup elimination journal entries. They cancel trade between
+ *     group members and belong to no single company; loading them as one would
+ *     distort that company's statements. Correctly skipped.
+ *   • AJE — a management ADJUSTMENT journal entry. Also not a company — which
+ *     is why it stays in this set — but unlike an elimination it belongs to
+ *     one, and the workbook's parent BU column says which. `splitByBu` folds
+ *     such a block into its owner's rows BEFORE this set is consulted, so the
+ *     money lands; the entry here is the fallback for when no owner can be
+ *     named (then it is skipped LOUDLY, never silently). See
+ *     `../ai-import/bu-adjustment.ts` for the rule and the evidence.
  *   • CONSOLIDATED — the rollup block (budget CF carries one); loading it
  *     alongside the children would double-count.
  */
@@ -74,6 +85,14 @@ export interface ReportingPackEntityResult<L> {
   entityCode: string | null
   /** Whether this BU was skipped (EJE / unmapped) — caller should not write. */
   skipped: boolean
+  /**
+   * 11.83 — an adjustment BU (AJE) whose rows were appended to another BU's
+   * sheet. `skipped` stays true (it is not written on its own) and `lines` is
+   * empty: the lines are counted once, on the owner.
+   */
+  foldedInto?: string
+  /** Adjustment BUs whose rows were folded INTO this one (owner side). */
+  foldedFrom?: Array<{ buCode: string; rowCount: number; viaHeader: string }>
   lines: L[]
 }
 
@@ -94,8 +113,11 @@ interface BuLocation {
  * where `BU_3` is the operating-entity leaf (separates CPC from EDEN), so the
  * header name is configurable per sheet.
  */
+/** Rows from the top scanned for the BU header (and its sibling dimensions). */
+const BU_HEADER_SCAN_ROWS = 30
+
 function locateBuColumn(aoa: unknown[][], buHeader: string): BuLocation | null {
-  const limit = Math.min(aoa.length, 30)
+  const limit = Math.min(aoa.length, BU_HEADER_SCAN_ROWS)
   for (let r = 0; r < limit; r++) {
     const row = aoa[r] ?? []
     for (let c = 0; c < row.length; c++) {
@@ -105,17 +127,33 @@ function locateBuColumn(aoa: unknown[][], buHeader: string): BuLocation | null {
   return null
 }
 
+interface BuGroup {
+  bu: string
+  sheet: XLSX.WorkSheet
+  /** Rows moved into another BU's sheet — this group must not be written. */
+  foldedInto?: string
+  /** Adjustment BUs merged into this group's sheet. */
+  foldedFrom?: Array<{ buCode: string; rowCount: number; viaHeader: string }>
+}
+
 /**
  * Split a detail sheet's AoA into one synthetic worksheet per BU value.
  * Each synthetic sheet keeps the original header row (so the downstream
  * parser's year-aware header detection still fires) followed by only that
  * BU's data rows (full-width, original column positions preserved).
+ *
+ * 11.83 — a management-ADJUSTMENT BU (AJE) is not a company, but it belongs
+ * to one and the sheet's parent BU column names it. Its rows are appended to
+ * that company's group rather than dropped; the adjustment group itself is
+ * left with only the header row and marked `foldedInto`, so it can be reported
+ * without being written twice. An adjustment whose owner cannot be named keeps
+ * the old behaviour (skipped) but now says so.
  */
 function splitByBu(
   aoa: unknown[][],
   xlsx: typeof XLSX,
   buHeader: string,
-): { groups: Array<{ bu: string; sheet: XLSX.WorkSheet }>; warnings: string[] } {
+): { groups: BuGroup[]; warnings: string[] } {
   const loc = locateBuColumn(aoa, buHeader)
   const warnings: string[] = []
   if (!loc) {
@@ -125,6 +163,7 @@ function splitByBu(
     }
   }
   const headerRow = aoa[loc.headerRow]
+  /** BU → its own data rows, in document order (header prepended at the end). */
   const byBu = new Map<string, unknown[][]>()
   for (let r = loc.headerRow + 1; r < aoa.length; r++) {
     const row = aoa[r] ?? []
@@ -132,14 +171,60 @@ function splitByBu(
     if (!bu) continue
     let rows = byBu.get(bu)
     if (!rows) {
-      rows = [headerRow]
+      rows = []
       byBu.set(bu, rows)
     }
     rows.push(row)
   }
-  const groups = Array.from(byBu.entries()).map(([bu, rows]) => ({
+
+  // ── Fold adjustment BUs into the company their parent column names ──────
+  const dimensionColumns = findBuDimensionColumns(aoa, BU_HEADER_SCAN_ROWS)
+  const foldedInto = new Map<string, string>()
+  const foldedFrom = new Map<string, Array<{ buCode: string; rowCount: number; viaHeader: string }>>()
+  for (const [bu, rows] of byBu) {
+    if (mapReportingPackBu(bu) !== null) continue
+    if (!isAdjustmentEntityValue(bu)) continue
+    const owner = resolveAdjustmentOwner({
+      buValue: bu,
+      blockRows: rows,
+      entityColumn: loc.buCol,
+      dimensionColumns,
+      resolveEntity: mapReportingPackBu,
+    })
+    if (!owner.ok) {
+      warnings.push(
+        `BU "${bu}" (${rows.length} rows) is a management adjustment, not an elimination, but ` +
+          `${owner.reason} — NOT imported. Its amounts are missing from the group until the ` +
+          `owning company is named.`,
+      )
+      continue
+    }
+    const ownerBu = [...byBu.keys()].find((k) => mapReportingPackBu(k) === owner.entityCode)
+    if (!ownerBu) {
+      warnings.push(
+        `BU "${bu}" (${rows.length} rows) is attributed to ${owner.entityCode} by column ` +
+          `"${owner.viaHeader}", but that company has no block on this sheet — NOT imported.`,
+      )
+      continue
+    }
+    byBu.get(ownerBu)!.push(...rows)
+    byBu.set(bu, [])
+    foldedInto.set(bu, owner.entityCode)
+    const list = foldedFrom.get(ownerBu) ?? []
+    list.push({ buCode: bu, rowCount: rows.length, viaHeader: owner.viaHeader })
+    foldedFrom.set(ownerBu, list)
+    warnings.push(
+      `BU "${bu}" (${rows.length} rows) is a management adjustment attributed to "${owner.label}" ` +
+        `by column "${owner.viaHeader}" — folded into ${owner.entityCode} (it is not an ` +
+        `elimination and must not be dropped).`,
+    )
+  }
+
+  const groups: BuGroup[] = Array.from(byBu.entries()).map(([bu, rows]) => ({
     bu,
-    sheet: xlsx.utils.aoa_to_sheet(rows),
+    sheet: xlsx.utils.aoa_to_sheet([headerRow, ...rows]),
+    ...(foldedInto.has(bu) ? { foldedInto: foldedInto.get(bu)! } : {}),
+    ...(foldedFrom.has(bu) ? { foldedFrom: foldedFrom.get(bu)! } : {}),
   }))
   return { groups, warnings }
 }
@@ -158,6 +243,8 @@ export interface ReportingPackBuWorkbook {
   entityCode: string | null
   /** EJE / unmapped BU — caller must NOT write this entity. */
   skipped: boolean
+  /** Adjustment BU folded into another BU's workbook — skipped here, written there. */
+  foldedInto?: string
   workbook: XLSX.WorkBook
 }
 
@@ -177,14 +264,17 @@ export function splitWorkbookByBu(
     blankrows: false,
   }) as unknown[][]
   const { groups, warnings } = splitByBu(aoa, xlsx, opts.buHeader ?? "BU")
-  const splits: ReportingPackBuWorkbook[] = groups.map(({ bu, sheet: buSheet }) => {
+  const splits: ReportingPackBuWorkbook[] = groups.map(({ bu, sheet: buSheet, foldedInto }) => {
     const entityCode = mapReportingPackBu(bu)
     const skipped =
-      REPORTING_PACK_SKIP_BU.has(bu.trim().toUpperCase()) || entityCode === null
+      REPORTING_PACK_SKIP_BU.has(bu.trim().toUpperCase()) ||
+      entityCode === null ||
+      foldedInto !== undefined
     return {
       buCode: bu,
       entityCode,
       skipped,
+      ...(foldedInto ? { foldedInto } : {}),
       workbook: {
         SheetNames: [sheetName],
         Sheets: { [sheetName]: buSheet },
@@ -290,11 +380,27 @@ function parseDetailSheet<L>(
 
   const { groups, warnings } = splitByBu(aoa, xlsx, buHeader)
   const entities: ReportingPackEntityResult<L>[] = []
-  for (const { bu, sheet: buSheet } of groups) {
+  for (const { bu, sheet: buSheet, foldedInto, foldedFrom } of groups) {
     const entityCode = mapReportingPackBu(bu)
-    const skipped = REPORTING_PACK_SKIP_BU.has(bu.trim().toUpperCase()) || entityCode === null
+    const skipped =
+      REPORTING_PACK_SKIP_BU.has(bu.trim().toUpperCase()) ||
+      entityCode === null ||
+      foldedInto !== undefined
+    if (foldedInto) {
+      // Its rows now live on the owner's sheet and are counted there exactly
+      // once. Parsing this stub would double-count nothing (it is empty) but
+      // would emit a spurious "no data" warning.
+      entities.push({ buCode: bu, entityCode, skipped: true, foldedInto, lines: [] })
+      continue
+    }
     const { lines, warnings: subWarnings } = parseOneBu(buSheet)
-    entities.push({ buCode: bu, entityCode, skipped, lines })
+    entities.push({
+      buCode: bu,
+      entityCode,
+      skipped,
+      ...(foldedFrom ? { foldedFrom } : {}),
+      lines,
+    })
     for (const w of subWarnings) warnings.push(`[BU ${bu}] ${w}`)
     if (entityCode === null && !REPORTING_PACK_SKIP_BU.has(bu.trim().toUpperCase())) {
       warnings.push(`Unmapped BU "${bu}" — ${lines.length} lines skipped (add to REPORTING_PACK_BU_TO_ENTITY)`)

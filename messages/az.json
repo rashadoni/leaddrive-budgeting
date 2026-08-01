@@ -929,6 +929,12 @@
     "balanceSheetErrorDescription": "Mənbə sorğusu uğursuz oldu. Çatışmayan məbləğlər sıfırla əvəz edilməyib; bağlantını və giriş dairəsini yoxladıqdan sonra yenidən cəhd edin.",
     "balanceSheetActualsFallback": "Seçilmiş büdcə planının öz balansı olmadığı üçün {year} Fakt balansı göstərilir.",
     "balanceSheetConsolidated": "Qrupun rəsmi konsolidə edilmiş balansı{holding}; qrupdaxili paylar eliminasiya olunub (mənbə: Reporting). Bu, şirkətlərin sadə cəmi deyil; şirkət detalları üçün drill-down istifadə edin.",
+    "balanceSheetUnconsolidatedTitle": "{count, plural, one {# müəssisənin cəmi} other {# müəssisənin cəmi}} — eliminasiya aparılmayıb",
+    "balanceSheetUnconsolidatedBody": "Bu yekunlar bütöv hüquqi şəxsləri bir-birinin üstünə gəlir. Qrupdaxili qalıqlar — törəmə müəssisələrə investisiyalar, qrupdaxili debitor və kreditor borcları — iki dəfə sayılır, ona görə də bu, konsolidə edilmiş balans deyil. Hər biri balanslaşan hesabatların cəmi yenə balanslaşır, buna görə balans yoxlaması bunu aşkarlaya bilmir.",
+    "balanceSheetUnconsolidatedEntities": "Cəmlənən müəssisələr: {entities}.",
+    "balanceSheetHoldingNoConsolidated": "Holdinq müəssisəsi {holding} bu dövr üzrə konsolidə edilmiş balans daşımır. Qrupun eliminasiyadan sonrakı mövqeyini görmək üçün rəsmi konsolidə balansı ona yükləyin.",
+    "balanceSheetSummedAssets": "{count} müəssisənin cəmlənmiş aktivləri",
+    "balanceSheetRatioUnavailableUnconsolidated": "Göstərilmir: qrupdaxili qalıqlar həm borcu, həm kapitalı şişirdir",
     "balanceSheetEditHint": "✎ Detal dəyərləri redaktə edilə bilər: xananı dəyişin və avtomatik saxlamaq üçün fokusu kənara keçirin.",
     "balanceSheetEditTitle": "Dəyəri dəyişin və saxlamaq üçün fokusu kənara keçirin",
     "balanceSheetSaveError": "Saxlanmadı: {error}",
@@ -1179,6 +1185,7 @@
     "pnlWfGrossProfit": "Ümumi mənfəət",
     "pnlWfOverhead": "Dolayı xərclər",
     "pnlWfEbitda": "EBITDA",
+    "pnlWfOtherOperating": "Digər əməliyyat gəlir/(xərc)",
     "plSectionDirectCosts": "Birbaşa xərclər",
     "plSectionOverheadExpenses": "Dolayı (qaimə) xərclər",
     "pnlGrossMarginLine": "Ümumi marja: {planPct}% (plan) / {actualPct}% (faktiki)",
@@ -1499,6 +1506,7 @@
     "pnlChartMarginTrends": "Marja dinamikası",
     "pnlColPlanTotal": "Plan (cəmi)",
     "pnlBelowEbitdaSection": "Amortizasiya, maliyyə və vergi",
+    "pnlOtherOperatingSection": "Digər əməliyyat gəlirləri/(xərcləri)",
     "pnlBridgeTitle": "EBITDA kənarlaşma körpüsü",
     "pnlBridgeSubtitle": "Büdcə EBITDA-sından başlayır və hansı P&L sətirlərinin onu faktiki EBITDA-ya apardığını göstərir.",
     "pnlBridgeNoActualsBadge": "Fakt yoxdur",
@@ -1511,6 +1519,7 @@
     "pnlBridgeCogsVariance": "Maya dəyəri kənarlaşması",
     "pnlBridgeOpexVariance": "Əməliyyat xərclərinin kənarlaşması",
     "pnlBridgeDaAddBack": "Amortizasiyanın geri əlavəsi",
+    "pnlBridgeOtherOperatingVariance": "Digər əməliyyat kənarlaşması",
     "pnlBridgeActualEbitda": "Faktiki EBITDA",
     "assumptionsEmptyTitle": "Bu planda fərziyyə yoxdur",
     "assumptionsEmptyDescription": "Fərziyyələr büdcənin sürücüləridir: qiymətlər, inflyasiya, dərəcələr, əməliyyat normaları və ssenari parametrləri. Cari idxal bu plan üçün fərziyyə sətirləri yazmayıb.",
@@ -3967,10 +3976,12 @@
       },
       "routing": {
         "title": "Şirkət yönləndirməsi — {n} split vərəq",
-        "description": "Bu kitabda bir neçə şirkət tək vərəqdə, biznes-vahid sütunu ilə ayrılıb. «yaz» sətirləri göstərilən şirkətə gedir. Konsolidasiya düzəlişləri (EJE / AJE) qrupdaxili dövriyyəni silir — onlar heç bir şirkətə aid deyil, ona görə idxal olunmur.",
+        "description": "Bu kitabda bir neçə şirkət tək vərəqdə, biznes-vahid sütunu ilə ayrılıb. «yaz» sətirləri göstərilən şirkətə gedir. Eliminasiya yazılışları (EJE) qrupdaxili dövriyyəni silir — onlar heç bir şirkətə aid deyil, ona görə idxal olunmur. Düzəliş bloku (AJE) isə bir şirkətə aiddir: valideyn BU sütununun göstərdiyi şirkətə birləşdirilir.",
         "write": "yaz",
         "skipElim": "atla — konsolidasiya düzəlişi",
         "skipUnknown": "atla — şirkət tanınmadı",
+        "fold": "birləşdirildi — düzəliş, sahib {column} sütunundan",
+        "skipAdjustment": "atla — sahibi göstərilməyən düzəliş",
         "col": {
           "source": "Mənbə vərəqi",
           "bu": "BU dəyəri",
@@ -4587,7 +4598,8 @@
     "removeCompany": {
       "fixedScope": "Bütün illər — bu şirkət üzrə indiyədək yüklənmiş hər şey.",
       "permanentNote": "Bu, həm də bu şirkət üzrə qeyd olunmuş audit tapıntılarını, məhkəmə işlərini və risk reyestrini silir. Həmin qeydlərin özü faylı yenidən yükləyəndə qayıdır — lakin onlara daxil etdiyiniz statuslar, məsul şəxslər, son tarixlər və şərhlər qayıtmır, onları heç nə bərpa etmir.",
-      "keptNote": "Şirkətin özü sistemdə qalır — şirkət siyahısından, hesab planından və istifadəçi hüquqlarından silinmir. Bir növ məlumat da qalır: fayldan yüklənməyib, əl ilə daxil edilmiş əməliyyat göstəriciləri. Bu səhifədəki heç bir əməliyyat onları silmir və onlar göstəriciləri qidalandırmaqda davam edir — onları «Göstəricilərin sağlamlığı» səhifəsindən silin."
+      "keptNote": "Şirkətin özü sistemdə qalır — şirkət siyahısından, hesab planından və istifadəçi hüquqlarından silinmir. Bir növ məlumat da qalır: fayldan yüklənməyib, əl ilə daxil edilmiş əməliyyat göstəriciləri. Bu səhifədəki heç bir əməliyyat onları silmir və onlar göstəriciləri qidalandırmaqda davam edir — onları «Göstəricilərin sağlamlığı» səhifəsindən silin.",
+      "multiHint": "Bu əməliyyat bir şirkəti və onun bütün illərini əhatə edir. Bir neçə şirkət və ya yalnız müəyyən illər lazımdırsa, bu əməliyyatdan istifadə edin:"
     },
     "deleteAll": {
       "intro": "Bu, bütün qrupu boşaldır. Aşağıdakı hər şirkət, hər il, üstəlik heç bir konkret şirkətə aid olmayan iki qrup səviyyəli element.",

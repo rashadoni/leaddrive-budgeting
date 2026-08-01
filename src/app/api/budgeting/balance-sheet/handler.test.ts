@@ -213,6 +213,120 @@ describe("GET /api/budgeting/balance-sheet", () => {
       }),
     )
   })
+
+  /**
+   * Defect 3 (2026-08-01). The consolidated-holding branch fires only when the
+   * level-1 holding carries BS rows of its OWN. AZSEKER carries none — the
+   * client's workbook has per-entity `BS Actual 2025`/`BS Actual 2026` sheets
+   * and no consolidated `BS` tab at all — so `companyFilter` stayed `{}` and
+   * four legal entities were added together with nothing said about it:
+   * 373,152,064 of "Total assets" at 2026-05 against a consolidated
+   * 249,951,210, i.e. 123,200,854 of intercompany balances counted twice.
+   */
+  describe("un-eliminated cross-entity sums are declared, never silent", () => {
+    const entityRows = [
+      { id: "1", lineType: "asset", month: 5, amount: 134234695.76, companyId: "azsf" },
+      { id: "2", lineType: "asset", month: 5, amount: 177351644.55, companyId: "eden" },
+      { id: "3", lineType: "asset", month: 5, amount: 25184079.11, companyId: "cpc" },
+      { id: "4", lineType: "asset", month: 5, amount: 36381644.76, companyId: "promalt" },
+    ]
+
+    it("holding present but carrying NO consolidated BS → sum_of_entities, eliminationsApplied false", async () => {
+      await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+      prismaMock.company.findMany
+        // 1st call: the level-1 holding lookup.
+        .mockResolvedValueOnce([
+          { id: "holding1", name: "AZSEKER", code: "AZSEKER", baseCurrencyCode: "AZN" },
+        ])
+        // 2nd call: names of the contributing entities.
+        .mockResolvedValueOnce([
+          { name: "AZSF" },
+          { name: "CPC" },
+          { name: "EDEN" },
+          { name: "ProMalt" },
+        ])
+      prismaMock.balanceSheetLine.count.mockResolvedValue(0) // the holding has none
+      prismaMock.balanceSheetLine.findMany.mockResolvedValue(entityRows)
+
+      const res = await GET(makeRequest("/api/budgeting/balance-sheet?planId=p1"))
+      expect(res.status).toBe(200)
+      const body = await res.json()
+
+      expect(body.meta.basis).toBe("sum_of_entities")
+      expect(body.meta.entityCount).toBe(4)
+      expect(body.meta.eliminationsApplied).toBe(false)
+      expect(body.meta.consolidated).toBe(false)
+      // The actionable half: there IS a holding, it just has no consolidated BS.
+      expect(body.meta.holdingHasConsolidatedBs).toBe(false)
+      expect(body.meta.entityNames).toEqual(["AZSF", "CPC", "EDEN", "ProMalt"])
+      // The rows themselves are unchanged — the sum is qualified, not falsified.
+      expect(body.assets).toHaveLength(4)
+    })
+
+    it("no unique holding at all → still declared as a 4-entity sum, not a bare total", async () => {
+      await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+      prismaMock.company.findMany
+        .mockResolvedValueOnce([
+          { id: "a", name: "A", code: "A" },
+          { id: "b", name: "B", code: "B" },
+        ])
+        .mockResolvedValueOnce([
+          { name: "AZSF" },
+          { name: "CPC" },
+          { name: "EDEN" },
+          { name: "ProMalt" },
+        ])
+      prismaMock.balanceSheetLine.findMany.mockResolvedValue(entityRows)
+
+      const res = await GET(makeRequest("/api/budgeting/balance-sheet?planId=p1"))
+      const body = await res.json()
+
+      expect(body.meta.basis).toBe("sum_of_entities")
+      expect(body.meta.eliminationsApplied).toBe(false)
+      // Not applicable: there is no unique holding to be missing a BS.
+      expect(body.meta.holdingHasConsolidatedBs).toBeNull()
+    })
+
+    it("the holding's own consolidated rows are declared consolidated_holding", async () => {
+      await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+      prismaMock.company.findMany.mockResolvedValue([
+        { id: "holding1", name: "AZSEKER", code: "AZSEKER", baseCurrencyCode: "AZN" },
+      ])
+      prismaMock.balanceSheetLine.count.mockResolvedValue(24)
+      prismaMock.balanceSheetLine.findMany.mockResolvedValue([
+        { id: "1", lineType: "asset", month: 4, amount: 253320381, companyId: "holding1" },
+      ])
+
+      const res = await GET(makeRequest("/api/budgeting/balance-sheet?planId=p1"))
+      const body = await res.json()
+
+      expect(body.meta.basis).toBe("consolidated_holding")
+      expect(body.meta.eliminationsApplied).toBe(true)
+      expect(body.meta.holdingHasConsolidatedBs).toBe(true)
+      // No second company lookup — the consolidated view names no contributors.
+      expect(body.meta.entityNames).toEqual([])
+    })
+
+    it("?companyId drill-down is single_entity, not a sum", async () => {
+      await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+      prismaMock.company.findMany.mockResolvedValue([
+        { id: "holding1", name: "AZSEKER", code: "AZSEKER" },
+      ])
+      prismaMock.balanceSheetLine.findMany.mockResolvedValue([
+        { id: "1", lineType: "asset", month: 5, amount: 134234695.76, companyId: "azsf" },
+        { id: "2", lineType: "equity", month: 5, amount: -131427632.96, companyId: "azsf" },
+      ])
+
+      const res = await GET(
+        makeRequest("/api/budgeting/balance-sheet?planId=p1&companyId=azsf"),
+      )
+      const body = await res.json()
+
+      expect(body.meta.basis).toBe("single_entity")
+      expect(body.meta.entityCount).toBe(1)
+      expect(body.meta.eliminationsApplied).toBe(true)
+    })
+  })
 })
 
 describe("POST /api/budgeting/balance-sheet", () => {

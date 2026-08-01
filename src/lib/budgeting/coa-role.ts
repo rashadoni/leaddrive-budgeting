@@ -35,6 +35,8 @@
  * default below is the AAC-specific fallback.
  */
 
+import { plfNature } from "./plf-chart"
+
 export type CoARole =
   | "revenue"
   | "cogs"
@@ -86,11 +88,23 @@ export function isContraRevenueCode(code: string): boolean {
 }
 
 /**
- * P&L-section mapper — coarser than `CoARole`, used by P&L aggregation
- * (revenue / cogs / opex / belowEbitda). Returns `null` for codes that
- * don't aggregate into any P&L line (asset, liability, equity, unknown).
+ * P&L-section mapper — coarser than `CoARole`, used by P&L aggregation.
+ * Returns `null` for codes that don't aggregate into any P&L line (asset,
+ * liability, equity, unknown, and the sheet's own subtotal rows).
+ *
+ * `otherOperating` is "other operating income/(expense)": ABOVE EBITDA and
+ * OUTSIDE revenue and gross profit. It is the only SIGNED bucket — its total
+ * is income-positive, where `cogs` / `opex` / `belowEbitda` are all
+ * cost-positive magnitudes. Use `otherOperatingContribution` to add a row to
+ * it; do not sum raw amounts.
  */
-export type PnLSection = "revenue" | "cogs" | "opex" | "belowEbitda" | null
+export type PnLSection =
+  | "revenue"
+  | "cogs"
+  | "opex"
+  | "otherOperating"
+  | "belowEbitda"
+  | null
 
 export function pnlSectionFromRole(role: CoARole): PnLSection {
   switch (role) {
@@ -117,6 +131,12 @@ export function pnlSectionFromRole(role: CoARole): PnLSection {
  * also persist customer workbook codes such as `PLF.01.02.01`; reporting must
  * understand those codes directly, otherwise Actual-vs-Budget silently drops
  * revenue/COGS and mislabels below-EBITDA rows as OpEx.
+ *
+ * The PLF branch delegates to `plf-chart.ts` — the same statement the importer
+ * classifies from — so the two can no longer disagree. They did: it used to
+ * route `PLF.07.01/.02` (other-operating income) into REVENUE to compensate
+ * for the importer storing it negative, and return `null` for `PLF.08.01`
+ * (Shareholders' expense, 174,491 AZN) which the importer deliberately wrote.
  */
 export function pnlSectionFromCode(
   code: string,
@@ -125,32 +145,22 @@ export function pnlSectionFromCode(
   const sapSection = pnlSectionFromRole(deriveRoleFromCode(code))
   if (sapSection) return sapSection
 
-  if (typeof code === "string") {
-    const c = code.trim().toUpperCase()
-    if (c.startsWith("PLF.")) {
-      if (
-        c === "PLF.03" ||
-        c.startsWith("PLF.03.") ||
-        c === "PLF.08" ||
-        c.startsWith("PLF.08.") ||
-        c === "PLF.10" ||
-        c.startsWith("PLF.10.")
-      ) {
-        return null
-      }
-      if (c.startsWith("PLF.01")) return "revenue"
-      if (c.startsWith("PLF.02")) return "cogs"
-      if (c.startsWith("PLF.04") || c.startsWith("PLF.05")) return "opex"
-      if (c.startsWith("PLF.07.01") || c.startsWith("PLF.07.02")) {
-        return "revenue"
-      }
-      if (c.startsWith("PLF.07.03") || c.startsWith("PLF.07.04")) {
-        return "belowEbitda"
-      }
-      if (c === "PLF.07") return null
-      if (c.startsWith("PLF.09")) return "belowEbitda"
-      if (c.startsWith("PLF.12")) return "opex"
-    }
+  switch (plfNature(code)) {
+    case "revenue":
+      return "revenue"
+    case "cogs":
+      return "cogs"
+    case "opex":
+      return "opex"
+    case "other_operating_income":
+    case "other_operating_expense":
+      return "otherOperating"
+    case "below_ebitda":
+      return "belowEbitda"
+    case "subtotal":
+      return null
+    case null:
+      break
   }
 
   if (accountType === "revenue") return "revenue"
@@ -160,27 +170,29 @@ export function pnlSectionFromCode(
 }
 
 /**
+ * Signed contribution of a row to the "other operating income/(expense)"
+ * line. Income positive; an expense row (stored cost-positive) subtracts.
+ *
+ * Re-exported from `plf-chart.ts` so every reporting surface reaches the
+ * bucket's sign rule through the same import as its section rule.
+ */
+export { plfOtherOperatingContribution as otherOperatingContribution } from "./plf-chart"
+
+/**
  * Signed revenue contribution of a P&L row whose section is `revenue`.
  *
- * `storedAs` MUST be the row's **BudgetLine.lineType** — the importer's own
- * classification, which is what decided the sign at write time (it flips
- * Excel's sign for expense/cogs rows so cost reads positive). It is NOT the
- * ChartOfAccount.accountType: for other-operating income the two DISAGREE by
- * design — the FO workbook's subsidies + interest (PLF.07.01/.02) carry
- * accountType `revenue` (semantically right) while lineType is `expense`, so
- * their income sits in the DB NEGATIVE. Keying on accountType therefore reads
- * income as-is and SUBTRACTS it: 13.45M of subsidies turned the 2026 budget's
- * Net Profit into −10.6M against the workbook's own +3.83M (2026-07-15).
- * Verified on prod that PLF.07.* are the only codes where the two fields
- * disagree, so this rule fires exactly on income-under-the-cost-convention.
+ * This used to take the row's **BudgetLine.lineType** and flip the amount
+ * whenever it was not `"revenue"`. That parameter existed for exactly one
+ * reason: `PLF.07.01/.02` other-operating income was stored NEGATIVE under
+ * the expense convention while `pnlSectionFromCode` routed it into revenue,
+ * so the sign had to be undone here. Both halves of that compensation are
+ * gone — the importer now stores income positive and the section mapper puts
+ * it in `otherOperating` — and a compensator with nothing left to compensate
+ * is just a way to silently negate the next row that trips it.
  *
- * Contra-revenue (returns / discounts) flips once more, as it always has.
+ * What remains is the rule that was always real: contra-revenue (returns /
+ * discounts, SAP 602/603) subtracts from the top line.
  */
-export function revenueContribution(
-  code: string,
-  storedAs: string | null | undefined,
-  amount: number,
-): number {
-  const asRevenue = storedAs === "revenue" ? amount : -amount
-  return isContraRevenueCode(code) ? -asRevenue : asRevenue
+export function revenueContribution(code: string, amount: number): number {
+  return isContraRevenueCode(code) ? -amount : amount
 }

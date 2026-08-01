@@ -9,7 +9,11 @@
  * P&L helpers so reporting and risk calculations cannot drift independently.
  */
 import { isDaCode } from "../budgeting/da-codes"
-import { pnlSectionFromCode, revenueContribution } from "../budgeting/coa-role"
+import {
+  otherOperatingContribution,
+  pnlSectionFromCode,
+  revenueContribution,
+} from "../budgeting/coa-role"
 
 export interface PnlLineInput {
   /**
@@ -35,6 +39,13 @@ export interface PnlAggregates {
   revenue: number
   cogs: number
   opex: number
+  /**
+   * Other operating income/(expense) — the FO workbook's `PLF.07`. SIGNED,
+   * income-positive, and ABOVE EBITDA: `revenue − cogs − opex +
+   * other_operating` is the operating result. Zero for charts without such a
+   * line, so `derivedEbitda` is unchanged for them.
+   */
+  other_operating: number
   /** Finance, tax and other rows below operating EBITDA. */
   below_ebitda: number
   imported_cogs: number
@@ -92,6 +103,7 @@ export function aggregatePnlLines(
   let revenue = 0
   let cogs = 0
   let opex = 0
+  let other_operating = 0
   let below_ebitda = 0
   let imported_cogs = 0
   let domestic_cogs = 0
@@ -111,14 +123,14 @@ export function aggregatePnlLines(
     const code = l.accountCode ?? ""
     const section = pnlSectionFromCode(code, l.accountType)
     if (section === "revenue") {
-      // PLF.07.01/.02 income is linked to a revenue CoA but was stored under
-      // the expense sign convention. Use the same canonical normalization as
-      // the P&L API; falling back to accountType preserves legacy/SAP rows.
-      revenue += revenueContribution(
-        code,
-        l.lineType ?? l.accountType,
-        amountBase,
-      )
+      revenue += revenueContribution(code, amountBase)
+    } else if (section === "otherOperating") {
+      // PLF.07 — above EBITDA, outside revenue and gross profit. Until
+      // 2026-08-01 the income half of it was counted as revenue (with its
+      // stored sign flipped back) and the expense half as below-EBITDA, which
+      // left `gross_profit` overstated by the full 13.45M while `net_income`
+      // came out right — the two errors cancelled at the bottom line only.
+      other_operating += otherOperatingContribution(code, amountBase)
     } else if (section === "cogs") {
       cogs += amountBase
       if (isForeign) imported_cogs += amountBase
@@ -139,6 +151,7 @@ export function aggregatePnlLines(
     revenue,
     cogs,
     opex,
+    other_operating,
     below_ebitda,
     imported_cogs,
     domestic_cogs,
@@ -151,7 +164,7 @@ export function aggregatePnlLines(
     imported_input_cost: imported_cogs,
     domestic_input_cost: domestic_cogs,
     gross_profit: revenue - cogs,
-    net_income: revenue - cogs - opex - below_ebitda,
+    net_income: revenue - cogs - opex + other_operating - below_ebitda,
   }
 }
 
@@ -174,7 +187,16 @@ export function activePnlMonths(
     if (amountBase === 0) continue
 
     const section = pnlSectionFromCode(l.accountCode ?? "", l.accountType)
-    if (section !== "revenue" && section !== "cogs" && section !== "opex") {
+    if (
+      section !== "revenue" &&
+      section !== "cogs" &&
+      section !== "opex" &&
+      // `otherOperating` is operating and sits above EBITDA, so a month whose
+      // only activity is a subsidy is a covered month. It also keeps the
+      // coverage set unchanged across this refactor: PLF.07.01/.02 counted
+      // before, as `revenue`.
+      section !== "otherOperating"
+    ) {
       continue
     }
     if (l.monthIndex == null || l.monthIndex < 0 || l.monthIndex > 11) {

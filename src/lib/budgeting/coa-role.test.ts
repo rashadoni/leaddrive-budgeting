@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest"
 import {
   deriveRoleFromCode,
   isContraRevenueCode,
+  otherOperatingContribution,
   pnlSectionFromCode,
   revenueContribution,
   pnlSectionFromRole,
@@ -144,15 +145,37 @@ describe("pnlSectionFromCode — SAP + Workbook imported codes", () => {
     expect(pnlSectionFromCode("PLF.02.02.01", "expense")).toBe("cogs")
     expect(pnlSectionFromCode("PLF.04.02.02", "expense")).toBe("opex")
     expect(pnlSectionFromCode("PLF.05.01.01", "expense")).toBe("opex")
-    expect(pnlSectionFromCode("PLF.07.02.02", "expense")).toBe("revenue")
-    expect(pnlSectionFromCode("PLF.07.03.01", "expense")).toBe("belowEbitda")
     expect(pnlSectionFromCode("PLF.09.03.09", "expense")).toBe("belowEbitda")
     expect(pnlSectionFromCode("PLF.12.01.01", "expense")).toBe("opex")
   })
 
+  it("puts the WHOLE of PLF.07 in other-operating, not revenue and not below EBITDA", () => {
+    // Both halves used to be wrong in opposite directions: `.01/.02` income
+    // was routed into REVENUE (which is how 13.45M of subsidies inflated the
+    // top line to 72,333,200 against the workbook's 58,880,102) and `.03/.04`
+    // was pushed BELOW EBITDA. The sheet's own PLF.08 row says all four
+    // branches sit above it.
+    expect(pnlSectionFromCode("PLF.07.01.01", "revenue")).toBe("otherOperating")
+    expect(pnlSectionFromCode("PLF.07.02.02", "revenue")).toBe("otherOperating")
+    expect(pnlSectionFromCode("PLF.07.02.04", "revenue")).toBe("otherOperating")
+    expect(pnlSectionFromCode("PLF.07.03.01", "expense")).toBe("otherOperating")
+    expect(pnlSectionFromCode("PLF.07.04.01", "expense")).toBe("otherOperating")
+  })
+
+  it("gives PLF.08.01 the below-EBITDA line it never reached", () => {
+    // 174,491 AZN of AZSF 2025 "Shareholders' expense". The importer wrote it
+    // deliberately and argued the case in two files; this mapper returned null
+    // for everything under PLF.08, so it landed in the database and then in no
+    // P&L line at all.
+    expect(pnlSectionFromCode("PLF.08.01", "expense")).toBe("belowEbitda")
+    expect(pnlSectionFromCode("PLF.08.02", "expense")).toBe("belowEbitda")
+  })
+
   it("skips Workbook computed total rows", () => {
     expect(pnlSectionFromCode("PLF.03", "expense")).toBeNull()
-    expect(pnlSectionFromCode("PLF.08.01", "expense")).toBeNull()
+    // PLF.08 EXACTLY is the EBITDA subtotal — unlike its children above.
+    expect(pnlSectionFromCode("PLF.08", "expense")).toBeNull()
+    expect(pnlSectionFromCode("PLF.07", "expense")).toBeNull()
     expect(pnlSectionFromCode("PLF.10", "expense")).toBeNull()
   })
 
@@ -164,34 +187,44 @@ describe("pnlSectionFromCode — SAP + Workbook imported codes", () => {
   })
 })
 
-describe("revenueContribution — the two sign conventions", () => {
-  // `storedAs` is BudgetLine.lineType (the importer's sign convention), NOT
-  // ChartOfAccount.accountType. The FO subsidies are accountType=revenue but
-  // lineType=expense, so their income sits NEGATIVE; reading them as-is
-  // SUBTRACTED 13.45M and drove the 2026 budget's Net Profit to −10.6M
-  // against the workbook's own +3.83M.
-  it("negates income stored under the cost convention (lineType=expense)", () => {
-    expect(revenueContribution("PLF.07.02.02", "expense", -3_570_000)).toBe(3_570_000)
-    expect(revenueContribution("PLF.07.01.01", "expense", -300_000)).toBe(300_000)
-  })
-
-  it("leaves a revenue-typed row's sign alone", () => {
-    expect(revenueContribution("PLF.01.01.01", "revenue", 15_836_740)).toBe(15_836_740)
+describe("revenueContribution — the compensator is gone", () => {
+  it("leaves a revenue row's sign alone", () => {
+    expect(revenueContribution("PLF.01.01.01", 15_836_740)).toBe(15_836_740)
   })
 
   it("still flips contra-revenue (returns / discounts)", () => {
-    expect(revenueContribution("602-01", "revenue", 5_000)).toBe(-5_000)
-    expect(revenueContribution("603-01", "revenue", 1_200)).toBe(-1_200)
+    expect(revenueContribution("602-01", 5_000)).toBe(-5_000)
+    expect(revenueContribution("603-01", 1_200)).toBe(-1_200)
   })
 
-  it("an expense-typed row carrying a real cost turns negative — it is not revenue", () => {
-    // Guard against blindly negating: only rows the classifier puts in the
-    // revenue section reach this helper, and a positive cost there would be a
-    // genuine income reversal.
-    expect(revenueContribution("PLF.07.02.02", "expense", 100_000)).toBe(-100_000)
+  it("no longer takes a stored-sign argument at all", () => {
+    // The `storedAs` parameter existed for exactly one caller shape:
+    // PLF.07 income stored NEGATIVE under the expense convention while
+    // `pnlSectionFromCode` claimed it was revenue. Both halves are gone, and a
+    // compensator with nothing to compensate silently negates whatever trips
+    // it next. Signature arity is the guard.
+    expect(revenueContribution.length).toBe(2)
+  })
+})
+
+describe("otherOperatingContribution — income positive, expense negative", () => {
+  it("adds income rows, which are now stored POSITIVE", () => {
+    expect(otherOperatingContribution("PLF.07.02.04", 9_231_957)).toBe(9_231_957)
+    expect(otherOperatingContribution("PLF.07.01.01", 300_000)).toBe(300_000)
   })
 
-  it("treats a null accountType as the cost convention (import default)", () => {
-    expect(revenueContribution("PLF.07.02.04", null, -9_230_000)).toBe(9_230_000)
+  it("subtracts expense rows, which are stored cost-positive", () => {
+    expect(otherOperatingContribution("PLF.07.03.01", 376_818.97)).toBe(-376_818.97)
+    expect(otherOperatingContribution("PLF.07.04.01", 1_000)).toBe(-1_000)
+  })
+
+  it("nets the four 2026-budget branches to the sheet's own 13,076,279", () => {
+    const net =
+      otherOperatingContribution("PLF.07.01.01", 300_000) +
+      otherOperatingContribution("PLF.07.02.02", 3_565_190) +
+      otherOperatingContribution("PLF.07.02.03", 355_951.1024166) +
+      otherOperatingContribution("PLF.07.02.04", 9_231_957) +
+      otherOperatingContribution("PLF.07.03.01", 376_818.97)
+    expect(net).toBeCloseTo(13_076_279.13, 2)
   })
 })

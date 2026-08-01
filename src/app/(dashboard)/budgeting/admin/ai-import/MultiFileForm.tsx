@@ -295,7 +295,8 @@ interface MultiFileApiResponse {
       buValue: string
       rowCount: number
       action: "write" | "skip"
-      reason?: "elimination" | "unknown_alias"
+      reason?: "elimination" | "unknown_alias" | "adjustment"
+      foldedInto?: { entityCode: string; viaHeader: string }
     }>
     warnings: string[]
   }>
@@ -2909,16 +2910,22 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                       <td className="py-1.5 pr-2 align-top">
                         <span
                           className={`rounded px-1.5 py-0.5 font-medium ${
-                            row.action === "write"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-orange-100 text-orange-800"
+                            row.foldedInto
+                              ? "bg-teal-100 text-teal-800"
+                              : row.action === "write"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-orange-100 text-orange-800"
                           }`}
                         >
-                          {row.action === "write"
-                            ? t("routing.write")
-                            : row.reason === "elimination"
-                              ? t("routing.skipElim")
-                              : t("routing.skipUnknown")}
+                          {row.foldedInto
+                            ? t("routing.fold", { column: row.foldedInto.viaHeader })
+                            : row.action === "write"
+                              ? t("routing.write")
+                              : row.reason === "elimination"
+                                ? t("routing.skipElim")
+                                : row.reason === "adjustment"
+                                  ? t("routing.skipAdjustment")
+                                  : t("routing.skipUnknown")}
                         </span>
                       </td>
                     </tr>

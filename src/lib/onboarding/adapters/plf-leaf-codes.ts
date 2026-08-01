@@ -68,6 +68,12 @@
  * Every posting account in this chart lives at `PLF.NN.NN` or deeper. So a
  * rescue additionally requires at least two numeric segments.
  *
+ * Which codes are subtotals is no longer restated here or in the parser: it
+ * lives in `src/lib/budgeting/plf-chart.ts` (`SUBTOTAL_CODES`), the single
+ * statement the importer AND the reports read. `PLF.08.01` — Shareholders'
+ * expense, a real account beneath the EBITDA line — is a leaf and imports,
+ * and that file now also gives it the P&L line it never reached.
+ *
  * Why the original tests missed it: they asserted `PLF.03` and `PLF.10` were
  * not rescued, but supplied invented children (`PLF.03.01.01`) that do not
  * exist in the workbook. The fixture disagreed with the file sitting next to

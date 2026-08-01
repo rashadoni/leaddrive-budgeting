@@ -37,6 +37,8 @@ interface PnlComparisonBuckets {
   monthlyRevenue: Record<number, number>
   monthlyCogs: Record<number, number>
   monthlyOpex: Record<number, number>
+  /** Other operating income/(expense) — SIGNED, income-positive. */
+  monthlyOtherOperating: Record<number, number>
   monthlyBelowEbitda: Record<number, number>
   monthlyDa: Record<number, number>
   hasRows: boolean
@@ -76,16 +78,23 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       COGS: "cogs",
       "Gross Profit": "gross-profit",
       OpEx: "opex",
+      "Other Operating": "other-operating",
       EBITDA: "ebitda",
       "D&A/Tax": "below-ebitda",
       "Net Profit": "net-profit",
     }
     const key = map[chartCategory]
     if (!key) return
-    // Auto-expand the expandable sections (revenue/cogs/opex/below-ebitda)
-    // so the detail rows are visible after the scroll. GP / EBITDA / Net
-    // Profit are summary rows — already visible, no expand needed.
-    if (key === "revenue" || key === "cogs" || key === "opex" || key === "below-ebitda") {
+    // Auto-expand the expandable sections (revenue/cogs/opex/other-operating/
+    // below-ebitda) so the detail rows are visible after the scroll. GP /
+    // EBITDA / Net Profit are summary rows — already visible, no expand needed.
+    if (
+      key === "revenue" ||
+      key === "cogs" ||
+      key === "opex" ||
+      key === "other-operating" ||
+      key === "below-ebitda"
+    ) {
       setExpandedSections((prev) => {
         const next = new Set(prev)
         next.add(key)
@@ -179,16 +188,19 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   }
 
   const { rows, monthlyRevenue, monthlyCogs } = data
+  // Other operating income/(expense) — signed, income-positive.
+  const monthlyOtherOperating: Record<number, number> = data.monthlyOtherOperating ?? {}
   const actualByKey: Record<string, number> = data.actualByKey ?? {}
   // Phase 3.3 v1.2 (post-Turn LIX v1.2 wire-up) — per-month actuals
   // keyed by accountCode::accountName. /pnl route parses BudgetActual
   // .expenseDate at request time. Drill panel reads this map by row key.
   const actualMonthlyByKey: Record<string, Record<number, number>> =
     data.actualMonthlyByKey ?? {}
-  const sectionActuals = data.sectionActuals ?? { revenue: 0, cogs: 0, opex: 0, belowEbitda: 0 }
+  const sectionActuals = data.sectionActuals ?? { revenue: 0, cogs: 0, opex: 0, otherOperating: 0, belowEbitda: 0 }
   const monthlyActualRevenue: Record<number, number> = data.monthlyActualRevenue ?? {}
   const monthlyActualCogs: Record<number, number> = data.monthlyActualCogs ?? {}
   const monthlyActualOpex: Record<number, number> = data.monthlyActualOpex ?? {}
+  const monthlyActualOtherOperating: Record<number, number> = data.monthlyActualOtherOperating ?? {}
   const monthlyActualBelowEbitda: Record<number, number> = data.monthlyActualBelowEbitda ?? {}
   const monthlyActualDa: Record<number, number> = data.monthlyActualDa ?? {}
   const hasActuals: boolean = Boolean(data.hasActuals)
@@ -223,8 +235,9 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     totalRevenue,
     totalCogs,
   })
-  const { opexRows, belowEbitdaRows, daRowsInOpex, daRowsInCogs } = planAggregated
+  const { opexRows, otherOperatingRows, belowEbitdaRows, daRowsInOpex, daRowsInCogs } = planAggregated
   const totalOpex = planAggregated.totals.totalOpex
+  const totalOtherOperating = planAggregated.totals.totalOtherOperating ?? 0
   const totalBelowEbitda = planAggregated.totals.totalBelowEbitda
   const totalDaInCogs = planAggregated.totals.daInCogs
   const totalDaInOpex = planAggregated.totals.daInOpex
@@ -311,6 +324,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const monthlyBelowEbitdaBudgetRaw = Array.from({ length: 12 }, (_, i) =>
     Math.abs(belowEbitdaRows.reduce((s, r) => s + (r.monthly[i + 1] || 0), 0)),
   )
+  // Signed (income-positive) — never abs'd: a net-expense month is real.
+  const monthlyOtherOperatingBudgetRaw = Array.from({ length: 12 }, (_, i) =>
+    monthlyOtherOperating?.[i + 1] || 0,
+  )
 
   const marginData = MONTHS.map((m, i) => {
     const rev = monthlyRevenue?.[i + 1] || 0
@@ -318,10 +335,12 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     const cogsExclDa = cogsRaw - monthlyDaInCogsRaw[i] + monthlyDaInCogs[i]
     const opexExclDa = monthlyOpexNonDa[i]
     const monthBelowEbitda = monthlyBelowEbitda[i]
+    // Signed, income-positive; above EBITDA and outside gross margin.
+    const monthOther = monthlyOtherOperating?.[i + 1] || 0
     const gm = rev > 0 ? ((rev - cogsExclDa - monthlyDaInCogs[i]) / rev) * 100 : 0
-    // True EBITDA: revenue − COGS_exclDA − OpEx_exclDA = current EBIT + D&A
-    const em = rev > 0 ? ((rev - cogsExclDa - opexExclDa) / rev) * 100 : 0
-    const nm = rev > 0 ? ((rev - cogsExclDa - monthlyDaInCogs[i] - opexExclDa - monthlyDaInOpex[i] - monthBelowEbitda) / rev) * 100 : 0
+    // True EBITDA: revenue − COGS_exclDA − OpEx_exclDA + other operating
+    const em = rev > 0 ? ((rev - cogsExclDa - opexExclDa + monthOther) / rev) * 100 : 0
+    const nm = rev > 0 ? ((rev - cogsExclDa - monthlyDaInCogs[i] - opexExclDa - monthlyDaInOpex[i] + monthOther - monthBelowEbitda) / rev) * 100 : 0
     return {
       month: m,
       "Gross Margin": Math.round(gm * 10) / 10,
@@ -344,6 +363,14 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     { name: "COGS", label: t("cogs"), value: -totalCogs, fill: "#ef4444" },
     { name: "Gross Profit", label: t("pnlWfGrossProfit"), value: grossProfit, fill: "#3b82f6" },
     { name: "OpEx", label: t("pnlOpEx"), value: -totalOpex, fill: "#f59e0b" },
+    ...(totalOtherOperating !== 0
+      ? [{
+          name: "Other Operating",
+          label: t("pnlWfOtherOperating"),
+          value: totalOtherOperating,
+          fill: totalOtherOperating >= 0 ? "#14b8a6" : "#ef4444",
+        }]
+      : []),
     { name: "EBITDA", label: t("pnlWfEbitda"), value: ebitda, fill: ebitda >= 0 ? "#8b5cf6" : "#ef4444" },
     ...(totalBelowEbitda > 0 ? [{ name: "D&A/Tax", label: t("pnlDaTaxShort"), value: -totalBelowEbitda, fill: "#94a3b8" }] : []),
     { name: "Net Profit", label: t("pnlNetProfit"), value: netProfit, fill: netProfit >= 0 ? "#10b981" : "#ef4444" },
@@ -370,14 +397,16 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       const cogsBudget = comparisonValue("budget", "monthlyCogs", i + 1, Math.abs(monthlyCogs?.[i + 1] || 0))
       const opexBudget = comparisonValue("budget", "monthlyOpex", i + 1, monthlyOpexBudgetRaw[i] || 0)
       const daBudget = comparisonValue("budget", "monthlyDa", i + 1, (monthlyDaInCogsRaw[i] || 0) + (monthlyDaInOpexRaw[i] || 0))
+      const otherBudget = comparisonValue("budget", "monthlyOtherOperating", i + 1, monthlyOtherOperatingBudgetRaw[i] || 0)
       const revenueActual = comparisonValue("actual", "monthlyRevenue", i + 1, monthlyActualRevenue?.[i + 1] || 0)
       const cogsActual = comparisonValue("actual", "monthlyCogs", i + 1, monthlyActualCogs?.[i + 1] || 0)
       const opexActual = comparisonValue("actual", "monthlyOpex", i + 1, monthlyActualOpex?.[i + 1] || 0)
       const daActual = comparisonValue("actual", "monthlyDa", i + 1, monthlyActualDa?.[i + 1] || 0)
+      const otherActual = comparisonValue("actual", "monthlyOtherOperating", i + 1, monthlyActualOtherOperating?.[i + 1] || 0)
       return buildPnlPerformancePoint({
         month,
-        budget: revenueBudget - cogsBudget - opexBudget + daBudget,
-        actual: revenueActual - cogsActual - opexActual + daActual,
+        budget: revenueBudget - cogsBudget - opexBudget + otherBudget + daBudget,
+        actual: revenueActual - cogsActual - opexActual + otherActual + daActual,
       })
     }),
     netProfit: MONTHS.map((month, i) => {
@@ -385,14 +414,16 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       const cogsBudget = comparisonValue("budget", "monthlyCogs", i + 1, Math.abs(monthlyCogs?.[i + 1] || 0))
       const opexBudget = comparisonValue("budget", "monthlyOpex", i + 1, monthlyOpexBudgetRaw[i] || 0)
       const belowBudget = comparisonValue("budget", "monthlyBelowEbitda", i + 1, monthlyBelowEbitdaBudgetRaw[i] || 0)
+      const otherBudget = comparisonValue("budget", "monthlyOtherOperating", i + 1, monthlyOtherOperatingBudgetRaw[i] || 0)
       const revenueActual = comparisonValue("actual", "monthlyRevenue", i + 1, monthlyActualRevenue?.[i + 1] || 0)
       const cogsActual = comparisonValue("actual", "monthlyCogs", i + 1, monthlyActualCogs?.[i + 1] || 0)
       const opexActual = comparisonValue("actual", "monthlyOpex", i + 1, monthlyActualOpex?.[i + 1] || 0)
       const belowActual = comparisonValue("actual", "monthlyBelowEbitda", i + 1, monthlyActualBelowEbitda?.[i + 1] || 0)
+      const otherActual = comparisonValue("actual", "monthlyOtherOperating", i + 1, monthlyActualOtherOperating?.[i + 1] || 0)
       return buildPnlPerformancePoint({
         month,
-        budget: revenueBudget - cogsBudget - opexBudget - belowBudget,
-        actual: revenueActual - cogsActual - opexActual - belowActual,
+        budget: revenueBudget - cogsBudget - opexBudget + otherBudget - belowBudget,
+        actual: revenueActual - cogsActual - opexActual + otherActual - belowActual,
       })
     }),
   }
@@ -406,6 +437,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       revenue: sumSeries("revenue", "budget"),
       cogs: sumSeries("cogs", "budget"),
       opex: sumSeries("opex", "budget"),
+      otherOperating: sumComparisonMonthly("budget", "monthlyOtherOperating"),
       da: sumComparisonMonthly("budget", "monthlyDa"),
       ebitda: sumSeries("ebitda", "budget"),
     },
@@ -413,6 +445,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       revenue: sumSeries("revenue", "actual"),
       cogs: sumSeries("cogs", "actual"),
       opex: sumSeries("opex", "actual"),
+      otherOperating: sumComparisonMonthly("actual", "monthlyOtherOperating"),
       da: sumComparisonMonthly("actual", "monthlyDa"),
       ebitda: sumSeries("ebitda", "actual"),
     },
@@ -936,6 +969,53 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               </tr>
               {expandedSections.has("opex") && renderSectionRows(opexRows, "text-amber-600")}
 
+              {/* Other operating income/(expense) — PLF.07. Above EBITDA and
+                  outside revenue/gross profit, which is where the workbook's
+                  own PLF.08 EBITDA row puts it. Signed: income positive. */}
+              {otherOperatingRows.length > 0 && (
+                <tr
+                  id="pnl-section-other-operating"
+                  className={`bg-teal-50 dark:bg-teal-950/30 font-semibold border-b cursor-pointer hover:bg-teal-100 dark:hover:bg-teal-950/40 transition-shadow ${flashSection === "other-operating" ? "shadow-[inset_0_0_0_3px_rgb(20,184,166)]" : ""}`}
+                  onClick={() => toggleSection("other-operating")}
+                >
+                  <td className="sticky left-0 bg-teal-50 dark:bg-teal-950/30 px-3 py-2 flex items-center gap-1">
+                    {expandedSections.has("other-operating") ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                    {t("pnlOtherOperatingSection")}
+                  </td>
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const val = monthlyOtherOperating?.[i + 1] || 0
+                    const rev = monthlyRevenue?.[i + 1] || 0
+                    return (
+                      <td key={i} className={`px-2 py-2 text-right tabular-nums leading-tight ${val < 0 ? "text-red-700 dark:text-red-400" : "text-teal-700 dark:text-teal-400"}`}>
+                        <div>{val < 0 ? `(${fmtNum(Math.abs(val))})` : fmtNum(val)}</div>
+                        {val !== 0 && rev > 0 && (
+                          <div className="text-[10px] font-normal text-teal-600/70 dark:text-teal-400/60">{pctOfRev(Math.abs(val), rev)}</div>
+                        )}
+                      </td>
+                    )
+                  })}
+                  <td className={`px-3 py-2 text-right font-bold bg-muted tabular-nums leading-tight ${totalOtherOperating < 0 ? "text-red-700 dark:text-red-400" : "text-teal-700 dark:text-teal-400"}`}>
+                    <div>{totalOtherOperating < 0 ? `(${fmtNum(Math.abs(totalOtherOperating))})` : fmtNum(totalOtherOperating)}</div>
+                    {totalOtherOperating !== 0 && totalRevenue > 0 && (
+                      <div className="text-[10px] font-normal text-teal-600/70 dark:text-teal-400/60">{pctOfRev(Math.abs(totalOtherOperating), totalRevenue)}</div>
+                    )}
+                  </td>
+                  <td className={`px-3 py-2 text-right font-bold bg-muted/70 tabular-nums leading-tight ${sectionActuals.otherOperating ? (sectionActuals.otherOperating < 0 ? "text-red-700 dark:text-red-400" : "text-teal-700 dark:text-teal-400") : "text-muted-foreground/50"}`}>
+                    <div>
+                      {sectionActuals.otherOperating
+                        ? (sectionActuals.otherOperating < 0
+                            ? `(${fmtNum(Math.abs(sectionActuals.otherOperating))})`
+                            : fmtNum(sectionActuals.otherOperating))
+                        : "—"}
+                    </div>
+                  </td>
+                  <td className={`px-3 py-2 text-right font-semibold bg-muted/70 tabular-nums ${varianceClass(sectionActuals.otherOperating, totalOtherOperating, "up")}`}>
+                    {varianceStr(sectionActuals.otherOperating, totalOtherOperating)}
+                  </td>
+                </tr>
+              )}
+              {expandedSections.has("other-operating") && renderSectionRows(otherOperatingRows, "text-teal-600", { favorable: "up" })}
+
               {/* EBITDA */}
               <tr
                 id="pnl-section-ebitda"
@@ -950,7 +1030,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
                   // OpEx rows are stored as positive amounts, so we subtract them.
                   // (cogs is already negative, hence the + for that part.)
                   const monthOpex = Math.abs(opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
-                  const monthEbitda = rev + cogs - monthOpex
+                  // Other operating income/(expense) is already signed.
+                  const monthEbitda = rev + cogs - monthOpex + (monthlyOtherOperating?.[i + 1] || 0)
                   const pct = rev > 0 ? ((monthEbitda / rev) * 100).toFixed(1) + "%" : ""
                   return (
                     <td key={i} className={`px-2 py-2.5 text-right tabular-nums leading-tight ${monthEbitda >= 0 ? "text-purple-700 dark:text-purple-400" : "text-red-700 dark:text-red-400"}`}>
@@ -1038,7 +1119,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
                   const cogs = monthlyCogs?.[i + 1] || 0 // already negative
                   const monthOpex = Math.abs(opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
                   const monthBelow = Math.abs(belowEbitdaRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
-                  const np = rev + cogs - monthOpex - monthBelow
+                  const np = rev + cogs - monthOpex + (monthlyOtherOperating?.[i + 1] || 0) - monthBelow
                   const pct = rev > 0 ? ((np / rev) * 100).toFixed(1) + "%" : ""
                   return (
                     <td key={i} className={`px-2 py-3 text-right tabular-nums leading-tight ${np >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>

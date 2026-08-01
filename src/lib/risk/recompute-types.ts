@@ -428,6 +428,8 @@ export interface BudgetLineAggregate {
   revenue: number;
   cogs: number;
   opex: number;
+  /** Other operating income/(expense) — signed, income-positive, above EBITDA. */
+  other_operating: number;
   below_ebitda: number;
   /** cogs+opex in foreign currency — NOT the AGRO_FX_RISK numerator. Use
    *  `resolved.imported_input_cost` (cogs-only) for ratio math. This field

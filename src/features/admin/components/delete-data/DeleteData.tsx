@@ -80,6 +80,7 @@ export function DeleteData({
             <RemoveCompanyTask
               key={nonce}
               companies={companies}
+              onClearYears={() => open("clearYears")}
               onDone={() => setTask(null)}
             />
           )}

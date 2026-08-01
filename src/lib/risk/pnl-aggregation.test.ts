@@ -124,7 +124,11 @@ describe("aggregatePnlLines", () => {
     expect(a.opex).toBe(0)
   })
 
-  it("normalizes EDEN-shaped negative-stored PLF.07 operating income", () => {
+  it("keeps EDEN-shaped PLF.07 out of revenue and puts it above EBITDA", () => {
+    // Was: income arrived NEGATIVE with lineType=expense and was flipped into
+    // REVENUE, while PLF.07.03 was pushed below the EBITDA line. Revenue read
+    // 3,385,000 for a company whose sales were 266,000. Both are now stored
+    // under their own nature and land on their own line.
     const a = aggregatePnlLines(
       [
         line({
@@ -132,18 +136,18 @@ describe("aggregatePnlLines", () => {
           accountCode: "PLF.01.02.01", plannedAmount: 266_000,
         }),
         line({
-          accountType: "revenue", lineType: "expense",
-          accountCode: "PLF.07.02.02", plannedAmount: -3_011_000,
+          accountType: "revenue", lineType: "revenue",
+          accountCode: "PLF.07.02.02", plannedAmount: 3_011_000,
         }),
         line({
-          accountType: "revenue", lineType: "expense",
-          accountCode: "PLF.07.01", plannedAmount: -108_000,
+          accountType: "revenue", lineType: "revenue",
+          accountCode: "PLF.07.01", plannedAmount: 108_000,
         }),
-        // Below-EBITDA finance/tax costs must not leak into operating OpEx.
         line({
           accountType: "expense", lineType: "expense",
           accountCode: "PLF.07.03.01", plannedAmount: 75_000,
         }),
+        // Below-EBITDA finance/tax costs must not leak into operating OpEx.
         line({
           accountType: "expense", lineType: "expense",
           accountCode: "731-01", plannedAmount: 40_000,
@@ -155,10 +159,29 @@ describe("aggregatePnlLines", () => {
       ],
       "AZN",
     )
-    expect(a.revenue).toBe(3_385_000)
+    expect(a.revenue).toBe(266_000)
+    expect(a.gross_profit).toBe(266_000)
+    expect(a.other_operating).toBe(3_011_000 + 108_000 - 75_000)
     expect(a.opex).toBe(0)
-    expect(a.below_ebitda).toBe(125_000)
+    expect(a.below_ebitda).toBe(50_000)
+    // The bottom line is the one number the old compensation got right, and
+    // it must not move: 266,000 + 3,044,000 − 50,000.
     expect(a.net_income).toBe(3_260_000)
+  })
+
+  it("gives PLF.08.01 — Shareholders' expense — a below-EBITDA line", () => {
+    // 174,491 AZN of AZSF 2025 actuals. It imported, and then reached no P&L
+    // line at all because the section mapper returned null for all of PLF.08.
+    const a = aggregatePnlLines(
+      [line({
+        accountType: "expense", lineType: "expense",
+        accountCode: "PLF.08.01", plannedAmount: 174_491,
+      })],
+      "AZN",
+    )
+    expect(a.below_ebitda).toBe(174_491)
+    expect(a.opex).toBe(0)
+    expect(a.net_income).toBe(-174_491)
   })
 
   it("preserves ordinary revenue sign when legacy rows have no lineType", () => {
@@ -180,15 +203,16 @@ describe("aggregatePnlLines", () => {
     expect(a.revenue).toBe(-5_000)
   })
 
-  it("does not double-convert a foreign base amount before normalizing PLF.07 income", () => {
+  it("does not double-convert a foreign base amount before bucketing PLF.07 income", () => {
     const a = aggregatePnlLines(
       [line({
-        accountType: "revenue", lineType: "expense",
-        accountCode: "PLF.07.02.02", plannedAmount: -170,
-        originalAmount: -100, currencyCode: "USD", exchangeRate: 1.7,
+        accountType: "revenue", lineType: "revenue",
+        accountCode: "PLF.07.02.02", plannedAmount: 170,
+        originalAmount: 100, currencyCode: "USD", exchangeRate: 1.7,
       })],
       "AZN",
     )
-    expect(a.revenue).toBeCloseTo(170, 8)
+    expect(a.other_operating).toBeCloseTo(170, 8)
+    expect(a.revenue).toBe(0)
   })
 })

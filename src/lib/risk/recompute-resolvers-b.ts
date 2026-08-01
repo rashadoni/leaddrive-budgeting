@@ -46,6 +46,7 @@ export const budgetLineResolver: NamespaceResolver = {
       revenue,
       cogs,
       opex,
+      other_operating,
       below_ebitda,
       imported_cogs,
       domestic_cogs,
@@ -127,12 +128,17 @@ export const budgetLineResolver: NamespaceResolver = {
     }
     // Derived EBITDA is an operating result. Below-EBITDA finance/tax rows
     // belong in net_income but must never reduce this fallback numerator.
-    const derivedEbitda = revenue - cogs - opex + da_total;
+    // `other_operating` (PLF.07: subsidies, interest income, disposals) is an
+    // operating result and DOES belong here — it used to arrive folded into
+    // `revenue`, so leaving it out would silently drop 13.45M from the 2026
+    // budget's fallback EBITDA.
+    const derivedEbitda = revenue - cogs - opex + other_operating + da_total;
     const ebitda = capturedEbitda ?? derivedEbitda;
 
     state.context.revenue = revenue;
     state.context.cogs = cogs;
     state.context.opex = opex;
+    state.context.other_operating = other_operating;
     state.context.below_ebitda = below_ebitda;
     state.context.total_cost = total_cost;
     state.context.total_input_cost = total_input_cost;
@@ -146,6 +152,7 @@ export const budgetLineResolver: NamespaceResolver = {
     state.inputs.resolved.revenue = revenue;
     state.inputs.resolved.cogs = cogs;
     state.inputs.resolved.opex = opex;
+    state.inputs.resolved.other_operating = other_operating;
     state.inputs.resolved.below_ebitda = below_ebitda;
     state.inputs.resolved.total_cost = total_cost;
     state.inputs.resolved.total_input_cost = total_input_cost;
@@ -179,6 +186,7 @@ export const budgetLineResolver: NamespaceResolver = {
       revenue,
       cogs,
       opex,
+      other_operating,
       below_ebitda,
       imported_total_cost: imported_cogs + imported_opex,
       domestic_total_cost: domestic_cogs + domestic_opex,

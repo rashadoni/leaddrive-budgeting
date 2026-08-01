@@ -929,6 +929,12 @@
     "balanceSheetErrorDescription": "The source request failed. No missing amount has been replaced with zero; retry after checking the connection and access scope.",
     "balanceSheetActualsFallback": "Showing the {year} Actuals balance sheet because the selected budget plan has no balance sheet of its own.",
     "balanceSheetConsolidated": "Official consolidated group balance sheet{holding}, with intercompany interests eliminated (source: Reporting). This is not a simple sum of companies; use drill-down for company detail.",
+    "balanceSheetUnconsolidatedTitle": "{count, plural, one {Sum of # entity} other {Sum of # entities}} — eliminations not applied",
+    "balanceSheetUnconsolidatedBody": "These totals add whole legal entities together. Intercompany balances — investments in subsidiaries, intragroup receivables and payables — are counted twice, so this is not a consolidated balance sheet. Summing statements that each balance produces a statement that also balances, which is why the balance check cannot detect it.",
+    "balanceSheetUnconsolidatedEntities": "Entities added: {entities}.",
+    "balanceSheetHoldingNoConsolidated": "The holding entity {holding} carries no consolidated balance sheet for this period. Import the group's official consolidated balance sheet onto it to see the group position after eliminations.",
+    "balanceSheetSummedAssets": "Assets of {count} entities, summed",
+    "balanceSheetRatioUnavailableUnconsolidated": "Withheld: intercompany balances inflate both debt and equity",
     "balanceSheetEditHint": "✎ Detail values can be edited: change a cell and move focus away to save automatically.",
     "balanceSheetEditTitle": "Change the value and move focus away to save",
     "balanceSheetSaveError": "Not saved: {error}",
@@ -1179,6 +1185,7 @@
     "pnlWfGrossProfit": "Gross profit",
     "pnlWfOverhead": "Overhead",
     "pnlWfEbitda": "EBITDA",
+    "pnlWfOtherOperating": "Other Op. Income/(Exp.)",
     "plSectionDirectCosts": "Direct Costs",
     "plSectionOverheadExpenses": "Overhead Expenses",
     "pnlGrossMarginLine": "Gross margin: {planPct}% (plan) / {actualPct}% (actual)",
@@ -1499,6 +1506,7 @@
     "pnlChartMarginTrends": "Margin Trends",
     "pnlColPlanTotal": "Plan (Total)",
     "pnlBelowEbitdaSection": "D&A, Finance & Tax",
+    "pnlOtherOperatingSection": "Other operating income/(expense)",
     "pnlBridgeTitle": "EBITDA variance bridge",
     "pnlBridgeSubtitle": "Starts with Budget EBITDA and shows which P&L lines moved it to Actual EBITDA.",
     "pnlBridgeNoActualsBadge": "No actuals",
@@ -1511,6 +1519,7 @@
     "pnlBridgeCogsVariance": "COGS variance",
     "pnlBridgeOpexVariance": "OPEX variance",
     "pnlBridgeDaAddBack": "D&A add-back",
+    "pnlBridgeOtherOperatingVariance": "Other operating variance",
     "pnlBridgeActualEbitda": "Actual EBITDA",
     "assumptionsEmptyTitle": "No assumptions in this plan",
     "assumptionsEmptyDescription": "Assumptions are budget drivers such as prices, inflation, rates, operational norms, and scenario parameters. The current import did not write assumption rows for this plan.",
@@ -3967,10 +3976,12 @@
       },
       "routing": {
         "title": "Entity routing grid — {n} split sheet(s)",
-        "description": "This workbook keeps several companies in one sheet, split by a business-unit column. Rows marked write go to the company named. Consolidation entries (EJE / AJE) cancel out trade between group companies — they belong to no single company, so they are not imported.",
+        "description": "This workbook keeps several companies in one sheet, split by a business-unit column. Rows marked write go to the company named. Elimination entries (EJE) cancel out trade between group companies — they belong to no single company, so they are not imported. An adjustment block (AJE) does belong to one: it is merged into the company its parent BU column names.",
         "write": "write",
         "skipElim": "skip — consolidation entry",
         "skipUnknown": "skip — company not recognised",
+        "fold": "merged — adjustment, owner from {column}",
+        "skipAdjustment": "skip — adjustment with no named owner",
         "col": {
           "source": "Source sheet",
           "bu": "BU value",
@@ -4587,7 +4598,8 @@
     "removeCompany": {
       "fixedScope": "All years — everything ever imported for this company.",
       "permanentNote": "This also removes the audit findings, court cases and risk register recorded against this company. Those records come back if you upload that file again — but the statuses, owners, deadlines and comments you entered on them do not, and nothing restores those.",
-      "keptNote": "The company itself stays in the system — it is not removed from the company list, the chart of accounts, or user access. One kind of data also stays: operational figures typed in by hand rather than loaded from a file. No task on this page removes those, and they keep feeding the indicators — delete them on the indicator-health screen."
+      "keptNote": "The company itself stays in the system — it is not removed from the company list, the chart of accounts, or user access. One kind of data also stays: operational figures typed in by hand rather than loaded from a file. No task on this page removes those, and they keep feeding the indicators — delete them on the indicator-health screen.",
+      "multiHint": "This operation covers one company and all of its years. Need several companies, or only certain years? Use"
     },
     "deleteAll": {
       "intro": "This empties the whole group. Every company below, every year, plus the two group-level items that belong to no single company.",

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import * as XLSX from "xlsx"
 import {
   parseReportingPackPlf,
+  splitWorkbookByBu,
   mapReportingPackBu,
   REPORTING_PACK_SKIP_BU,
 } from "./reporting-pack-detail"
@@ -100,9 +101,150 @@ describe("mapReportingPackBu", () => {
     expect(mapReportingPackBu("XYZ")).toBeNull()
   })
   it("keeps adjustment/rollup BU values in the skip set", () => {
+    // AJE stays here as the FALLBACK: it is still not a company, so it may
+    // never be written as one. What changed in 11.83 is that its rows are
+    // folded into the company its parent BU column names before this set is
+    // consulted — see the block below.
     for (const v of ["EJE", "AJE", "CONSOLIDATED"]) {
       expect(REPORTING_PACK_SKIP_BU.has(v)).toBe(true)
     }
+  })
+})
+
+// ─── 11.83 — AJE is an adjustment, not an elimination ───────────────────
+//
+// On `PLF Budget 2026` the AJE block is 394 rows whose only money is
+// `PLF.05.12.06` "Non-Recoverable VAT Expense" = −1,677,014.63 AZN, and BU_1
+// reads EDEN on every one of them. The workbook's own EBITDA row proves where
+// it belongs: EDEN 11,962,639.82 + CPC 2,127,732.48 + AJE (−1,677,014.63) =
+// 12,413,357.67 = PLF.08 for legal entity EDEN. Dropping the block made the
+// group 1.68M more profitable than the file says.
+//
+// EJE is the control: on every sheet that carries one its parent dimension is
+// EJE itself, so it stays skipped.
+describe("reporting-pack-detail — adjustment blocks fold, eliminations do not", () => {
+  /** The budget shape: BU_1 = legal entity, BU_3 = operating leaf (+ AJE). */
+  function budgetSheet(): XLSX.WorkBook {
+    const header = ["", "", "", ...M2026, "BU_1", "BU_2", "BU_3", "BU_4"]
+    const row = (
+      code: string,
+      label: string,
+      v: number,
+      bu1: string,
+      bu3: string,
+    ): unknown[] => [code, label, "", ...vals(v), bu1, "Core", bu3, "Combined"]
+    const aoa: unknown[][] = [
+      header,
+      row("PLF.01.01.01", "Wheat", 1000, "EDEN", "EDEN"),
+      row("PLF.05.12.06", "Non-Recoverable VAT", -100, "EDEN", "EDEN"),
+      row("PLF.01.01.01", "Wheat", 500, "CPC", "CPC"),
+      row("PLF.01.01.01", "Wheat", 700, "AZSF", "AZSF"),
+      // The adjustment: EDEN's cost, filed under its own BU_3 leaf.
+      row("PLF.05.12.06", "Non-Recoverable VAT", -400, "EDEN", "AJE"),
+    ]
+    return {
+      SheetNames: ["Budget PLF"],
+      Sheets: { "Budget PLF": XLSX.utils.aoa_to_sheet(aoa) },
+    } as XLSX.WorkBook
+  }
+
+  const res = parseReportingPackPlf(budgetSheet(), "Budget PLF", XLSX, {
+    preferYear: 2026,
+    buHeader: "BU_3",
+  })
+
+  it("adds the AJE amount to EDEN instead of dropping it", () => {
+    const eden = res.entities.find((e) => e.buCode === "EDEN")!
+    const vat = eden.lines.filter((l) => l.code === "PLF.05.12.06")
+    // Two source rows survive as two lines (the PLF handler sums them per
+    // entity+code+period); together they are EDEN's own 100 plus AJE's 400.
+    expect(vat).toHaveLength(2)
+    expect(vat.reduce((s, l) => s + l.perMonth[0], 0)).toBe(500)
+  })
+
+  it("does not double-count: the AJE entity result is empty and skipped", () => {
+    const aje = res.entities.find((e) => e.buCode === "AJE")!
+    expect(aje.lines).toEqual([])
+    expect(aje.skipped).toBe(true)
+    expect(aje.foldedInto).toBe("AZSEKER-EDEN")
+  })
+
+  it("records the fold on the owner and explains it in the warnings", () => {
+    const eden = res.entities.find((e) => e.buCode === "EDEN")!
+    expect(eden.foldedFrom).toEqual([{ buCode: "AJE", rowCount: 1, viaHeader: "BU_1" }])
+    expect(
+      res.warnings.some(
+        (w) =>
+          w.includes('BU "AJE"') &&
+          w.includes("folded into AZSEKER-EDEN") &&
+          w.includes("BU_1"),
+      ),
+    ).toBe(true)
+  })
+
+  it("leaves the siblings alone", () => {
+    const cpc = res.entities.find((e) => e.buCode === "CPC")!
+    expect(cpc.lines.find((l) => l.code === "PLF.01.01.01")!.perMonth[0]).toBe(500)
+    expect(cpc.foldedFrom).toBeUndefined()
+    expect(res.entities.find((e) => e.buCode === "AZSF")!.lines).toHaveLength(1)
+  })
+
+  it("the apply seam skips the AJE workbook — the owner's workbook carries the rows", () => {
+    const { splits } = splitWorkbookByBu(budgetSheet(), "Budget PLF", XLSX, {
+      buHeader: "BU_3",
+    })
+    const aje = splits.find((s) => s.buCode === "AJE")!
+    expect(aje.skipped).toBe(true)
+    expect(aje.foldedInto).toBe("AZSEKER-EDEN")
+    const eden = splits.find((s) => s.buCode === "EDEN")!
+    expect(eden.skipped).toBe(false)
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(eden.workbook.Sheets["Budget PLF"], {
+      header: 1,
+      raw: true,
+      blankrows: false,
+    }) as unknown[][]
+    // header + EDEN's 2 rows + the folded AJE row.
+    expect(rows).toHaveLength(4)
+    expect(rows.slice(1).map((r) => r[r.length - 2])).toEqual(["EDEN", "EDEN", "AJE"])
+  })
+
+  it("keeps EJE skipped — its own parent dimension is EJE, so it has no owner", () => {
+    const header = ["", "", "", ...M2026, "BU", "BU_1"]
+    const aoa: unknown[][] = [
+      header,
+      ["PLF.01.01.01", "Wheat", "", ...vals(1000), "EDEN", "EDEN"],
+      ["PLF.01.01.01", "Elim", "", ...vals(-3), "EJE", "EJE"],
+    ]
+    const wb = {
+      SheetNames: ["Actual PLF"],
+      Sheets: { "Actual PLF": XLSX.utils.aoa_to_sheet(aoa) },
+    } as XLSX.WorkBook
+    const r = parseReportingPackPlf(wb, "Actual PLF", XLSX, { preferYear: 2026 })
+    const eje = r.entities.find((e) => e.buCode === "EJE")!
+    expect(eje.skipped).toBe(true)
+    expect(eje.foldedInto).toBeUndefined()
+    expect(r.entities.find((e) => e.buCode === "EDEN")!.foldedFrom).toBeUndefined()
+  })
+
+  it("says so loudly when an adjustment cannot be attributed", () => {
+    // One BU column only — nothing to read the owner from.
+    const header = ["", "", "", ...M2026, "BU"]
+    const aoa: unknown[][] = [
+      header,
+      ["PLF.01.01.01", "Wheat", "", ...vals(1000), "EDEN"],
+      ["PLF.05.12.06", "VAT", "", ...vals(-400), "AJE"],
+    ]
+    const wb = {
+      SheetNames: ["Actual PLF"],
+      Sheets: { "Actual PLF": XLSX.utils.aoa_to_sheet(aoa) },
+    } as XLSX.WorkBook
+    const r = parseReportingPackPlf(wb, "Actual PLF", XLSX, { preferYear: 2026 })
+    expect(r.entities.find((e) => e.buCode === "AJE")!.foldedInto).toBeUndefined()
+    expect(
+      r.warnings.some(
+        (w) => w.includes('BU "AJE"') && w.includes("NOT imported") && w.includes("adjustment"),
+      ),
+    ).toBe(true)
   })
 })
 

@@ -853,7 +853,10 @@ export async function POST(request: NextRequest) {
       buValue: string
       rowCount: number
       action: "write" | "skip"
-      reason?: "elimination" | "unknown_alias"
+      reason?: "elimination" | "unknown_alias" | "adjustment"
+      /** 11.83 — an AJE block folded into the company its parent BU column
+       *  names; `entityCode` is that company and the rows ARE written. */
+      foldedInto?: { entityCode: string; viaHeader: string }
     }>
     warnings: string[]
   }> = []

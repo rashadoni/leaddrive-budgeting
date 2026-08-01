@@ -9,9 +9,14 @@
  * after this turn for the resolver-upgrade follow-up).
  *
  * Canonical formula (AZMADE SAP convention):
- *   EBIT   = Revenue − COGS − OpEx        (D&A still buried inside COGS+OpEx)
+ *   EBIT   = Revenue − COGS − OpEx + OtherOperating
+ *                                         (D&A still buried inside COGS+OpEx)
  *   D&A    = sum(703-11 lines) + sum(721-11 lines)   (Math.abs both)
  *   EBITDA = EBIT + D&A
+ *
+ * `OtherOperating` (2026-08-01) is the FO workbook's `PLF.07` section — other
+ * operating income/(expense), signed income-positive. It is zero for the SAP
+ * chart, which has no such line, so the formula above is unchanged there.
  *
  * Why add D&A back? Naive `Rev − COGS − OpEx` is EBIT, not EBITDA, because
  * COGS+OpEx already have depreciation subtracted via 703-11/721-11 lines.
@@ -19,7 +24,7 @@
  */
 
 import { isDaCode } from "./da-codes"
-import { pnlSectionFromCode } from "./coa-role"
+import { otherOperatingContribution, pnlSectionFromCode } from "./coa-role"
 
 /** Already-aggregated P&L section totals (all numbers absolute / cost-as-positive). */
 export interface PnlSectionTotals {
@@ -28,6 +33,16 @@ export interface PnlSectionTotals {
   totalCogs: number
   /** Operating expenses (711/721 + unmatched-expense legacy fallback), positive. */
   totalOpex: number
+  /**
+   * Other operating income/(expense) — `PLF.07.*`. SIGNED, income-positive,
+   * unlike every other total here. Sits above EBITDA and outside revenue and
+   * gross profit, which is where the client's own `PLF.08` EBITDA row puts it:
+   * 20,180,179 gross profit − 17,366,027 opex + 13,076,279 = 15,890,432.
+   *
+   * Optional so callers that predate the bucket (and charts that have no such
+   * line) keep compiling and reading zero.
+   */
+  totalOtherOperating?: number
   /** Below-EBITDA lines (finance/tax/non-operating/income-tax), positive. */
   totalBelowEbitda: number
   /** D&A buried inside COGS (703-11 codes). */
@@ -58,10 +73,11 @@ export function computeEbitda(t: PnlSectionTotals): EbitdaBreakdown {
   const grossProfit = t.totalRevenue - t.totalCogs
   const grossMargin = t.totalRevenue > 0 ? (grossProfit / t.totalRevenue) * 100 : 0
   const totalDa = t.daInOpex + t.daInCogs
-  const ebit = grossProfit - t.totalOpex
+  const otherOperating = t.totalOtherOperating ?? 0
+  const ebit = grossProfit - t.totalOpex + otherOperating
   const ebitda = ebit + totalDa
   const ebitdaMargin = t.totalRevenue > 0 ? (ebitda / t.totalRevenue) * 100 : 0
-  const netProfit = grossProfit - t.totalOpex - t.totalBelowEbitda
+  const netProfit = ebit - t.totalBelowEbitda
   const netMargin = t.totalRevenue > 0 ? (netProfit / t.totalRevenue) * 100 : 0
   return { grossProfit, grossMargin, totalDa, ebit, ebitda, ebitdaMargin, netProfit, netMargin }
 }
@@ -76,6 +92,12 @@ export interface AggregatedPnl<R extends PnlRowForAggregation> {
   totals: PnlSectionTotals
   /** Operating-expense rows (711/721 + legacy unmatched). */
   opexRows: R[]
+  /**
+   * Other operating income/(expense) rows — `PLF.07.*`. Both natures, so the
+   * income rows here are `accountType: "revenue"` and the expense rows
+   * `"expense"`; sum them with `otherOperatingContribution`, never raw.
+   */
+  otherOperatingRows: R[]
   /** Finance/tax/non-operating rows. */
   belowEbitdaRows: R[]
   /** D&A rows inside OpEx (721-11). */
@@ -109,6 +131,18 @@ export function aggregateRowsForEbitda<R extends PnlRowForAggregation>(args: {
   const belowEbitdaRows = allExpenseRows.filter(
     (r) => pnlSectionFromCode(r.accountCode, r.accountType) === "belowEbitda",
   )
+  // NOT filtered to expense-typed rows: the income half of this bucket
+  // (subsidies, interest income) is `revenue`-conventioned, and filtering it
+  // out is how 13.45M went missing from EBITDA in the first place.
+  const otherOperatingRows = args.rows.filter(
+    (r) =>
+      r.total !== 0 &&
+      pnlSectionFromCode(r.accountCode, r.accountType) === "otherOperating",
+  )
+  const totalOtherOperating = otherOperatingRows.reduce(
+    (s, r) => s + otherOperatingContribution(r.accountCode, r.total),
+    0,
+  )
   const daRowsInOpex = opexRows.filter((r) => isDaCode(r.accountCode))
   const daRowsInCogs = args.rows.filter(
     (r) => r.accountType === "cogs" && r.total !== 0 && isDaCode(r.accountCode),
@@ -124,11 +158,13 @@ export function aggregateRowsForEbitda<R extends PnlRowForAggregation>(args: {
       totalRevenue: args.totalRevenue,
       totalCogs: args.totalCogs,
       totalOpex,
+      totalOtherOperating,
       totalBelowEbitda,
       daInCogs,
       daInOpex,
     },
     opexRows,
+    otherOperatingRows,
     belowEbitdaRows,
     daRowsInOpex,
     daRowsInCogs,
@@ -149,6 +185,8 @@ export function computeActualEbitda(args: {
     revenue: number
     cogs: number
     opex: number
+    /** Signed, income-positive. Absent on legacy payloads → 0. */
+    otherOperating?: number
     belowEbitda: number
   }
   actualByKey: Record<string, number>
@@ -164,6 +202,7 @@ export function computeActualEbitda(args: {
     totalRevenue: args.sectionActuals.revenue,
     totalCogs: args.sectionActuals.cogs,
     totalOpex: args.sectionActuals.opex,
+    totalOtherOperating: args.sectionActuals.otherOperating ?? 0,
     totalBelowEbitda: args.sectionActuals.belowEbitda,
     daInCogs: 0,
     daInOpex: actualDaTotal,
