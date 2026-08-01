@@ -50,6 +50,7 @@ beforeEach(() => {
     unknown: 1,
     failed: 0,
     targets: 6,
+    traced: 0,
   })
 })
 
@@ -98,7 +99,7 @@ describe("processRecomputeBatch", () => {
       job as unknown as Parameters<typeof processRecomputeBatch>[0],
     )
     expect(progressEvents).toEqual([100])
-    expect(result).toEqual({ ok: 0, unknown: 0, failed: 0, targets: 0 })
+    expect(result).toEqual({ ok: 0, unknown: 0, failed: 0, targets: 0, traced: 0 })
     expect(runRecomputeForCompanies).not.toHaveBeenCalled()
   })
 
@@ -144,5 +145,96 @@ describe("processRecomputeBatch", () => {
     expect(result.unknown).toBe(1)
     expect(result.failed).toBe(0)
     expect(result.targets).toBe(6)
+  })
+})
+
+describe("processRecomputeBatch — import lineage across the process boundary", () => {
+  it("rehydrates the serialised claim and hands the SAME one to every chunk", () => {
+    // Two properties in one assertion, both load-bearing.
+    //
+    // Rehydration: BullMQ stores job data as JSON, so the payload carries a
+    // plain object. Passing it straight through would give the coverage lookup
+    // a `Record` where it expects a `Map` — `.get()` would be undefined and
+    // every value would silently come out untraced, with no type error and no
+    // crash. That is the failure mode the SerializedImportLineage type and
+    // `deserializeImportLineage` exist to prevent.
+    //
+    // Same object per chunk: chunking is a progress-reporting detail. If the
+    // lineage were sliced alongside the targets, what a revision claims would
+    // depend on how the worker happened to divide the batch.
+    return (async () => {
+      const targets = Array.from({ length: 20 }, (_, i) => ({
+        companyId: `c_${i}`,
+        year: 2026,
+      }))
+      const { job } = fakeJob({
+        organizationId: "org_1",
+        targets,
+        lineage: {
+          revisionId: "rev_import_1",
+          periodFrom: "2026-01",
+          periodTo: "2026-12",
+          coverageByCompanyId: { c_3: ["budgetLine"] },
+        },
+      })
+
+      await processRecomputeBatch(job as never)
+
+      const calls = (runRecomputeForCompanies as ReturnType<typeof vi.fn>).mock
+        .calls
+      expect(calls.length).toBeGreaterThan(1)
+      for (const call of calls) {
+        const opts = call[4] as {
+          lineage?: {
+            revisionId: string
+            coverageByCompanyId: ReadonlyMap<string, ReadonlySet<string>>
+          }
+        }
+        expect(opts.lineage?.revisionId).toBe("rev_import_1")
+        expect(opts.lineage?.coverageByCompanyId).toBeInstanceOf(Map)
+        expect([...(opts.lineage?.coverageByCompanyId.get("c_3") ?? [])]).toEqual([
+          "budgetLine",
+        ])
+      }
+    })()
+  })
+
+  it("passes no lineage when the job carries none", async () => {
+    // Today's real state for both enqueuers: the fan-out above SYNC_THRESHOLD
+    // is triggered by an indicator-definition change, and the AI import never
+    // reaches this queue at all (it recomputes in-process). Neither holds a
+    // revision, so both stay honestly untraced.
+    const { job } = fakeJob({
+      organizationId: "org_1",
+      targets: [{ companyId: "c_1", year: 2026 }],
+    })
+
+    await processRecomputeBatch(job as never)
+
+    const opts = (runRecomputeForCompanies as ReturnType<typeof vi.fn>).mock
+      .calls[0][4] as { lineage?: unknown }
+    expect(opts.lineage).toBeUndefined()
+  })
+
+  it("aggregates the traced count across chunks", async () => {
+    ;(runRecomputeForCompanies as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: 5,
+      unknown: 1,
+      failed: 0,
+      targets: 6,
+      traced: 2,
+    })
+    const { job } = fakeJob({
+      organizationId: "org_1",
+      targets: Array.from({ length: 20 }, (_, i) => ({
+        companyId: `c_${i}`,
+        year: 2026,
+      })),
+    })
+
+    const result = await processRecomputeBatch(job as never)
+    const chunks = (runRecomputeForCompanies as ReturnType<typeof vi.fn>).mock
+      .calls.length
+    expect(result.traced).toBe(2 * chunks)
   })
 })

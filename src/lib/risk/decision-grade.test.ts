@@ -388,3 +388,66 @@ describe('classifyObservationGrade — revisionId alone does not certify', () =>
     expect(worstReason(['no_reconciliation', 'no_lineage'])).toBe('no_lineage');
   });
 });
+
+describe("11.87 — an aggregate is not an observation", () => {
+  /**
+   * A synthetic rollup is derived on the client from its children's worst
+   * status. It has no IndicatorValue, so no revisionId, no lastReconciledAt
+   * and no computedAt — not "untraced yet" but untraceable. Counting it made
+   * `decisionGrade === 0` structurally permanent: nineteen sit on the
+   * terminal's default matrix, so no amount of import lineage could move the
+   * badge off `provisionalBadgeAll`.
+   */
+  const traced = (over: Partial<HeatMapCell> = {}): HeatMapCell =>
+    ({
+      companyId: "c1",
+      indicatorId: "i1",
+      value: 1,
+      status: "green",
+      revisionId: "rev-1",
+      lastReconciledAt: new Date().toISOString(),
+      computedAt: new Date().toISOString(),
+      ...over,
+    }) as HeatMapCell
+
+  const OPTS = { requireLineage: true, requireReconciliation: true }
+
+  it("keeps the badge reachable: a fully traced leaf plus a rollup is decision-grade", () => {
+    const s = summarizeSurfaceGrade(
+      [traced(), traced({ indicatorId: "i2", kind: "synthetic-rollup" } as never)],
+      Date.now(),
+      OPTS,
+    )
+    expect(s.coloured).toBe(1)
+    expect(s.decisionGrade).toBe(1)
+    expect(s.allProvisional).toBe(false)
+    expect(s.hasProvisional).toBe(false)
+  })
+
+  it("grants nothing: an untraced leaf still fails once aggregates are gone", () => {
+    const s = summarizeSurfaceGrade(
+      [
+        traced({ revisionId: undefined } as never),
+        traced({ indicatorId: "i2", kind: "synthetic-rollup" } as never),
+      ],
+      Date.now(),
+      OPTS,
+    )
+    expect(s.coloured).toBe(1)
+    expect(s.decisionGrade).toBe(0)
+    expect(s.allProvisional).toBe(true)
+  })
+
+  it("a matrix of nothing but rollups has nothing to qualify", () => {
+    const s = summarizeSurfaceGrade(
+      [
+        traced({ kind: "synthetic-rollup" } as never),
+        traced({ indicatorId: "i2", kind: "real-rollup" } as never),
+      ],
+      Date.now(),
+      OPTS,
+    )
+    expect(s.coloured).toBe(0)
+    expect(s.allProvisional).toBe(false)
+  })
+})

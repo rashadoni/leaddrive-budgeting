@@ -47,6 +47,7 @@ const SOURCE_ARTIFACT_PREFIX = 'import-staging';
 const WORKBOOK_ARTIFACT_PREFIX = 'workbook-sha256';
 const MAPPING_VERSION_PREFIX = 'effective-mapping';
 const PARSER_MAPPING_PREFIX = 'parser';
+const AI_SHEET_MAPPING_PREFIX = 'ai-sheet-mapping';
 
 /**
  * The id of the artifact an `ImportStaging` row stands for.
@@ -145,6 +146,169 @@ export function parserMappingVersionId(
   const base = `${PARSER_MAPPING_PREFIX}:${parser}`;
   const header = rollupColumnHeader?.trim();
   return header ? `${base}#${header}` : base;
+}
+
+/**
+ * The id of a whole uploaded workbook, by its bytes.
+ *
+ * Distinct from `workbookArtifactId` on purpose. That one names "this sheet of
+ * these bytes", which is right for the deterministic import: it applies exactly
+ * one sheet. The AI multi-file import applies a whole workbook — every sheet
+ * the classifier routed, split and re-split — so the artifact it committed IS
+ * the file, and naming one sheet inside it would understate what was read.
+ *
+ * The digest must be taken over the ORIGINAL uploaded bytes, before
+ * `applyBudgetPlfSplit` / `applyBuColumnSplit` mutate `workbook.SheetNames`.
+ * Hashing the post-split object would fingerprint a derivative that never
+ * existed on disk, so re-uploading the same file could produce a different id
+ * after a change to the splitters.
+ */
+export function aiWorkbookArtifactId(workbookBytes: Uint8Array): string {
+  const digest = createHash('sha256').update(workbookBytes).digest('hex');
+  return `${WORKBOOK_ARTIFACT_PREFIX}:${digest}`;
+}
+
+/**
+ * One sheet's routing decision, as the orchestrator actually applied it.
+ *
+ * This is the AI path's answer to `MappingProposal`, which it does not have:
+ * there is no `ImportStaging` row, no reviewer-merged column map, no
+ * `MappingProposal` at all. What decides which numbers land where is the
+ * classifier's `SheetClassification` after the orchestrator's own overrides —
+ * so that, and not a proposal it never built, is what gets fingerprinted.
+ */
+export interface AiSheetMappingDecision {
+  /** The file the sheet came from. Part of the decision: the same sheet name
+   *  in two uploaded files is two different routings. */
+  filename: string;
+  sheetName: string;
+  dataType: string;
+  /** Post-override write target — `effectiveEntityCode`, not the guess. */
+  entityCode: string | null;
+  /** Post-resolution plan kind — `actual` vs `budget` changes what is read. */
+  planKind: string | null;
+  role: string | null;
+}
+
+/**
+ * Fingerprint the sheet routing this AI import actually applied.
+ *
+ * Same doctrine as `effectiveMappingVersionId`: hash the decisions that change
+ * which numbers land, and nothing else. The classifier's `confidence` and
+ * `reasoning` prose are excluded — a re-run of the LLM that reworded its
+ * explanation while routing every sheet identically has not changed the
+ * mapping, and must not spawn a second revision claiming it did. Flipping one
+ * sheet's entity, plan kind or data type is a mapping change and does.
+ *
+ * Reviewer decisions on no-code CoA rows (`semanticCoaMappings`) are folded in
+ * because they decide which account a row lands on, which is exactly the same
+ * class of decision as `accountTypeOverrides` on the other path.
+ *
+ * Sorted before hashing so file/sheet iteration order is not smuggled into the
+ * identity, matching `computeRevisionContentHash`'s convention.
+ */
+export function aiSheetMappingVersionId(
+  decisions: readonly AiSheetMappingDecision[],
+  semanticCoaDecisions: readonly (readonly [string, string])[] = [],
+): string {
+  const sheets = decisions
+    .map(
+      (d) =>
+        [d.filename, d.sheetName, d.dataType, d.entityCode, d.planKind, d.role] as const,
+    )
+    .map((tuple) => JSON.stringify(tuple))
+    .sort();
+  const semantic = semanticCoaDecisions
+    .map((pair) => JSON.stringify(pair))
+    .sort();
+  const canonical = JSON.stringify([
+    ['sheets', sheets],
+    ['semanticCoa', semantic],
+  ]);
+  const digest = createHash('sha256').update(canonical).digest('hex');
+  return `${AI_SHEET_MAPPING_PREFIX}:${digest}`;
+}
+
+export interface BuildAiImportRevisionScopeInput {
+  organizationId: string;
+  /** SHA-256 artifact ids of the files that contributed a COMMITTED write. */
+  workbookArtifactIds: readonly string[];
+  /** Fingerprint of the routing actually applied. */
+  mappingVersionId: string;
+  /** Fiscal year this run wrote. One year per run — the route enforces it. */
+  targetYear: number;
+  /** The run's own write results. Not the request, not the entity map. */
+  writes: readonly CommittedCompanyWrite[];
+  /** Companies already proven to belong to `organizationId`. */
+  organizationCompanyIds: ReadonlySet<string>;
+}
+
+/**
+ * Build the scope for one AI multi-file import run.
+ *
+ * **Why one revision for N transactions, and why it is created after them.**
+ * The staging routes create their revision INSIDE the single transaction that
+ * writes the rows, and that atomicity is the property their comments defend:
+ * no revision survives a rollback, no import commits unexplained. The
+ * orchestrator has no such transaction to join. It deliberately runs one
+ * transaction per file-type group (`multi-file-orchestrator.ts`) so a failing
+ * BS group cannot roll back a good PLF group — there is no single boundary that
+ * spans the run, and inventing one would undo group independence.
+ *
+ * So the sequence is adapted rather than copied, and the guarantee is stated in
+ * the direction that actually matters. A revision must never exist for data
+ * that did not commit. Building the scope from `writes` — the committed groups'
+ * own results, collected after each `$transaction` returns — gives exactly
+ * that. The converse (committed data with no revision) is possible: if the
+ * process dies between the last group commit and this call, rows are live and
+ * untraced. That is the honest failure direction, identical to what every row
+ * in production looks like today, and the next import repairs it.
+ *
+ * A single shared revision across the groups is correct because the run is one
+ * source event: one upload, one classifier pass, one routing decision set, one
+ * fiscal year. Where `buildMultiEntityImportRevisionScope` can name one sheet's
+ * artifact, this names every file that committed.
+ *
+ * @throws {LineageScopeError} `empty_committed_scope` when nothing was written,
+ *   `cross_org_company` when a write escaped the caller's organization.
+ */
+export function buildAiImportRevisionScope(
+  input: BuildAiImportRevisionScopeInput,
+): RevisionScope {
+  const {
+    organizationId,
+    workbookArtifactIds,
+    mappingVersionId,
+    targetYear,
+    writes,
+    organizationCompanyIds,
+  } = input;
+
+  const companyIds = committedCompanyIds(writes);
+  if (companyIds.length === 0) {
+    throw new LineageScopeError('empty_committed_scope');
+  }
+  for (const id of companyIds) {
+    if (!organizationCompanyIds.has(id)) {
+      throw new LineageScopeError('cross_org_company');
+    }
+  }
+  if (workbookArtifactIds.length === 0) {
+    // A revision with no artifact names no source. Refuse rather than write a
+    // provenance record that points nowhere — the whole value of the row is
+    // that an auditor can resolve it back to bytes.
+    throw new LineageScopeError('empty_committed_scope');
+  }
+
+  const year = String(targetYear);
+  return {
+    organizationId,
+    companyIds,
+    sourceArtifactIds: [...new Set(workbookArtifactIds)].sort(),
+    mappingVersionIds: [mappingVersionId],
+    periodFrom: `${year}-01`,
+    periodTo: `${year}-12`,
+  };
 }
 
 export interface BuildImportRevisionScopeInput {

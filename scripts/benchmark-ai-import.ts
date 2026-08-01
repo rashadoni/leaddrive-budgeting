@@ -658,7 +658,7 @@ async function runCase(
           adapterWarnings: 0,
         },
         reconciliation: { verdict: "skipped", conflicts: 0, groups: [] },
-        recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+        recompute: { ok: 0, unknown: 0, failed: 0, targets: 0, traced: 0 },
         humanConfirmations: { count: 0, reasons: [] },
         warnings: [],
       },

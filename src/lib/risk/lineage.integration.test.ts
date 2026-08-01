@@ -17,6 +17,11 @@ import { createPrismaDataSource } from './recompute-data-source';
 import { ensureDataRevision } from './data-revision-writer';
 import { computeRevisionContentHash, type RevisionScope } from './data-revision';
 import { classifyObservationGrade } from './decision-grade';
+import {
+  aiSheetMappingVersionId,
+  aiWorkbookArtifactId,
+  buildAiImportRevisionScope,
+} from './import-lineage';
 
 const RUN = process.env.RLS_INTEGRATION === '1';
 const d = RUN ? describe : describe.skip;
@@ -336,6 +341,154 @@ d('IndicatorValue lineage (live DB)', () => {
       expect(verdict.reasons).toContain('no_lineage');
     });
   });
+  describe('Phase 11.86 — an AI import earns lineage and no more (live DB)', () => {
+    const WORKBOOK = Buffer.from('PK zz lineage workbook bytes');
+
+    it('an imported observation names its source, and is still not decision-grade', async () => {
+      // The whole chain against a real database: the scope builder the
+      // orchestrator uses, the canonical revision writer, the canonical
+      // observation writer, and A5's gate reading the result back.
+      const scope = buildAiImportRevisionScope({
+        organizationId: ORG_A,
+        workbookArtifactIds: [aiWorkbookArtifactId(WORKBOOK)],
+        mappingVersionId: aiSheetMappingVersionId([
+          {
+            filename: 'zz.xlsx',
+            sheetName: 'PLF',
+            dataType: 'PLF',
+            entityCode: 'ZZLIN',
+            planKind: 'actual',
+            role: 'source',
+          },
+        ]),
+        targetYear: 2026,
+        writes: [{ companyId: CO_A, inserted: 240, deleted: 0 }],
+        organizationCompanyIds: new Set([CO_A, CO_SIBLING]),
+      });
+      const rev = await ensureDataRevision(admin, {
+        scope,
+        reason: 'import',
+        createdById: null,
+      });
+      const row = await upsertIv(ORG_A, rev.id, '2026');
+      expect(row.revisionId).toBe(rev.id);
+
+      const cell = {
+        status: 'green',
+        revisionId: row.revisionId ?? undefined,
+        lastReconciledAt: row.lastReconciledAt?.toISOString(),
+        computedAt: row.computedAt.toISOString(),
+      };
+      const verdict = classifyObservationGrade(
+        cell as never,
+        row.computedAt.getTime(),
+        { requireLineage: true, requireReconciliation: true },
+      );
+      // This is the honest headline of the whole change, asserted rather than
+      // described: the lineage half is earned, the reconciliation half is not,
+      // and the cell therefore stays provisional. Nothing in the import path
+      // writes `lastReconciledAt`, on purpose — the post-write db-readback
+      // verifies budget_line ROWS, not the derived values, and 1,176 of the
+      // 1,428 coloured cells on production read at least one input it never
+      // looked at.
+      expect(verdict.grade).toBe('provisional');
+      expect(verdict.reasons).toEqual(['no_reconciliation']);
+      expect(row.lastReconciledAt).toBeNull();
+
+      await admin.indicatorValue.deleteMany({ where: { companyId: CO_A } });
+      await admin.dataRevision.deleteMany({ where: { id: rev.id } });
+    });
+
+    it('re-running the same import resolves to the same revision row', async () => {
+      const build = () =>
+        buildAiImportRevisionScope({
+          organizationId: ORG_A,
+          workbookArtifactIds: [aiWorkbookArtifactId(WORKBOOK)],
+          mappingVersionId: 'ai-sheet-mapping:zzdedupe',
+          targetYear: 2026,
+          writes: [{ companyId: CO_A, inserted: 240, deleted: 0 }],
+          organizationCompanyIds: new Set([CO_A]),
+        });
+      const first = await ensureDataRevision(admin, {
+        scope: build(),
+        reason: 'import',
+        createdById: null,
+      });
+      const second = await ensureDataRevision(admin, {
+        scope: build(),
+        reason: 'import',
+        createdById: null,
+      });
+      expect(second.id).toBe(first.id);
+      expect(second.created).toBe(false);
+      expect(
+        await admin.dataRevision.count({
+          where: { organizationId: ORG_A, contentHash: first.contentHash },
+        }),
+      ).toBe(1);
+      await admin.dataRevision.deleteMany({ where: { id: first.id } });
+    });
+
+    it('refuses to stamp a shadow-only external_refresh revision', async () => {
+      // `external-source-lineage.ts` produces `reason: 'external_refresh'` for
+      // every feed and marks it decisionEligible: false. `revisionId` is the
+      // one field A5's gate reads for `no_lineage`, so letting a feed revision
+      // land there would grant external evidence the exact standing that
+      // module denies it.
+      const feed = await ensureDataRevision(admin, {
+        scope: scopeFor(ORG_A, {
+          sourceArtifactIds: ['external-artifact:zzfeed'],
+          mappingVersionIds: ['external-adapter:zz@1'],
+        }),
+        reason: 'external_refresh',
+        createdById: null,
+      });
+
+      await expect(upsertIv(ORG_A, feed.id, '2026')).rejects.toThrow(
+        /external_refresh — external evidence is shadow-only/,
+      );
+      expect(
+        await admin.indicatorValue.count({
+          where: { companyId: CO_A, period: '2026' },
+        }),
+      ).toBe(0);
+
+      await admin.dataRevision.deleteMany({ where: { id: feed.id } });
+    });
+
+    it('a later untraced recompute clears BOTH the lineage and the reconciliation stamp', async () => {
+      const rev = await ensureDataRevision(admin, {
+        scope: scopeFor(ORG_A, { sourceArtifactIds: ['zz-invalidation.xlsx'] }),
+        reason: 'import',
+        createdById: null,
+      });
+      const traced = await upsertIv(ORG_A, rev.id, '2026');
+      // Simulate `scripts/audit-company.cjs` having signed the value off.
+      await admin.indicatorValue.update({
+        where: { id: traced.id },
+        data: {
+          lastReconciledAt: new Date(),
+          reconciledBy: 'zz-auditor',
+          sanityBand: 'normal',
+        },
+      });
+
+      const after = await upsertIv(ORG_A, undefined, '2026');
+
+      // The pre-existing rule: an untraced write cannot keep a pointer that
+      // claims a revision produced the number it just replaced.
+      expect(after.revisionId).toBeNull();
+      // 11.86 — the same rule, now applied to the neighbouring claim about the
+      // same value. Before this, the stamp outlived every number it certified.
+      expect(after.lastReconciledAt).toBeNull();
+      expect(after.reconciledBy).toBeNull();
+      expect(after.sanityBand).toBeNull();
+
+      await admin.indicatorValue.deleteMany({ where: { companyId: CO_A } });
+      await admin.dataRevision.deleteMany({ where: { id: rev.id } });
+    });
+  });
+
   describe('actor resolution honours the nullable/SetNull contract', () => {
     const ACTOR = 'zzlineageactoruser000001';
 

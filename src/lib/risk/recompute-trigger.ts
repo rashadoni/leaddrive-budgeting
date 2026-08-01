@@ -36,6 +36,10 @@ import {
   matchApplicablePairs,
 } from './pair-applicability';
 import { evaluateAndPersistAlertsForPeriods } from './alert-eval-and-persist';
+import {
+  lineageRevisionForPair,
+  type ImportLineage,
+} from './lineage-coverage';
 import { verifyPeriodSnapshot } from '../budgeting/period-snapshot';
 import { parseLockedPeriods, isPeriodLockedInList } from '../budgeting/period-lock';
 
@@ -68,6 +72,16 @@ export interface RunRecomputeResult {
   unknown: number;
   failed: number;
   targets: number;
+  /**
+   * Phase 11.86 — how many pair-writes carried a `revisionId`.
+   *
+   * Always present, always 0 when no `options.lineage` was supplied. It is the
+   * counter that makes "the import recorded where its numbers came from"
+   * falsifiable from the response instead of requiring a DB read: `traced: 0`
+   * on a run that passed lineage means the coverage rule matched nothing, which
+   * is a fact worth surfacing rather than a silent no-op.
+   */
+  traced: number;
   /**
    * Phase 11.7 — true when a `granularity: 'year+quarter+month'` request was
    * downgraded to year-only because it exceeded `maxGranularUnits`. Month and
@@ -106,20 +120,31 @@ export interface RunRecomputeResult {
  * rollup detection, so it correctly affects both branches of the
  * trigger's pipeline.
  */
-/**
- * Lineage is deliberately NOT a batch option. This trigger fans out across
- * indicators whose formulas may combine workbook, feed, manual and rollup
- * inputs; a source revision for the initiating import cannot attest to every
- * resulting value. Until the KPI registry exposes a per-indicator dependency
- * manifest and the recompute can build a revision from the complete input set,
- * batch writes stay honestly untraced (`revisionId = null`).
- *
- * The lower-level `recomputeIndicator` argument remains available for a future
- * dependency-aware orchestrator that can prove one specific observation's
- * complete revision before it writes.
- */
 export interface RunRecomputeOptions {
   codeFilter?: readonly string[];
+  /**
+   * Phase 11.86 — the import revision this run may stamp, and the proof of what
+   * it covers.
+   *
+   * This option replaces a blanket refusal. The old comment here said lineage
+   * was "deliberately NOT a batch option" because the trigger fans out across
+   * indicators mixing workbook, feed, manual and rollup inputs, and no single
+   * import revision can attest to all of them — true, and it stayed true, so
+   * the default is still untraced. What was wrong was the stated blocker: it
+   * waited on "a per-indicator dependency manifest", and
+   * `IndicatorDefinition.requiredInputs` has been exactly that all along.
+   *
+   * So the fan-out is no longer all-or-nothing. Per pair, `lineage-coverage.ts`
+   * asks whether EVERY declared input of this indicator belongs to a family the
+   * caller proved it wrote clean-slate for THIS company, and whether the period
+   * falls inside the revision's range. Only then is the revision passed down.
+   * A commodity-blended indicator, a rollup, a constant, a company the run did
+   * not touch, a period outside the range — each returns `undefined` and the
+   * canonical writer clears the pointer, exactly as before.
+   *
+   * Omitting the option keeps every pre-existing caller byte-for-byte untraced.
+   */
+  lineage?: ImportLineage;
   /**
    * Phase 11.7 (2026-07-29) — recompute month and quarter periods as well as
    * the year.
@@ -172,6 +197,7 @@ const EMPTY_RESULT: RunRecomputeResult = {
   unknown: 0,
   failed: 0,
   targets: 0,
+  traced: 0,
   // Phase 7.G Turn IX (v3.4) — alertEvents required (architect Turn-IV
   // 💡 #1 closure). Short-circuit paths return zero-shape so consumers
   // can rely on field presence without optional-chain noise.
@@ -443,6 +469,7 @@ export async function runRecomputeForCompanies(
   let ok = 0;
   let unknown = 0;
   let failed = 0;
+  let traced = 0;
   for (const year of years) {
     const yearCompanyIds = byYear.get(year)!;
     const yearOperational = operational.filter((c) =>
@@ -475,6 +502,17 @@ export async function runRecomputeForCompanies(
         // `ValueSource` string union at the TS level.
         defaultValueSource: definition.defaultValueSource as unknown as IndicatorDefinitionLike["defaultValueSource"],
       };
+      // Phase 11.86 — decided per pair, never per run. `undefined` whenever
+      // this run cannot prove it produced the value: no lineage supplied, a
+      // company outside the committed scope, an indicator with any input the
+      // import does not write (feeds, rollups, manual facts, constants), or a
+      // period outside the revision's range. The canonical writer then clears
+      // any stale pointer, which is the pre-existing behaviour unchanged.
+      const revisionId = lineageRevisionForPair(options.lineage, {
+        companyId: company.id,
+        requiredInputs: definition.requiredInputs,
+        period,
+      });
       try {
         // Phase 7.E phase 2 — bulk-import follow-up paths intentionally
         // omit `withSparkline`. At Phase F (60×9×5 = 2700 pairs) inline
@@ -488,13 +526,11 @@ export async function runRecomputeForCompanies(
           period,
           baseCurrency: company.baseCurrencyCode ?? undefined,
           industry: company.industry ?? null,
-          // Phase 10 / Stage B5 safety gate — this batch trigger cannot prove
-          // the complete dependency revision for an individual KPI. Omitting
-          // lineage makes the canonical writer clear any stale pointer and
-          // leaves the recomputed observation honestly Provisional.
+          revisionId,
         });
         if (result.status === 'unknown') unknown += 1;
         else ok += 1;
+        if (revisionId) traced += 1;
       } catch (err) {
         failed += 1;
         logger.pairError?.(
@@ -505,7 +541,10 @@ export async function runRecomputeForCompanies(
     }
     }
   }
-  logger.done?.(`Recompute done: ok=${ok} unknown=${unknown} failed=${failed}`);
+  logger.done?.(
+    `Recompute done: ok=${ok} unknown=${unknown} failed=${failed}` +
+      (options.lineage ? ` traced=${traced}` : ''),
+  );
 
   // Phase 7.E C6 v3.1 (Turn IV) — wire AlertEvent persistence into the
   // recompute pipeline. Runs after the IV writes succeed so the AlertEvent
@@ -603,6 +642,7 @@ export async function runRecomputeForCompanies(
     unknown,
     failed,
     targets: totalPairs,
+    traced,
     granularityDowngraded,
     alertEvents,
   };

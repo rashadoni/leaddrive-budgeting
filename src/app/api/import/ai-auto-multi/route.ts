@@ -33,6 +33,7 @@
  * org budget; 429 if exceeded.
  */
 import { NextRequest, NextResponse } from "next/server"
+import { createHash } from "node:crypto"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
 import { acquireImportLock } from "@/lib/onboarding/import-lock"
 import {
@@ -216,6 +217,31 @@ type SafetyReceipt = {
     unknown: number
     failed: number
   }
+  /**
+   * Phase 11.86 — the provenance half of the receipt, one entry per year.
+   *
+   * The reconciliation block above says "the rows that landed are the rows the
+   * parser meant to write". This one says "and here is the source state they
+   * came from". They are separate claims and stay separately reported: nothing
+   * in this path writes `IndicatorValue.lastReconciledAt`, and nothing here
+   * should be read as a reconciliation of the derived values.
+   *
+   * `tracedIndicatorValues` is normally far smaller than `recompute.ok`, and
+   * that is the design, not a shortfall: only indicators whose ENTIRE declared
+   * input set is workbook data this run wrote clean-slate can carry the
+   * revision. A commodity-blended KPI, a rollup, a constant and a manual
+   * operational fact all stay untraced because the import genuinely did not
+   * produce them.
+   */
+  lineage: Array<{
+    year: number
+    revisionId: string | null
+    created: boolean
+    companies: string[]
+    families: string[]
+    tracedIndicatorValues: number
+    notRecordedReason: string | null
+  }>
   links: {
     riskTerminal: string
     indicatorHealth: string
@@ -246,7 +272,13 @@ function effectivePlanKind(
 
 function buildSafetyReceipt(
   result: MultiFileImportResult,
-  opts: { shouldApply: boolean; year: number },
+  opts: {
+    shouldApply: boolean
+    year: number
+    /** Phase 11.86 — one per imported year. Defaults to this run's single
+     *  result for callers (tests) that do not thread the per-year list. */
+    lineage?: SafetyReceipt["lineage"]
+  },
 ): SafetyReceipt {
   const classifications = result.perFile.flatMap((file) =>
     file.classifications.map((classification) => ({
@@ -398,6 +430,26 @@ function buildSafetyReceipt(
       unknown: result.recompute.unknown,
       failed: result.recompute.failed,
     },
+    /**
+     * Phase 11.86 — what this run can prove about where its numbers came from.
+     *
+     * `traced` is deliberately reported next to `ok`, and is normally much
+     * smaller: only indicators whose ENTIRE declared input set is workbook data
+     * this run wrote clean-slate can carry the revision. An indicator blending a
+     * commodity price, a rollup, a manual fact or a constant cannot, and reading
+     * `traced: 96 of ok: 918` as a failure would be reading it backwards.
+     */
+    lineage: opts.lineage ?? [
+      {
+        year: opts.year,
+        revisionId: result.lineage.revisionId,
+        created: result.lineage.created,
+        companies: result.lineage.companyCodes,
+        families: result.lineage.families,
+        tracedIndicatorValues: result.recompute.traced,
+        notRecordedReason: result.lineage.reason,
+      },
+    ],
     links: {
       riskTerminal: "/budgeting/terminal",
       indicatorHealth: "/budgeting/admin/indicator-health",
@@ -713,6 +765,13 @@ export async function POST(request: NextRequest) {
   const files: Array<{
     filename: string
     workbook: XLSX.WorkBook
+    /** Phase 11.86 — SHA-256 of the uploaded bytes, taken here and only here.
+     *  `buf` is the last point at which the original file exists: `XLSX.read`
+     *  hands back an object that `applyBudgetPlfSplit` / `applyBuColumnSplit`
+     *  then mutate, so any later digest would fingerprint a derivative that
+     *  was never on disk. This string is the source-artifact identity of the
+     *  whole run — the one thing an auditor can resolve back to bytes. */
+    contentSha256: string
     sheetMap?: SheetMap
     templateClassifications?: SheetClassification[]
     template?: {
@@ -737,6 +796,7 @@ export async function POST(request: NextRequest) {
       files.push({
         filename,
         workbook: wb,
+        contentSha256: createHash("sha256").update(buf).digest("hex"),
         sheetMap: looksLikeReportingPack(wb.SheetNames)
           ? REPORTING_PACK_SHEET_MAP
           : undefined,
@@ -1106,6 +1166,26 @@ export async function POST(request: NextRequest) {
   >["perGroup"] = []
   let aggregatedLlmIn = 0
   let aggregatedLlmOut = 0
+  /**
+   * Phase 11.86 — one entry per imported year, because a revision's period
+   * range is a year and the loop can run more than one.
+   *
+   * Deliberately NOT collapsed into `result.lineage`. `result` holds the LAST
+   * year processed while the receipt's `year` is `importYears[0]`, and pairing
+   * those two would report the 2026 revision under the label 2025 — the same
+   * first-year-only conflation CLAUDE.md already documents for the period-lock,
+   * stale-sibling and backlog checks. Adding a fourth instance of a known trap
+   * is not a saving.
+   */
+  const perYearLineage: Array<{
+    year: number
+    revisionId: string | null
+    created: boolean
+    companies: string[]
+    families: string[]
+    tracedIndicatorValues: number
+    notRecordedReason: string | null
+  }> = []
 
   for (const targetYear of importYears) {
     const importLock = shouldApply
@@ -1197,6 +1277,15 @@ export async function POST(request: NextRequest) {
       ),
       committedGroups: yearResult.perGroup.filter((g) => g.committed).length,
       warnings: yearResult.warnings.length,
+    })
+    perYearLineage.push({
+      year: targetYear,
+      revisionId: yearResult.lineage.revisionId,
+      created: yearResult.lineage.created,
+      companies: yearResult.lineage.companyCodes,
+      families: yearResult.lineage.families,
+      tracedIndicatorValues: yearResult.recompute.traced,
+      notRecordedReason: yearResult.lineage.reason,
     })
     result = yearResult
   }
@@ -1366,7 +1455,11 @@ export async function POST(request: NextRequest) {
   for (const f of result.perFile) {
     sheetImpactsByFilename.set(f.filename, buildSheetImpacts(f.classifications))
   }
-  const safetyReceipt = buildSafetyReceipt(result, { shouldApply, year })
+  const safetyReceipt = buildSafetyReceipt(result, {
+    shouldApply,
+    year,
+    lineage: perYearLineage.length > 0 ? perYearLineage : undefined,
+  })
 
   // ── Conflict short-circuit → 409 ────────────────────────────────
   // The orchestrator already returned early when conflicts were
@@ -1485,6 +1578,21 @@ export async function POST(request: NextRequest) {
             // were not. Dropped rather than faked; the real per-group
             // evidence now lives in `import_batch_reports`, keyed by runId.
             evidenceRunId: `ai-multi:${orgId}:${year}:${t0}`,
+            // Phase 11.86 — the run ↔ revision join.
+            //
+            // It lives here rather than in `DataRevision.sourceArtifactIds`
+            // on purpose. Putting `import-run:<runId>` in the scope would make
+            // the join trivial and would also break the revision's identity:
+            // `computeRevisionContentHash` hashes the scope, the runId carries
+            // a timestamp, and every re-import of unchanged bytes would then
+            // mint a fresh revision claiming a source change that did not
+            // happen — the exact thing §5.2's dedupe exists to prevent. A run
+            // is a fact ABOUT a revision, like `createdAt`, which the hash
+            // already excludes. The audit trail is where facts about runs go,
+            // and this row already carries `evidenceRunId`, so
+            // `IndicatorValue → DataRevision → this event → ImportBatchReport`
+            // is a complete path with no schema change.
+            revisions: safetyReceipt.lineage,
             reconciliationEvidence: safetyReceipt.reconciliation.evidence
               .allCommittedGroupsVerified
               ? "db-readback"
