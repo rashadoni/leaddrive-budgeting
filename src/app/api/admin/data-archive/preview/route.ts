@@ -2,12 +2,19 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { previewCompanyImportReset } from "@/lib/server/archive"
+import { parseDeleteSelection, parseCompanyCodes } from "@/lib/server/delete-request"
+import { parseLockedPeriods } from "@/lib/budgeting/period-lock"
 
 interface PreviewBody {
   entityKind?: unknown
   companyCode?: unknown
   companyCodes?: unknown
   year?: unknown
+  years?: unknown
+  include?: unknown
+  includeUnscoped?: unknown
+  includeManualActuals?: unknown
+  yearIndex?: unknown
 }
 
 export async function POST(request: NextRequest) {
@@ -31,17 +38,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const companyCodes = Array.isArray(body.companyCodes)
-    ? [
-        ...new Set(
-          body.companyCodes.filter(
-            (c): c is string => typeof c === "string" && c.length > 0,
-          ),
-        ),
-      ].slice(0, 200)
-    : typeof body.companyCode === "string" && body.companyCode.length > 0
-      ? [body.companyCode]
-      : []
+  const companyCodes = parseCompanyCodes(body)
 
   if (companyCodes.length === 0) {
     return NextResponse.json(
@@ -50,19 +47,29 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const year =
-    typeof body.year === "number" && Number.isInteger(body.year)
-      ? body.year
-      : undefined
+  const selection = parseDeleteSelection(body)
 
   try {
     const preview = await previewCompanyImportReset({
       prisma,
       organizationId: session.orgId,
       companyCodes,
-      year,
+      ...selection,
+      yearIndex: body.yearIndex === true,
     })
-    return NextResponse.json({ ok: true, preview })
+    // Locks travel with the preview so the UI can grey out a closed year
+    // BEFORE the operator types a confirmation token and eats a 423.
+    const org = await prisma.organization.findUnique({
+      where: { id: session.orgId },
+      select: { lockedPeriods: true },
+    })
+    const locks = parseLockedPeriods(org?.lockedPeriods).map((l) => ({
+      period: l.period,
+      lockedAt: l.lockedAt,
+      lockedBy: l.lockedBy,
+      reason: l.reason,
+    }))
+    return NextResponse.json({ ok: true, preview, locks })
   } catch (err) {
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },

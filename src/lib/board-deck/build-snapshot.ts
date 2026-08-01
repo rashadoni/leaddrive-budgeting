@@ -34,6 +34,7 @@ import {
   type HeatMapCell,
 } from '@/lib/risk/heatmap-matrix';
 import { RISK_TAGS } from '@/lib/risk/risk-tags';
+import { nonScoringIndicatorIds } from '@/lib/risk/indicator-provenance';
 
 const CANONICAL_RISK_TAGS = new Set<string>(RISK_TAGS);
 
@@ -102,6 +103,16 @@ export interface BoardSnapshot {
    * exports.
    */
   riskTagsByCompany: Map<string, readonly string[]>;
+  /**
+   * 11.71 — indicator ids excluded from composite arithmetic (constants, plus
+   * the informational `governance` legal/compliance four). Already stamped onto
+   * `cells` as `scoring: false`; exposed here for the ONE consumer that builds
+   * its own cells from a separate query — `buildTrendSeries`, which reads raw
+   * `IndicatorValue` rows by id and never sees a definition. Derived once here
+   * so the deck page and the PPTX route cannot resolve it differently and put a
+   * trend line under a hero score computed on a different rule.
+   */
+  nonScoringIndicatorIds: ReadonlySet<string>;
 }
 
 export async function buildBoardSnapshot(args: {
@@ -214,12 +225,21 @@ export async function buildBoardSnapshot(args: {
   const weightById = new Map<string, number>(
     indicators.map((i: IndicatorShape) => [i.id, i.weight ?? 1.0]),
   );
+  // 11.71 — same scoring gate the matrix endpoint stamps, applied here because
+  // the deck builds its own cells from its own query. `indicators` carries
+  // `category` + `requiredInputs` (selected above), so the rule is available
+  // without a query change. Without this the deck's hero score, the PPTX cover,
+  // the LLM narration and the fact-checker would all keep averaging court cases
+  // into a financial number while the terminal no longer does — one company,
+  // two scores, which is the failure mode this whole mechanism exists to avoid.
+  const nonScoringIds = nonScoringIndicatorIds(indicators);
   const cells: HeatMapCell[] = values.map((v: ValueShape) => ({
     companyId: v.companyId,
     indicatorId: v.indicatorId,
     value: v.value as number,
     status: v.status as HeatMapCell['status'],
     weight: weightById.get(v.indicatorId) ?? 1.0,
+    ...(nonScoringIds.has(v.indicatorId) ? { scoring: false } : {}),
   }));
 
   // Phase 7.N wiring — extract per-company riskTags from settings JSON
@@ -320,5 +340,6 @@ export async function buildBoardSnapshot(args: {
     cellByKey,
     totals,
     riskTagsByCompany: riskTagsByCompanyId,
+    nonScoringIndicatorIds: nonScoringIds,
   };
 }

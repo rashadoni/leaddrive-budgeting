@@ -724,6 +724,17 @@ export type AuditEventInput =
         year?: number;
         period?: string;
         rowsAffected: number;
+        /**
+         * 2026-07-31 — the RESTORE KEY: the exact `deletedAt` this operation
+         * stamped, ISO-8601. Without it a restore can only match "every
+         * archived row for this company and year", which on production is
+         * several import generations at once. See ARCHIVE_GENERATION_KEY in
+         * `src/lib/server/archive.ts`. Optional because events written before
+         * that date do not have one — and those are refused, not guessed.
+         */
+        archivedAt?: string;
+        /** Per-table counts, so the Restore panel names what it will return. */
+        breakdown?: Record<string, number>;
         reason?: string;
       };
     }
@@ -734,12 +745,21 @@ export type AuditEventInput =
       // per-source breakdown so the IFRS trail records exactly what was cleared.
       action: 'data_reset';
       entityType: 'Company';
-      entityId: string; // companyCode + ":" + (year | "ALL")
+      entityId: string; // companyCode + ":" + (year list | "ALL")
       metadata: {
         companyCode: string;
+        /** Set only for a single-year scope — kept for older readers. */
         year?: number;
+        /** 2026-07-31 — a delete can now name several years at once. */
+        years?: number[];
         breakdown: Record<string, number>;
         rowsAffected: number;
+        /**
+         * The RESTORE KEY for the soft-archived half of this reset — the one
+         * `deletedAt` shared by every table it archived. See
+         * ARCHIVE_GENERATION_KEY in `src/lib/server/archive.ts`.
+         */
+        archivedAt?: string;
         reason?: string;
       };
     }

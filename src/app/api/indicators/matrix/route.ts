@@ -62,6 +62,7 @@ import {
   isMaterialityScoped,
 } from '@/lib/risk/esg-materiality';
 import { deriveSignalConfidence } from '@/lib/risk/heatmap-matrix';
+import { nonScoringIndicatorIds } from '@/lib/risk/indicator-provenance';
 import { getCompanyReadiness } from '@/lib/server/get-company-readiness';
 
 /**
@@ -287,6 +288,17 @@ export async function GET(request: NextRequest) {
     const indicatorWeightMap = new Map<string, number>(
       indicatorsForRender.map((ind) => [ind.id, (ind as typeof ind & { weight?: number }).weight ?? 1.0]),
     );
+
+    // 11.71 — ids whose cells must NOT move a composite score: constants, plus
+    // the informational `governance` legal/compliance four. Stamped onto the
+    // cell below (`scoring: false`) rather than filtered here, so the four keep
+    // their heat-map columns, their status colours and their drill-down while
+    // dropping out of the arithmetic. Doing it at the wire boundary means every
+    // client surface built on this payload — HeatMap row header, CompanyTree
+    // badge, Panel-3 snapshot, AI subscriptions, the PDF and XLSX exports, and
+    // the terminal-side alert engine — agrees on one number without each of
+    // them having to remember a filter.
+    const nonScoringIndicatorIdSet = nonScoringIndicatorIds(indicatorsForRender);
 
     type CompanyRawShape = (typeof companiesRaw)[number];
     type IndicatorShape = (typeof indicatorsForRender)[number];
@@ -587,6 +599,12 @@ export async function GET(request: NextRequest) {
           status: v.status as IndicatorStatus,
           // Phase 7.N C5 v2 — per-indicator weight for weighted composite.
           weight: indicatorWeightMap.get(v.indicatorId) ?? 1.0,
+          // 11.71 — omitted (not `true`) for scoring cells so the payload for
+          // the other ~100 indicators is byte-identical to what it was; absent
+          // means "scores", per the HeatMapCell contract.
+          ...(nonScoringIndicatorIdSet.has(v.indicatorId)
+            ? { scoring: false }
+            : {}),
           // Phase 7.H F4.v2.1 — string mirror of the Prisma enum,
           // safe to send to the client as-is.
           valueSource,
@@ -739,6 +757,16 @@ export async function GET(request: NextRequest) {
         // semantics: real IV is queryable, average is not). Gate
         // downstream via `isAggregateRollup(c)` helper.
         kind: 'real-rollup' as const,
+        // 11.71 — stamped like the operational cells above, though
+        // `isAggregateRollup` already drops rollups before any composite is
+        // computed. Leaving it off would stack a second silent default on the
+        // first: the scoring gate is carried entirely by this optional field,
+        // `tsc` cannot see a builder that forgets it, and "safe because
+        // something else filters it first" is exactly the reasoning that
+        // stops being true when the other filter moves.
+        ...(nonScoringIndicatorIdSet.has(v.indicatorId)
+          ? { scoring: false }
+          : {}),
       };
     });
 
@@ -859,6 +887,10 @@ export async function GET(request: NextRequest) {
           // Phase 7.G Turn VI — drives IndicatorDetail "averaged from N
           // children" copy. Now counts KNOWN-status contributors only.
           contributingChildCount: bucket.count,
+          // 11.71 — see the note on the real-rollup builder above. Same
+          // reason: every cell this route emits carries the gate, so no
+          // future reader has to know which builder happened to be exempt.
+          ...(nonScoringIndicatorIdSet.has(indId) ? { scoring: false } : {}),
         };
       })
       .filter((c): c is NonNullable<typeof c> => c !== null);

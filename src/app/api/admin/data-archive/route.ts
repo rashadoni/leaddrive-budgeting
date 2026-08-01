@@ -11,6 +11,9 @@
  *     period?: string,
  *     reason?: string,
  *     confirmCode: string,   // must equal companyCode (or "ALL" for org-wide)
+ *     archivedAt?: string,   // RESTORE ONLY, required — ISO-8601, the exact
+ *                            // `metadata.archivedAt` of the audit event being
+ *                            // undone. Identifies ONE archive generation.
  *   }
  *
  * Behaviour
@@ -25,7 +28,17 @@
  *  • All writes happen in `archiveRows()` which wraps the soft-delete
  *    UPDATE + audit-event INSERT in a single `prisma.$transaction`.
  *  • Never deletes physically. The cleanup job (separate cron, not in
- *    this route) purges rows past the 90-day retention window.
+ *    this route) purges soft-deleted rows past `SOFT_DELETE_TTL_MS` — 30
+ *    days, in `src/lib/cleanup/soft-delete-cleanup.ts`. This comment used to
+ *    say 90; that constant was deleted on 2026-07-31 for being three times
+ *    the window the job actually enforces.
+ *
+ * Restore is per-OPERATION, not per-scope
+ * ───────────────────────────────────────
+ * `mode: "restore"` requires `archivedAt`. Restoring by scope alone brings
+ * back every archived generation of that company-year at once — on production
+ * that was up to three import generations, i.e. multiplied financial
+ * statements. A restore with no key is refused (400); it is never widened.
  *
  * Why a single endpoint for archive + restore
  * ───────────────────────────────────────────
@@ -51,11 +64,20 @@ const log = getLogger("api:admin:data-archive")
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import {
   archiveRows,
+  MissingArchiveKeyError,
   restoreRows,
   resetCompanyImportData,
   resetOrgSalesForecast,
   archiveOrgOrphanBudgetLines,
+  previewCompanyImportReset,
 } from "@/lib/server/archive"
+import { resolveResetCategories } from "@/lib/server/import-reset-categories"
+import {
+  expectedConfirmCode,
+  parseCompanyCodes,
+  parseDeleteSelection,
+  selectedYears,
+} from "@/lib/server/delete-request"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
 import { getActivePeriodLock, parseLockedPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
@@ -79,9 +101,22 @@ interface ArchiveBody {
   /** AllImportData (reset) only — multiple companies / whole holding in one go. */
   companyCodes?: unknown
   year?: unknown
+  /** AllImportData only — several calendar years in one action. */
+  years?: unknown
+  /** AllImportData only — which kinds of data to delete. */
+  include?: unknown
+  includeUnscoped?: unknown
+  includeManualActuals?: unknown
+  /**
+   * The row count the operator read on screen. Re-counted server-side before
+   * any write; a mismatch is a 409 and nothing is deleted.
+   */
+  expectRows?: unknown
   period?: unknown
   reason?: unknown
   confirmCode?: unknown
+  /** restore only — ISO-8601 `metadata.archivedAt` of the event being undone. */
+  archivedAt?: unknown
 }
 
 // A whole-holding reset loops per-company (delete + recompute) — give it room.
@@ -140,18 +175,12 @@ export async function POST(request: NextRequest) {
   // Reset can target several companies (or the whole holding) at once. Dedup +
   // drop blanks; cap to a sane ceiling so a malformed payload can't fan out.
   const companyCodes = Array.isArray(body.companyCodes)
-    ? [
-        ...new Set(
-          body.companyCodes.filter(
-            (c): c is string => typeof c === "string" && c.length > 0,
-          ),
-        ),
-      ].slice(0, 200)
+    ? parseCompanyCodes({ companyCodes: body.companyCodes })
     : undefined
-  const year =
-    typeof body.year === "number" && Number.isInteger(body.year)
-      ? body.year
-      : undefined
+  // Parsed by the SAME helper the preview endpoint uses, so the scope the
+  // operator watched being counted is byte-for-byte the scope deleted here.
+  const selection = parseDeleteSelection(body)
+  const year = selection.year
   const period =
     typeof body.period === "string" && body.period.length > 0
       ? body.period
@@ -163,15 +192,12 @@ export async function POST(request: NextRequest) {
   const confirmCode =
     typeof body.confirmCode === "string" ? body.confirmCode : ""
 
-  // Defensive: confirmCode acts as the "type the entity code to
-  // confirm" safety pattern. For org-wide scopes (no companyCode)
-  // we require the literal string "ALL". A bulk reset (companyCodes[])
-  // ALWAYS requires "ALL" — otherwise a mixed payload
-  // `{companyCode:"SAFE", companyCodes:["A","B"], confirmCode:"SAFE"}` would
-  // pass the single-company confirm yet wipe A/B (the reset branch prefers
-  // companyCodes). Codex 2026-06-21 HIGH.
-  const expectedConfirm =
-    companyCodes && companyCodes.length > 0 ? "ALL" : companyCode ?? "ALL"
+  // Defensive: confirmCode acts as the "type the entity code to confirm"
+  // safety pattern. The rule itself now lives in `expectedConfirmCode` and is
+  // shared with the client's confirmation gate — see the note in
+  // `delete-request.ts`. It used to be spelled out here AND guessed again in
+  // `tier.ts`, and the two disagreed for every single-company scope.
+  const expectedConfirm = expectedConfirmCode(body)
   if (confirmCode !== expectedConfirm) {
     return NextResponse.json(
       {
@@ -249,15 +275,20 @@ export async function POST(request: NextRequest) {
     // product — did not, so a locked year could be erased while the audit
     // trail recorded only a routine `data_reset`. Checked BEFORE the loop so
     // a locked year deletes nothing at all rather than partially.
-    if (year) {
-      const lock = await getActivePeriodLock(prisma, orgId, String(year))
-      if (lock) {
-        return lockedResponse(lock, {
-          prisma,
-          orgId,
-          userId: session.userId ?? null,
-          route: "POST /api/admin/data-archive",
-        })
+    const targetYears = selectedYears(selection)
+    if (targetYears.length > 0) {
+      // EVERY year in the list is tested — a two-year delete whose second
+      // year is closed must be refused whole, not applied by half.
+      for (const y of targetYears) {
+        const lock = await getActivePeriodLock(prisma, orgId, String(y))
+        if (lock) {
+          return lockedResponse(lock, {
+            prisma,
+            orgId,
+            userId: session.userId ?? null,
+            route: "POST /api/admin/data-archive",
+          })
+        }
       }
     } else {
       // Phase 11.39 (2026-07-29) — the gate above only ran when a year was
@@ -287,6 +318,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ── Drift guard (2026-07-31) ───────────────────────────────────────
+    // The operator confirmed one specific number. Re-count the SAME scope
+    // before the first write; if the database moved on, delete nothing and
+    // hand back the fresh count. This closes the read-then-write race that a
+    // client-side "check again" button can only paper over.
+    if (typeof body.expectRows === "number" && Number.isFinite(body.expectRows)) {
+      const recount = await previewCompanyImportReset({
+        prisma,
+        organizationId: orgId,
+        companyCodes: codes,
+        ...selection,
+      })
+      if (recount.rowsAffected !== body.expectRows) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "The data changed since it was checked — nothing was deleted",
+            expectedRows: body.expectRows,
+            actualRows: recount.rowsAffected,
+            preview: recount,
+          },
+          { status: 409 },
+        )
+      }
+    }
+
     // Per-company reset — each is its own transaction inside
     // resetCompanyImportData and writes its own `data_reset` audit event — then
     // recompute. Aggregate; on a per-company failure keep going and report it
@@ -309,8 +366,8 @@ export async function POST(request: NextRequest) {
       // the UI's year field is optional and documents blank as "all years"
       // (`DataArchiveForm.tsx:51`), so the widest reset was the one that
       // silently skipped its own recompute.
-      const yearsBeforeReset: number[] = year
-        ? [year]
+      const yearsBeforeReset: number[] = targetYears.length > 0
+        ? targetYears
         : Array.from(
             new Set(
               (
@@ -331,7 +388,7 @@ export async function POST(request: NextRequest) {
           prisma,
           actorUserId: session.userId,
           reason,
-          scope: { ...scope, companyCode: target.code },
+          scope: { ...scope, ...selection, companyCode: target.code },
         })
       } catch (err) {
         // The reset itself failed → nothing was deleted for this company (it
@@ -388,6 +445,11 @@ export async function POST(request: NextRequest) {
     // a company didn't reset (Codex 2026-06-22 MED Q3). Mixed-plans-only inside.
     let orphanRowsAffected = 0
     let orphanError: string | null = null
+    let salesForecastError: string | null = null
+    // Both org-level sweeps run under the SAME category gate the preview
+    // counts them under — otherwise the preview promises a number the commit
+    // quietly ignores, or vice versa.
+    const categories = resolveResetCategories(selection.include)
     if (isWholeHolding && failures.length === 0) {
       // Phase 11.6b — SalesForecast is org-level (no company anywhere in the
       // department chain), so a per-company reset cannot reach it and a stale
@@ -395,49 +457,60 @@ export async function POST(request: NextRequest) {
       // only upserts departments present in the NEW file, so a dropped
       // department kept its old numbers forever. A whole-holding reset is the
       // one case where the scope is unambiguous.
-      try {
-        const fx = await resetOrgSalesForecast({
-          prisma,
-          actorUserId: session.userId,
-          reason,
-          organizationId: orgId,
-          year: scope.year,
-        })
-        if (fx.rowsAffected > 0) {
-          rowsAffected += fx.rowsAffected
-          breakdown.salesForecast =
-            (breakdown.salesForecast ?? 0) + fx.rowsAffected
+      if (categories.has("salesBudgetLine")) {
+        try {
+          const fx = await resetOrgSalesForecast({
+            prisma,
+            actorUserId: session.userId,
+            reason,
+            organizationId: orgId,
+            year: selection.year,
+            years: selection.years,
+          })
+          if (fx.rowsAffected > 0) {
+            rowsAffected += fx.rowsAffected
+            breakdown.salesForecast =
+              (breakdown.salesForecast ?? 0) + fx.rowsAffected
+          }
+        } catch (err) {
+          // 2026-07-31 — this was swallowed and the response still said 200.
+          // The per-company resets committed while the org-wide forecast the
+          // preview counted was still sitting there: a "no tails" reset with
+          // a tail, reported as success. Same treatment as the orphan sweep.
+          salesForecastError = err instanceof Error ? err.message : String(err)
+          log.error("org sales-forecast reset FAILED — the forecast tail remains", {
+            err: salesForecastError,
+          })
         }
-      } catch (err) {
-        log.error("org sales-forecast reset failed (non-fatal)", {
-          err: err instanceof Error ? err.message : String(err),
-        })
       }
-      try {
-        const orphan = await archiveOrgOrphanBudgetLines({
-          prisma,
-          actorUserId: session.userId,
-          reason,
-          organizationId: orgId,
-          year: scope.year,
-        })
-        orphanRowsAffected = orphan.rowsAffected
-        rowsAffected += orphan.rowsAffected
-        if (orphan.rowsAffected > 0) {
-          breakdown.orphanBudgetLine = (breakdown.orphanBudgetLine ?? 0) + orphan.rowsAffected
-        }
-      } catch (err) {
+      if (categories.has("budgetLine")) {
+        try {
+          const orphan = await archiveOrgOrphanBudgetLines({
+            prisma,
+            actorUserId: session.userId,
+            reason,
+            organizationId: orgId,
+            year: selection.year,
+            years: selection.years,
+          })
+          orphanRowsAffected = orphan.rowsAffected
+          rowsAffected += orphan.rowsAffected
+          if (orphan.rowsAffected > 0) {
+            breakdown.orphanBudgetLine = (breakdown.orphanBudgetLine ?? 0) + orphan.rowsAffected
+          }
+        } catch (err) {
         // The per-company resets COMMITTED, but the org-level orphan tail was NOT
         // removed — a "no-tails" reset that still left tails. Report non-success
         // so the operator knows to retry (Codex 2026-06-22 MED). Idempotent: a
         // re-run of the whole-holding reset re-sweeps (archived company lines no-op).
-        orphanError = err instanceof Error ? err.message : String(err)
-        log.error("org-orphan sweep after whole-holding reset FAILED — tails remain", {
-          err: orphanError,
-        })
+          orphanError = err instanceof Error ? err.message : String(err)
+          log.error("org-orphan sweep after whole-holding reset FAILED — tails remain", {
+            err: orphanError,
+          })
+        }
       }
     }
-    const ok = failures.length === 0 && !orphanError
+    const ok = failures.length === 0 && !orphanError && !salesForecastError
     return NextResponse.json(
       {
         ok,
@@ -447,18 +520,53 @@ export async function POST(request: NextRequest) {
         orphanRowsAffected,
         recomputed,
         companiesReset: perCompany.length - failures.length,
+        // Named, not counted: the 207 panel has to tell the operator WHICH
+        // companies were left untouched, or "partly done" is unactionable.
+        companiesFailed: failures.map((f) => f.code),
+        companiesDeleted: perCompany
+          .filter((p): p is { code: string; rowsAffected: number; recomputed: number } => !("error" in p))
+          .map((p) => p.code),
         perCompany,
         ...(failures.length > 0
           ? { error: `${failures.length} of ${targets.length} companies failed: ${failures.map((f) => f.code).join(", ")}` }
           : orphanError
             ? { error: `org-level orphan sweep failed after a clean per-company reset (tails remain): ${orphanError}` }
-            : {}),
+            : salesForecastError
+              ? { error: `org-level sales-forecast reset failed after a clean per-company reset (tails remain): ${salesForecastError}` }
+              : {}),
       },
       // 207 Multi-Status on ANY failure (a failed company OR a failed orphan
       // sweep) so status-keyed clients/log parsers don't read an incomplete reset
       // as success (Codex 2026-06-21 / 2026-06-22). The form keys on body.ok.
       { status: ok ? 200 : 207 },
     )
+  }
+
+  // ── The restore key ────────────────────────────────────────────────────
+  // A restore MUST name the archive operation it is undoing. Scope alone
+  // ("this company, this year") is a bucket that holds every generation the
+  // re-imports left behind, and un-archiving the bucket multiplies the
+  // financial statements. Validated here, before any database work, and
+  // enforced again inside `restoreRows` — see ARCHIVE_GENERATION_KEY in
+  // `src/lib/server/archive.ts`.
+  //
+  // Fail CLOSED on legacy events: deletions recorded before `archivedAt` was
+  // captured have no key and are refused, not restored by scope.
+  let archivedAt: Date | undefined
+  if (mode === "restore") {
+    const raw = body.archivedAt
+    const parsed = typeof raw === "string" ? new Date(raw) : new Date(NaN)
+    if (Number.isNaN(parsed.getTime())) {
+      return NextResponse.json(
+        {
+          error:
+            "restore requires archivedAt — the exact deletion timestamp recorded on the audit event (metadata.archivedAt). Deletions recorded before that field existed cannot be restored from here, because restoring them by scope would also un-archive every earlier version of the same year and multiply the figures. Re-import the source file instead.",
+          code: "MISSING_ARCHIVE_KEY",
+        },
+        { status: 400 },
+      )
+    }
+    archivedAt = parsed
   }
 
   try {
@@ -475,6 +583,9 @@ export async function POST(request: NextRequest) {
             actorUserId: session.userId,
             reason,
             scope,
+            // Non-null by the guard above; `restoreRows` throws
+            // MissingArchiveKeyError if it ever isn't.
+            archivedAt: archivedAt as Date,
           })
     // CF has no companyId column — a company-scoped CF archive matches only
     // rows whose sourceId follows the "<code>::" import convention. Manual
@@ -497,6 +608,9 @@ export async function POST(request: NextRequest) {
       mode,
       rowsAffected: result.rowsAffected,
       auditEventId: result.auditEventId,
+      // The restore key for what was just archived. Handed back so a caller
+      // that wants to undo its own archive does not have to re-read the trail.
+      archivedAt: result.archivedAt,
       ...(unattributableCfRows !== undefined ? { unattributableCfRows } : {}),
     })
   } catch (err) {
@@ -504,6 +618,14 @@ export async function POST(request: NextRequest) {
       mode,
       err: err instanceof Error ? err.message : String(err),
     })
+    // A missing restore key is a bad request, not a server fault — and the
+    // message is the one the operator needs to read.
+    if (err instanceof MissingArchiveKeyError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: 400 },
+      )
+    }
     return NextResponse.json(
       {
         error: err instanceof Error ? err.message : String(err),

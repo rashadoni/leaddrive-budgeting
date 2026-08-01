@@ -6,8 +6,7 @@ import {
   EXCLUDE_DELETED,
   archiveStamp,
   restoreStamp,
-  SOFT_DELETE_RETENTION_DAYS,
-  softDeletePurgeCutoff,
+  SOFT_DELETE_TTL_MS,
 } from "./soft-delete"
 
 describe("EXCLUDE_DELETED", () => {
@@ -56,15 +55,13 @@ describe("restoreStamp", () => {
   })
 })
 
-describe("softDeletePurgeCutoff", () => {
-  it("returns a Date 90 days before now (default arg)", () => {
-    const now = new Date("2026-05-18T12:00:00Z")
-    const cutoff = softDeletePurgeCutoff(now)
-    const diffDays = (now.getTime() - cutoff.getTime()) / 86_400_000
-    expect(diffDays).toBe(SOFT_DELETE_RETENTION_DAYS)
-  })
-
-  it("retention constant is 90 days (matches budget_plans schema convention)", () => {
-    expect(SOFT_DELETE_RETENTION_DAYS).toBe(90)
+describe("retention window", () => {
+  // 2026-07-31 — there used to be TWO. A dead `SOFT_DELETE_RETENTION_DAYS =
+  // 90` here (called by nothing but this test) and the live 30-day
+  // `SOFT_DELETE_TTL_MS` in the cleanup job. The UI quoted the dead one at
+  // the user: "Restore is available within 90 days", three times longer than
+  // the system actually keeps anything.
+  it("is a single constant, re-exported from the job that enforces it", () => {
+    expect(SOFT_DELETE_TTL_MS).toBe(30 * 24 * 60 * 60 * 1000)
   })
 })

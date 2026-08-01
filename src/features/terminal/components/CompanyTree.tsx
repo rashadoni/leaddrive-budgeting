@@ -10,7 +10,7 @@ import {
   deriveParentComposites,
   type CompositeScore,
 } from '@/lib/risk/composite-score';
-import { excludeNonScoringCells } from '@/lib/risk/indicator-provenance';
+import { markNonScoringCells } from '@/lib/risk/indicator-provenance';
 import {
   computeCompanyTrustStatus,
   type TrustStatus,
@@ -110,7 +110,12 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
     // 204 identical rows on production — and dragged the composite of
     // companies holding no data at all. Shared helper so this panel and the
     // HeatMap cannot disagree about a number shown on one screen.
-    const scoringCells = excludeNonScoringCells(matrix.cells, matrix.indicators);
+    // 11.71 — the informational `governance` legal/compliance indicators are
+    // excluded too, by product directive: court cases and audit findings stay
+    // visible everywhere they are today, they just stop moving a FINANCIAL
+    // score. Marking (not filtering) so the rule is enforced once inside
+    // `computeCompositeScore` and reaches every other surface with it.
+    const scoringCells = markNonScoringCells(matrix.cells, matrix.indicators);
     const byId = computeCompositeByCompany(scoringCells, undefined, riskTagsByCompanyId);
     // Derive parent/holding composites from children — REVENUE-WEIGHTED so a
     // 0-revenue shell (e.g. a JV "awaiting data") can't inflate a holding.

@@ -21,6 +21,7 @@ import type { IndicatorStatus } from './formula-engine'
 import { parsePeriod } from './periods'
 import { hasShock, readShock, resolveShockOverrides, type ResolvedScalars } from './scenario-shock'
 import { computeCompositeByCompany, deriveParentComposites } from './composite-score'
+import { countsTowardComposite } from './indicator-provenance'
 import { mapWithConcurrency } from './concurrency'
 import type { HeatMapCell } from './heatmap-matrix'
 
@@ -38,6 +39,11 @@ export interface SimulateByDriversIndicator {
   formula: string
   thresholds: unknown
   requiredInputs: string[]
+  /** 11.71 — feeds the composite scoring gate (`countsTowardComposite`), so the
+   *  panel's "baseline 62 → scenario 55" is computed on the same rule as the
+   *  terminal badge for the same company. Optional: absent ⇒ the indicator
+   *  scores, the default that changes nothing. */
+  category?: string | null
   weight?: number | null
   /** Indicator unit ("%", "AZN", "USD/tonne", "ratio", …) — surfaced on the
    *  delta table so BAZA/SSENARI values read in their measured unit. */
@@ -337,15 +343,22 @@ export async function simulateByDrivers(
       deltaPct,
     })
     const w = ind.weight ?? undefined
+    // 11.71 — the scoring gate, stamped on the cell rather than filtered here,
+    // so the swing widget's baseline agrees with the terminal badge it is read
+    // next to. This file already reasoned its way to "governance dilutes a
+    // financial number" once, locally, in `isFinancialIndicator` above; the
+    // owner has now made it the rule for the whole product, so it belongs in
+    // the shared predicate rather than in one panel's private heuristic.
+    const scoring = countsTowardComposite(ind) ? undefined : (false as const)
     if (isLeaf(co.id)) {
       const fin = isFinancialIndicator(ind.formula)
       if (baselineStatus) {
-        const cell: HeatMapCell = { companyId: co.id, indicatorId: ind.id, value: baselineValue ?? 0, status: baselineStatus, weight: w }
+        const cell: HeatMapCell = { companyId: co.id, indicatorId: ind.id, value: baselineValue ?? 0, status: baselineStatus, weight: w, ...(scoring === false ? { scoring } : {}) }
         baselineCells.push(cell)
         if (fin) financialBaselineCells.push(cell)
       }
       if (scenarioStatus) {
-        const cell: HeatMapCell = { companyId: co.id, indicatorId: ind.id, value: scenarioValue ?? 0, status: scenarioStatus, weight: w }
+        const cell: HeatMapCell = { companyId: co.id, indicatorId: ind.id, value: scenarioValue ?? 0, status: scenarioStatus, weight: w, ...(scoring === false ? { scoring } : {}) }
         scenarioCells.push(cell)
         if (fin) financialScenarioCells.push(cell)
       }

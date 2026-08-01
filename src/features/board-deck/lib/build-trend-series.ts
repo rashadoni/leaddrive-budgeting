@@ -128,6 +128,19 @@ export interface BuildTrendSeriesInput {
   indicatorIds: readonly string[];
   /** Current indicator weights, matching the selected snapshot formula. */
   weightByIndicatorId?: ReadonlyMap<string, number>;
+  /**
+   * 11.71 — indicator ids that must not move a composite (constants, plus the
+   * informational `governance` legal/compliance four). This builder never sees
+   * an `IndicatorDefinition` — it queries raw `IndicatorValue` rows by id — so
+   * the caller resolves the set with `nonScoringIndicatorIds(...)` and passes
+   * it, exactly like `weightByIndicatorId` above.
+   *
+   * Absent ⇒ nothing is excluded, the back-compat default that changes nothing.
+   * Applied to EVERY month in the series, current formula against history, for
+   * the same reason weights are: a trend line whose rule changes mid-series
+   * shows a step that no company actually took.
+   */
+  nonScoringIndicatorIds?: ReadonlySet<string>;
   /** Current qualitative penalties, applied consistently across trend points. */
   riskTagsByCompany?: ReadonlyMap<string, readonly string[]>;
 }
@@ -226,6 +239,11 @@ export async function buildTrendSeries(
       value: r.value as number,
       status: r.status,
       weight: input.weightByIndicatorId?.get(r.indicatorId) ?? 1,
+      // 11.71 — keeps the 12-month trend line on the same rule as the hero
+      // score it sits directly under.
+      ...(input.nonScoringIndicatorIds?.has(r.indicatorId)
+        ? { scoring: false as const }
+        : {}),
     }));
     const composites = computeCompositeByCompany(
       cells,

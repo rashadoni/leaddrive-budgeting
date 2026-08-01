@@ -9,7 +9,7 @@
  * Because NO JSX moved, the rendered output (and the visual-baseline snapshot)
  * is byte-identical — this is a pure data/presentation split.
  */
-import { excludeNonScoringCells } from '@/lib/risk/indicator-provenance';
+import { markNonScoringCells } from '@/lib/risk/indicator-provenance';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useTerminalStore } from '../store/terminalStore';
@@ -329,12 +329,23 @@ export function useHeatMapModel(period: string | undefined) {
     // Sparse-map mode (no companyIds arg) — rows without scoreable cells
     // are absent from the result; HeatMap's fallback for missing entries
     // shows "—" via `compositeByCompany.get(co.id) ?? null` consumer.
-    // 11.66 — a CONSTANT indicator must not enter a risk score. Shared helper
-    // with the CompanyTree badge so the two panels of one screen cannot
-    // disagree about a number — the same reason `buildRiskTagsByCompanyId`
-    // exists. `IND_GOV_CLIMATE_SCORE` has no inputs and a formula of literally
-    // `38`, so it fed an immovable amber cell into every company's composite.
-    const scoringCells = excludeNonScoringCells(data.cells, data.indicators);
+    // 11.66 — a CONSTANT indicator must not enter a risk score.
+    // `IND_GOV_CLIMATE_SCORE` has no inputs and a formula of literally `38`, so
+    // it fed an immovable amber cell into every company's composite.
+    // 11.71 — nor may the informational `governance` legal/compliance
+    // indicators, by product directive: court cases and audit findings are real
+    // and stay fully visible in this very grid, they simply are not terms in a
+    // FINANCIAL score.
+    //
+    // Marking rather than filtering (11.71): the flag rides on the cell into
+    // `computeCompositeScore`, which is the only place the rule is enforced. It
+    // now covers Panel 3's badge, the AI subscriptions, both export buttons and
+    // the alert engine — all of which computed a composite from the same
+    // `data.cells` and none of which called the 11.66 filter, so this screen was
+    // already showing two different numbers for one company. The matrix API
+    // stamps the same flag server-side; re-stamping here is idempotent and
+    // keeps the terminal correct against a payload from an older deploy.
+    const scoringCells = markNonScoringCells(data.cells, data.indicators);
     const leafById = computeCompositeByCompany(scoringCells, undefined, riskTagsByCompanyId);
     return deriveParentComposites(data.companies, leafById);
   }, [data, companyTree]);

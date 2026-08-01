@@ -1626,7 +1626,8 @@
     "aiPdfAnalyst": "Analyst",
     "aiPdfFooterWithPlan": "Generated from data in \"{plan}\". Not audited. For internal review only.",
     "aiPdfFooterNoPlan": "Generated from data in the selected budget plan. Not audited. For internal review only.",
-    "aiPdfExportFailed": "Failed to export PDF"
+    "aiPdfExportFailed": "Failed to export PDF",
+    "pnlMarginCaption": "margin"
   },
   "onboardingDashboard": {
     "title": "Onboarding Completeness",
@@ -3785,53 +3786,10 @@
       "safetyTitle": "Viewing this page is read-only; workflow actions are not.",
       "safetyBody": "Selecting a file is local, but Analyze can upload its contents, call a paid AI provider, and create preview or staging records. Apply writes imported financial data. Cleanup is a separate destructive workflow that can archive or delete scoped data. Use each action only with the correct file, authority, and explicit intent."
     },
-    "reset": {
-      "title": "Import cleanup before re-load",
-      "description": "Clear a company/year safely before re-importing. Preview counts first; the write path is the same audited Data Archive reset, with recompute after commit.",
-      "openFullArchive": "Full archive",
-      "defaultReason": "Clear scoped import data before AI re-import",
-      "scopeLabel": "Company / holding",
-      "scopePlaceholder": "Pick company or holding",
-      "holdingGroupLabel": "Holdings",
-      "companyGroupLabel": "Companies",
-      "holdingOption": "{name} — whole holding ({count} entities)",
-      "yearLabel": "Year",
-      "allYearsPlaceholder": "All years",
-      "reasonLabel": "Audit reason",
-      "previewReset": "Preview reset",
-      "previewRunning": "Previewing...",
-      "resetAndReimport": "Reset and re-import",
-      "rollbackSafePath": "Rollback safe path",
-      "rollbackTitle": "Exact last-import rollback needs source-level provenance; this uses the safe scoped reset path.",
-      "yearError": "Year must be blank or a number between 2000 and 2100.",
-      "scopeLine": "Scope: {scope} · {count} entities · {year}",
-      "allYears": "all years",
-      "previewTitle": "Preview: {rows} row(s) / keys will be affected",
-      "previewResetHint": "Archive/reset the selected company scope only.",
-      "previewReimportHint": "After reset succeeds, upload the replacement workbook below.",
-      "previewRollbackHint": "Safe rollback resets the selected company/year, then you re-import the correct file.",
-      "wholeHoldingPreviewNote": "Whole-holding reset: all {count} selected entities are included, plus company-less orphan budget lines when present.",
-      "wholeHoldingFallback": "Whole holding",
-      "breakdown": {
-        "budgetLine": "P&L",
-        "balanceSheetLine": "Balance sheet",
-        "cashFlowEntry": "Cash flow",
-        "counterparty": "Counterparties",
-        "operationalFact": "Import facts",
-        "budgetActual": "Budget actuals",
-        "settingsKeys": "Settings keys",
-        "orphanBudgetLine": "Orphan P&L"
-      },
-      "irreversibleNote": "P&L, BS, CF and counterparties are archived and restorable. Import facts, budget actuals and settings tails are deleted; restore them by re-importing. Manual/inline facts are preserved.",
-      "confirmLabel": "Type \"{value}\" to confirm",
-      "confirmReset": "Confirm reset",
-      "confirmResetAndReimport": "Confirm reset, then re-import",
-      "confirmRollbackSafePath": "Confirm safe rollback",
-      "resetRunning": "Resetting...",
-      "successTitle": "Reset complete: {rows} affected",
-      "successRecompute": "Recomputed indicators: {n}",
-      "uploadReplacementHint": "Now upload the replacement workbook in the import tabs below.",
-      "error": "Error: {msg}"
+    "cleanup": {
+      "title": "Do you need to delete anything first?",
+      "body": "No. Uploading a file again replaces the years and companies that file covers — the old rows for those years are removed automatically. Delete data only when you want it gone from the system entirely.",
+      "link": "Delete data"
     },
     "tabs": {
       "ariaLabel": "AI Import mode",
@@ -4389,13 +4347,15 @@
     }
   },
   "adminDataArchive": {
-    "title": "Data Archive",
-    "description": "Archiving hides data from the HeatMap, recompute and reports but does not physically delete it. Restore is available within 90 days. All actions are recorded in the audit trail for IFRS audit.",
-    "historyTitle": "Archive history (last 20)",
-    "historyEmpty": "No archive actions recorded yet.",
+    "title": "Delete and restore data",
+    "description": "Deleting removes data from the risk matrix, from indicator calculations and from reports. Some of it can be brought back from this page; some comes back only when you upload the file again; some is gone for good. Every action is written to the audit trail. This page shows which is which before you confirm.",
+    "metaTitle": "Delete data · Admin · BudgetPro",
+    "historyTitle": "Recent deletions and restores (last 20)",
+    "historyEmpty": "Nothing has been deleted or restored yet.",
     "scopeAll": "all",
-    "actionArchive": "archive",
-    "actionRestore": "restore",
+    "actionArchive": "archived",
+    "actionRestore": "restored",
+    "actionDelete": "deleted",
     "systemActor": "system",
     "col": {
       "when": "When",
@@ -4406,58 +4366,240 @@
       "who": "Who",
       "reason": "Reason"
     },
-    "form": {
-      "modeLabel": "Action",
-      "modeArchive": "Archive (hide from calculations)",
-      "modeRestore": "Restore (bring back hidden rows)",
-      "entityKindLabel": "Data type",
-      "entityKind": {
-        "BudgetLine": {
-          "label": "Budget lines (P&L)",
-          "description": "Revenue / COGS / OPEX. Archiving removes them from indicator calculations and HeatMap."
-        },
-        "BalanceSheetLine": {
-          "label": "Balance Sheet rows",
-          "description": "Assets / Liabilities / Equity. Archiving removes them from the balance. Scope = year, not company."
-        },
-        "CashFlowEntry": {
-          "label": "Cash Flow entries",
-          "description": "Inflows / outflows. Scope = year (org-level); company is not applied."
-        },
-        "Counterparty": {
-          "label": "Counterparties (customers/suppliers)",
-          "description": "Top-N customers + suppliers. Affects HHI concentration and customer-supplier risk."
-        }
-      },
-      "companyLabel": "Company",
-      "companyPickerPlaceholder": "— pick —",
-      "yearLabel": "Year",
-      "periodLabel": "Period (e.g. 2026 or 2026-Q1)",
-      "reasonLabel": "Reason (for audit trail)",
-      "reasonPlaceholder": "E.g.: mistakenly imported 2025 rows, replacing with actuals",
-      "confirmLabel": "Type \"{value}\" to confirm",
-      "submitArchive": "Archive",
-      "submitRestore": "Restore",
-      "submitRunning": "Running…",
-      "resultOk": "Done. {action} {rows} rows. Page will refresh…",
-      "resultArchived": "Archived",
-      "resultRestored": "Restored",
-      "resultError": "Error: {msg}",
-      "resetLabel": "🧹 Full company data reset (everything, no leftovers)",
-      "resetDesc": "Clears EVERYTHING an import wrote for one company: financials (P&L/BS/CF) + counterparties (archived, reversible) + import-sourced operational facts + audit/court/risk/land/CAPEX in settings (deleted). Manually-entered facts (manual/inline) are kept. Year optional (blank = all years). Indicators recompute after the reset. Irreversible for facts/settings — restored by re-importing.",
-      "resetRestoreNote": "A full reset is irreversible for facts/settings — archive only (restore = re-import).",
-      "yearOptionalAllYears": "(optional — blank = all years)",
-      "companyOptionalOrgYear": "(optional — blank = whole org for the year)",
-      "orgWideOption": "— whole organization (org-wide) —",
-      "resultReset": "Reset: {rows} rows (no leftovers)",
-      "breakdownRecomputed": "↻ indicators recomputed: {n}",
-      "cfUnattributableNote": "⚠️ {count} Cash Flow rows this year have no company prefix in sourceId (manual / non-import) — they can't be attributed to a company, so they were NOT touched. Use an org-wide archive or edit them manually.",
-      "submitReset": "🧹 Reset — delete everything (no leftovers)",
-      "selectAllHolding": "Whole group (all companies)",
-      "selectedCount": "Selected: {n}",
-      "resultCompaniesReset": "companies reset: {n}"
+    "entity": {
+      "Company": "Company data",
+      "BudgetLine": "Profit & loss lines",
+      "BalanceSheetLine": "Balance sheet rows",
+      "CashFlowEntry": "Cash flow rows",
+      "Counterparty": "Customers and suppliers",
+      "unknown": "Other"
+    }
+  },
+  "adminDataDelete": {
+    "intro": "Removing data is a separate decision from importing it. You do not need to delete anything before uploading a file again — a new import replaces the years and companies it covers on its own. Use this page only when you want data to disappear from the system.",
+    "introLink": "Go to Data import",
+    "chooser": {
+      "question": "What do you want to do?"
     },
-    "metaTitle": "Archive · Admin · BudgetPro"
+    "task": {
+      "clearYears": {
+        "title": "Clear figures for a year",
+        "body": "The numbers for one or more years are wrong and you want them gone. You pick the companies, the years, and what exactly goes.",
+        "cta": "Clear a year"
+      },
+      "removeCompany": {
+        "title": "Remove one company's data",
+        "body": "A company was closed, sold, or loaded by mistake. This removes everything ever imported for it, for every year.",
+        "cta": "Remove a company's data"
+      },
+      "restore": {
+        "title": "Bring back deleted data",
+        "body": "See what was deleted recently and bring back what can be brought back.",
+        "cta": "Bring something back"
+      },
+      "deleteAll": {
+        "title": "Delete everything and start clean",
+        "body": "Empties the whole group: every company, every year, plus the group-wide sales forecast and the compliance records held against each company. Used before a fresh start.",
+        "cta": "Delete everything"
+      }
+    },
+    "dangerDivider": "Cannot be undone",
+    "breadcrumb": {
+      "root": "Delete data",
+      "change": "Choose a different task"
+    },
+    "step": {
+      "companies": "1. Which companies?",
+      "years": "2. Which years?",
+      "what": "3. What exactly?",
+      "check": "4. Check before you delete"
+    },
+    "companies": {
+      "search": "Search by name or code",
+      "selectAll": "Select all ({count})",
+      "selected": "Selected: {count}",
+      "noData": "no data yet",
+      "dataRange": "data for {from}–{to}",
+      "dataOneYear": "data for {year} only",
+      "allSelectedNote": "You have selected every company. Two group-level things will also be removed for the years you pick: the sales forecast by department, and old rows that are not linked to any company. Both are listed in the check below."
+    },
+    "years": {
+      "question": "Pick one or more years. The numbers are the financial rows held for that year; the exact count is shown at step 4.",
+      "chip": "{year} · {rows} rows",
+      "allChip": "All years · {rows} rows",
+      "allChipNote": "\"All years\" also covers rows the chips above do not break down by year — the operational figures and the sales plan. Audit findings, court cases and other year-less records are not deleted; those belong to \"Remove one company's data\".",
+      "locked": "{year} · closed",
+      "lockedTooltip": "{year} was closed by {who} on {date} — \"{reason}\". Nothing can be deleted for it.",
+      "lockLink": "Go to period locks",
+      "allYearsLocked": "An \"all years\" delete would cover closed periods too, so it is refused. Pick specific open years, or release the lock first.",
+      "noIndex": "The selected companies hold no year-tagged financial rows — the data they do have is not split by year. Pick «All years»; the exact count is at step 4.",
+      "allChipNoIndex": "All years"
+    },
+    "what": {
+      "everything": "Everything for those years",
+      "statements": "Only the financial statements",
+      "statementsHint": "Profit & loss, balance sheet, cash flow, customers and suppliers.",
+      "operational": "Only the operational figures and actuals loaded from files",
+      "operationalHint": "Tonnes, hectares, headcount, and actuals loaded from files. Figures typed in by hand are not touched. Leaves the statements alone.",
+      "exact": "Choose exactly",
+      "exactHint": "Tick the kinds of data you want gone. The number on the right is the total across all years — the exact count for the years you picked is shown at step 4.",
+      "indicatorsLocked": "Always included. Calculated indicators are cleared together with the data they are calculated from and recalculated straight away — from whatever data is left. Where the source data goes too, they come back empty.",
+      "manualActuals": "Also delete actuals that were typed in by hand ({count}). Uploading a file again will not bring these back.",
+      "recordsNote": "Audit findings, court cases, the risk register, land, capital plans and the strategy text are not stored by year, so a year-by-year delete never touches them. To remove those, use \"Remove one company's data\".",
+      "zeroHint": "0 — no data of this kind right now."
+    },
+    "category": {
+      "budgetLine": "Profit & loss lines (revenue, cost, expenses)",
+      "balanceSheetLine": "Balance sheet rows",
+      "cashFlowEntry": "Cash flow rows",
+      "counterparty": "Customers and suppliers",
+      "operationalFact": "Operational figures from the file (tonnes, hectares, headcount)",
+      "budgetActualImported": "Actuals loaded from a file",
+      "budgetActualManual": "Actuals typed in by hand",
+      "salesBudgetLine": "Sales plan by product",
+      "salesForecast": "Sales forecast by department (whole group)",
+      "indicatorValue": "Calculated indicators and their colours",
+      "orphanBudgetLine": "Old rows not linked to any company",
+      "recordsCompliance": "Audit findings, court cases and the risk register",
+      "complianceWriteBacks": "Statuses, owners, deadlines and comments you entered on audit findings",
+      "recordsAssets": "Land plots and capital-expenditure plans",
+      "recordsDescription": "Company description and strategy text",
+      "unknown": "Other data"
+    },
+    "unit": {
+      "rows": "{count} rows",
+      "items": "{count} records"
+    },
+    "check": {
+      "button": "Check what will be deleted",
+      "running": "Counting…",
+      "again": "Check again",
+      "checkedAt": "Checked at {time}",
+      "stale": "These numbers are a few minutes old. Check again before you delete."
+    },
+    "radius": {
+      "headlineRecoverableClause": "{recoverable} rows can be brought back from this page.",
+      "headlinePermanentClause": "{permanent} rows are gone for good.",
+      "scope": "Across {companies, plural, one {# company} other {# companies}} and {years, plural, one {# year} other {# years}}.",
+      "scopeAllYears": "Across {companies, plural, one {# company} other {# companies}}, every year.",
+      "group": {
+        "recoverable": "Can be brought back from this page",
+        "permanent": "Gone for good — no file brings this back",
+        "reimport": "Comes back only if you upload that file again",
+        "recomputed": "Deleted and recalculated automatically",
+        "archived": "Removed from the system, kept in the database — not recoverable from this page"
+      },
+      "zeroCollapse": "{count} other categories have nothing to delete",
+      "truth": "This list is the exact result of a count run against the system a moment ago. Nothing outside this list is deleted. Two things do change afterwards: the indicators for these companies are recalculated, and the alert history for the affected periods is rebuilt across the whole group.",
+      "caveat": {
+        "salesForecast": "Only departments present in the new file are recreated. A department missing from the file stays deleted.",
+        "counterparty": "Quarterly and monthly rows are brought back one period at a time.",
+        "orphan": "These cannot be brought back from this page — recovering them needs technical support.",
+        "archivedSupport": "A delete covering several years, or every year, does not appear in the restore list. Only technical support can bring these rows back.",
+        "retention": "This is not a permanent archive. A nightly clean-up removes archived rows about {days} days after the delete, and after that not even technical support can bring them back. Restore within that window, or upload the file again."
+      },
+      "recordsKept": "Audit findings, court cases, the risk register, land, capital plans and the strategy text are kept. A year-by-year delete never touches them.",
+      "headlineLead": "{rows} rows will be deleted",
+      "headlineReimportClause": "{reimport} rows only come back if you upload the file again.",
+      "headlineRecomputedClause": "{recomputed} rows are recalculated automatically and need nothing from you.",
+      "headlineRecordsOnlyLead": "No financial rows will be deleted — only {records} records will be removed",
+      "headlineArchivedClause": "{archived} rows leave the system but stay in the database — they cannot be brought back from this page.",
+      "headlineRecordsClause": "Plus {records} records — these are not counted in the rows.",
+      "headlineRecordsPermanentClause": "{permanent} of those records are gone for good.",
+      "headlineRecomputedEmptyClause": "{recomputed} rows are deleted and recalculated at once — but the data they are calculated from is going too, so they come back empty and the risk matrix stays grey until you upload the file again."
+    },
+    "zero": {
+      "emptyCompany": "{company} has no imported data yet. There is nothing to delete — upload a file in Data import.",
+      "emptyHolding": "The whole group is already empty. There is nothing left to delete.",
+      "emptySelection": "Everything you selected is already empty. There is nothing to delete."
+    },
+    "reason": {
+      "label": "Why are you deleting this? (kept in the audit trail)",
+      "placeholder": "For example: 2025 was loaded from the draft file, we are replacing it with the signed accounts.",
+      "tooShort": "Write one short sentence — this is what an auditor will read.",
+      "chip": {
+        "wrongFile": "Wrong file imported",
+        "duplicate": "Data loaded twice",
+        "freshYear": "Starting a fresh year"
+      }
+    },
+    "confirm": {
+      "tokenLabel": "Type {code} to confirm",
+      "tokenHintCompany": "This is the company's code. Typing it says you mean this company and no other.",
+      "tokenHintAll": "This covers more than one company, or every year.",
+      "permanentTick": "I understand: {label} — {count} — will be gone for good.",
+      "arming": "Available in {seconds} s",
+      "blocked": "To delete: write the reason and type {code} in the confirmation field."
+    },
+    "submit": {
+      "rows": "Delete {rows} rows",
+      "rowsPermanent": "Delete {rows} rows ({permanent} of them permanently)",
+      "company": "Delete everything for {company}",
+      "everything": "Delete everything — {companies} companies, all years",
+      "running": "Deleting…",
+      "runningNote": "This can take up to two minutes for the whole group. Do not close this page."
+    },
+    "hardStop": {
+      "title": "That is the same as \"Delete everything\".",
+      "body": "You have selected every company and every year. Use the \"Delete everything\" task — it exists so this is never done by accident.",
+      "cta": "Go to Delete everything"
+    },
+    "result": {
+      "done": {
+        "title": "Done. {rows} rows deleted across {companies} companies.",
+        "recompute": "Indicators were recalculated ({count} values).",
+        "goImport": "Go to Data import",
+        "reimport": "{rows} of those only come back when you upload the file again. If you do not have that file, check now.",
+        "records": "Plus {records} records deleted — audit findings, court cases and the entries made on them."
+      },
+      "partial": {
+        "title": "Partly done — some data was deleted, some was not.",
+        "deleted": "Deleted: {list}",
+        "untouched": "Not deleted: {list}. The figures of these companies are unchanged — nothing was removed from them.",
+        "orphan": "The group-level clean-up did not finish, so some old unlinked rows are still there. Running this again is safe and will finish the job.",
+        "retry": "Try again for the {count} companies that failed"
+      },
+      "drift": "The numbers changed while you were reading them. Nothing was deleted. Here is the current count — check it before you continue.",
+      "rateLimited": "Too many delete operations in the last minute. You can try again in {seconds} s.",
+      "locked": "Nothing was deleted. {year} is a closed period.",
+      "failed": "The delete did not start. Nothing was changed. Check again before retrying.",
+      "failedDetail": "Technical detail (for support):",
+      "driftNumbers": "When you checked: {expected} rows · Now: {actual} rows"
+    },
+    "removeCompany": {
+      "fixedScope": "All years — everything ever imported for this company.",
+      "permanentNote": "This also removes the audit findings, court cases and risk register recorded against this company. Those records come back if you upload that file again — but the statuses, owners, deadlines and comments you entered on them do not, and nothing restores those.",
+      "keptNote": "The company itself stays in the system — it is not removed from the company list, the chart of accounts, or user access. One kind of data also stays: operational figures typed in by hand rather than loaded from a file. No task on this page removes those, and they keep feeding the indicators — delete them on the indicator-health screen."
+    },
+    "deleteAll": {
+      "intro": "This empties the whole group. Every company below, every year, plus the two group-level items that belong to no single company.",
+      "groupLevel": "{name} — group level",
+      "counting": "Counting everything in the system…",
+      "keptNote": "What stays: the companies themselves, the chart of accounts, the indicator definitions, and users. Everything else goes — not only the figures, but the audit findings, court cases, the risk register, land, capital plans and the strategy text. The structure remains and the system opens as an empty budget."
+    },
+    "restore": {
+      "empty": "Nothing has been deleted recently.",
+      "willReturn": "What this operation can bring back:",
+      "willNotReturn": "This will not bring back:",
+      "cta": "Bring it back",
+      "running": "Bringing it back…",
+      "done": "Brought back {rows} rows.",
+      "multiCall": "This runs as {count} separate operations, one after another.",
+      "emptyNotRestorable": "None of the recent deletions can be brought back from this page. Part of what they removed returns when you upload the file again; the rest — hand-entered figures, and rows from deletions covering several years — can only be recovered by technical support.",
+      "doneNothing": "Nothing came back — those rows are no longer in the archive. Either they have already been restored, or the nightly clean-up has removed them. To get the figures back, upload the file again.",
+      "noRecompute": "Indicators are not recalculated automatically. The rows come back, but the figures in the risk matrix return only after the next calculation.",
+      "widerCaveat": "This brings back exactly the rows that one deletion removed — not an earlier deletion, and not the earlier version a re-import left in the archive. If the year has been imported again since, the returning rows will sit next to the current ones, so check the profit & loss against the source file straight afterwards.",
+      "retention": "Deletions older than about {days} days may already have been cleaned up. The entry stays in this list, but there can be nothing left to bring back.",
+      "fate": {
+        "reimport": "comes back only when you upload that file again",
+        "permanent": "nothing brings this back — not this page, not the file",
+        "recomputed": "rebuilt by the next calculation, not by this restore"
+      },
+      "legacy": {
+        "title": "This one cannot be brought back from this page",
+        "body": "It was recorded before the system started writing down which rows each deletion took. The same year is usually imported several times, and every import leaves the version it replaced in the archive — so a restore here could only bring all of those versions back at once and multiply the figures. Upload the file for that year again instead."
+      }
+    }
   },
   "adminDataSources": {
     "title": "Data Sources Catalog",
@@ -4617,8 +4759,8 @@
         "desc": "Per-company 7-area scoring with tiers (complete/good/partial/thin/empty). CSV export."
       },
       "dataArchive": {
-        "title": "Data Archive",
-        "desc": "Self-service archive & restore: budget lines, balance sheet, cash flow, counterparties."
+        "title": "Delete data",
+        "desc": "Delete figures for a year, remove a company, or empty the group — with a count before you confirm, and restore for what can come back."
       },
       "intelHealth": {
         "title": "Intel Health",

@@ -7,8 +7,10 @@
  * `deletedBy: String?` to four tables (`budget_lines`,
  * `balance_sheet_lines`, `cash_flow_entries`, `counterparties`). Rows
  * with `deletedAt != null` are archived — invisible to the HeatMap,
- * recompute pipeline and exports, but recoverable within the 90-day
- * retention window via the admin Archive UI.
+ * recompute pipeline and exports, but recoverable via the admin Delete data
+ * UI within the retention window the purge job enforces
+ * (`SOFT_DELETE_RETENTION_DAYS`, 30 days). This header said 90 for two
+ * months; that number never existed anywhere but in prose.
  *
  * Compliance / finance trust posture: the archive is a non-destructive
  * operation. IFRS / tax / audit retention rules require 7-year history,
@@ -97,19 +99,27 @@ export function restoreStamp(): {
 }
 
 /**
- * Days an archived row stays in the table before the cleanup job
- * physically deletes it. Mirrors the `BudgetPlan.deletedAt` retention
- * convention noted in the schema comment.
+ * 2026-07-31 — `SOFT_DELETE_RETENTION_DAYS = 90` and `softDeletePurgeCutoff()`
+ * used to live here. Nothing called them but their own test.
+ *
+ * The job that actually purges soft-deleted rows uses `SOFT_DELETE_TTL_MS` in
+ * `src/lib/cleanup/soft-delete-cleanup.ts`, and that is **30** days. So the
+ * codebase carried two retention windows, and the one the UI quoted at the
+ * user ("Restore is available within 90 days") was the dead one — a promise
+ * three times longer than the system keeps. Overstating recoverability on a
+ * delete screen is the worst direction to be wrong in.
+ *
+ * The NAME is back below — re-exported, not redefined, and therefore 30. One
+ * constant, one value, one owner.
+ *
+ * The Delete data screen briefly printed no day count at
+ * all — which was the other kind of wrong: "can be brought back from this
+ * page", with no window named, reads as an offer that never expires, while a
+ * nightly job removes the rows. It prints the window again as of 2026-07-31,
+ * DERIVED from `SOFT_DELETE_RETENTION_DAYS` rather than typed into a
+ * catalogue, so the copy cannot drift from the cron a second time.
  */
-export const SOFT_DELETE_RETENTION_DAYS = 90
-
-/**
- * Compute the cutoff `Date` past which an archived row is eligible
- * for physical purge. The cleanup job (not in this module) calls
- * this to scope its `deleteMany` to old archives only.
- */
-export function softDeletePurgeCutoff(now: Date = new Date()): Date {
-  const cutoff = new Date(now)
-  cutoff.setUTCDate(cutoff.getUTCDate() - SOFT_DELETE_RETENTION_DAYS)
-  return cutoff
-}
+export {
+  SOFT_DELETE_TTL_MS,
+  SOFT_DELETE_RETENTION_DAYS,
+} from "@/lib/cleanup/soft-delete-cleanup"

@@ -371,3 +371,63 @@ describe("TrendPoint typing", () => {
     expect(validBands).toHaveLength(5);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 11.71 — legal/compliance must not move the trend line either
+// ---------------------------------------------------------------------------
+
+/**
+ * The board deck renders this 12-month line directly UNDER the hero composite.
+ * They are computed from two different queries, so the scoring rule has to be
+ * threaded here explicitly — this builder reads raw `IndicatorValue` rows by id
+ * and never sees an `IndicatorDefinition`. Caller supplies the id set from
+ * `nonScoringIndicatorIds`; `buildBoardSnapshot` exposes it precomputed so the
+ * deck page and the PPTX route cannot resolve it differently.
+ *
+ * Product directive (11.71), not a bug fix: court cases and audit findings are
+ * informational and must not interact with the financial part.
+ */
+describe("buildTrendSeries — non-scoring indicators (11.71)", () => {
+  const rowsFor = (period: string) => [
+    { companyId: "co_1", indicatorId: "fin_1", value: 1, status: "green", period },
+    { companyId: "co_1", indicatorId: "gov_1", value: 9, status: "red", period },
+    { companyId: "co_1", indicatorId: "gov_2", value: 9, status: "red", period },
+  ];
+
+  function run(nonScoring?: ReadonlySet<string>) {
+    const findMany = vi
+      .fn()
+      .mockResolvedValue([...rowsFor("2026-03"), ...rowsFor("2026-04")]);
+    return buildTrendSeries(
+      {
+        organizationId: "org_1",
+        currentPeriod: "2026-04",
+        operationalIds: ["co_1"],
+        indicatorIds: ["fin_1", "gov_1", "gov_2"],
+        ...(nonScoring ? { nonScoringIndicatorIds: nonScoring } : {}),
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { prisma: { indicatorValue: { findMany } } as any, monthsBack: 2 },
+    );
+  }
+
+  it("excludes governance cells from every month of the series", async () => {
+    const result = await run(new Set(["gov_1", "gov_2"]));
+    // One green financial cell per month → 100. Ungated this is round(100/3)=33.
+    expect(result.map((p) => p.score)).toEqual([100, 100]);
+    expect(result.every((p) => p.band === "green")).toBe(true);
+  });
+
+  it("without the set nothing is excluded (back-compat default)", async () => {
+    const result = await run();
+    expect(result.map((p) => p.score)).toEqual([33, 33]);
+  });
+
+  it("applies the CURRENT rule to history, so the line has no artificial step", async () => {
+    // Same treatment as `weightByIndicatorId`: re-scoring history under today's
+    // formula is the point. A rule that switched on mid-series would draw a
+    // cliff no company actually walked off.
+    const result = await run(new Set(["gov_1", "gov_2"]));
+    expect(new Set(result.map((p) => p.score)).size).toBe(1);
+  });
+});

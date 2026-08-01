@@ -246,6 +246,13 @@ export function AISubscriptions() {
     const riskTagsByCompanyId = companyTree
       ? buildRiskTagsByCompanyId(companyTree)
       : undefined;
+    // 11.71 — the "SAME composite the HeatMap shows" claim above holds because
+    // `matrix.cells` carry the `scoring` flag from the API and
+    // `computeCompositeScore` enforces it (constants + the informational
+    // legal/compliance indicators the owner directed out of the financial
+    // score). A user rule «fire when EDEN composite < 90» must not fire on a
+    // number no screen renders — which is what happened while the exclusion was
+    // a caller-side filter this component never called.
     return computeCompositeByCompany(
       matrix.cells,
       matrix.companies.map((c) => c.id),

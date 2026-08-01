@@ -15,6 +15,10 @@ function makePrisma() {
     // radius (the exact way it used to mislead).
     salesBudgetLine: { count: vi.fn() },
     indicatorValue: { count: vi.fn() },
+    // 2026-07-31 — `salesForecast` is deleted by the whole-holding commit
+    // path and used to be counted by nobody. Absent from this mock, the
+    // preview could not even have tried.
+    salesForecast: { count: vi.fn(async () => 0) },
   }
 }
 
@@ -46,18 +50,31 @@ describe("previewCompanyImportReset", () => {
       year: 2026,
     })
 
-    expect(preview.rowsAffected).toBe(42)
+    expect(preview.rowsAffected).toBe(40)
     expect(preview.breakdown).toMatchObject({
       budgetLine: 10,
       balanceSheetLine: 4,
       cashFlowEntry: 3,
       counterparty: 2,
       operationalFact: 5,
-      budgetActual: 1,
+      // Imported vs hand-entered are separate lines now: only the imported
+      // ones come back from a re-upload, and only they are deleted by
+      // default. Counting them together made an unrecoverable loss look
+      // like a routine one.
+      budgetActualImported: 1,
       salesBudgetLine: 6,
       indicatorValue: 9,
-      settingsKeys: 2,
     })
+    expect(prisma.budgetActual.count.mock.calls[0][0].where).toMatchObject({
+      source: { not: null },
+    })
+    // 2026-07-31 — a YEAR-scoped preview reports no records at all. The
+    // records (audit findings, court cases, risk register, land, capex,
+    // strategy text) carry no year of their own, so a year-scoped delete
+    // has no claim on them — and after this phase the reset agrees.
+    expect(preview.breakdown.recordsCompliance).toBeUndefined()
+    expect(preview.breakdown.recordsAssets).toBeUndefined()
+    expect(preview.breakdown.settingsKeys).toBeUndefined()
     // SalesBudgetLine carries no companyId — the scope has to travel through
     // the entity-namespaced ProductLine.code.
     expect(prisma.salesBudgetLine.count.mock.calls[0][0].where).toMatchObject({
@@ -194,5 +211,195 @@ describe("previewCompanyImportReset", () => {
       where: { planId: { in: string[] } }
     }
     expect(countWhere.where.planId.in.sort()).toEqual(["plan_june", "plan_q1"])
+  })
+
+  // ── 2026-07-31 — the table the preview forgot ────────────────────────
+  //
+  // `resetOrgSalesForecast` is fired by the whole-holding commit path
+  // (route.ts) and `salesForecast` appeared in NO preview. The operator read
+  // nine confident numbers, confirmed, and watched the group's sales forecast
+  // disappear — the one table whose absence is visible on the first screen
+  // anyone opens afterwards. The preview's own comment demanded parity.
+  function wholeHolding(prisma: ReturnType<typeof makePrisma>) {
+    prisma.company.findMany
+      .mockResolvedValueOnce([
+        { id: "c1", code: "A", settings: {} },
+        { id: "c2", code: "B", settings: {} },
+      ])
+      .mockResolvedValueOnce([{ code: "A" }, { code: "B" }])
+    prisma.budgetLine.count.mockResolvedValue(0)
+    prisma.balanceSheetLine.count.mockResolvedValue(0)
+    prisma.cashFlowEntry.count.mockResolvedValue(0)
+    prisma.counterparty.count.mockResolvedValue(0)
+    prisma.operationalFact.count.mockResolvedValue(0)
+    prisma.budgetActual.count.mockResolvedValue(0)
+    prisma.salesBudgetLine.count.mockResolvedValue(0)
+    prisma.indicatorValue.count.mockResolvedValue(0)
+    prisma.budgetLine.findMany.mockResolvedValue([])
+  }
+
+  it("counts the org-wide sales forecast the whole-holding reset deletes", async () => {
+    const prisma = makePrisma()
+    wholeHolding(prisma)
+    prisma.salesForecast.count = vi.fn(async () => 24) as never
+
+    const preview = await previewCompanyImportReset({
+      prisma: prisma as never,
+      organizationId: "org1",
+      companyCodes: ["A", "B"],
+      year: 2026,
+    })
+
+    expect(preview.isWholeHolding).toBe(true)
+    expect(preview.breakdown.salesForecast).toBe(24)
+    expect(preview.rowsAffected).toBe(24)
+    const call = (prisma.salesForecast.count as unknown as {
+      mock: { calls: Array<[{ where: Record<string, unknown> }]> }
+    }).mock.calls[0][0]
+    expect(call.where).toEqual({ organizationId: "org1", year: 2026 })
+  })
+
+  it("does NOT count the sales forecast for a partial selection", async () => {
+    // The route only sweeps it on a whole-holding reset, because the table
+    // has no company dimension at all. A partial preview that showed it
+    // would be promising a deletion that never happens.
+    const prisma = makePrisma()
+    prisma.company.findMany
+      .mockResolvedValueOnce([{ id: "c1", code: "A", settings: {} }])
+      .mockResolvedValueOnce([{ code: "A" }, { code: "B" }])
+    prisma.budgetLine.count.mockResolvedValue(0)
+    prisma.balanceSheetLine.count.mockResolvedValue(0)
+    prisma.cashFlowEntry.count.mockResolvedValue(0)
+    prisma.counterparty.count.mockResolvedValue(0)
+    prisma.operationalFact.count.mockResolvedValue(0)
+    prisma.budgetActual.count.mockResolvedValue(0)
+    prisma.salesBudgetLine.count.mockResolvedValue(0)
+    prisma.indicatorValue.count.mockResolvedValue(0)
+    prisma.salesForecast.count = vi.fn(async () => 24) as never
+
+    const preview = await previewCompanyImportReset({
+      prisma: prisma as never,
+      organizationId: "org1",
+      companyCodes: ["A"],
+    })
+
+    expect(preview.isWholeHolding).toBe(false)
+    expect(preview.breakdown.salesForecast).toBeUndefined()
+    expect(prisma.salesForecast.count).not.toHaveBeenCalled()
+  })
+
+  it("reports the records tail only on an ALL-YEARS scope, grouped and named", async () => {
+    const prisma = makePrisma()
+    prisma.company.findMany
+      .mockResolvedValueOnce([
+        {
+          id: "c1",
+          code: "A",
+          settings: {
+            courtDisputes: [],
+            auditFindings: {
+              items: [
+                { id: 1, closed: true },
+                { id: 2, comments: ["late"] },
+                { id: 3 },
+              ],
+            },
+            landParcels: [],
+            strategicDescription: "x",
+          },
+        },
+      ])
+      .mockResolvedValueOnce([{ code: "A" }, { code: "B" }])
+    prisma.budgetLine.count.mockResolvedValue(0)
+    prisma.balanceSheetLine.count.mockResolvedValue(0)
+    prisma.cashFlowEntry.count.mockResolvedValue(0)
+    prisma.counterparty.count.mockResolvedValue(0)
+    prisma.operationalFact.count.mockResolvedValue(0)
+    prisma.budgetActual.count.mockResolvedValue(0)
+    prisma.salesBudgetLine.count.mockResolvedValue(0)
+    prisma.indicatorValue.count.mockResolvedValue(0)
+
+    const preview = await previewCompanyImportReset({
+      prisma: prisma as never,
+      organizationId: "org1",
+      companyCodes: ["A"],
+    })
+
+    expect(preview.breakdown).toMatchObject({
+      recordsCompliance: 2, // courtDisputes + auditFindings
+      recordsAssets: 1, // landParcels
+      recordsDescription: 1, // strategicDescription
+      // The line that matters most: statuses / owners / deadlines / comments
+      // a person entered in the Compliance Hub. No file brings these back.
+      complianceWriteBacks: 2,
+    })
+    // "Parameter keys: 4" told the operator nothing about what it was.
+    expect(preview.breakdown.settingsKeys).toBeUndefined()
+  })
+
+  it("scopes several years at once with an IN / OR, not one year at a time", async () => {
+    const prisma = makePrisma()
+    prisma.company.findMany
+      .mockResolvedValueOnce([{ id: "c1", code: "A", settings: {} }])
+      .mockResolvedValueOnce([{ code: "A" }, { code: "B" }])
+    prisma.budgetLine.count.mockResolvedValue(0)
+    prisma.balanceSheetLine.count.mockResolvedValue(0)
+    prisma.cashFlowEntry.count.mockResolvedValue(0)
+    prisma.counterparty.count.mockResolvedValue(0)
+    prisma.operationalFact.count.mockResolvedValue(0)
+    prisma.budgetActual.count.mockResolvedValue(0)
+    prisma.salesBudgetLine.count.mockResolvedValue(0)
+    prisma.indicatorValue.count.mockResolvedValue(0)
+
+    const preview = await previewCompanyImportReset({
+      prisma: prisma as never,
+      organizationId: "org1",
+      companyCodes: ["A"],
+      years: [2025, 2026],
+    })
+
+    expect(preview.years).toEqual([2025, 2026])
+    expect(prisma.budgetLine.count.mock.calls[0][0].where.plan).toEqual({
+      year: { in: [2025, 2026] },
+    })
+    expect(prisma.balanceSheetLine.count.mock.calls[0][0].where.year).toEqual({
+      in: [2025, 2026],
+    })
+    expect(prisma.counterparty.count.mock.calls[0][0].where.OR).toEqual([
+      { period: { startsWith: "2025" } },
+      { period: { startsWith: "2026" } },
+    ])
+    // The fact filter already owns its `OR` (the import-source list), so the
+    // year windows go into an `AND` — merged into one OR they would delete a
+    // manually-entered fact that happens to fall in a selected year.
+    expect(prisma.operationalFact.count.mock.calls[0][0].where.AND).toEqual([
+      {
+        OR: [
+          { date: { gte: new Date("2025-01-01T00:00:00.000Z"), lt: new Date("2026-01-01T00:00:00.000Z") } },
+          { date: { gte: new Date("2026-01-01T00:00:00.000Z"), lt: new Date("2027-01-01T00:00:00.000Z") } },
+        ],
+      },
+    ])
+  })
+
+  it("counts only what `include` names, and always adds indicators", async () => {
+    const prisma = makePrisma()
+    prisma.company.findMany
+      .mockResolvedValueOnce([{ id: "c1", code: "A", settings: {} }])
+      .mockResolvedValueOnce([{ code: "A" }, { code: "B" }])
+    prisma.balanceSheetLine.count.mockResolvedValue(4)
+    prisma.indicatorValue.count.mockResolvedValue(9)
+
+    const preview = await previewCompanyImportReset({
+      prisma: prisma as never,
+      organizationId: "org1",
+      companyCodes: ["A"],
+      year: 2026,
+      include: ["balanceSheetLine"],
+    })
+
+    expect(preview.breakdown).toEqual({ balanceSheetLine: 4, indicatorValue: 9 })
+    expect(prisma.budgetLine.count).not.toHaveBeenCalled()
+    expect(prisma.cashFlowEntry.count).not.toHaveBeenCalled()
   })
 })

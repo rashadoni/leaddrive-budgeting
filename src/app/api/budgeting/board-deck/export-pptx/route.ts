@@ -208,6 +208,8 @@ export async function GET(req: NextRequest) {
           ]),
         ),
         riskTagsByCompany: snapshot.riskTagsByCompany,
+        // 11.71 — same scoring rule as the hero metric on the cover slide.
+        nonScoringIndicatorIds: snapshot.nonScoringIndicatorIds,
       },
       { prisma },
     );

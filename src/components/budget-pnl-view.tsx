@@ -558,7 +558,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           <div className="flex items-center gap-1 mt-1">
             <ArrowUpRight className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
             <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">{grossMargin.toFixed(1)}%</span>
-            <span className="text-[10px] text-muted-foreground">margin</span>
+            <span className="text-[10px] text-muted-foreground">{t("pnlMarginCaption")}</span>
           </div>
         </div>
 
@@ -600,7 +600,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           <div className="flex items-center gap-1 mt-1">
             {ebitda >= 0 ? <ArrowUpRight className="h-3 w-3 text-purple-600 dark:text-purple-400" /> : <ArrowDownRight className="h-3 w-3 text-red-600 dark:text-red-400" />}
             <span className={`text-[10px] font-medium ${ebitda >= 0 ? "text-purple-600 dark:text-purple-400" : "text-red-600 dark:text-red-400"}`}>{ebitdaMargin.toFixed(1)}%</span>
-            <span className="text-[10px] text-muted-foreground">margin</span>
+            <span className="text-[10px] text-muted-foreground">{t("pnlMarginCaption")}</span>
           </div>
           {clientReconRow && (
             <div className="mt-1.5 flex items-center gap-1.5 text-[10px]">
@@ -646,7 +646,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           <div className="flex items-center gap-1 mt-1">
             {netProfit >= 0 ? <ArrowUpRight className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> : <ArrowDownRight className="h-3 w-3 text-red-600 dark:text-red-400" />}
             <span className={`text-[10px] font-medium ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{netMargin.toFixed(1)}%</span>
-            <span className="text-[10px] text-muted-foreground">margin</span>
+            <span className="text-[10px] text-muted-foreground">{t("pnlMarginCaption")}</span>
           </div>
         </div>
       </div>
