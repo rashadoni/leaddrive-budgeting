@@ -18,6 +18,8 @@ import {
 import { Activity, BarChart3 } from "lucide-react"
 import { BUDGET_COLORS, fmtK } from "@/lib/budget-chart-theme"
 import { cn } from "@/lib/utils"
+import type { PeriodCoverage } from "@/lib/budgeting/period-coverage"
+import { coverageNotice, tParam } from "@/lib/budgeting/period-coverage"
 import type {
   EbitdaBridgeStep,
   PnlPerformanceMetric,
@@ -51,6 +53,13 @@ interface PnlPerformanceChartsProps {
   bridge: EbitdaBridgeStep[]
   hasActuals: boolean
   notices?: string[]
+  /**
+   * 11.92 — how much of the year each side covers. Optional so every existing
+   * caller and fixture keeps rendering unchanged; absent means "say nothing",
+   * which is the pre-11.92 behaviour exactly.
+   */
+  budgetCoverage?: PeriodCoverage
+  actualCoverage?: PeriodCoverage
 }
 
 export function PnlPerformanceCharts({
@@ -58,6 +67,8 @@ export function PnlPerformanceCharts({
   bridge,
   hasActuals,
   notices = [],
+  budgetCoverage,
+  actualCoverage,
 }: PnlPerformanceChartsProps) {
   const t = useTranslations("budgeting")
   const [metric, setMetric] = useState<PnlPerformanceMetric>("ebitda")
@@ -85,6 +96,26 @@ export function PnlPerformanceCharts({
   const annualActual = hasActuals ? annual.actual : null
   const annualVariance = hasActuals ? annual.actual - annual.budget : null
   const annualExecution = hasActuals && annual.budget !== 0 ? executionPercent(annual.actual, annual.budget) : null
+  /**
+   * 11.92 — the two sides do not necessarily cover the same months, and until
+   * now nothing said so. On the client's 2026 data the budget runs Jan–Dec and
+   * the actuals stop at May, so the variance tile read `−13.9M AZN · 2%` when
+   * most of that gap is simply the seven months that have not happened. Both
+   * figures were correct; the comparison was the thing that needed a sentence.
+   *
+   * Shown only when the two spans actually differ. A caveat on every healthy
+   * page is a caveat nobody reads — the same reason `coverageNotice` returns
+   * null for a full year.
+   */
+  const spanMismatch =
+    hasActuals &&
+    budgetCoverage != null &&
+    actualCoverage != null &&
+    actualCoverage.count > 0 &&
+    actualCoverage.count !== budgetCoverage.count
+  const actualSpan = spanMismatch
+    ? coverageNotice(actualCoverage, (m) => monthShort(selectedData, m))
+    : null
   const varianceIsFavorable = activeMetric.favorable === "up"
     ? (annualVariance ?? 0) >= 0
     : (annualVariance ?? 0) <= 0
@@ -146,6 +177,17 @@ export function PnlPerformanceCharts({
             signed
           />
         </div>
+        {actualSpan && (
+          <p
+            data-testid="pnl-span-mismatch"
+            className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+          >
+            {t("pnlSpanMismatch", {
+              actual: tParam(t, actualSpan.key, actualSpan.params),
+              budgetCount: budgetCoverage?.count ?? 12,
+            })}
+          </p>
+        )}
 
         <div className="mt-4 min-w-0">
           <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={0}>
@@ -369,6 +411,15 @@ function bridgeColor(step: EbitdaBridgeStep): string {
 function formatAmount(value: number): string {
   const sign = value < 0 ? "-" : ""
   return `${sign}${fmtK(Math.abs(value))} AZN`
+}
+
+/**
+ * The label the x-axis already prints for a 1-based month. Reading it off the
+ * series rather than re-deriving it keeps the caveat and the chart in the same
+ * language and the same abbreviation style.
+ */
+function monthShort(points: PnlPerformancePoint[], month1Based: number): string {
+  return points[month1Based - 1]?.month ?? String(month1Based)
 }
 
 function executionPercent(actual: number, budget: number): number {

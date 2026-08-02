@@ -1496,7 +1496,6 @@
     "salesKpiAvgPrice": "Orta vahid qiyməti",
     "salesKpiAvgPriceHint": "Çəkili orta",
     "salesRankingTitle": "Məhsul reytinqi",
-    "pnlKpiAnnualBudget": "İllik büdcə",
     "pnlOpenSectionAria": "{section} bölməsini aç",
     "pnlOpEx": "Əməliyyat xərcləri",
     "pnlOperatingExpenses": "Əməliyyat xərcləri",
@@ -1647,7 +1646,13 @@
         "cogs": "maya dəyəri",
         "product": "məhsul"
       }
-    }
+    },
+    "coverage": {
+      "fullYear": "Tam il · 12 ay",
+      "partialRange": "{from}–{to} · 12 aydan {count}-i",
+      "partialMonths": "{months} · 12 aydan {count}-i"
+    },
+    "pnlSpanMismatch": "Bərabər olmayan dövrlərin müqayisəsi: fakt {actual}, büdcə isə bütün {budgetCount} ayı əhatə edir. Aşağıdakı kənarlaşmanın böyük hissəsi hələ baş verməmiş aylardır."
   },
   "onboardingDashboard": {
     "title": "Onboarding Tamlığı",

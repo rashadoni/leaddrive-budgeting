@@ -1496,7 +1496,6 @@
     "salesKpiAvgPrice": "Avg Unit Price",
     "salesKpiAvgPriceHint": "Weighted average",
     "salesRankingTitle": "Product Ranking",
-    "pnlKpiAnnualBudget": "Annual budget",
     "pnlOpenSectionAria": "Open the {section} section",
     "pnlOpEx": "OpEx",
     "pnlOperatingExpenses": "Operating Expenses",
@@ -1647,7 +1646,13 @@
         "cogs": "COGS",
         "product": "product"
       }
-    }
+    },
+    "coverage": {
+      "fullYear": "Full year · 12 months",
+      "partialRange": "{from}–{to} · {count} of 12 months",
+      "partialMonths": "{months} · {count} of 12 months"
+    },
+    "pnlSpanMismatch": "Not like for like: the actual covers {actual}, the budget covers all {budgetCount}. Most of the variance below is months that have not happened yet."
   },
   "onboardingDashboard": {
     "title": "Onboarding Completeness",

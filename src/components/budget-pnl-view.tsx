@@ -31,6 +31,7 @@ import {
 } from "@/features/budgeting/components/ClientReconDrawer"
 import { BudgetPnlDrillPanel, type DrillRow } from "./budget-pnl-drill-panel"
 import { PnlPerformanceCharts } from "./pnl-performance-charts"
+import { coverageOf, coverageNotice, tParam } from "@/lib/budgeting/period-coverage"
 // Phase 8 D1 (2026-05-29) — pure formatters extracted to a sibling.
 import { fmtNum, fmtCurrency, pctOfRev, varianceStr, varianceClass } from "./budget-pnl-format"
 
@@ -440,6 +441,27 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     }),
   }
 
+  // 11.92 — how much of the year each side actually covers.
+  //
+  // Derived from the SAME series the chart draws, so the caption and the bars
+  // can never disagree. `monthlyPerformance[*].budget` is always the budget
+  // plan and `.actual` always the actuals plan, regardless of which is
+  // selected above — while the KPI strip below follows the SELECTED plan's own
+  // rows, which is exactly how a five-month actual total ended up captioned
+  // "Annual budget".
+  const budgetCoverage = coverageOf(
+    Object.values(monthlyPerformance).map((pts) => pts.map((pt) => pt.budget)),
+  )
+  const actualCoverage = coverageOf(
+    Object.values(monthlyPerformance).map((pts) => pts.map((pt) => pt.actual)),
+  )
+  const monthLabel = (m: number) => MONTHS[m - 1] ?? String(m)
+  // The strip shows whichever plan is selected; its coverage is that plan's own.
+  const shownNotice = coverageNotice(
+    coverageOf([MONTHS.map((_m, i) => monthlyRevenue?.[i + 1] || 0)]),
+    monthLabel,
+  )
+
   const sumSeries = (metric: PnlPerformanceMetric, key: "budget" | "actual") =>
     monthlyPerformance[metric].reduce((sum, point) => sum + point[key], 0)
   const sumComparisonMonthly = (side: "budget" | "actual", key: keyof Omit<PnlComparisonBuckets, "hasRows">) =>
@@ -563,7 +585,14 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
             <TrendingUp className="h-3.5 w-3.5" /> {t("pnlNetRevenue")}
           </div>
           <p className="text-2xl font-bold tracking-tight text-indigo-700 dark:text-indigo-300">{fmtNum(totalRevenue)} <span className="text-sm font-normal text-muted-foreground">AZN</span></p>
-          <p className="text-[10px] text-muted-foreground mt-1">{t("pnlKpiAnnualBudget")}</p>
+          {/* 11.92 — this used to read "Annual budget" unconditionally, above a
+              figure that was neither annual nor a budget: with the Actuals plan
+              selected it captioned a five-month actual total. The card no
+              longer asserts WHICH plan this is — the page header already names
+              it — only how much of the year is in the number. */}
+          <p className="text-[10px] text-muted-foreground mt-1" data-testid="pnl-kpi-coverage">
+            {shownNotice ? tParam(t, shownNotice.key, shownNotice.params) : t("coverage.fullYear")}
+          </p>
         </div>
 
         {/* COGS */}
@@ -698,6 +727,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
 
       <PnlPerformanceCharts
         monthly={monthlyPerformance}
+        budgetCoverage={budgetCoverage}
+        actualCoverage={actualCoverage}
         bridge={ebitdaBridge}
         hasActuals={comparisonHasActuals}
         notices={comparisonMissingData}

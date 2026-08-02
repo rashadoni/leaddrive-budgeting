@@ -1496,7 +1496,6 @@
     "salesKpiAvgPrice": "Средняя цена за единицу",
     "salesKpiAvgPriceHint": "Средневзвешенная",
     "salesRankingTitle": "Рейтинг продуктов",
-    "pnlKpiAnnualBudget": "Годовой бюджет",
     "pnlOpenSectionAria": "Открыть раздел «{section}»",
     "pnlOpEx": "Операционные расходы",
     "pnlOperatingExpenses": "Операционные расходы",
@@ -1647,7 +1646,13 @@
         "cogs": "себестоимость",
         "product": "продукты"
       }
-    }
+    },
+    "coverage": {
+      "fullYear": "Полный год · 12 месяцев",
+      "partialRange": "{from}–{to} · {count} из 12 месяцев",
+      "partialMonths": "{months} · {count} из 12 месяцев"
+    },
+    "pnlSpanMismatch": "Сравнение неравных периодов: факт — {actual}, бюджет — все {budgetCount}. Большая часть расхождения ниже это месяцы, которых ещё не было."
   },
   "onboardingDashboard": {
     "title": "Полнота онбординга",
