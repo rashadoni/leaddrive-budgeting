@@ -11,6 +11,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextRequest } from "next/server"
 
 const created: Array<Record<string, unknown>> = []
+/** What the target cell already holds, for the `setTo` tests. */
+let currentCellTotal = 0
 const audited: Array<Record<string, unknown>> = []
 const getSessionMock = vi.fn()
 const activeLock = vi.fn()
@@ -42,6 +44,9 @@ vi.mock("@/lib/db/with-org-scope", () => ({
           where.id === "plan-ok" ? { id: "plan-ok", year: 2026 } : null,
       },
       budgetLine: {
+        // 14.3 — what the cell currently holds, so "set it to X" can resolve
+        // into the adjustment that gets there.
+        aggregate: async () => ({ _sum: { plannedAmount: currentCellTotal } }),
         create: async ({ data }: { data: Record<string, unknown> }) => {
           created.push(data)
           return { id: "line-1", plannedAmount: data.plannedAmount, correctionAt: new Date() }
@@ -74,6 +79,7 @@ const good = {
 }
 
 beforeEach(() => {
+  currentCellTotal = 0
   created.length = 0
   audited.length = 0
   getSessionMock.mockReset().mockResolvedValue({ orgId: "org-1", userId: "u-rashad" })
@@ -95,8 +101,29 @@ describe("POST /api/budgeting/corrections", () => {
     expect(row.correctionReviewAt).toBeNull()
     // And it names itself in the one field every export already prints.
     expect(String(row.sourceDocument)).toContain("manual-correction")
-    expect(row.monthIndex).toBe(4)
+    // ZERO-BASED, and the period is 1-based: "2026-04" is April, monthIndex 3.
+    // The importer writes `monthIndex: m` from a 0..11 loop and every reader
+    // does `monthIndex + 1`. This route shipped with the 1-based number and
+    // would have dated every correction a month late.
+    expect(row.monthIndex).toBe(3)
     expect(row.plannedAmount).toBe(-40_000)
+  })
+
+  it("dates every month of the year correctly, not just April", async () => {
+    // One assertion on one month would have passed with the off-by-one for
+    // three months of the year by coincidence. December is the one that
+    // matters most: 1-based 12 is out of range for a zero-based index and
+    // would have bucketed nowhere at all.
+    for (const [period, expected] of [
+      ["2026-01", 0],
+      ["2026-04", 3],
+      ["2026-12", 11],
+    ] as const) {
+      created.length = 0
+      const res = await post({ ...good, period })
+      expect(res.status, period).toBe(200)
+      expect(created[0].monthIndex, period).toBe(expected)
+    }
   })
 
   it("records the mutation in the audit log as well as on the row", async () => {
@@ -145,6 +172,59 @@ describe("POST /api/budgeting/corrections", () => {
     // exists somewhere else.
     expect((await post({ ...good, accountId: "acct-elsewhere" })).status).toBe(404)
     expect((await post({ ...good, planId: "plan-elsewhere" })).status).toBe(404)
+    expect(created).toHaveLength(0)
+  })
+
+  it("turns \"this should be 80,000\" into the adjustment that gets there", async () => {
+    // The owner asked to edit existing figures. This is the outcome without
+    // the mechanism: they say what the number should be, the system writes the
+    // difference, attributed, and the imported row stays untouched.
+    currentCellTotal = 77_800
+    const res = await post({ ...good, amount: undefined, setTo: 80_000 })
+    expect(res.status).toBe(200)
+    expect(created[0].plannedAmount).toBeCloseTo(2_200, 6)
+    expect(created[0].origin).toBe("manual_correction")
+    const body = await res.json()
+    expect(body.setTo).toMatchObject({ from: 77_800, to: 80_000 })
+  })
+
+  it("computes the delta against what the reader SEES, corrections included", async () => {
+    // The cell total already contains any earlier adjustment. Computing
+    // against the imported rows alone would silently double whatever was
+    // corrected before.
+    currentCellTotal = 80_000 // 77,800 imported + a 2,200 correction
+    await post({ ...good, amount: undefined, setTo: 85_000 })
+    expect(created[0].plannedAmount).toBeCloseTo(5_000, 6)
+  })
+
+  it("goes down as readily as up", async () => {
+    currentCellTotal = 100
+    await post({ ...good, amount: undefined, setTo: 40 })
+    expect(created[0].plannedAmount).toBeCloseTo(-60, 6)
+  })
+
+  it("refuses when the cell already holds that figure", async () => {
+    // A correction that changes nothing would still sit in every total and
+    // every review queue, being nothing.
+    currentCellTotal = 80_000
+    const res = await post({ ...good, amount: undefined, setTo: 80_000 })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe("already_equals")
+    expect(created).toHaveLength(0)
+  })
+
+  it("refuses both an amount and a target at once, and neither", async () => {
+    // Two answers to "how much" is a bug waiting for a reader to pick the
+    // wrong one.
+    expect((await post({ ...good, setTo: 80_000 })).status).toBe(400)
+    expect((await post({ ...good, amount: undefined })).status).toBe(400)
+    expect(created).toHaveLength(0)
+  })
+
+  it("still demands a reason when setting a target", async () => {
+    currentCellTotal = 1
+    const res = await post({ ...good, amount: undefined, setTo: 999, reason: "" })
+    expect(res.status).toBe(400)
     expect(created).toHaveLength(0)
   })
 

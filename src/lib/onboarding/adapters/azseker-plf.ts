@@ -78,6 +78,9 @@ import {
   PLF_LEGACY_CHART_YEAR,
 } from "./plf-2025-chart-map.generated"
 
+/** Half a qəpik. Below this a cell holds arithmetic residue, not money. */
+const SUB_QEPIK_PLF = 0.005
+
 export type PlfAccountType = "revenue" | "cogs" | "expense"
 export type CfActivityType = CashFlowStoredActivity
 export type CfEntryType = "inflow" | "outflow"
@@ -89,6 +92,25 @@ export interface ParsedPlfLine {
   label: string
   accountType: PlfAccountType
   perMonth: number[]
+  /**
+   * Phase 14.1 (2026-08-02) — which months the SHEET actually presented a cell
+   * for, regardless of its value.
+   *
+   * `perMonth` collapses a blank cell to 0 (`toNumberOrNull(...) ?? 0`), and
+   * that single `?? 0` destroys the only thing that can tell "the client wrote
+   * zero" apart from "the sheet had nothing there". Downstream, both become
+   * "no row", and on screen both become `—`. That is why Almond Costs showing
+   * blanks for January–August is indistinguishable from a genuine import gap,
+   * even though almonds are harvested in autumn and the blank is correct.
+   *
+   * The cash-flow parser in this same file already models it properly —
+   * `ParsedCfLine.perMonth` is `Array<number | null>` with "null means absent
+   * source evidence; numeric zero is explicit evidence". This brings the P&L
+   * side level, ADDITIVELY: `perMonth` keeps its type and every existing
+   * consumer — the sign flip, the cross-foot sum, the zero-skip in the
+   * handler — is untouched. Nothing that imports today changes.
+   */
+  presentMonths: boolean[]
   totalAnnual: number
   /**
    * Set when the row came off a sheet written under a SUPERSEDED chart of
@@ -439,10 +461,22 @@ export function parsePlfPlSheet(
     // Revenue rows are never flipped (negative revenue = returns, which net
     // correctly).
     const perMonth: number[] = []
+    const presentMonths: boolean[] = []
     let rawAnnual = 0
     let allZero = true
     for (let m = 0; m < 12; m++) {
-      const raw = toNumberOrNull(row[monthCols[m]]) ?? 0
+      const cell = toNumberOrNull(row[monthCols[m]])
+      // 14.1 — captured BEFORE the `?? 0`, which is the only moment the
+      // difference between an empty cell and a written zero still exists.
+      presentMonths.push(cell !== null)
+      // Sub-qəpik residue is a written zero, not a tiny amount. A spreadsheet
+      // whose formulas cancel imperfectly leaves 2.5e-10 behind — measured on
+      // `Corn Costs` in the 2026 budget — and the cell means "nothing here".
+      // Normalised HERE rather than at the write boundary so `allZero` below
+      // sees the truth: an account whose every cell is empty or ~0 is dropped
+      // entirely instead of appearing on the COGS list as "0.0% pay · 0.00".
+      // The threshold is the half-qəpik `RECON_ABS_TOLERANCE` already uses.
+      const raw = cell === null || Math.abs(cell) < SUB_QEPIK_PLF ? 0 : cell
       perMonth.push(raw)
       rawAnnual += raw
       if (raw !== 0) allZero = false
@@ -525,6 +559,7 @@ export function parsePlfPlSheet(
       label,
       accountType,
       perMonth,
+      presentMonths,
       totalAnnual: rawAnnual,
       ...(legacy
         ? {

@@ -4,6 +4,7 @@ import {
   rejectCorrection,
   correctionStamp,
   correctionsNeedingReview,
+  deltaToReach,
   type CorrectionInput,
 } from "./manual-correction"
 
@@ -114,5 +115,35 @@ describe("correctionsNeedingReview", () => {
     expect(correctionsNeedingReview(corrections, [])).toEqual([])
     expect(correctionsNeedingReview([], [{ companyId: "x", accountId: "y", period: "2026-01" }]))
       .toEqual([])
+  })
+})
+
+describe("deltaToReach — 14.3, editing expressed as an adjustment", () => {
+  it("finds the adjustment that moves a figure to its target", () => {
+    expect(deltaToReach(77_800, 80_000)).toEqual({
+      delta: 2_200,
+      from: 77_800,
+      to: 80_000,
+    })
+  })
+
+  it("goes down as readily as up, and works from zero", () => {
+    expect(deltaToReach(100, 40)).toMatchObject({ delta: -60 })
+    expect(deltaToReach(0, 1_500)).toMatchObject({ delta: 1_500 })
+  })
+
+  it("refuses a change smaller than half a qəpik", () => {
+    // Same threshold as everywhere else here, and the same reasoning as the
+    // zero guard: a correction that changes nothing would still sit in every
+    // total and every review queue, being nothing.
+    expect(deltaToReach(80_000, 80_000)).toEqual({ rejection: "already_equals" })
+    expect(deltaToReach(80_000, 80_000.004)).toEqual({ rejection: "already_equals" })
+    // Half a qəpik and above is a real change.
+    expect(deltaToReach(80_000, 80_000.005)).toMatchObject({ to: 80_000.005 })
+  })
+
+  it("refuses a target that is not a number", () => {
+    expect(deltaToReach(1, NaN)).toEqual({ rejection: "not_finite" })
+    expect(deltaToReach(Infinity, 1)).toEqual({ rejection: "not_finite" })
   })
 })

@@ -57,6 +57,7 @@ import {
   logger,
 } from "./prod-adapter-context"
 
+
 export function makePlfHandler(
   prisma: PrismaClient,
   ctxRef: { value: OrgContext | null },
@@ -131,7 +132,31 @@ export function makePlfHandler(
       }
       for (let m = 0; m < 12; m++) {
         const amount = line.perMonth[m]
-        if (amount === 0) continue
+        // Phase 14.1 (2026-08-02) — a zero the CLIENT WROTE is a statement,
+        // and it is now stored as one.
+        //
+        // This skipped every zero, which looked like a harmless storage
+        // saving and was not: it threw away the client's own words. On the
+        // COGS tab, Almond Costs showing `—` for January to August reads as a
+        // gap in our data. It is not — the sheet presents all twelve months
+        // and the client wrote 0 in eight of them, because almonds are
+        // harvested in autumn. Measured across the workbook: `PLF Budget 2026`
+        // has 305 written zeros and NOT ONE absent cell; `PLF Actual 2025`
+        // 1,025 and none; only `PLF Actual 2026` has absent cells — 1,799 of
+        // them, which is the seven months of the year that have not happened.
+        //
+        // So the rule is the sheet's own: a cell that exists becomes a row,
+        // whatever it holds; a cell that does not exist becomes nothing. The
+        // database then says which is which, and no surface has to guess.
+        // Residue was already normalised to 0 by the parser, before `allZero`
+        // decided whether the account belongs in the file at all.
+        // `?? amount !== 0` is the back-compat branch, not defensiveness for
+        // its own sake: the dynamic PLF adapter and older fixtures produce
+        // lines without `presentMonths`, and a parser that cannot say whether
+        // the cell existed must keep the OLD rule — skip zeros — rather than
+        // have this one guess on its behalf.
+        const cellExists = line.presentMonths?.[m] ?? amount !== 0
+        if (!cellExists && amount === 0) continue
         const period = `${input.year}-${String(m + 1).padStart(2, "0")}`
         rows.push({
           companyId,

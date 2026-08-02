@@ -21,18 +21,31 @@ import {
   MANUAL_CORRECTION_ORIGIN,
   rejectCorrection,
   correctionStamp,
+  deltaToReach,
   type CorrectionRejection,
 } from "@/lib/budgeting/manual-correction"
 
-const bodySchema = z.object({
-  companyId: z.string().min(1),
-  planId: z.string().min(1),
-  accountId: z.string().min(1),
-  period: z.string().min(7),
-  amount: z.number(),
-  lineType: z.enum(["revenue", "cogs", "expense"]),
-  reason: z.string(),
-})
+const bodySchema = z
+  .object({
+    companyId: z.string().min(1),
+    planId: z.string().min(1),
+    accountId: z.string().min(1),
+    period: z.string().min(7),
+    /** The adjustment to write. Omit when using `setTo`. */
+    amount: z.number().optional(),
+    /**
+     * Phase 14.3 — "this figure should be X". The route reads what the cell
+     * currently holds and writes the difference, so the caller expresses the
+     * OUTCOME and the system still records an attributed adjustment rather
+     * than editing an imported row. Exactly one of `amount` / `setTo`.
+     */
+    setTo: z.number().optional(),
+    lineType: z.enum(["revenue", "cogs", "expense"]),
+    reason: z.string(),
+  })
+  .refine((b) => (b.amount === undefined) !== (b.setTo === undefined), {
+    message: "Provide exactly one of `amount` (an adjustment) or `setTo` (a target figure)",
+  })
 
 /** One sentence per refusal, so the caller can show it rather than a code. */
 const REJECTION_MESSAGE: Record<CorrectionRejection, string> = {
@@ -62,8 +75,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
-  const input = { ...parsed, organizationId: orgId, actorUserId: userId }
-  const rejection = rejectCorrection(input)
+  // `setTo` needs the cell's current contents, which needs the org scope, so
+  // the amount is resolved inside the transaction below. Validate everything
+  // that does not depend on it first — a bad reason should not cost a query.
+  const input = {
+    ...parsed,
+    amount: parsed.amount ?? Number.NaN,
+    organizationId: orgId,
+    actorUserId: userId,
+  }
+  const rejection = rejectCorrection(
+    parsed.setTo === undefined ? input : { ...input, amount: parsed.setTo || 1 },
+  )
   if (rejection) {
     return NextResponse.json(
       { error: rejection, message: REJECTION_MESSAGE[rejection] },
@@ -85,7 +108,19 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const month = Number(input.period.slice(5, 7))
+  // `monthIndex` is ZERO-BASED — 0 is January — while `period` is 1-based.
+  //
+  // The importer writes `monthIndex: m` from a `for (m = 0; m < 12; m++)` loop
+  // whose period string is `${year}-${m + 1}`, and every reader compensates:
+  // `pnl/route.ts` does `bl.monthIndex + 1`. This route shipped writing the
+  // 1-based number, so a correction dated April would have been stored as May
+  // and shown a month late in every total that buckets by month.
+  //
+  // Caught 2026-08-02 while answering a question about missing months on the
+  // COGS tab, not by a test: nothing compares a correction's month against the
+  // period it was entered for. The test below now does. Production had zero
+  // corrections at the time, so nothing was mis-dated.
+  const month = Number(input.period.slice(5, 7)) - 1
 
   try {
     const created = await withOrgScope(orgId, async (tx) => {
@@ -104,6 +139,33 @@ export async function POST(req: NextRequest) {
       ])
       if (!account || !plan) return { notFound: true as const }
 
+      // 14.3 — resolve "set it to X" into the adjustment that gets there.
+      //
+      // Summed over every LIVE row in the cell, corrections included: the
+      // target is what the reader sees, and what they see already contains
+      // any earlier adjustment. Computing against the imported rows alone
+      // would silently double whatever was corrected before.
+      let amount = parsed.amount ?? 0
+      let setToFrom: number | null = null
+      if (parsed.setTo !== undefined) {
+        const agg = await tx.budgetLine.aggregate({
+          _sum: { plannedAmount: true },
+          where: {
+            organizationId: orgId,
+            planId: plan.id,
+            companyId: input.companyId,
+            accountId: account.id,
+            monthIndex: month,
+            deletedAt: null,
+          },
+        })
+        const current = agg._sum.plannedAmount ?? 0
+        const resolved = deltaToReach(current, parsed.setTo)
+        if ("rejection" in resolved) return { setToRejected: resolved.rejection }
+        amount = resolved.delta
+        setToFrom = resolved.from
+      }
+
       const line = await tx.budgetLine.create({
         data: {
           organizationId: orgId,
@@ -111,7 +173,7 @@ export async function POST(req: NextRequest) {
           companyId: input.companyId,
           accountId: account.id,
           lineType: input.lineType,
-          plannedAmount: input.amount,
+          plannedAmount: amount,
           monthIndex: month,
           // A correction names itself in `sourceDocument` too, so the one
           // field every export and drill-down already prints cannot show it as
@@ -138,15 +200,27 @@ export async function POST(req: NextRequest) {
             planId: plan.id,
             accountCode: account.code,
             period: input.period,
-            amount: input.amount,
+            amount,
             lineType: input.lineType,
             reason: input.reason.trim(),
           },
         },
       })
-      return { line }
+      return { line, setToFrom, setTo: parsed.setTo ?? null }
     })
 
+    if ("setToRejected" in created) {
+      return NextResponse.json(
+        {
+          error: created.setToRejected,
+          message:
+            created.setToRejected === "already_equals"
+              ? "That cell already holds this figure — within half a qəpik. A correction that changes nothing would still sit in every total and every review queue."
+              : "The target figure is not a finite number.",
+        },
+        { status: 400 },
+      )
+    }
     if ("notFound" in created) {
       return NextResponse.json(
         { error: "Account or plan not found in this organization" },
@@ -163,6 +237,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       correction: created.line,
+      ...(created.setTo !== null
+        ? { setTo: { from: created.setToFrom, to: created.setTo, delta: created.line.plannedAmount } }
+        : {}),
       next: "Re-run the statement check to see whether this closes the gap.",
     })
   } catch (err) {

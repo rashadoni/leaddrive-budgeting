@@ -111,6 +111,54 @@ export function correctionStamp(input: {
   }
 }
 
+/**
+ * Phase 14.3 (2026-08-02) — "change this figure to X", expressed as an
+ * adjustment.
+ *
+ * The owner asked to be able to edit existing numbers, «при желании». The
+ * request is legitimate and the mechanism is not: editing an imported row in
+ * place destroys the only faithful copy of what the workbook said, which is
+ * what makes re-import safe, the cross-foot meaningful, and "did we read it
+ * wrong, or was it wrong?" answerable — the question that found 80,000 ₼ and
+ * 13.45M. It would also make the 11.91 statement check circular, since the
+ * natural thing to type is the figure it is checked against.
+ *
+ * So the surface may offer the outcome. A person says "77,800 should be
+ * 80,000"; this computes the +2,200 that gets written, attributed and marked.
+ * The effect on every total is identical to an edit; the difference is that
+ * the original stays readable and the change is signed.
+ */
+export type SetToRejection = "already_equals" | "not_finite"
+
+export interface SetToResult {
+  /** The signed adjustment to write. */
+  delta: number
+  /** What the cell held before — recorded so the audit can state both. */
+  from: number
+  /** What it will hold after. Equals `to` by construction. */
+  to: number
+}
+
+/**
+ * The adjustment that moves `current` to `desired`, or why it cannot.
+ *
+ * Refuses a delta below half a qəpik rather than writing a row that changes
+ * nothing: the same `RECON_ABS_TOLERANCE` threshold used everywhere else here,
+ * and the same reasoning as `rejectCorrection`'s zero guard — a no-op
+ * correction would sit in every total and every review queue being nothing.
+ */
+export function deltaToReach(
+  current: number,
+  desired: number,
+): { rejection: SetToRejection } | SetToResult {
+  if (!Number.isFinite(current) || !Number.isFinite(desired)) {
+    return { rejection: "not_finite" }
+  }
+  const delta = desired - current
+  if (Math.abs(delta) < 0.005) return { rejection: "already_equals" }
+  return { delta, from: current, to: desired }
+}
+
 /** One correction, reduced to what the review rule needs. */
 export interface CorrectionRef {
   id: string
