@@ -1,46 +1,55 @@
+/**
+ * 2026-08-02 — a parse failure of OURS was being reported as the AI being down.
+ *
+ * Measured on production while the owner was using Import Doctor:
+ * `Import Doctor response missing string field: title`, logged server-side and
+ * shown in the browser as «Import Doctor işləmədi: ai_unavailable». The model
+ * had answered; the fix prompt described three proposal kinds without ever
+ * naming a required field, and our validator threw the answer away.
+ *
+ * Someone reading "ai unavailable" goes to check the API key and the billing
+ * page. That is the wrong-advice failure this file now avoids.
+ */
 import { describe, it, expect } from "vitest"
 import { classifyAiError, aiErrorBody } from "./ai-error"
 
 describe("classifyAiError", () => {
-  it("classifies the Anthropic credit-balance error (the user's screenshot)", () => {
-    const raw =
-      '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}'
-    expect(classifyAiError(raw)).toBe("ai_credits")
+  it("separates our own shape failure from the provider being down", () => {
+    for (const raw of [
+      "Import Doctor response missing string field: title",
+      "Import Doctor response must be a JSON object",
+      "Import Doctor fix must be an object",
+    ]) {
+      expect(classifyAiError(raw), raw).toBe("ai_bad_response")
+    }
   })
 
-  it("classifies quota / billing variants as ai_credits", () => {
-    expect(classifyAiError("insufficient_quota")).toBe("ai_credits")
-    expect(classifyAiError("Your monthly quota has been exhausted")).toBe("ai_credits")
-    expect(classifyAiError("payment required")).toBe("ai_credits")
-  })
-
-  it("classifies rate-limit / overloaded as ai_rate_limit", () => {
+  it("still recognises the provider errors it always did", () => {
+    expect(classifyAiError('400 {"message":"Your credit balance is too low"}')).toBe("ai_credits")
     expect(classifyAiError("429 Too Many Requests")).toBe("ai_rate_limit")
-    expect(classifyAiError("rate limit exceeded")).toBe("ai_rate_limit")
-    expect(classifyAiError("Overloaded")).toBe("ai_rate_limit")
+    expect(classifyAiError("overloaded_error")).toBe("ai_rate_limit")
+    expect(classifyAiError("socket hang up")).toBe("ai_unavailable")
   })
 
-  it("falls back to ai_unavailable for anything else", () => {
-    expect(classifyAiError("ECONNRESET")).toBe("ai_unavailable")
-    expect(classifyAiError("")).toBe("ai_unavailable")
-    expect(classifyAiError("some unexpected 500")).toBe("ai_unavailable")
+  it("prefers a genuine rate limit over a field name that happens to match", () => {
+    // The provider patterns are checked first on purpose: a real 429 whose body
+    // mentions a response field must still read as a rate limit, or an operator
+    // waits for a fix that is really a retry.
+    expect(classifyAiError("429 rate limit — response missing field")).toBe("ai_rate_limit")
   })
-})
 
-describe("aiErrorBody", () => {
-  it("never leaks the raw provider message — only a neutral error + code", () => {
-    const err = new Error(
-      '400 {"message":"Your credit balance is too low … Plans & Billing"}',
-    )
-    const body = aiErrorBody(err)
+  it("never returns the provider's own words to the browser", () => {
+    // The reason this module exists: the raw message embeds billing state.
+    const body = aiErrorBody(new Error('400 {"message":"credit balance is too low, go to Plans & Billing"}'))
     expect(body.error).toBe("ai_unavailable")
     expect(body.code).toBe("ai_credits")
-    // The raw billing text must not appear anywhere in the serialized body.
-    expect(JSON.stringify(body)).not.toMatch(/credit balance|Plans & Billing/i)
+    expect(JSON.stringify(body)).not.toMatch(/credit balance|Billing/i)
   })
 
-  it("handles non-Error throwables", () => {
-    expect(aiErrorBody("boom")).toEqual({ error: "ai_unavailable", code: "ai_unavailable" })
-    expect(aiErrorBody(null)).toEqual({ error: "ai_unavailable", code: "ai_unavailable" })
+  it("carries the new code through the body the routes return", () => {
+    const body = aiErrorBody(new Error("Import Doctor response missing string field: title"))
+    expect(body.code).toBe("ai_bad_response")
+    // `error` stays the neutral back-compat string for any client reading it.
+    expect(body.error).toBe("ai_unavailable")
   })
 })

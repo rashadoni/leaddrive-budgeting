@@ -654,6 +654,26 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
     null,
   )
   const [doctorError, setDoctorError] = useState<string | null>(null)
+  /**
+   * The panel used to print the machine code verbatim — «Import Doctor
+   * işləmədi: ai_unavailable» — which is both meaningless to a finance
+   * operator and, in the case measured on production, wrong: the model had
+   * answered and our own parser rejected the shape. Someone reading that goes
+   * to check the API key and the billing page for a defect in our prompt.
+   */
+  const doctorErrorText = (code: string | null | undefined, fallback: string) => {
+    switch (code) {
+      case "ai_bad_response":
+        return t("doctor.errorBadResponse")
+      case "ai_credits":
+      case "ai_unavailable":
+        return t("doctor.errorUnavailable")
+      case "ai_rate_limit":
+        return t("doctor.errorBusy")
+      default:
+        return t("doctor.error", { msg: fallback })
+    }
+  }
   const [doctorStatus, setDoctorStatus] = useState<string | null>(null)
   // Phase 7.M Tier 6 — per-conflict resolution map. Key = conflict key
   // (e.g. "AZSEKER-CPC::PLF.01::2026-01"), value = either
@@ -1010,7 +1030,10 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
       })
       const data = (await res.json()) as DoctorExplainResponse
       if (!res.ok || !data.ok || !data.explanation) {
-        throw new Error(data.error ?? data.code ?? `HTTP ${res.status}`)
+        throw Object.assign(
+          new Error(data.error ?? data.code ?? `HTTP ${res.status}`),
+          { aiCode: data.code ?? data.error },
+        )
       }
       setDoctorExplanation(data.explanation)
       setTimeout(
@@ -1019,9 +1042,10 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
       )
     } catch (err) {
       setDoctorError(
-        t("doctor.error", {
-          msg: err instanceof Error ? err.message : String(err),
-        }),
+        doctorErrorText(
+          (err as { aiCode?: string })?.aiCode,
+          err instanceof Error ? err.message : String(err),
+        ),
       )
     } finally {
       setDoctorLoading(null)
@@ -1045,7 +1069,10 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
       })
       const data = (await res.json()) as DoctorFixResponse
       if (!res.ok || !data.ok || !data.proposal) {
-        throw new Error(data.error ?? data.code ?? `HTTP ${res.status}`)
+        throw Object.assign(
+          new Error(data.error ?? data.code ?? `HTTP ${res.status}`),
+          { aiCode: data.code ?? data.error },
+        )
       }
       setDoctorFix(data.proposal)
       setTimeout(
@@ -1054,9 +1081,10 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
       )
     } catch (err) {
       setDoctorError(
-        t("doctor.error", {
-          msg: err instanceof Error ? err.message : String(err),
-        }),
+        doctorErrorText(
+          (err as { aiCode?: string })?.aiCode,
+          err instanceof Error ? err.message : String(err),
+        ),
       )
     } finally {
       setDoctorLoading(null)

@@ -11,7 +11,24 @@
  * localized message and never renders the raw provider string.
  */
 
-export type AiErrorCode = "ai_credits" | "ai_rate_limit" | "ai_unavailable"
+export type AiErrorCode =
+  | "ai_credits"
+  | "ai_rate_limit"
+  | "ai_unavailable"
+  /**
+   * 2026-08-02 — the model answered; OUR parser rejected the shape.
+   *
+   * Reported as `ai_unavailable` until now, which sent an operator to check
+   * API keys and billing for a defect in our own prompt. Measured on
+   * production: `Import Doctor response missing string field: title`, thrown
+   * because the fix prompt described three proposal kinds without ever naming
+   * a required field. Nothing was wrong with the key, the credits, or the
+   * client's data.
+   *
+   * Safe to surface: the message is ours, not the provider's, so none of the
+   * leak concerns in this file's header apply to it.
+   */
+  | "ai_bad_response"
 
 /** Classify a raw provider-error string into a stable, client-safe code. */
 export function classifyAiError(raw: string): AiErrorCode {
@@ -21,6 +38,12 @@ export function classifyAiError(raw: string): AiErrorCode {
   }
   if (/rate.?limit|\b429\b|overloaded|too many requests/.test(s)) {
     return "ai_rate_limit"
+  }
+  // Our own validators, not the provider. Checked AFTER the provider patterns
+  // so a genuine 429 that happens to mention a field name is still a rate
+  // limit.
+  if (/response must be|response missing|must be an object|must be a JSON object/.test(s)) {
+    return "ai_bad_response"
   }
   return "ai_unavailable"
 }

@@ -4018,7 +4018,10 @@
           "manualReview": "Manual review"
         },
         "severityBlocking": "blocks the import",
-        "severityWarning": "does not block"
+        "severityWarning": "does not block",
+        "errorBadResponse": "The assistant replied, but not in the shape this screen expects. That is a defect on our side, not in your file — nothing was changed, and the import is unaffected. Reported automatically.",
+        "errorUnavailable": "The assistant is not reachable right now. Nothing was changed, and the import does not depend on it — you can continue with the preview and apply as usual.",
+        "errorBusy": "The assistant is busy. Wait a moment and press again; nothing was changed."
       },
       "routing": {
         "title": "Entity routing grid — {n} split sheet(s)",

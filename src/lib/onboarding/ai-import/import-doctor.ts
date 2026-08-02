@@ -145,6 +145,20 @@ const FIX_SYSTEM_PROMPT = [
   "3. conflict_resolution: patch key and resolution {mode:'pick', filename} or {mode:'skip'}.",
   "If confidence is not high enough, return manual_review with clear manualSteps.",
   "Never suggest forceOverride or last-write-wins as the primary fix.",
+  // 2026-08-02 — the shape was described in prose above and never stated.
+  //
+  // `validateImportDoctorFixProposal` requires `title` and `rationale`, and the
+  // model had no way to know: this prompt listed the three proposal KINDS and
+  // said "STRICT JSON" without ever naming a field. Measured on production —
+  // `Import Doctor response missing string field: title` — the model answered
+  // sensibly and our own parser threw it away.
+  //
+  // The sibling EXPLAIN_SYSTEM_PROMPT twenty lines above has always spelled its
+  // shape out. This is that, applied to the half that was missing it.
+  "Return STRICT JSON only with shape:",
+  '{"kind":"sheet_fix|coa_mapping|conflict_resolution|manual_review","title":"...","rationale":"...","confidence":0.0,"patch":{...},"manualSteps":["..."]}',
+  "`title`, `rationale` and `kind` are REQUIRED on every proposal, including manual_review.",
+  "`manualSteps` is required for manual_review and ignored otherwise; `patch` is required for the three executable kinds.",
 ].join("\n")
 
 function asRecord(value: unknown): Record<string, unknown> | null {

@@ -4018,7 +4018,10 @@
           "manualReview": "Manual yoxlama"
         },
         "severityBlocking": "idxalı bloklayır",
-        "severityWarning": "bloklamır"
+        "severityWarning": "bloklamır",
+        "errorBadResponse": "Assistent cavab verdi, amma bu ekranın gözlədiyi formada yox. Bu, sizin faylınızda deyil, bizim tərəfimizdə qüsurdur — heç nə dəyişmədi, idxala təsir etmir. Avtomatik bildirildi.",
+        "errorUnavailable": "Assistent hazırda əlçatan deyil. Heç nə dəyişmədi, idxal ondan asılı deyil — preview və tətbiqi həmişəki kimi davam etdirə bilərsiniz.",
+        "errorBusy": "Assistent məşğuldur. Bir az gözləyib yenidən basın; heç nə dəyişmədi."
       },
       "routing": {
         "title": "Şirkət yönləndirməsi — {n} split vərəq",
