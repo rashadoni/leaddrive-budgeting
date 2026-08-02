@@ -97,3 +97,55 @@ describe("crossFootPlfSheet", () => {
     expect(res.mismatch).toBe(false)
   })
 })
+
+describe("11.88 — wired into the parser, measured on the client's own workbook", () => {
+  /**
+   * The helper was written, tested and left disconnected because an earlier
+   * attempt fired an 840.00 false alarm. These pin what it actually does on
+   * `actual-budget-v1.xlsx` now that classification comes from `plf-chart.ts`:
+   * thirteen of fourteen business-unit blocks tie to their own PLF.10 exactly,
+   * and the fourteenth does not tie in EITHER direction.
+   *
+   * AZSF 2025 measured on the raw grid, with no parsing rules involved at all:
+   *
+   *   every leaf, including PLF.08.*   −3,873,219   vs PLF.10 −3,778,166   Δ −95,053.04
+   *   every leaf, excluding PLF.08.*   −3,698,728   vs the same            Δ +79,437.96
+   *
+   * The two gaps sum to 174,491 — `PLF.08.01` "Shareholders' expense" exactly
+   * — so that sheet's PLF.10 counts the row partially. CPC, EDEN and EJE tie to
+   * 0.00 both ways. It is the workbook that disagrees with itself, which is why
+   * the parser reports and does not resolve.
+   */
+  const AZSF_WITH_08 = -3_873_219.04
+  const AZSF_PLF10 = -3_778_166.0
+
+  it("reports the gap rather than picking a side", () => {
+    const res = crossFootPlfSheet(
+      [AZSF_WITH_08],
+      [["PLF.10", "NET PROFIT / (LOSS)", null, AZSF_PLF10]],
+      [3],
+    )
+    expect(res.mismatch).toBe(true)
+    expect(res.delta).toBeCloseTo(-95_053.04, 2)
+    // Nothing here decides which number is right: the helper states both.
+    expect(res.parsedTotal).toBeCloseTo(AZSF_WITH_08, 2)
+    expect(res.sheetTotal).toBeCloseTo(AZSF_PLF10, 2)
+  })
+
+  it("the two AZSF gaps differ by exactly PLF.08.01", () => {
+    const withEight = crossFootPlfSheet(
+      [AZSF_WITH_08],
+      [["PLF.10", "", null, AZSF_PLF10]],
+      [3],
+    )
+    const withoutEight = crossFootPlfSheet(
+      [AZSF_WITH_08 + 174_491],
+      [["PLF.10", "", null, AZSF_PLF10]],
+      [3],
+    )
+    expect(withoutEight.delta! - withEight.delta!).toBeCloseTo(174_491, 2)
+    // Both directions miss, which is the whole finding — no leaf rule fixes it.
+    expect(withEight.mismatch).toBe(true)
+    expect(withoutEight.mismatch).toBe(true)
+  })
+})

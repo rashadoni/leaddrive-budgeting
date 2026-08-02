@@ -57,12 +57,28 @@ describe("parsePlfPlSheet — happy path", () => {
       ["PLF.01.01.01", "Revenue from Sale of Wheat", null, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30], // LEAF
       ["PLF.01.01.02", "Revenue from Sale of Sugar Beet", null, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20], // LEAF
       ["PLF.02", "COGS", null, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50], // PARENT — skip
-      ["PLF.02.01.01", "Wheat Costs", null, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25], // LEAF cogs
-      ["PLF.05.15.01", "Depreciation", null, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], // LEAF expense
-      ["PLF.10", "NET PROFIT", null, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10], // PLF.10 — explicit skip (computed)
+      // 11.88 — costs NEGATIVE and PLF.10 equal to the rows above it.
+      //
+      // This fixture used to write costs positive and set NET PROFIT to an
+      // arbitrary 10/month against leaves of 80/month. When the cross-foot was
+      // first wired it reported the 840 gap correctly and the alarm was read as
+      // a false positive, so the check was backed out and stayed disconnected
+      // for a week — during which the AZSF 2025 block went on not tying.
+      // A fixture that disagrees with itself cannot tell you whether the code
+      // agrees with the file; this is the same lesson as the invented
+      // `PLF.03.01.01` children in 11.74.
+      //
+      // Leaves now net 30 + 20 − 25 − 5 = 20/month = 240 a year, and PLF.10
+      // says so.
+      ["PLF.02.01.01", "Wheat Costs", null, -25, -25, -25, -25, -25, -25, -25, -25, -25, -25, -25, -25], // LEAF cogs
+      ["PLF.05.15.01", "Depreciation", null, -5, -5, -5, -5, -5, -5, -5, -5, -5, -5, -5, -5], // LEAF expense
+      ["PLF.10", "NET PROFIT", null, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20], // PLF.10 — explicit skip (computed)
     ])
     const r = parsePlfPlSheet(wb, "PL_X", XLSX)
     expect(r.warnings).toEqual([])
+    // The sheet agrees with itself, so the cross-foot says so out loud.
+    expect(r.crossFoot?.mismatch).toBe(false)
+    expect(r.crossFoot?.delta).toBeCloseTo(0, 6)
     expect(r.lines).toHaveLength(4)
     expect(r.lines.map((l) => l.code)).toEqual(["PLF.01.01.01", "PLF.01.01.02", "PLF.02.01.01", "PLF.05.15.01"])
     expect(r.lines[0]).toMatchObject({ accountType: "revenue", totalAnnual: 360 })

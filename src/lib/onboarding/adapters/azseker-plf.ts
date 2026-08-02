@@ -68,6 +68,7 @@ import {
   type CashFlowStoredActivity,
 } from "../cf-bridge"
 import { plfNature, plfOtherOperatingSide } from "../../budgeting/plf-chart"
+import { crossFootPlfSheet, type CrossFootResult } from "./plf-crossfoot"
 import {
   resolveLegacyAccount,
   type LegacyMappingKind,
@@ -160,6 +161,18 @@ export interface PlfParseResult {
     chartYear: number
     rewrites: PlfLegacyChartRewrite[]
   }
+  /**
+   * 11.88 — the sheet's own arithmetic, checked against ours.
+   *
+   * These workbooks compute `PLF.10` themselves and the importer deliberately
+   * never reads it, so it is a free, independent statement of what the leaves
+   * must add up to. Every defect found by hand on 2026-08-01 — 25.6M of
+   * subsidies sitting in revenue, a dropped 1.68M adjustment block, 80,000 of
+   * shareholders' expense that reached no row — was found by making exactly
+   * this comparison in a terminal. Absent on the early-return paths, which
+   * parse nothing.
+   */
+  crossFoot?: CrossFootResult
 }
 
 export interface CfParseResult {
@@ -535,6 +548,14 @@ export function parsePlfPlSheet(
       cogs: cogsLabels,
       expense: expenseLabels,
     })
+  // 11.88 — cross-foot BEFORE the flip, while the leaves are still in the
+  // file's own sign convention, because `PLF.10` is written in that convention
+  // too. Comparing after the flip would compare two different quantities.
+  const crossFoot = crossFootPlfSheet(
+    lines.map((l) => l.perMonth.reduce((a, b) => a + b, 0)),
+    aoa,
+    header.monthCols,
+  )
   for (const line of lines) {
     const flip =
       line.accountType === "cogs"
@@ -562,12 +583,31 @@ export function parsePlfPlSheet(
   if (signDecision.blockedReason) {
     warnings.push({ row: 0, reason: `BLOCKED: ${signDecision.blockedReason}` })
   }
+  // 11.88 — a disagreement with the sheet's own bottom line is reported, never
+  // resolved. Which side is right is an accounting question about the client's
+  // workbook, not a parsing question, and guessing is how 25.6M of subsidies
+  // spent a year in the revenue line. Not `BLOCKED:` — the import proceeds and
+  // the operator decides; a gate here would refuse a file whose own arithmetic
+  // is off by a rounding, which is not ours to police.
+  if (crossFoot.mismatch) {
+    warnings.push({
+      row: 0,
+      reason:
+        `CROSS-FOOT: the rows imported from this sheet add up to ` +
+        `${crossFoot.parsedTotal.toFixed(2)}, but the sheet's own PLF.10 ` +
+        `(NET PROFIT / (LOSS)) says ${crossFoot.sheetTotal?.toFixed(2)} — a gap ` +
+        `of ${crossFoot.delta?.toFixed(2)}. Nothing was dropped or added by the ` +
+        `import; the sheet does not agree with itself. Check PLF.10's formula ` +
+        `against the rows above it before trusting either number.`,
+    })
+  }
 
   return {
     sheetName,
     lines,
     warnings,
     signConvention: signDecision,
+    crossFoot,
     ...(legacyChartYear !== null
       ? { legacyChart: { chartYear: legacyChartYear, rewrites: legacyRewrites } }
       : {}),
