@@ -2724,7 +2724,11 @@
       "provenance": {
         "external-feed": "Market / weather / FX feed — not from your reported data, so it stays lit after a reset",
         "constant": "Placeholder — a fixed number, not a measurement. Excluded from the risk score"
-      }
+      },
+      "statementMismatchBadge": "{count, plural, one {# FIGURE DISAGREES WITH SOURCE} other {# FIGURES DISAGREE WITH SOURCE}}",
+      "statementMismatchBadgeTooltip": "These cells were compared against the subtotals your own workbook computes, and they do not match. The imported rows are exactly as parsed — the gap is between the derived figure and your sheet's own total. Marked with ≠ on the grid; open a cell to see both numbers.",
+      "statementMismatchTitle": "Disagrees with your source statement. Platform: {actual}. Your statement: {expected}. Difference: {delta}.",
+      "cellAriaStatementMismatch": "Disagrees with the source statement"
     },
     "benchmarkBand": {
       "title": "Target range (benchmark)",
@@ -2838,7 +2842,16 @@
       },
       "source": "Source",
       "whatIsThis": "What is this?",
-      "dataConfidence": "data confidence"
+      "dataConfidence": "data confidence",
+      "statementCheck": {
+        "matched": "Agrees with the source statement",
+        "notChecked": "Not checked against a source statement",
+        "mismatchTitle": "Disagrees with the source statement",
+        "platform": "Platform",
+        "statement": "Your statement",
+        "difference": "Difference",
+        "hint": "The imported rows were written exactly as parsed. This compares the derived figure against the subtotal your own sheet computes — either number can be the wrong one, so check the source rows before correcting anything."
+      }
     },
     "auditTicker": {
       "events": "EVENTS",

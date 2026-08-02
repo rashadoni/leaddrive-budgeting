@@ -481,6 +481,12 @@ export async function GET(request: NextRequest) {
               // wire lets the CompanyTree compute the degradation
               // client-side without a second round-trip per row.
               lastReconciledAt: true,
+              // Phase 11.91 — the statement-check verdict. Selected on both
+              // builders because a mismatch on a leaf and a mismatch on a
+              // real rollup are the same fact to the reader, and hiding one
+              // of them would make the surface count disagree with the grid.
+              reconStatus: true,
+              reconExpected: true,
               // 2026-05-27 A4 — feeds matrix.lastComputedAt aggregate
               // for the «Updated 2h ago» freshness badge in HeatMap
               // header. Kept on the cell for future row-level freshness.
@@ -624,6 +630,19 @@ export async function GET(request: NextRequest) {
           // audit run; null when not yet audited.
           ...(v.sanityBand ? { sanityBand: v.sanityBand as 'normal' | 'low_extreme' | 'high_extreme' | 'missing_input' | 'no_band' } : {}),
           ...(v.lastReconciledAt ? { lastReconciledAt: v.lastReconciledAt.toISOString() } : {}),
+          // Phase 11.91 — omit-when-absent, same contract as the fields around
+          // it: NULL means "never checked", and a cell that says nothing must
+          // not be distinguishable from one that predates the column.
+          // `reconExpected` rides along only when there is a verdict to
+          // explain — a bare expected figure with no status is unreadable.
+          ...(v.reconStatus
+            ? {
+                reconStatus: v.reconStatus as 'matched' | 'mismatched',
+                ...(v.reconExpected !== null && v.reconExpected !== undefined
+                  ? { reconExpected: v.reconExpected }
+                  : {}),
+              }
+            : {}),
           // 11.87 — the freshness stamp, which this route has selected since
           // Stage A4 and never emitted. `isStale` fails CLOSED on an absent
           // timestamp, so every coloured cell arrived at the client already
@@ -715,6 +734,12 @@ export async function GET(request: NextRequest) {
               // wire lets the CompanyTree compute the degradation
               // client-side without a second round-trip per row.
               lastReconciledAt: true,
+              // Phase 11.91 — the statement-check verdict. Selected on both
+              // builders because a mismatch on a leaf and a mismatch on a
+              // real rollup are the same fact to the reader, and hiding one
+              // of them would make the surface count disagree with the grid.
+              reconStatus: true,
+              reconExpected: true,
               // 2026-05-27 A4 — feeds matrix.lastComputedAt aggregate
               // for the «Updated 2h ago» freshness badge in HeatMap
               // header. Kept on the cell for future row-level freshness.
@@ -763,6 +788,14 @@ export async function GET(request: NextRequest) {
         // so a real parent rollup could not clear `no_reconciliation` or
         // `stale` even with the stamps present in its own row.
         ...(v.lastReconciledAt ? { lastReconciledAt: v.lastReconciledAt.toISOString() } : {}),
+        ...(v.reconStatus
+          ? {
+            reconStatus: v.reconStatus as 'matched' | 'mismatched',
+            ...(v.reconExpected !== null && v.reconExpected !== undefined
+            ? { reconExpected: v.reconExpected }
+              : {}),
+          }
+          : {}),
         ...(v.computedAt ? { computedAt: v.computedAt.toISOString() } : {}),
         // Sub-44 cont'd architect 💡 closure — discriminated-union
         // `kind` field replaces the legacy `isRealParentRollup` boolean.

@@ -19,6 +19,7 @@ import {
   buildCellMap,
   summarizeMatrix,
   isAggregateRollup,
+  hasStatementMismatch,
   type HeatMapCell,
 } from '@/lib/risk/heatmap-matrix';
 import { summarizeSurfaceGrade } from '@/lib/risk/decision-grade';
@@ -299,6 +300,22 @@ export function useHeatMapModel(period: string | undefined) {
         requireLineage: true,
         requireReconciliation: true,
       }),
+    [data],
+  );
+
+  /**
+   * Phase 11.91 — how many cells on this matrix disagree with the client's own
+   * statement.
+   *
+   * Counted over the SAME cells the grid draws, so the badge and the fuchsia
+   * rings can never tell different stories. Unlike `provisionalSummary`, this
+   * is per-cell as well as summarised: "provisional" is a property of the
+   * evidence and applies to almost everything, while a mismatch is a specific
+   * number being specifically wrong, and there are few enough of them to point
+   * at individually.
+   */
+  const statementMismatchCount = useMemo(
+    () => (data?.cells ?? []).filter(hasStatementMismatch).length,
     [data],
   );
 
@@ -648,6 +665,7 @@ export function useHeatMapModel(period: string | undefined) {
     setMounted, dbSummary, setDbSummary, activePeriod, alertThresholds,
     setAlertThresholds, refetchTimerRef, cellMap, compositeByCompany,
     provisionalSummary,
+    statementMismatchCount,
     filteredCompanies, summary, activeCompanyIndustries, activeCompanyIndustry,
     rawIndicators, indicators, displayIndicators,
     isApplicablePair, applicabilityDecisionForPair,

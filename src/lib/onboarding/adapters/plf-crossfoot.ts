@@ -43,6 +43,21 @@ export interface CrossFootResult {
   delta: number | null
   /** True only when a total exists AND the two disagree beyond tolerance. */
   mismatch: boolean
+  /**
+   * 11.91 — every subtotal the sheet computes for itself, by code.
+   *
+   * `PLF.10` alone answers "did we read the rows correctly". These answer the
+   * next question: does the INDICATOR derived from those rows equal what the
+   * client's own statement says? `IND_REVENUE_TOTAL` against `PLF.01`,
+   * `IND_GROSS_MARGIN` against `PLF.03 / PLF.01`, and so on — an independent
+   * check, because the importer never reads these rows.
+   *
+   * That is the claim `IndicatorValue.lastReconciledAt` is supposed to carry
+   * and which nothing in the product had ever been able to make: the field was
+   * written only by a manual CLI that never ran on this data, so the terminal's
+   * decision-grade gate withheld certification from every cell in the matrix.
+   */
+  statedSubtotals: Record<string, number>
 }
 
 /**
@@ -59,6 +74,25 @@ export function crossFootPlfSheet(
   monthCols: readonly number[],
 ): CrossFootResult {
   const parsedTotal = leafMonthlySums.reduce((a, b) => a + b, 0)
+
+  // Collect every `PLF.NN` the sheet states, not just the bottom line. A
+  // section repeated per stacked business unit sums, exactly as PLF.10 does.
+  const statedSubtotals: Record<string, number> = {}
+  for (const row of aoa) {
+    const code = typeof row?.[0] === "string" ? (row[0] as string).trim() : ""
+    if (!/^PLF\.\d{2}$/.test(code)) continue
+    let rowSum = 0
+    let sawNumber = false
+    for (const c of monthCols) {
+      const v = row[c]
+      if (typeof v === "number" && Number.isFinite(v)) {
+        rowSum += v
+        sawNumber = true
+      }
+    }
+    if (!sawNumber) continue
+    statedSubtotals[code] = (statedSubtotals[code] ?? 0) + rowSum
+  }
 
   let sheetTotal: number | null = null
   for (const row of aoa) {
@@ -83,7 +117,7 @@ export function crossFootPlfSheet(
     // No stated total is not a failure — plenty of sheets have none. It is
     // the ABSENCE of a check, and the caller should say so rather than
     // treating silence as agreement.
-    return { parsedTotal, sheetTotal: null, delta: null, mismatch: false }
+    return { parsedTotal, sheetTotal: null, delta: null, mismatch: false, statedSubtotals }
   }
 
   const delta = parsedTotal - sheetTotal
@@ -92,5 +126,6 @@ export function crossFootPlfSheet(
     sheetTotal,
     delta,
     mismatch: Math.abs(delta) > CROSSFOOT_TOLERANCE_AZN,
+    statedSubtotals,
   }
 }

@@ -195,6 +195,41 @@ export interface HeatMapCell {
    * `decision-grade.ts` still withholds decision-grade without them.
    */
   revisionId?: string | null;
+  /**
+   * Phase 11.91 — the verdict of checking this value against the client's own
+   * statement, and the figure that statement gave.
+   *
+   *  - `'matched'`     : the platform's number equals the workbook's own
+   *                      subtotal for the same quantity.
+   *  - `'mismatched'`  : it does not. `reconExpected` holds what the source
+   *                      says; the delta is `value - reconExpected`.
+   *  - absent / null   : never checked. NOT "fine" — most cells read an input
+   *                      no statement mentions (a feed, a rollup, a manual
+   *                      fact) and are unreconcilable by construction, and
+   *                      every row predating 11.91 is simply unexamined.
+   *
+   * Distinct from `sanityBand`, which asks whether a number is plausible for
+   * the industry. This asks whether it agrees with the client's own paperwork,
+   * and a value can pass either while failing the other: 72.3M of revenue was
+   * a perfectly plausible figure for this holding and was 13.45M wrong.
+   */
+  reconStatus?: 'matched' | 'mismatched' | null;
+  /** What the source statement says. Present only alongside `reconStatus`. */
+  reconExpected?: number | null;
+}
+
+/**
+ * Does this cell disagree with the client's own statement?
+ *
+ * A helper rather than an inline `=== 'mismatched'` for the reason
+ * `isAggregateRollup` is one: the answer is needed on the heat map, in the
+ * detail panel, in the company tree, in the surface banner and in the export,
+ * and a rule spelled out five times is a rule that will mean four things.
+ */
+export function hasStatementMismatch(cell: {
+  reconStatus?: 'matched' | 'mismatched' | null;
+}): boolean {
+  return cell.reconStatus === 'mismatched';
 }
 
 /**

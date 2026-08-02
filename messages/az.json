@@ -2724,7 +2724,11 @@
       "provenance": {
         "external-feed": "Bazar / hava / məzənnə mənbəyi — sizin hesabatınızdan deyil, ona görə sıfırlamadan sonra da işıqlı qalır",
         "constant": "Müvəqqəti dəyər — ölçmə deyil, sabit rəqəm. Risk balına daxil edilmir"
-      }
+      },
+      "statementMismatchBadge": "{count, plural, one {# GÖSTƏRİCİ MƏNBƏ İLƏ UYĞUN GƏLMİR} other {# GÖSTƏRİCİ MƏNBƏ İLƏ UYĞUN GƏLMİR}}",
+      "statementMismatchBadgeTooltip": "Bu xanalar sizin öz kitabınızın hesabladığı yekunlarla üzləşdirilib və uyğun gəlmir. İdxal olunmuş sətirlər tam olaraq oxunduğu kimi yazılıb — fərq hesablanmış göstərici ilə vərəqinizin öz yekunu arasındadır. Şəbəkədə ≠ işarəsi ilə qeyd olunub; hər iki rəqəmi görmək üçün xananı açın.",
+      "statementMismatchTitle": "Mənbə hesabatınızla uyğun gəlmir. Platforma: {actual}. Hesabatınız: {expected}. Fərq: {delta}.",
+      "cellAriaStatementMismatch": "Mənbə hesabatı ilə uyğun gəlmir"
     },
     "benchmarkBand": {
       "title": "Hədəf aralığı (benchmark)",
@@ -2838,7 +2842,16 @@
       },
       "source": "Mənbə",
       "whatIsThis": "Bu nədir?",
-      "dataConfidence": "məlumatın etibarlılığı"
+      "dataConfidence": "məlumatın etibarlılığı",
+      "statementCheck": {
+        "matched": "Mənbə hesabatı ilə uyğun gəlir",
+        "notChecked": "Mənbə hesabatı ilə yoxlanılmayıb",
+        "mismatchTitle": "Mənbə hesabatı ilə uyğun gəlmir",
+        "platform": "Platforma",
+        "statement": "Hesabatınız",
+        "difference": "Fərq",
+        "hint": "İdxal olunmuş sətirlər tam olaraq oxunduğu kimi yazılıb. Burada hesablanmış göstərici sizin öz vərəqinizin hesabladığı yekunla müqayisə olunur — iki rəqəmdən hər hansı biri səhv ola bilər, ona görə nəyisə düzəltməzdən əvvəl mənbə sətirlərini yoxlayın."
+      }
     },
     "auditTicker": {
       "events": "HADİSƏLƏR",

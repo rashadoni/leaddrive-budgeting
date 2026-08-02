@@ -181,6 +181,130 @@ export function MaterialityBadge({
 }
 
 /**
+ * Phase 11.91 — the statement check, stated as the comparison a person would
+ * make by hand.
+ *
+ * This is the panel where someone decides whether to act on one specific
+ * number, so it shows BOTH figures and the gap, not a badge. "Wrong by 13.45M"
+ * is actionable; "reconciliation: failed" is a support ticket.
+ *
+ * Renders in all three states on purpose, including "not checked". That state
+ * is the honest description of almost every value in the product — most read
+ * an input no statement mentions — and hiding it would let a silent panel pass
+ * for a clean one. The whole feature exists because a wrong number looked
+ * exactly like a right one for a year.
+ *
+ * Deliberately does not say which figure is correct. The platform's number can
+ * be wrong (a misclassified account) and so can the workbook's (a stale
+ * hand-typed subtotal); both have happened in this dataset. Naming a culprit
+ * would be a guess presented as a finding.
+ */
+export function StatementCheckStrip(props: {
+  reconStatus?: 'matched' | 'mismatched' | null;
+  reconExpected?: number | null;
+  reconCheckedAt?: string | null;
+  /** The value on the screen — the other half of the comparison. */
+  value: number;
+  unit: string;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const { reconStatus, reconExpected, reconCheckedAt, value, unit } = props;
+  const lookup = (key: string, fallback: string): string => {
+    try {
+      return props.t(key as never);
+    } catch {
+      return fallback;
+    }
+  };
+  const fmt = (n: number) =>
+    `${new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n)}${unit ? ` ${unit}` : ''}`;
+
+  if (reconStatus !== 'mismatched') {
+    const label =
+      reconStatus === 'matched'
+        ? lookup(
+            'indicatorDetail.statementCheck.matched',
+            'Agrees with the source statement',
+          )
+        : lookup(
+            'indicatorDetail.statementCheck.notChecked',
+            'Not checked against a source statement',
+          );
+    const checked = reconCheckedAt
+      ? new Date(reconCheckedAt).toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: '2-digit',
+        })
+      : null;
+    return (
+      <div
+        data-testid="statement-check-strip"
+        data-recon={reconStatus ?? 'unchecked'}
+        className={`flex items-center gap-2 rounded border px-2 py-1.5 text-[10px] leading-snug ${
+          reconStatus === 'matched'
+            ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400/90'
+            : 'border-border/60 bg-[#0A0E27]/40 text-muted-foreground'
+        }`}
+      >
+        <span aria-hidden="true">{reconStatus === 'matched' ? '=' : '·'}</span>
+        <span>{label}</span>
+        {checked && <span className="opacity-70">· {checked}</span>}
+      </div>
+    );
+  }
+
+  const expected = reconExpected ?? 0;
+  const delta = value - expected;
+  return (
+    <div
+      data-testid="statement-check-strip"
+      data-recon="mismatched"
+      className="rounded border border-[#E879F9]/60 bg-[#E879F9]/10 px-2 py-1.5 text-[10px] leading-snug"
+    >
+      <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-[#E879F9]">
+        <span aria-hidden="true">≠</span>
+        <span>
+          {lookup(
+            'indicatorDetail.statementCheck.mismatchTitle',
+            'Disagrees with the source statement',
+          )}
+        </span>
+      </div>
+      {/* Three rows rather than one sentence: the reader's next action is to
+          open their own workbook and compare, and a table is what they are
+          about to look at. */}
+      <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono tabular-nums">
+        <dt className="text-muted-foreground">
+          {lookup('indicatorDetail.statementCheck.platform', 'Platform')}
+        </dt>
+        <dd className="text-foreground">{fmt(value)}</dd>
+        <dt className="text-muted-foreground">
+          {lookup('indicatorDetail.statementCheck.statement', 'Your statement')}
+        </dt>
+        <dd className="text-foreground">{fmt(expected)}</dd>
+        <dt className="text-muted-foreground">
+          {lookup('indicatorDetail.statementCheck.difference', 'Difference')}
+        </dt>
+        <dd className="text-[#E879F9] font-semibold">
+          {delta > 0 ? '+' : ''}
+          {fmt(delta)}
+        </dd>
+      </dl>
+      <p className="mt-1 text-muted-foreground">
+        {lookup(
+          'indicatorDetail.statementCheck.hint',
+          'The imported rows were written exactly as parsed. This compares the derived figure against the subtotal your own sheet computes.',
+        )}
+      </p>
+    </div>
+  );
+}
+
+/**
  * Financial-truth-infra Phase B.2 — Trust/Audit strip rendered between
  * the panel header and the hint paragraph. Shows where the value came
  * from (sourceDocument) + when it was last audited (lastReconciledAt

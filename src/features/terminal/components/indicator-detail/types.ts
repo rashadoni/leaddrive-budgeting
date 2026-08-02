@@ -78,6 +78,14 @@ export interface IndicatorValueDetail {
   lastReconciledAt?: string | null;
   reconciledBy?: string | null;
   sanityBand?: 'normal' | 'low_extreme' | 'high_extreme' | 'missing_input' | 'no_band' | null;
+  /** Phase 11.91 — the statement check: verdict, the source's own figure, and
+   *  when the check last ran (pass or fail). All null on a value nobody has
+   *  compared to anything, which the panel states outright rather than
+   *  omitting — "nobody has checked this" is the answer to the question the
+   *  reader is asking, not the absence of one. */
+  reconStatus?: 'matched' | 'mismatched' | null;
+  reconExpected?: number | null;
+  reconCheckedAt?: string | null;
   indicator: IndicatorMeta;
   company: CompanyMeta;
 }

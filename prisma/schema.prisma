@@ -1387,6 +1387,30 @@ model IndicatorValue {
   lastReconciledAt  DateTime?
   reconciledBy      String?
   sanityBand        String?
+  /// Phase 11.91 (2026-08-02) — the verdict of checking this value against the
+  /// client's own statement, and the number that statement gave.
+  ///
+  /// `lastReconciledAt` above records only SUCCESS, because `decision-grade.ts`
+  /// reads it as evidence and a field that is set on failure too would certify
+  /// the exact values it is meant to catch. But a failure is the more useful
+  /// fact for a human, and it had nowhere to live: a mismatch was found during
+  /// import, printed into a warning string, and then lost. The screen went on
+  /// showing the number with nothing to say against it.
+  ///
+  ///   `reconStatus`    "matched" | "mismatched"; NULL = never checked, which
+  ///                    is not the same as checked-and-fine and must never
+  ///                    render as such.
+  ///   `reconExpected`  what the source statement says this quantity is. The
+  ///                    delta is `value - reconExpected` and is derived, never
+  ///                    stored — two columns that must agree are one column and
+  ///                    a bug.
+  ///   `reconCheckedAt` when the check last RAN, pass or fail. Distinct from
+  ///                    `lastReconciledAt` (when it last PASSED): a value that
+  ///                    failed this morning and a value nobody has looked at
+  ///                    since March are different problems.
+  reconStatus       String?
+  reconExpected     Float?
+  reconCheckedAt    DateTime?
   // Phase 10 / Stage B5 — lineage. The DataRevision whose pinned source and
   // mapping state produced this value (03-DATA-KPI-TRUST-SPEC §5, ADR Trust
   // Core §4). Nullable and additive on purpose: every one of the 1,269 IVs

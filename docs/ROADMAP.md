@@ -928,11 +928,76 @@ This is not caution for its own sake. Every defect closed on 2026-08-01 was foun
 
 | # | Task | Evidence | Est. | Status |
 |---|------|----------|------|--------|
-| 13.1 | **The referee: cross-foot every sheet against the file's own totals, and say so when it agrees.** Generalise what was done by hand today. For each parsed sheet look for a subtotal the workbook computes itself and never imports (`PLF.03/08/10`, the `Ümumi satış` row, a balance-sheet total), compare it to the bottom-up sum, and report the comparison as a first-class result. Agreement must be *stated*, not implied by silence: "the sheet's own PLF.10 matched" is the sentence a finance director is looking for. Turns a green verdict from "I wrote what I parsed" into "I read what you have" — the gap 11.71 documents and the reason a parse-level loss can pass `db-readback`. A prior attempt was backed out for firing an 840.00 false alarm on undecided sign convention; that must be handled, not worked around | Done by hand 2026-08-01: `plf-workbook-dryrun.test.ts`, and the counterparty base tying to `Ümumi satış` at 24,401,350.00 / 8,346,815.29 exactly. Unwired helper at `src/lib/onboarding/adapters/plf-crossfoot.ts`; the blindness it covers is described in 11.71 | 2-3d | ⬜ |
+| 13.1 | **The referee: cross-foot every sheet against the file's own totals, and say so when it agrees.** Generalise what was done by hand today. For each parsed sheet look for a subtotal the workbook computes itself and never imports (`PLF.03/08/10`, the `Ümumi satış` row, a balance-sheet total), compare it to the bottom-up sum, and report the comparison as a first-class result. Agreement must be *stated*, not implied by silence: "the sheet's own PLF.10 matched" is the sentence a finance director is looking for. Turns a green verdict from "I wrote what I parsed" into "I read what you have" — the gap 11.71 documents and the reason a parse-level loss can pass `db-readback`. A prior attempt was backed out for firing an 840.00 false alarm on undecided sign convention; that must be handled, not worked around | Done by hand 2026-08-01: `plf-workbook-dryrun.test.ts`, and the counterparty base tying to `Ümumi satış` at 24,401,350.00 / 8,346,815.29 exactly. Shipped 11.88 (`crossFootPlfSheet` wired into `azseker-plf.ts` before the sign flip); extended 11.91 to also return every stated `PLF.NN` subtotal, which is what the derived-figure check reads | 2-3d | ✅ |
 | 13.2 | **"I can read it": shape proposal, preview, confirm.** The archetype is `Müştəri İcmalı` — the parser knew two shapes and the workbook shipped a third, so 371 rows reached nothing. The right answer was never "tell the user the header is on row 6"; it was to notice and read it. Model returns a shape descriptor; the deterministic parser executes it; the user sees the first rows **exactly as they would be stored**, plus the total and, where 13.1 applies, the comparison against the sheet's own. Confirmation writes the descriptor into the workbook template, so it becomes the operator's decision rather than today's answer from the model | `counterparty-register.ts` now carries two hand-written shapes; a third file needs a third. Template machinery exists (`import-template-memory.ts`) and already stores approved routing | 1w | ⬜ |
 | 13.3 | **"Tell me one thing": the single-question gate.** When a reading is complete except for one fact, ask exactly that, inline, with options — never a free-text box. Live example: `Müştəri İcmalı` has no seller column anywhere, so 371 customers cannot be attributed; on 2026-08-01 the main session asked the owner in a dialog and got "the holding, group-wide". The product must ask that itself. Recurring shapes: whose company · which year when the file spans several · whether intragroup counts | The intragroup answer was later confirmed by the client's own arithmetic — excluding `Qrupdaxili` reproduces `Ümumi satış` to the cent for all 17 months — which is exactly the kind of check the assistant should run *before* asking, and skip the question when the file already answers it | 3-4d | ⬜ |
 | 13.4 | **"Here's what to fix": precise file guidance.** When no shape resolves, name the cell. Not `Missing required column(s): companyCode, metric, date, value, unit` but "row 6, column C must hold the metric name; it currently holds a date". Excel row numbers, not internal indices — `extractWorkbookMeta` reads with `blankrows: false`, so the index and the row number diverge, and 11.84 deliberately printed no row number rather than print a wrong one | Current text is the reader's own error string, surfaced verbatim | 2d | ⬜ |
+| 13.6 | **Correct a wrong import by hand — as an adjustment, never an edit.** The owner's requirement, stated twice: «чтоб потом можно было отредактировать вручную», «даже если импорт будет неправильным чтоб потом можно было откорректировать». Design decided below; the short version is that a correction is a new, attributed, reversible ROW, and imported rows are never mutated | 11.91 made the discrepancy visible and stops there — a person can now see that a figure is wrong and still has no way to fix it | 1w | ⬜ |
+| 13.7 | **Accept a difference, with a signature.** When the platform is right and the workbook is stale, the ≠ must be closeable — by a named person, with a reason, and never silently. Without this, 13.6's alternative is to falsify a row to make a marker go away | The AZSF 2025 block does not cross-foot in either direction (−95,053 with `PLF.08.*`, +79,438 without; the difference is exactly `PLF.08.01` = 174,491). The workbook disagrees with itself, so no correction to our data can ever clear it | 2-3d | ⬜ |
 | 13.5 | **Manual entry, narrowly.** Only where the file genuinely cannot carry the data. Today the briefing card says, honestly, "there is no screen for typing in customer or supplier turnover, so the file itself has to carry it" — honest, and a dead end. Either a narrow entry surface for these cases, or the assistant accepts the answer in the dialogue and writes it | Deliberately last: it is the smallest slice of cases and the easiest to over-build | 3-4d | ⬜ |
+
+### 13.6 — how manual correction has to work, and why it is not an edit box
+
+Written out here because the obvious implementation is the wrong one, and it is
+obvious enough that a future session will reach for it.
+
+**The tempting shape: let someone type over the number.** Either the indicator
+value on the terminal, or the budget row in the P&L. Rejected, for four reasons
+that are each individually sufficient.
+
+1. *An edited indicator produces two truths.* The indicator is derived. Typing
+   `58,880,102` over a wrong `72,333,200` leaves the P&L tab, the drill-down,
+   every export and the board deck still showing the old number, because they
+   read the rows, not the indicator. The screen would agree with the client and
+   the reports would not.
+2. *It makes the statement check circular.* 11.91 compares a derived figure
+   against the workbook's own subtotal. If a person can type the derived figure,
+   the natural thing to type is the subtotal — and then it reconciles, by
+   construction, having verified nothing. A check whose input can be hand-set to
+   its own expected value is not a check.
+3. *Recompute owns that column.* An override would have to be either erased on
+   the next recompute (useless) or permanently exempt the cell from its formula
+   (a spreadsheet with extra steps, and one nobody would remember agreeing to).
+4. *Mutating an imported row destroys the only faithful copy.* The imported rows
+   are what the workbook said. That is what makes re-import safe, what makes the
+   cross-foot meaningful, and what lets anyone answer "did we read it wrong, or
+   was it wrong?". Editing in place burns the evidence to fix the symptom.
+
+**The shape to build: a correction is a new row, attributed and reversible.**
+
+- **An adjustment, not an edit.** A `BudgetLine` (or `OperationalFact`) written
+  by a person, against a named account and period, with an amount, a reason, an
+  actor and a timestamp. The imported rows stay exactly as parsed. Derived
+  figures move because the underlying sum moved, which means the terminal, the
+  P&L, the exports and the deck all move together — the thing an override
+  cannot do.
+- **Marked everywhere, forever.** Same rule as 11.66's provenance dots and
+  11.91's ≠ ring: a total containing hand-entered money must never be
+  indistinguishable from one that does not. A corrected figure carries its own
+  marker and its own tooltip naming who corrected it and why.
+- **It must survive a re-import, and that is the hard part.** The import
+  clean-slates `planId × footprintCompanyIds × year`
+  (`import-batch.ts:217-260`), so a naive adjustment row sitting in that scope
+  is archived by the next run of the same file — the correction silently
+  un-applies, which is worse than never having offered one. Corrections must be
+  **excluded from the archive scope by provenance** (they name no workbook), and
+  then **flagged for review after any re-import that touched their account and
+  period**: the new file may already contain the fix, and applying both is a
+  double correction. Flag, do not auto-resolve — the platform cannot know
+  whether the new rows supersede the correction or coincide with it.
+- **A correction is not a reconciliation.** After correcting, the 11.91 pass
+  re-runs and the value either now agrees with the statement or does not.
+  `lastReconciledAt` is written by the check, never by the act of correcting.
+  This is the whole reason the pass is a separate re-runnable step over stored
+  values rather than a side effect of the import.
+
+**13.7 — the other half.** Sometimes the platform is right and the workbook is
+wrong. AZSF 2025 is the live case: the block does not cross-foot in either
+direction, so its ≠ can never be cleared by fixing our data. Without a way to
+accept a difference — named person, stated reason, recorded — the only way to
+silence the marker is to falsify a row, and the feature would have created the
+exact behaviour it exists to prevent. An accepted difference stays visible as
+*accepted*, never as *matched*.
 
 ### What the assistant must never do
 
@@ -1001,6 +1066,8 @@ live CF rows, so it remains honestly blocked. Other blockers remain: no independ
 balance-sheet cash marker, no distributions model, and owner currency data (item 5).
 
 ## Changelog
+
+- **2026-08-02 (Phase 11.91 — the product could say where a number came from and never whether it was right)** — `IndicatorValue.lastReconciledAt` is one of two fields the decision-grade gate requires and had no writer anywhere in the product; only `audit-company.cjs` wrote it, a manual CLI that has never run on this data. So every coloured cell was permanently uncertified with no reachable state in which it cleared. The check that was missing is the one a human did by hand on 2026-08-01, four times, finding a real defect each time: these sheets compute their own `PLF.01/03/08/10`, the importer never reads them (it sums the leaves), and that makes them an oracle the client has already agreed with. 72.3M of revenue was a plausible figure for this holding for a year; against the client's own `PLF.01` it falls in one comparison. Now: a pure comparator over six P&L-answerable codes, a **separate re-runnable pass over stored values** (not folded into recompute — "check this again" must not mean "recompute everything", and reading the stored row is the one place a write bug can surface), three new columns, and a rule that keeps the gate honest — `lastReconciledAt` still means "last time it PASSED", a mismatch gets its own status/expected/checked-at, and a failure **clears** any older pass-stamp so the gate cannot read green while the screen says the number is wrong. On screen a mismatch is a fuchsia ring plus `≠` on the tile, a count in the heat-map header, and both figures with the gap in Panel 3 — deliberately outside the status palette, because a red cell that is also wrong is the worse case and must be distinguishable from a red cell that is right. The panel does not name which number is wrong; in this dataset both have been. **Known limits:** only the year period is reconcilable (these are FY totals — checking an April margin against one would manufacture a mismatch on every month of every company); six indicators, all P&L, with balance-sheet totals unwired; every existing row reads NULL and keeps saying "not checked" until a re-import runs the pass, with **no backfill**, because inventing "matched" for values nobody compared to anything is the lie this exists to expose; and seeing a discrepancy is not yet being able to fix one — the correction design is 13.6/13.7, including why an edit box over the number is the wrong shape (it makes this check circular, produces two truths, and burns the only faithful copy of what the workbook said). The visual gate could not run in the authoring environment (no `E2E_ADMIN_PASSWORD`, no local DB) — both markers render only on `reconStatus === 'mismatched'` and no row carries that yet, so the baseline is *expected* unmoved, not verified.
 
 - **2026-08-01 (Phase 11.85 — two charts of accounts, one unique index: 48,735,978 ₼ about to be filed under the wrong names)** — `PLF Actual 2025` and the 2026 sheets renumbered 155 codes against each other, and `chart_of_accounts` has one name per code with no year. Since `resolveOrCreateAccountId` never renames an existing row, the pending 2025 re-import would have posted 16,428,573 ₼ of processed-corn revenue under "Revenue from Sale of Almond" and 37 accounts' worth of the same, with every total still correct and every check still green. The mapping is now the client's own wording — match the normalised label among leaf codes, keep the 2025 code's section when two match — expressed as a derivation function whose output is the checked-in table, with a test that re-derives it from the workbook and demands the file byte for byte. Keying on (code, LABEL) rather than code is what makes it correct: `PLF.07.02.04` carries three different subsidies on the 2025 sheet, and a code-keyed pass mislabels 4,977,039 ₼ of them. A 2025 account whose code 2026 took over is minted as `<code>.FY2025` with its own name; an account that would duplicate an existing one under another code is named in a warning rather than created in silence. Translating before typing also moves 2025's D&A below the EBITDA line, where the sheet's own `PLF.08` already puts it: derived EBITDA goes from −5,344,501 to 3,233,868, exactly the client's figure. **Known limits:** the 2025 net profit is still 95,053.04 ₼ short of the sheet's own `PLF.10`, which is a plug in the client's arithmetic rather than anything the importer does — pinned by a test instead of left to be rediscovered; `PLF.11` still does not import; and the dry-run skips in a default `vitest run` because the workbook is client data outside the repo.
 

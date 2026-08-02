@@ -39,7 +39,12 @@ import { formatValue, formatHeadlineValue } from "./indicator-detail/format";
 // Phase 8 D1 (2026-05-29) — Panel-3 forecast subsystem extracted to a sibling.
 import { ForecastSection } from "./indicator-detail/ForecastSection";
 // Phase 8 D1 (2026-05-29) — Panel-3 badges + aggregate renderer extracted to siblings.
-import { ProvenanceBadge, MaterialityBadge, TrustAuditStrip } from "./indicator-detail/badges";
+import {
+  ProvenanceBadge,
+  MaterialityBadge,
+  TrustAuditStrip,
+  StatementCheckStrip,
+} from "./indicator-detail/badges";
 import { AggregateBlock, formatAggValue, hintForKey, unitToHint } from "./indicator-detail/AggregateBlock";
 import { BenchmarkBand } from "./indicator-detail/BenchmarkBand";
 
@@ -517,6 +522,19 @@ export function IndicatorDetail({
         lastReconciledAt={detail.lastReconciledAt}
         reconciledBy={detail.reconciledBy}
         sanityBand={detail.sanityBand}
+        t={t}
+      />
+
+      {/* 11.91 — ABOVE the trust strip, and above the hint. A reader who gets
+          three lines into this panel has already decided how to feel about the
+          number; if it disagrees with their own paperwork, that has to arrive
+          before the interpretation does. */}
+      <StatementCheckStrip
+        reconStatus={detail.reconStatus}
+        reconExpected={detail.reconExpected}
+        reconCheckedAt={detail.reconCheckedAt}
+        value={detail.value}
+        unit={detail.indicator.unit ?? ''}
         t={t}
       />
 

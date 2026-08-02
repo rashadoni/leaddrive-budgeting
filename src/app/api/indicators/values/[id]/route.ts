@@ -64,6 +64,12 @@ export async function GET(
       lastReconciledAt: true,
       reconciledBy: true,
       sanityBand: true,
+      // Phase 11.91 — the statement check. Panel 3 is where a reader decides
+      // whether to trust one specific number, so it gets the full comparison
+      // (both figures), not just the ring the grid shows.
+      reconStatus: true,
+      reconExpected: true,
+      reconCheckedAt: true,
       indicator: {
         select: {
           id: true,
@@ -142,6 +148,12 @@ export async function GET(
     lastReconciledAt: iv.lastReconciledAt?.toISOString() ?? null,
     reconciledBy: iv.reconciledBy,
     sanityBand: iv.sanityBand,
+    // Phase 11.91 — null across the board on every row nobody has checked,
+    // which the panel renders as "not checked" rather than hiding. Absence of
+    // a verdict is itself the answer to "has anyone verified this?".
+    reconStatus: iv.reconStatus,
+    reconExpected: iv.reconExpected,
+    reconCheckedAt: iv.reconCheckedAt?.toISOString() ?? null,
     indicator: iv.indicator,
     company: iv.company,
   })

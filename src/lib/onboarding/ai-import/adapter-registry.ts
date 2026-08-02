@@ -115,6 +115,22 @@ export interface AdapterRunResult {
    * aborts the whole import BEFORE any transaction opens.
    */
   blocked?: { reason: string }
+  /**
+   * Phase 11.91 — the subtotals THIS SHEET computes for itself, e.g.
+   * `{ "PLF.01": 58880102.23, "PLF.03": 20180179.07 }`.
+   *
+   * The importer never reads these rows — it sums the leaves — which is
+   * precisely what makes them a usable oracle: an independently derived
+   * figure the client already agreed with, sitting in the same file. A human
+   * checked four of them by hand on 2026-08-01 and found a real defect each
+   * time. This carries them out of the parse so the same comparison can run
+   * against the DERIVED indicators after recompute, instead of being done once
+   * by someone who happened to think of it.
+   *
+   * Absent for every adapter that has no such row, which is most of them. A
+   * balance sheet's own totals would work the same way and are not wired yet.
+   */
+  statedSubtotals?: Record<string, number>
   /** Apply step — invoked by orchestrator AFTER reconciliation passes. */
   applyToDb: (
     /**

@@ -50,6 +50,7 @@ export function HeatMap({ period }: Props) {
     setMounted, dbSummary, setDbSummary, activePeriod, alertThresholds,
     setAlertThresholds, refetchTimerRef, cellMap, compositeByCompany,
     provisionalSummary,
+    statementMismatchCount,
     filteredCompanies, summary, indicators, displayIndicators,
     applicabilityDecisionForPair,
     hiddenIndicatorCount, indicatorQuery, setIndicatorQuery,
@@ -301,6 +302,27 @@ export function HeatMap({ period }: Props) {
                     count: provisionalSummary.provisional,
                     total: provisionalSummary.coloured,
                   })}
+            </span>
+          </span>
+        )}
+        {/* 11.91 — the loudest thing this header can say, and the only badge
+            here that reports a number being WRONG rather than unproven.
+            Placed before the scenario badge and after the provisional one so
+            it reads in descending order of "should I act on this": a
+            discrepancy against the client's own paperwork outranks a missing
+            audit trail. Fuchsia matches the tile rings below — the badge and
+            the marked cells must be recognisably the same alarm. */}
+        {statementMismatchCount > 0 && (
+          <span
+            data-testid="heatmap-statement-mismatch-badge"
+            title={t('heatMap.statementMismatchBadgeTooltip')}
+            className="inline-flex items-center gap-1 shrink-0 px-2 py-0.5 rounded border border-[#E879F9]/60 bg-[#E879F9]/10 text-[#E879F9] text-[9px] uppercase tracking-wider font-semibold cursor-help"
+          >
+            <span aria-hidden="true">≠</span>
+            <span>
+              {t('heatMap.statementMismatchBadge', {
+                count: statementMismatchCount,
+              })}
             </span>
           </span>
         )}

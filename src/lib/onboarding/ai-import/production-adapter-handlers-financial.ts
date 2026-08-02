@@ -225,6 +225,14 @@ export function makePlfHandler(
       ...(parsed.signConvention?.blockedReason
         ? { blocked: { reason: parsed.signConvention.blockedReason } }
         : {}),
+      // Phase 11.91 — carry the sheet's OWN subtotals out of the parse so the
+      // post-recompute pass can check the derived indicators against them.
+      // These are the rows the importer deliberately does not read (it sums
+      // the leaves), which is exactly why they can serve as an oracle.
+      ...(parsed.crossFoot?.statedSubtotals &&
+      Object.keys(parsed.crossFoot.statedSubtotals).length > 0
+        ? { statedSubtotals: parsed.crossFoot.statedSubtotals }
+        : {}),
       // Phase 7.M Tier 5 — `expectedSums` is read by orchestrator for
       // cross-file conflict detection (not declared on the public
       // AdapterRunResult shape, but the orchestrator looks for it).

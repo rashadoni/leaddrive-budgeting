@@ -16,6 +16,7 @@ import { indicatorProvenance } from "@/lib/risk/indicator-provenance";
 import {
   statusShape,
   statusColor,
+  hasStatementMismatch,
   type HeatMapCell,
 } from "@/lib/risk/heatmap-matrix";
 import {
@@ -225,6 +226,28 @@ export function HeatMapCellTd({
   // against the green flash); when not flashing the confidence ring
   // shows.
   const isLowConfidence = cell?.signalConfidence === 'low';
+  // Phase 11.91 — this number disagrees with the client's own statement.
+  //
+  // Deliberately NOT rendered in the status palette. Green/amber/red already
+  // mean "how is the business doing", and a red cell that is also wrong would
+  // be indistinguishable from a red cell that is right — which is the worse of
+  // the two situations and the one that has to stand out. Fuchsia is unused
+  // elsewhere on this grid (status green/amber/red, low-confidence amber ring,
+  // provenance sky/gray dot), so it can only mean this.
+  //
+  // Loud on purpose: a ring around the whole tile plus a `≠` glyph, not a
+  // corner dot. The instruction was that a discrepancy be visible at a glance
+  // rather than on hover, and every subtler marker on this grid has to be
+  // hunted for.
+  const statementMismatch = hasStatementMismatch(cell ?? {});
+  const mismatchTitle =
+    statementMismatch && cell
+      ? t('heatMap.statementMismatchTitle', {
+          actual: formatValue(cell.value, ind.unit),
+          expected: formatValue(cell.reconExpected ?? 0, ind.unit),
+          delta: formatValue(cell.value - (cell.reconExpected ?? 0), ind.unit),
+        })
+      : undefined;
   const notApplicableReasonText =
     applicabilityReason === 'explicit_disabled'
       ? t('heatMap.notApplicableDisabled')
@@ -262,6 +285,10 @@ export function HeatMapCellTd({
       ? t('heatMap.cellAriaMateriality', { materiality: materialityLabel })
       : null,
     isLowConfidence ? t('heatMap.cellAriaLowConfidence') : null,
+    // 11.91 — a ring and a glyph are invisible to a screen reader, and this is
+    // the one marker on the grid that changes whether the number should be
+    // acted on at all.
+    statementMismatch ? t('heatMap.cellAriaStatementMismatch') : null,
   ]
     .filter((part): part is string => Boolean(part))
     .join('. ');
@@ -275,6 +302,7 @@ export function HeatMapCellTd({
       data-materiality={cell?.materiality ?? undefined}
       data-signal-confidence={cell?.signalConfidence ?? undefined}
       data-provenance={provenance === "client-data" ? undefined : provenance}
+      data-recon={cell?.reconStatus ?? undefined}
     >
       {/* 11.66 — mark where this number comes from.
           After a reset that provably emptied every financial table these tiles
@@ -297,6 +325,26 @@ export function HeatMapCellTd({
         >
           {provenance === "external-feed" ? "~" : "="}
         </span>
+      )}
+      {/* 11.91 — the tile disagrees with the client's own statement.
+          Ring + glyph, both absolutely positioned so the fixed-width column
+          keeps its layout and the committed visual baseline is unmoved on
+          every cell that has no mismatch (which today is all of them). */}
+      {statementMismatch && (
+        <>
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-[1px] ring-[1.5px] ring-inset ring-[#E879F9]"
+          />
+          <span
+            aria-hidden="true"
+            data-testid="tile-statement-mismatch"
+            title={mismatchTitle}
+            className="pointer-events-none absolute left-[1px] bottom-[1px] text-[8px] leading-none font-bold text-[#E879F9]"
+          >
+            ≠
+          </span>
+        </>
       )}
       {/* Dense matrix cells sit directly beside each other. Radix's default
           hoverable-content grace area can keep the previous cell's tooltip

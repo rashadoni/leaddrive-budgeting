@@ -117,6 +117,10 @@ import {
   type RunRecomputeResult,
 } from "@/lib/risk/recompute-trigger"
 import {
+  reconcileImportedIndicators,
+  describeMismatch,
+} from "@/lib/risk/reconciliation-pass"
+import {
   aiSheetMappingVersionId,
   buildAiImportRevisionScope,
   LineageScopeError,
@@ -432,6 +436,29 @@ export interface MultiFileImportResult {
     /** Why no revision was written. Null when one was. */
     reason: string | null
   }
+  /**
+   * Phase 11.91 — the derived values checked against the client's own
+   * statement, and the ones that disagreed.
+   *
+   * A THIRD claim, separate from the two above and weaker than neither. The
+   * `reconciliation` block on the receipt says the rows that landed are the
+   * rows the parser meant to write; `lineage` says which source state produced
+   * them. Both can be perfect while the revenue on the screen is 13M too high,
+   * which is what happened, because neither examines a DERIVED figure. This is
+   * the one that does.
+   *
+   * `checked: 0` is the normal shape for a workbook whose sheets state no
+   * subtotals of their own, and it is reported rather than omitted: a run that
+   * compared nothing must not be readable as a run that found nothing wrong.
+   */
+  statementCheck: {
+    checked: number
+    matched: number
+    mismatched: number
+    notChecked: number
+    /** Human-readable lines, one per disagreement. Empty when all matched. */
+    mismatches: string[]
+  }
   /** Dry-run benchmark counters. These are informational and never drive writes. */
   parseMetrics: MultiFileParseMetrics
   /**
@@ -503,6 +530,22 @@ const NO_LINEAGE_ABORTED: MultiFileImportResult["lineage"] = {
   companyCodes: [],
   families: [],
   reason: "import aborted before any write — nothing to attest",
+}
+
+/**
+ * Phase 11.91 — the statement-check shape for a run that checked nothing.
+ *
+ * Zeros across the board, `checked: 0` included. Reported rather than omitted
+ * on purpose: an absent block reads as "no problems", and the difference
+ * between "every derived figure agrees with the source" and "no derived figure
+ * was compared to anything" is the entire subject of this feature.
+ */
+const NO_STATEMENT_CHECK: MultiFileImportResult["statementCheck"] = {
+  checked: 0,
+  matched: 0,
+  mismatched: 0,
+  notChecked: 0,
+  mismatches: [],
 }
 
 /** Lightweight p-limit replacement — caps concurrent promise execution. */
@@ -1424,6 +1467,7 @@ export async function runMultiFileImport(
       durationMs: Date.now() - t0,
       recompute: { ok: 0, unknown: 0, failed: 0, targets: 0, traced: 0 },
       lineage: NO_LINEAGE_ABORTED,
+      statementCheck: NO_STATEMENT_CHECK,
       parseMetrics,
       // Phase 11.3 — a pre-write abort writes NOTHING, so the run is
       // incomplete by definition; buildCompleteness() would otherwise see an
@@ -1481,6 +1525,7 @@ export async function runMultiFileImport(
       durationMs: Date.now() - t0,
       recompute: { ok: 0, unknown: 0, failed: 0, targets: 0, traced: 0 },
       lineage: NO_LINEAGE_ABORTED,
+      statementCheck: NO_STATEMENT_CHECK,
       parseMetrics,
       completeness: {
         complete: false,
@@ -1517,6 +1562,7 @@ export async function runMultiFileImport(
       durationMs: Date.now() - t0,
       recompute: { ok: 0, unknown: 0, failed: 0, targets: 0, traced: 0 },
       lineage: NO_LINEAGE_ABORTED,
+      statementCheck: NO_STATEMENT_CHECK,
       parseMetrics,
       completeness: {
         complete: false,
@@ -1575,6 +1621,15 @@ export async function runMultiFileImport(
   const committedFilenames = new Set<string>()
   /** Sheet routing decisions behind those writes — the mapping fingerprint. */
   const committedMappingDecisions: AiSheetMappingDecision[] = []
+  /**
+   * Phase 11.91 — company code → the subtotals its own sheets state.
+   *
+   * Merged post-commit under the same rule as the three maps above, and for a
+   * sharper reason: a statement from a rolled-back group would be checked
+   * against values computed from rows that never landed, and would report a
+   * mismatch that the rollback itself caused.
+   */
+  const statedSubtotalsByCode = new Map<string, Record<string, number>>()
 
   for (const [fileType, filenames] of orderedGroups) {
     // Files of `unknown` type are flagged but never auto-applied —
@@ -1702,17 +1757,35 @@ export async function runMultiFileImport(
       decision: AiSheetMappingDecision
       filename: string
     }> = []
+    /**
+     * Phase 11.91 — the sheets' own subtotals, staged exactly like
+     * `groupCoverage`. A rolled-back group must not leave a statement behind
+     * to check values against: the rows it would have written never landed,
+     * so every comparison would report a mismatch caused by the rollback.
+     */
+    let groupStatements: Array<{ code: string; subtotals: Record<string, number> }> = []
     try {
       await deps.prisma.$transaction(async (tx) => {
         // Prisma does not retry an interactive transaction, but resetting is
         // free and makes a re-entered callback impossible to double-count.
         groupCoverage = []
+        groupStatements = []
         for (const r of groupRecords) {
           if (!r.adapterResult) continue
           const applied = await r.adapterResult.applyToDb(tx)
           totalRowsInserted += applied.rowsInserted
           for (const code of applied.touchedCompanyCodes ?? []) {
             adapterTouchedCodes.add(code)
+          }
+          // Phase 11.91 — keyed on the entity actually WRITTEN, same as the
+          // recompute target below. Keying on the classifier's guess would
+          // check one company's indicators against another's statement.
+          const statedFor = writeEntity(r)
+          if (statedFor && r.adapterResult.statedSubtotals && applied.rowsInserted > 0) {
+            groupStatements.push({
+              code: statedFor,
+              subtotals: r.adapterResult.statedSubtotals,
+            })
           }
           // ── Lineage: does this write earn a claim? ──────────────
           // Three conditions, all necessary:
@@ -1877,6 +1950,13 @@ export async function runMultiFileImport(
         committedFilenames.add(c.filename)
         committedMappingDecisions.push(c.decision)
       }
+      for (const s of groupStatements) {
+        const acc = statedSubtotalsByCode.get(s.code) ?? {}
+        for (const [k, v] of Object.entries(s.subtotals)) {
+          acc[k] = (acc[k] ?? 0) + v
+        }
+        statedSubtotalsByCode.set(s.code, acc)
+      }
 
       perGroup.push({
         fileType,
@@ -1946,6 +2026,7 @@ export async function runMultiFileImport(
     targets: 0,
     traced: 0,
   }
+  let statementCheck: MultiFileImportResult["statementCheck"] = NO_STATEMENT_CHECK
   let lineageResult: MultiFileImportResult["lineage"] = {
     revisionId: null,
     created: false,
@@ -2112,6 +2193,61 @@ export async function runMultiFileImport(
         targets: r.targets,
         traced: r.traced,
       }
+
+      // ── Phase 11.91: check the derived values against the source ──────
+      // After recompute, because there is nothing to check before it, and
+      // outside the group transaction, because a failure here must not roll
+      // back rows that are correct. Non-fatal throughout: an unchecked import
+      // is the status quo, an aborted one is a regression.
+      if (statedSubtotalsByCode.size > 0) {
+        try {
+          const idByCode = new Map(companies.map((c) => [c.code, c.id]))
+          const labelById = new Map(companies.map((c) => [c.id, c.code]))
+          const sources = [...statedSubtotalsByCode.entries()]
+            .map(([code, subtotals]) => ({
+              companyId: idByCode.get(code) ?? "",
+              statedSubtotals: subtotals,
+            }))
+            .filter((s) => s.companyId)
+          const check = await reconcileImportedIndicators(deps.prisma, {
+            organizationId: input.organizationId,
+            year: input.year,
+            sources,
+            actor: input.actorUserId ?? "import",
+            now: new Date(),
+          })
+          statementCheck = {
+            checked: check.checked,
+            matched: check.matched,
+            mismatched: check.mismatched,
+            notChecked: check.notChecked,
+            mismatches: check.mismatches.map((m) =>
+              describeMismatch(m, (id) => labelById.get(id) ?? id),
+            ),
+          }
+          // A disagreement with the client's own statement is the loudest
+          // thing this import can find, and it is NOT a block: the rows are
+          // faithful to the workbook, and refusing to load a workbook that
+          // disagrees with itself would leave finance with no data and no
+          // way to look at the problem. It is a warning that survives into
+          // the receipt AND is stamped on the values themselves, so it stays
+          // visible long after this response scrolls away.
+          for (const line of statementCheck.mismatches) {
+            warnings.push(`STATEMENT MISMATCH: ${line}`)
+          }
+          recomputeLog.info(
+            `Statement check: ${check.matched} matched, ${check.mismatched} mismatched, ` +
+              `${check.notChecked} not checked`,
+          )
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          warnings.push(
+            `Statement check did not run (non-fatal): ${msg}. The imported rows are ` +
+              "committed and the indicators recomputed; they simply carry no verdict " +
+              "against the workbook's own subtotals, and the surfaces will say so.",
+          )
+        }
+      }
       if (lineage && r.traced === 0) {
         // A revision exists and nothing carried it. Not a crash, but the run
         // did not deliver what the revision implies, so it must not pass in
@@ -2148,6 +2284,7 @@ export async function runMultiFileImport(
     durationMs: Date.now() - t0,
     recompute,
     lineage: lineageResult,
+    statementCheck,
     parseMetrics,
     completeness: buildCompleteness(perFile, perGroup, input.dryRun === true),
     warnings,
