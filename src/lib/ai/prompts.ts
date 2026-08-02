@@ -58,7 +58,14 @@ const SECTION_INSTRUCTIONS: Record<Section, string> = {
 - Debt-to-equity ratio vs industry norm
 - Current ratio if working capital visible
 - Equity deficit warning if negative
-- Leverage risk`,
+- Leverage risk
+
+Read \`source\` and \`basis\` BEFORE quoting any total, and open with what they say:
+- \`source.asOfMonth\` is the latest month with data. These are positions AS OF that month, never a year-end position unless it is 12.
+- \`source.fellBackToActuals: true\` means the selected plan is a budget with no balance sheet of its own and you are reading that year's ACTUALS. Say so.
+- \`basis.eliminationsApplied: false\` means several legal entities were added together with intercompany balances counted twice. Report the figures with that caveat, never as "the group's balance sheet", and do not derive leverage or solvency ratios from them.
+- \`totals.debtToEquity: null\` is a deliberate refusal, not missing data. Do not recompute it from the totals.
+- \`source.rowCount: 0\` means no balance sheet has been LOADED. That is not the same as assets being zero — say the data is absent, and do not present 0 AZN as a finding.`,
 
   "cogs": `Section: COGS. Focus on:
 - Unit cost per product and how it compares to product price (if sales data known)
