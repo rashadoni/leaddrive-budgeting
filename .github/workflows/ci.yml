@@ -66,6 +66,14 @@ jobs:
         # Report-only locally: `node scripts/rls-coverage-scan.mjs`.
         run: node scripts/rls-coverage-scan.mjs --enforce
 
+      - name: RLS schema-coverage gate
+        # Phase 12 / A04: the gate above checks CALL SITES; this one checks
+        # TABLES. Audited on production 2026-08-02 — 70 of 76 tables had RLS,
+        # and `guide_views` / `import_batch_reports` returned their full
+        # contents to the app role regardless of tenant while the call-site
+        # gate stayed green, because it never asks the database anything.
+        run: node scripts/rls-schema-coverage-scan.mjs --enforce
+
       # Lint deliberately skipped: Next.js 16 removed `next lint`, and the
       # project has no standalone eslint config yet. Re-enable once
       # eslint.config.{js,ts} lands (separate cleanup task).

@@ -77,7 +77,17 @@ function walkTs(dir) {
 for (const f of walkTs(path.join(ROOT, "src"))) {
   if (f.endsWith("with-org-scope.ts")) continue
   const src = fs.readFileSync(f, "utf8")
-  if (/SET\s+"app\.(organization_id|bypass_rls)"/.test(src) && !/SET\s+LOCAL/.test(src)) {
+  // 2026-08-02 — `set_config` is the other way to write this, and the one
+  // `with-org-scope.ts` now uses (a bound parameter instead of interpolating
+  // the tenant id into SQL). Its third argument is `is_local`: passing
+  // anything but `true` leaks the tenant across pooled connections exactly as
+  // a non-LOCAL `SET` does, silently and cross-org. Catch both spellings.
+  const rawSet =
+    /SET\s+"app\.(organization_id|bypass_rls)"/.test(src) && !/SET\s+LOCAL/.test(src)
+  const looseSetConfig =
+    /set_config\(\s*['"`]app\.(organization_id|bypass_rls)/.test(src) &&
+    !/set_config\([^)]*,\s*true\s*\)/.test(src)
+  if (rawSet || looseSetConfig) {
     rawSetHits.push(path.relative(ROOT, f))
   }
 }

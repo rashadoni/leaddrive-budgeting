@@ -59,9 +59,13 @@ export async function withOrgScope<T>(
   if (!organizationId || organizationId.trim() === "") {
     throw new Error("withOrgScope: organizationId is required")
   }
-  // Validate to prevent SQL injection — the orgId is interpolated
-  // into a SET LOCAL statement (parameterized form not supported by
-  // SET). cuid() ids are alphanumeric, 20-32 chars (default cuid is 25).
+  // Shape guard. Written in Phase 5.2 to prevent SQL injection, when the orgId
+  // WAS interpolated into a `SET LOCAL` statement; since 2026-08-02 the value
+  // travels as a bound parameter to `set_config`, so injection is closed at
+  // the statement and this guard is the second of two rather than the only
+  // one. It still earns its place for the reason below — a wrong-but-harmless
+  // id fails loudly here instead of quietly matching zero rows.
+  // cuid() ids are alphanumeric, 20-32 chars (default cuid is 25).
   //
   // Phase 5.2 architect review 2026-05-16 — tightened from `[a-z0-9]+`
   // to length-bound `{20,32}` to prevent a misconfigured test fixture
@@ -93,8 +97,27 @@ export async function withOrgScope<T>(
   }
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // Phase 12 / A06 (2026-08-02) — bound parameter instead of interpolation.
+    //
+    // **This was not an open injection hole, and the audit note that first
+    // said so was wrong.** The `^[a-z0-9]{20,32}$` guard above has stood since
+    // Phase 5.2 and rejects anything that could break out of a string literal;
+    // the hostile-input test below asserts exactly that, and it fails at the
+    // validator, not here.
+    //
+    // The change is still worth making. This line decides which tenant the
+    // caller IS — every RLS policy in the database reads what it sets — and
+    // its safety rested on a regex two screens away staying correct forever.
+    // `SET LOCAL` cannot take a parameter, but `set_config(name, value,
+    // is_local)` is exactly equivalent with `is_local = true` and can, so the
+    // concatenation buys nothing and can simply go. Defence in depth on the
+    // one statement where depth is worth having.
+    //
+    // Verified against production before the change: both forms yield the same
+    // GUC and the same 7 visible companies for the app role.
     await tx.$executeRawUnsafe(
-      `SET LOCAL "app.organization_id" = '${organizationId}'`,
+      `SELECT set_config('app.organization_id', $1, true)`,
+      organizationId,
     )
     return fn(tx)
   }, txOptions)

@@ -106,7 +106,16 @@ describe("withOrgScope — input validation", () => {
     await expect(withOrgScope("a".repeat(32), async () => "ok")).resolves.toBe("ok");
   });
 
-  it("emits SET LOCAL app.organization_id with the orgId", async () => {
+  it("sets the tenant GUC transaction-locally, with the id BOUND not interpolated", async () => {
+    // 12.4/A06 — this assertion inverted on 2026-08-02 and is stronger for it.
+    // It used to require the orgId to appear IN the SQL text, which is exactly
+    // the property that made the single most security-critical statement in
+    // the codebase a concatenation. Now the id must NOT be in the string: it
+    // travels as $1.
+    //
+    // `is_local = true` is the third argument and is what makes this a SET
+    // LOCAL. Without it the tenant leaks to the next request on the same
+    // pooled connection — silently, and cross-org.
     const execRaw = vi.fn().mockResolvedValue(0);
     txMock.mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const tx = { $executeRawUnsafe: execRaw };
@@ -114,8 +123,28 @@ describe("withOrgScope — input validation", () => {
     });
     await withOrgScope("cmockji6c0000u6oseeuz5ipq", async () => "ok");
     expect(execRaw).toHaveBeenCalledTimes(1);
-    expect(execRaw.mock.calls[0][0]).toContain('SET LOCAL "app.organization_id"');
-    expect(execRaw.mock.calls[0][0]).toContain("cmockji6c0000u6oseeuz5ipq");
+    const [sql, ...params] = execRaw.mock.calls[0];
+    expect(sql).toContain("set_config('app.organization_id', $1, true)");
+    expect(sql).not.toContain("cmockji6c0000u6oseeuz5ipq");
+    expect(params).toEqual(["cmockji6c0000u6oseeuz5ipq"]);
+  });
+
+  it("rejects an orgId that could break out of a string literal, before any SQL runs", async () => {
+    // Two guards, and this test pins which one fires. The cuid-shape validator
+    // rejects this input at the helper boundary — it has since Phase 5.2, and
+    // it is the reason the former interpolation was never exploitable. The
+    // bound parameter is defence in depth behind it, not the thing standing
+    // between this string and the database.
+    const execRaw = vi.fn().mockResolvedValue(0);
+    txMock.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const tx = { $executeRawUnsafe: execRaw };
+      return fn(tx);
+    });
+    const hostile = "x'; SET LOCAL \"app.bypass_rls\" = 'true'; --";
+    await expect(withOrgScope(hostile, async () => "ok")).rejects.toThrow(
+      /cuid-shaped/,
+    );
+    expect(execRaw).not.toHaveBeenCalled();
   });
 
   it("never emits a custom-GUC bypass in normal scope", async () => {
