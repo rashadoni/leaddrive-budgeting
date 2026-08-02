@@ -400,6 +400,17 @@ export async function GET(req: NextRequest) {
   }
 
   // Group by lineType sections
+  // 11.73 — say the sign convention where the comparison actually happens.
+  //
+  // Costs are stored POSITIVE while the source workbook writes them negative.
+  // Verified on production 2026-08-02: 263 of 266 `cogs` rows and 4,318 of
+  // 4,390 `expense` rows are positive (the remainder are genuine refunds and
+  // reversals, which must keep their sign to net correctly). Nothing is wrong
+  // with that convention — but this file is the one artifact a person lays
+  // beside their own sheet, and every cost line reads with the opposite sign
+  // from theirs. That is the likeliest origin of a "the numbers look wrong"
+  // report, and it costs one clause to prevent.
+  const COST_SIGN_NOTE = " — costs shown positive; your source workbook writes them negative"
   const typeLabels: Record<string, string> = { revenue: "Revenue", cogs: "COGS", expense: "Expenses" }
   const typeOrder = ["revenue", "cogs", "expense"]
   const sectionTotals: Record<string, { planned: number; forecast: number; actual: number }> = {}
@@ -409,7 +420,11 @@ export async function GET(req: NextRequest) {
     if (typedLines.length === 0) continue
 
     // Section header
-    const secRow = wsPFA.addRow({ category: `>> ${typeLabels[lineType] || lineType}` })
+    const secRow = wsPFA.addRow({
+      category:
+        `>> ${typeLabels[lineType] || lineType}` +
+        (lineType === "revenue" ? "" : COST_SIGN_NOTE),
+    })
     secRow.eachCell((cell) => Object.assign(cell, sectionHeaderStyle()))
     secRow.height = 22
 

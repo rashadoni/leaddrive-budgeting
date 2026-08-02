@@ -638,6 +638,41 @@ export function parsePlfCfSheet(
   const entries: ParsedCfLine[] = []
   const warnings: PlfParseWarning[] = []
 
+  // 11.72 — the same treatment 11.70 gave the P&L parser, for the same reason.
+  //
+  // This loop used to decide leafness from the SHAPE of the code
+  // (`LEAF_CODE_RE`, i.e. "four segments"), which is exactly the rule that lost
+  // `PLF.09.01` — 80,000 ₼ on AZSF, 10.8% of that company's entire activity,
+  // under a green `db-readback` verdict. Depth stood in for leafness there and
+  // stands in for it here; `buildLeafPredicate` uses the real thing.
+  //
+  // Additive, as on the P&L side: everything the shape rule accepts still
+  // passes, and a rejected code is rescued only when nothing descends from it
+  // and no ancestor of it is already imported. Nothing that imports today stops
+  // importing.
+  //
+  // One structural difference worth stating, because it changes what a rescue
+  // MEANS here. A P&L code is `PLF.<section>.<account>`, so `PLF.09.01` is a
+  // posting account. A cash-flow code is `CF.<activity>.<direction>.<account>`
+  // — the third segment is the inflow/outflow bucket this very function reads
+  // below — so a three-segment `CF.01.01` is a DIRECTION SUBTOTAL, not an
+  // account. It is rescued only when the sheet breaks out nothing beneath it,
+  // in which case that row is the most specific evidence the file contains and
+  // importing it is the only way not to lose it. `CF.01` cannot be rescued at
+  // all: one numeric segment fails the depth guard, the same guard that stops
+  // `PLF.03`/`PLF.08` being imported as expenses (11.74).
+  //
+  // Bridge rows (CF.04–07) never went through the shape rule and do not go
+  // through this one either — they are canonical statement evidence, may
+  // legitimately be top-level, and have their own month-scoped leaf-most
+  // selection further down.
+  const allCfCodes: string[] = []
+  for (let r = headerRowIdx + 1; r < aoa.length; r++) {
+    const c = (aoa[r] ?? [])[0]
+    if (typeof c === "string" && c.trim()) allCfCodes.push(c.trim())
+  }
+  const isLeafCfCode = buildLeafPredicate(allCfCodes)
+
   for (let r = headerRowIdx + 1; r < aoa.length; r++) {
     const row = aoa[r] ?? []
     const codeRaw = row[0]
@@ -649,7 +684,7 @@ export function parsePlfCfSheet(
     // Movement rows remain leaf-only to avoid importing computed subtotals.
     // Bridge rows are canonical statement evidence and can be top-level
     // (CF.04) or source-specific descendants (CF.04.01.01).
-    if (!isBridge && !LEAF_CODE_RE.test(code)) continue
+    if (!isBridge && !isLeafCfCode(code)) continue
     const activityType = classification.activityType
 
     const labelRaw = row[1]

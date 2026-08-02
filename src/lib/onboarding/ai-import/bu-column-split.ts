@@ -33,6 +33,7 @@
  * Pure apart from the workbook mutation in `applyBuColumnSplit`. No DB, no LLM.
  */
 import type * as XLSX from "xlsx"
+import { findPlfHeaderRow } from "../adapters/azseker-plf"
 import type { SheetDataType } from "./sheet-classifier"
 import type { PlanKind, SheetMapEntry } from "./sheet-routing"
 import {
@@ -448,6 +449,55 @@ export interface BuColumnSplitApplied {
  * with a warning (never mis-attributed). `dataType`/`planKind` are pinned on each
  * virtual sheet's map entry so routing never depends on the LLM re-classifying it.
  */
+/**
+ * 11.73 — how much MONEY a skipped block carries, so the warning about it is a
+ * decision rather than a shrug.
+ *
+ * The skip messages have always named the row count, and a row count is the
+ * wrong unit for this: "12 rows skipped" reads as housekeeping. Measured on
+ * `actual-budget-v1.xlsx`, those rows are 1.08M on the actual P&L, 8.39M on
+ * the budget P&L and 1.95B by absolute value on the balance sheet — present
+ * in the file, absent from the database, and until now disclosed only as a
+ * count. Excluding eliminations is correct; not saying what they weigh is not.
+ *
+ * Deliberately ABSOLUTE, and labelled as such at the call site. An elimination
+ * block nets to roughly nothing by design, so a net total would report ~0 and
+ * restate the invisibility it is meant to cure. The absolute sum answers the
+ * only question a reader has here — "is this a rounding difference or a third
+ * of the group?" — and answers nothing else.
+ *
+ * Returns null when the block has no resolvable 12-month header. Balance-sheet
+ * blocks fall in that group; a made-up number for them would be worse than the
+ * count they already get.
+ */
+function blockAbsoluteMagnitude(
+  worksheet: XLSX.WorkSheet,
+  xlsx: typeof XLSX,
+): number | null {
+  try {
+    const aoa = xlsx.utils.sheet_to_json<unknown[]>(worksheet, {
+      header: 1,
+      raw: true,
+      blankrows: false,
+    }) as unknown[][]
+    const header = findPlfHeaderRow(aoa)
+    if (!header) return null
+    let total = 0
+    for (let r = header.row + 1; r < aoa.length; r++) {
+      const row = aoa[r] ?? []
+      for (const col of header.monthCols) {
+        const v = row[col]
+        if (typeof v === "number" && Number.isFinite(v)) total += Math.abs(v)
+      }
+    }
+    return total > 0 ? total : null
+  } catch {
+    // A magnitude is a courtesy on top of a warning that already fires. It
+    // must never be the reason a split throws.
+    return null
+  }
+}
+
 export function applyBuColumnSplit(
   workbook: XLSX.WorkBook,
   xlsx: typeof XLSX,
@@ -544,12 +594,19 @@ export function applyBuColumnSplit(
       })
       continue
     }
+    // 11.73 — say what the skip COSTS, not just how many rows it touched.
+    const magnitude = blockAbsoluteMagnitude(block.worksheet, xlsx)
+    const weight =
+      magnitude === null
+        ? ""
+        : `, ${magnitude.toLocaleString("en-US", { maximumFractionDigits: 0 })} by absolute value`
+    const size = `${block.rowCount} rows${weight}`
     out.warnings.push(
       block.skipReason === "elimination"
-        ? `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) looks like elimination/consolidation — skipped (not imported)`
+        ? `Sheet "${sheetName}": BU block "${block.buValue}" (${size}) looks like elimination/consolidation — skipped (not imported). This is correct: an elimination belongs to no single entity. It does mean any holding-level total assembled from these companies is UN-ELIMINATED.`
         : block.skipReason === "adjustment"
-          ? `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) is a management adjustment with no resolvable owner — skipped (not imported)`
-          : `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) is not a known entity alias — skipped (not imported)`,
+          ? `Sheet "${sheetName}": BU block "${block.buValue}" (${size}) is a management adjustment with no resolvable owner — skipped (not imported)`
+          : `Sheet "${sheetName}": BU block "${block.buValue}" (${size}) is not a known entity alias — skipped (not imported)`,
     )
     out.mapping.push({
       sheetName,
