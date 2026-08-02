@@ -1780,8 +1780,26 @@ export async function runMultiFileImport(
           // Phase 11.91 — keyed on the entity actually WRITTEN, same as the
           // recompute target below. Keying on the classifier's guess would
           // check one company's indicators against another's statement.
+          //
+          // `planKindCoversFamily` is the same gate the lineage block below
+          // applies, and it is load-bearing here for a sharper reason. This
+          // workbook holds `PLF Actual 2026` AND `PLF Budget 2026`, and a
+          // year=2026 run imports both. The indicator resolvers read only the
+          // actuals plan (`listBudgetLines` cannot see a budget plan), so
+          // without this filter both sheets' subtotals would be summed into
+          // one "expected" figure — EDEN's revenue would be checked against
+          // 266,379 + 31,986,950 — and every correct value on the grid would
+          // be ringed as wrong. Found by running the check end-to-end against
+          // production on 2026-08-02; a false alarm here is at least as
+          // damaging as a missed one, because the marker is designed to be
+          // impossible to ignore.
           const statedFor = writeEntity(r)
-          if (statedFor && r.adapterResult.statedSubtotals && applied.rowsInserted > 0) {
+          if (
+            statedFor &&
+            r.adapterResult.statedSubtotals &&
+            applied.rowsInserted > 0 &&
+            planKindCoversFamily(r.effectivePlanKind)
+          ) {
             groupStatements.push({
               code: statedFor,
               subtotals: r.adapterResult.statedSubtotals,

@@ -174,6 +174,52 @@ describe("reconcileImportedIndicators", () => {
     expect(s.matched).toBe(1)
   })
 
+  it("sums blindly — which is why the CALLER must not mix plan kinds", async () => {
+    // Found end-to-end against production on 2026-08-02. `actual-budget-v1.xlsx`
+    // holds both `PLF Actual 2026` and `PLF Budget 2026`, a year=2026 run
+    // imports both, and this function cannot tell them apart: it is handed
+    // subtotals and adds them. EDEN's real actual revenue (266,379) plus its
+    // budget (31,986,950) becomes an "expected" figure matching neither, and
+    // every correct value on the grid gets ringed as wrong.
+    //
+    // The fix belongs at the collection site, not here — `planKindCoversFamily`
+    // in the orchestrator, the same gate lineage already applies, because only
+    // the actuals plan is visible to `listBudgetLines` and therefore only its
+    // statement describes anything an indicator computed. This test exists so
+    // the blindness is a documented property rather than a surprise, and so a
+    // future reader who removes that gate sees what it was holding back.
+    const db = fakeDb(DEFS, [
+      { id: "iv1", companyId: "c1", indicatorId: "d-rev", period: "2026", value: 266_379.02 },
+    ])
+    const s = await reconcileImportedIndicators(db, {
+      organizationId: "org",
+      year: 2026,
+      sources: [
+        { companyId: "c1", statedSubtotals: { "PLF.01": 266_379.02 } }, // actual
+        { companyId: "c1", statedSubtotals: { "PLF.01": 31_986_950 } }, // budget
+      ],
+      actor: "import",
+      now: NOW,
+    })
+    expect(s.mismatched).toBe(1)
+    expect(s.mismatches[0].expected).toBeCloseTo(32_253_329.02, 2)
+    // Against the actuals statement alone — what the caller must supply — the
+    // very same stored value is correct.
+    const ok = await reconcileImportedIndicators(
+      fakeDb(DEFS, [
+        { id: "iv1", companyId: "c1", indicatorId: "d-rev", period: "2026", value: 266_379.02 },
+      ]),
+      {
+        organizationId: "org",
+        year: 2026,
+        sources: [{ companyId: "c1", statedSubtotals: { "PLF.01": 266_379.02 } }],
+        actor: "import",
+        now: NOW,
+      },
+    )
+    expect(ok.matched).toBe(1)
+  })
+
   it("does nothing at all when no statement was supplied", async () => {
     const db = fakeDb(DEFS, [
       { id: "iv1", companyId: "c1", indicatorId: "d-rev", period: "2026", value: 1 },
