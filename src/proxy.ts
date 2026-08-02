@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { auth } from "@/lib/auth"
+import { hasRole } from "@/lib/permissions"
 import { checkRateLimit, type RateLimitConfig } from "@/lib/rate-limit"
 import { LOCALE_COOKIE_NAME } from "@/i18n/routing"
 
@@ -44,6 +45,54 @@ const RATE_RULES: Array<{ pattern: RegExp; methods: string[]; cfg: RateLimitConf
     cfg: { name: "budget-crud", windowMs: 60_000, max: 120 },
   },
 ]
+
+/**
+ * Phase 12 / A05 (2026-08-02) — a write floor, enforced centrally.
+ *
+ * The audit that prompted this: 42 of 117 mutating API routes call no
+ * `requireRole` at all. That is NOT "unauthenticated" — this proxy already
+ * 401s every `/api/*` outside `publicPaths`, and the RATE_RULES above are
+ * rate limits, not authorization, which is easy to misread as RBAC because
+ * they are keyed on the same paths. It does mean any logged-in user could
+ * write: a `viewer` — the role whose entire purpose is read-only — could POST
+ * budget lines, PUT and DELETE saved reports and templates, seed templates,
+ * edit the chart of accounts, remove integrations and patch approval
+ * requests.
+ *
+ * Exposure today is nil: production has one user and they are an admin. Same
+ * shape as the RLS gap found the same day — a fact about the data, not about
+ * the control — and the product ships a role-management UI, so it expires the
+ * first time someone is invited as a viewer.
+ *
+ * Fixed HERE rather than by editing 42 handlers, for two reasons. One
+ * central floor cannot be forgotten by the forty-third route, and picking a
+ * specific minimum role for each of 42 endpoints is forty-two guesses about
+ * someone else's business rules; a floor of `editor` is the one claim that
+ * needs no guessing — a viewer does not write. Handlers that already demand
+ * `manager` or `admin` keep doing so; this only raises the base.
+ *
+ * The exemptions are writes a viewer legitimately performs on their OWN
+ * workspace, not on the business's books.
+ */
+const VIEWER_WRITABLE = [
+  // A viewer arranging their own terminal panels. Stored per user.
+  /^\/api\/terminal\/layouts(\/|$)/,
+  // Pin / dismiss an intel card for oneself.
+  /^\/api\/intel\/[^/]+\/(pin|dismiss)(\/|$)/,
+  // Anonymous guide telemetry is already in publicPaths and never reaches
+  // here; listed so a future tightening of publicPaths does not silently
+  // start 403ing the beacon.
+  /^\/api\/telemetry\//,
+]
+
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"])
+
+/** True when this request must be refused for lacking write privilege. */
+function belowWriteFloor(pathname: string, method: string, role: string | undefined): boolean {
+  if (!MUTATING_METHODS.has(method)) return false
+  if (VIEWER_WRITABLE.some((re) => re.test(pathname))) return false
+  return !hasRole(role, "editor")
+}
 
 function matchRule(pathname: string, method: string) {
   for (const r of RATE_RULES) {
@@ -94,6 +143,15 @@ export async function proxy(req: NextRequest) {
     const loginUrl = new URL("/login", req.url)
     loginUrl.searchParams.set("callbackUrl", pathname)
     return NextResponse.redirect(loginUrl)
+  }
+
+  // A05 write floor — before the rate limiter, so a refused write does not
+  // also consume the caller's quota.
+  if (pathname.startsWith("/api/") && belowWriteFloor(pathname, req.method, session.user.role)) {
+    return NextResponse.json(
+      { error: "Forbidden", message: "This action requires editor access or above." },
+      { status: 403 },
+    )
   }
 
   // Per-org rate limit for mutation endpoints

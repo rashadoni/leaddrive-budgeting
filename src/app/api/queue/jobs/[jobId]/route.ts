@@ -38,8 +38,27 @@ export async function GET(
   // Defence: ensure the job belongs to the caller's org. The org id is
   // embedded in the job payload (passed by callers in enqueueRecompute*).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // Phase 12 / A04 (2026-08-02) — FAIL CLOSED.
+  //
+  // This read `if (data.organizationId && data.organizationId !== orgId)`,
+  // so a job whose payload happened to carry no organizationId was readable
+  // by any authenticated user of any tenant. The guard's correctness rested
+  // entirely on every enqueue site remembering the field — which the comment
+  // above it admitted ("passed by callers in enqueueRecompute*").
+  //
+  // It matters more than it looks, because BullMQ job ids are guessable:
+  // `recomputePair` builds them from org/company/year and `recomputeBatch`
+  // takes Redis' sequential counter. The response carries `failedReason` and
+  // `result`, which name companies and counts.
+  //
+  // Closing it costs nothing: both queues this route probes declare
+  // `organizationId: string` as REQUIRED (`job-types.ts` —
+  // RecomputePairJob, RecomputeBatchJob). The only optional-org payload is
+  // CleanupSoftDeletedJob, which lives on a queue this route never touches.
+  // So a job here with no org is malformed, and the honest answer to
+  // "whose is this?" is to refuse rather than to guess it is yours.
   const data = job.data as { organizationId?: string }
-  if (data.organizationId && data.organizationId !== session.orgId) {
+  if (!data.organizationId || data.organizationId !== session.orgId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const state = await job.getState()

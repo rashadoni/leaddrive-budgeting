@@ -37,9 +37,13 @@ export async function GET(
   for (const q of [queues.recomputePair, queues.recomputeBatch]) {
     const job = await q.getJob(jobId)
     if (job) {
-      // Org-scope defence (mirrors GET sibling endpoint).
+      // Org-scope defence (mirrors GET sibling endpoint), and fails CLOSED
+      // for the same reason — see the note there. A job with no tenant on its
+      // payload is malformed on both of these queues, and this endpoint opens
+      // a live SSE stream of its events, so guessing wrong is worse here than
+      // on the one-shot GET.
       const data = job.data as { organizationId?: string }
-      if (data.organizationId && data.organizationId !== session.orgId) {
+      if (!data.organizationId || data.organizationId !== session.orgId) {
         return new Response("Forbidden", { status: 403 })
       }
       queueName = q.name
