@@ -116,6 +116,7 @@ import {
   runRecomputeForCompanies,
   type RunRecomputeResult,
 } from "@/lib/risk/recompute-trigger"
+import { MANUAL_CORRECTION_ORIGIN } from "@/lib/budgeting/manual-correction"
 import {
   reconcileImportedIndicators,
   describeMismatch,
@@ -2210,6 +2211,48 @@ export async function runMultiFileImport(
         failed: r.failed,
         targets: r.targets,
         traced: r.traced,
+      }
+
+      // ── Phase 13.6: corrections whose cell this import just rewrote ───
+      //
+      // A manual correction SURVIVES a re-import — it is excluded from the
+      // clean-slate, which is the point. Surviving is not the same as still
+      // being right: if this workbook already contains the fix, the correction
+      // now sits on top of it and the total is wrong in the other direction.
+      //
+      // So flag, never resolve. The platform cannot tell whether these new
+      // rows supersede the correction or merely coincide with it — that needs
+      // someone who knows what the correction was for. Auto-clearing silently
+      // reverts their decision; auto-keeping silently doubles it.
+      //
+      // Non-fatal throughout: an unflagged correction is the status quo, an
+      // aborted import is a regression.
+      try {
+        const flagged = await deps.prisma.budgetLine.updateMany({
+          where: {
+            organizationId: input.organizationId,
+            origin: MANUAL_CORRECTION_ORIGIN,
+            deletedAt: null,
+            correctionReviewAt: null,
+            companyId: { in: affected.map((a) => a.companyId) },
+            plan: { year: input.year },
+          },
+          data: { correctionReviewAt: new Date() },
+        })
+        if (flagged.count > 0) {
+          warnings.push(
+            `CORRECTIONS TO REVIEW: ${flagged.count} manual correction(s) survived this import ` +
+              `and sit in ${input.year} for the companies it touched. They were NOT changed — but if ` +
+              `this file already contains the fix they were making, they are now double-counting. ` +
+              `Open the corrections list and decide; nothing else will.`,
+          )
+        }
+      } catch (err) {
+        warnings.push(
+          `Could not flag manual corrections for review (non-fatal): ` +
+            `${err instanceof Error ? err.message : String(err)}. The corrections are intact and ` +
+            `unchanged; they simply carry no review flag from this run.`,
+        )
       }
 
       // ── Phase 11.91: check the derived values against the source ──────

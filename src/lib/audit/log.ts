@@ -109,6 +109,30 @@ export type AuditEventInput =
       };
     }
   | {
+      /**
+       * Phase 13.6 (2026-08-02) — a person adjusted the books because the
+       * imported figures disagreed with the client's own statement.
+       *
+       * The row itself already carries who/why/when (`correctionBy`,
+       * `correctionReason`, `correctionAt`) so it can explain itself wherever
+       * it is read, including in an export. This event is the other half: the
+       * row records the CLAIM, the audit log records the MUTATION, and only
+       * the log survives the row being archived or superseded.
+       */
+      action: 'budget_correction_create';
+      entityType: 'BudgetLine';
+      entityId: string;
+      metadata: {
+        companyId: string;
+        planId: string;
+        accountCode: string;
+        period: string;
+        amount: number;
+        lineType: string;
+        reason: string;
+      };
+    }
+  | {
       action: 'import_budget_create';
       entityType: 'BudgetPlan';
       entityId: string;
