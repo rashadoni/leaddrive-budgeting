@@ -166,6 +166,10 @@ describe("GET /api/budgeting/balance-sheet", () => {
           planId: "p1",
           deletedAt: null,
           companyId: "holding1",
+          // 14.8 — the holding's own consolidated sheet already contains the
+          // client's eliminations. Adding the standalone EJE rows on top would
+          // apply them twice.
+          isElimination: false,
         },
       }),
     )
@@ -192,6 +196,11 @@ describe("GET /api/budgeting/balance-sheet", () => {
           planId: "p1",
           deletedAt: null,
           companyId: "child9",
+          // 14.8 — an elimination cancels balances BETWEEN group members and
+          // is nobody's standalone position. A drill-down that included them
+          // would show one company carrying the whole group's intercompany
+          // reversal.
+          isElimination: false,
         },
       }),
     )

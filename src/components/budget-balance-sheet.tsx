@@ -317,6 +317,19 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
           })}
         </div>
       )}
+      {/* Phase 14.8 — the other way a group total can be sound: the entities
+          were added AND the client's own intragroup-elimination block was
+          applied. Says so positively rather than merely withholding the amber
+          warning, because "no warning" is not evidence a reader can act on. */}
+      {data.meta?.basis === "consolidated_computed" && (
+        <div
+          data-testid="balance-sheet-consolidated-computed"
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+        >
+          {t("balanceSheetConsolidatedComputed", { count: summedEntityCount })}
+        </div>
+      )}
       {/* Defect 3 — an absent holding used to fall through to plain addition
           with nothing said about it. This banner is the guard: the totals
           below are a sum of legal entities and the intercompany balances

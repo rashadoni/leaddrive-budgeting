@@ -234,3 +234,97 @@ describe("Balance Sheet basis (Defect 3 — un-eliminated cross-entity sums)", (
     expect(balanceSheetDebtToEquity({ liabilities: 40, equity: -60 })).toBeNull()
   })
 })
+
+/**
+ * Phase 14.8 — the sum stops being a sum once the client's own eliminations
+ * are in the data.
+ *
+ * `BS Actual 2026` ships a fifth `EJE` block that the product used to drop.
+ * It nets 123,200,854.11 of intercompany holdings and receivables out of the
+ * 373,152,064.18 above, landing on the client's 249,951,210.07 — so once those
+ * rows exist, describing the total as an un-eliminated sum is as wrong as
+ * describing the un-eliminated sum as consolidated was.
+ */
+describe("Balance Sheet basis with eliminations present (14.8)", () => {
+  const entity = (companyId: string) => ({ companyId })
+  /** Eliminations are null-company BY CONSTRUCTION — that is what the flag is for. */
+  const elim = () => ({ companyId: null, isElimination: true })
+
+  it("calls entities + eliminations a consolidated statement", () => {
+    const scope = resolveBalanceSheetScope(
+      [entity("azsf"), entity("eden"), entity("cpc"), entity("promalt"), elim(), elim()],
+      { holdingConsolidated: false },
+    )
+
+    expect(scope.basis).toBe("consolidated_computed")
+    expect(scope.eliminationsApplied).toBe(true)
+    // Four contributors, not six: the elimination rows are not an entity.
+    expect(scope.entityCount).toBe(4)
+    expect(scope.companyIds).toEqual(["azsf", "cpc", "eden", "promalt"])
+  })
+
+  it("does not count elimination rows as an unscoped contributor", () => {
+    // The load-bearing case. `resolveBalanceSheetScope` treats a null
+    // companyId as its own contributor, so without the flag these rows would
+    // push the answer DEEPER into "sum_of_entities" at the exact moment the
+    // sum became a real consolidation.
+    const withFlag = resolveBalanceSheetScope([entity("eden"), entity("cpc"), elim()], {
+      holdingConsolidated: false,
+    })
+    const withoutFlag = resolveBalanceSheetScope(
+      [entity("eden"), entity("cpc"), { companyId: null }],
+      { holdingConsolidated: false },
+    )
+
+    expect(withFlag.entityCount).toBe(2)
+    expect(withFlag.basis).toBe("consolidated_computed")
+    expect(withoutFlag.entityCount).toBe(3)
+    expect(withoutFlag.basis).toBe("sum_of_entities")
+  })
+
+  it("still refuses when a legacy unscoped row is mixed in", () => {
+    // The client's elimination block was computed against ITS four entities.
+    // An unknown extra contributor is not covered by it, and over-warning is
+    // the safe direction here as everywhere else in this function.
+    const scope = resolveBalanceSheetScope(
+      [entity("eden"), entity("cpc"), { companyId: null }, elim()],
+      { holdingConsolidated: false },
+    )
+
+    expect(scope.basis).toBe("sum_of_entities")
+    expect(scope.eliminationsApplied).toBe(false)
+  })
+
+  it("refuses eliminations with nothing to eliminate between", () => {
+    // Reachable: the entity sheets fail to import and the EJE sheet does not.
+    // Calling that `single_entity` would publish the elimination block's own
+    // −119M as somebody's balance sheet, confidently — the exact failure shape
+    // 14.7 removed from the AI panel.
+    const onlyElims = resolveBalanceSheetScope([elim(), elim()], {
+      holdingConsolidated: false,
+    })
+    expect(onlyElims.basis).toBe("sum_of_entities")
+    expect(onlyElims.eliminationsApplied).toBe(false)
+
+    const oneEntity = resolveBalanceSheetScope([entity("eden"), elim()], {
+      holdingConsolidated: false,
+    })
+    expect(oneEntity.eliminationsApplied).toBe(false)
+  })
+
+  it("lets the D/E ratio through once eliminations are applied", () => {
+    // The ratio is refused on an un-eliminated sum because intragroup payables
+    // inflate the numerator and parent investments inflate the denominator.
+    // Both are gone here, so the ratio is a ratio again.
+    const scope = resolveBalanceSheetScope([entity("a"), entity("b"), elim()], {
+      holdingConsolidated: false,
+    })
+    expect(
+      balanceSheetDebtToEquity({
+        liabilities: 40,
+        equity: 100,
+        eliminationsApplied: scope.eliminationsApplied,
+      }),
+    ).toBeCloseTo(0.4, 5)
+  })
+})

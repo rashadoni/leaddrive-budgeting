@@ -929,6 +929,7 @@
     "balanceSheetErrorDescription": "Mənbə sorğusu uğursuz oldu. Çatışmayan məbləğlər sıfırla əvəz edilməyib; bağlantını və giriş dairəsini yoxladıqdan sonra yenidən cəhd edin.",
     "balanceSheetActualsFallback": "Seçilmiş büdcə planının öz balansı olmadığı üçün {year} Fakt balansı göstərilir.",
     "balanceSheetConsolidated": "Qrupun rəsmi konsolidə edilmiş balansı{holding}; qrupdaxili paylar eliminasiya olunub (mənbə: Reporting). Bu, şirkətlərin sadə cəmi deyil; şirkət detalları üçün drill-down istifadə edin.",
+    "balanceSheetConsolidatedComputed": "Qrupun konsolidə edilmiş balansı: {count, plural, one {# müəssisə} other {# müəssisə}} üstəgəl müştəri kitabındakı qrupdaxili eliminasiya bloku, hansı ki öz-özlüyündə sıfıra bərabərləşir. Qrupdaxili paylar və debitor borcları çıxarılıb — bu, şirkətlərin cəmi deyil, qrupun mövqeyidir.",
     "balanceSheetUnconsolidatedTitle": "{count, plural, one {# müəssisənin cəmi} other {# müəssisənin cəmi}} — eliminasiya aparılmayıb",
     "balanceSheetUnconsolidatedBody": "Bu yekunlar bütöv hüquqi şəxsləri bir-birinin üstünə gəlir. Qrupdaxili qalıqlar — törəmə müəssisələrə investisiyalar, qrupdaxili debitor və kreditor borcları — iki dəfə sayılır, ona görə də bu, konsolidə edilmiş balans deyil. Hər biri balanslaşan hesabatların cəmi yenə balanslaşır, buna görə balans yoxlaması bunu aşkarlaya bilmir.",
     "balanceSheetUnconsolidatedEntities": "Cəmlənən müəssisələr: {entities}.",

@@ -929,6 +929,7 @@
     "balanceSheetErrorDescription": "The source request failed. No missing amount has been replaced with zero; retry after checking the connection and access scope.",
     "balanceSheetActualsFallback": "Showing the {year} Actuals balance sheet because the selected budget plan has no balance sheet of its own.",
     "balanceSheetConsolidated": "Official consolidated group balance sheet{holding}, with intercompany interests eliminated (source: Reporting). This is not a simple sum of companies; use drill-down for company detail.",
+    "balanceSheetConsolidatedComputed": "Consolidated group balance sheet: {count, plural, one {# entity} other {# entities}} plus the intragroup eliminations from the client workbook, which balance to zero on their own. Intercompany holdings and receivables are removed — this is the group position, not a sum of companies.",
     "balanceSheetUnconsolidatedTitle": "{count, plural, one {Sum of # entity} other {Sum of # entities}} — eliminations not applied",
     "balanceSheetUnconsolidatedBody": "These totals add whole legal entities together. Intercompany balances — investments in subsidiaries, intragroup receivables and payables — are counted twice, so this is not a consolidated balance sheet. Summing statements that each balance produces a statement that also balances, which is why the balance check cannot detect it.",
     "balanceSheetUnconsolidatedEntities": "Entities added: {entities}.",

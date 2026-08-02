@@ -79,6 +79,20 @@ export interface BsImportRow {
   year: number
   month: number // 1-12
   amount: number
+  /**
+   * Phase 14.8 (2026-08-03) — an intragroup-elimination row from the client's
+   * own `EJE` block.
+   *
+   * It has no `companyId` by construction: an elimination cancels balances
+   * BETWEEN group members and is nobody's standalone position. That collides
+   * with the Phase 11.11 guard below, which refuses a batch whose rows carry
+   * no company because the archive scope would widen to every company on the
+   * plan. The flag resolves the collision honestly rather than by exception:
+   * an elimination batch scopes its clean-slate on `isElimination: true`,
+   * which is exactly as narrow as a company scope and provably disjoint from
+   * entity rows.
+   */
+  isElimination?: boolean
   /** Free-form provenance — typically `Filename.xlsx#Sheet!A1:F123`. */
   sourceCell: string
 }
@@ -238,15 +252,39 @@ export async function runBalanceSheetBatch(
       // entity), so this is the last line of defence: refuse rather than
       // silently widen. Rows legitimately carrying no company have no
       // business clean-slating rows that do.
-      if (plan.rows.length > 0 && incomingCompanyIds.length === 0) {
+      // Phase 14.8 — an elimination batch is the one legitimate null-company
+      // batch. It gets a scope of its own rather than an exemption from the
+      // guard above: `isElimination: true` matches only elimination rows,
+      // which is exactly as narrow as a company scope and provably disjoint
+      // from every entity row. Mixing the two in one batch would make the
+      // clean-slate ambiguous, so it is refused — the splitter gives the EJE
+      // block its own virtual sheet and therefore its own batch.
+      const eliminationRows = plan.rows.filter((r) => r.isElimination === true).length
+      const isEliminationBatch = eliminationRows > 0 && eliminationRows === plan.rows.length
+      if (eliminationRows > 0 && !isEliminationBatch) {
+        throw new Error(
+          "[bs-import-batch] refusing to reset: this batch mixes " +
+            `${eliminationRows} elimination row(s) with ${plan.rows.length - eliminationRows} ` +
+            "entity row(s). An elimination belongs to no company, so the two cannot share " +
+            "one clean-slate scope. Import the elimination block as its own sheet.",
+        )
+      }
+      if (plan.rows.length > 0 && incomingCompanyIds.length === 0 && !isEliminationBatch) {
         throw new Error(
           "[bs-import-batch] refusing to reset: none of the incoming rows " +
             "carries a companyId, so the archive scope would widen to EVERY " +
             "company on this plan and year. Resolve the entity before importing.",
         )
       }
-      const companyScope =
-        incomingCompanyIds.length > 0 ? { companyId: { in: incomingCompanyIds } } : {}
+      const companyScope = isEliminationBatch
+        ? { isElimination: true }
+        : incomingCompanyIds.length > 0
+          ? // `isElimination: false` is redundant beside a companyId filter
+            // today — elimination rows carry none — and is stated anyway so an
+            // entity import can never archive the group's eliminations if that
+            // ever stops being true.
+            { companyId: { in: incomingCompanyIds }, isElimination: false }
+          : {}
       // 2026-06-16 derive-delete-from-write — the purge/archive scope is now
       // derived from the plans the INSERTED rows actually carry
       // (`footprintPlanIds`), NOT caller-supplied `plan.planIds` (which can be
@@ -313,6 +351,7 @@ export async function runBalanceSheetBatch(
         organizationId: plan.organizationId,
         planId: r.planId,
         ...(r.companyId != null ? { companyId: r.companyId } : {}),
+        ...(r.isElimination ? { isElimination: true } : {}),
         accountId: r.accountId,
         lineType: r.lineType,
         subType: r.subType,
@@ -396,13 +435,25 @@ async function defaultReadActualBsSums(
   const companyIds = [
     ...new Set(plan.rows.map((r) => r.companyId).filter((x): x is string => x != null)),
   ]
+  // Phase 14.8 — an elimination batch has no companyId to narrow by, so
+  // without this it would fall through to "no company filter" and read every
+  // entity's balances back as its own: a guaranteed false drift verdict on a
+  // batch that wrote correctly. Same scope as the archive above, for the same
+  // reason the two have always been kept in step.
+  const eliminationOnly =
+    plan.rows.length > 0 && plan.rows.every((r) => r.isElimination === true)
+  const scope = eliminationOnly
+    ? { isElimination: true }
+    : companyIds.length > 0
+      ? { companyId: { in: companyIds }, isElimination: false }
+      : {}
   // Phase 2.1 session 3: accountCode column dropped from BalanceSheetLine;
   // read via FK relation `account.code` instead.
   const rows = await prisma.balanceSheetLine.findMany({
     where: {
       organizationId: plan.organizationId,
       planId: { in: footprintPlanIds },
-      ...(companyIds.length > 0 ? { companyId: { in: companyIds } } : {}),
+      ...scope,
       deletedAt: null,
       ...(yearScope.length > 0 ? { year: { in: yearScope } } : {}),
     },

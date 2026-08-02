@@ -231,21 +231,24 @@ async function computeBalanceSheet(
     take: 2,
   })
   const holding = level1.length === 1 ? level1[0] : null
-  let companyFilter: { companyId?: string } = {}
+  // 14.8 — eliminations belong to no company, so every single-company branch
+  // excludes them; only the group branch (empty filter) lets them through.
+  let companyFilter: { companyId?: string; isElimination?: boolean } = {}
   let holdingConsolidated = false
   if (companyId) {
-    companyFilter = { companyId }
+    companyFilter = { companyId, isElimination: false }
   } else if (holding) {
     const holdingLines = await prisma.balanceSheetLine.count({
       where: {
         organizationId: orgId,
         planId: sourcePlanId,
         companyId: holding.id,
+        isElimination: false,
         deletedAt: null,
       },
     })
     if (holdingLines > 0) {
-      companyFilter = { companyId: holding.id }
+      companyFilter = { companyId: holding.id, isElimination: false }
       holdingConsolidated = true
     }
   }
@@ -324,7 +327,9 @@ async function computeBalanceSheet(
       note:
         scope.basis === "sum_of_entities"
           ? `These totals ADD ${scope.entityCount} legal entities together with NO intercompany eliminations. Intragroup investments and receivables are counted twice. State this caveat, do not call it a consolidated balance sheet, and do not compute leverage ratios from it.`
-          : null,
+          : scope.basis === "consolidated_computed"
+            ? `A genuine consolidated balance sheet: ${scope.entityCount} entities plus the client's own intragroup-elimination block, which balances to zero on its own before being applied. Safe to describe as the group's position.`
+            : null,
     },
     totals: {
       asOfMonth,

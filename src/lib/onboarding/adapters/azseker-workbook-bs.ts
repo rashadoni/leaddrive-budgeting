@@ -64,7 +64,7 @@ export interface BsParseResult {
 
 const LEAF_BS_RE = /^BS\.\d{2}\.\d{2}\.\d{1,2}$/
 
-function classifyBsLineType(code: string): {
+export function classifyBsLineType(code: string): {
   lineType: BsLineType | null
   subType: BsSubType
 } {
@@ -110,7 +110,7 @@ function toNumber(cell: unknown): number | null {
   return numericCellValue(cell)
 }
 
-interface BsLayout {
+export interface BsLayout {
   headerRow: number
   /** Map of "YYYY-MM" period → column index. Sparse (only months
    *  for the target year). Empty if no target-year columns found. */
@@ -125,7 +125,7 @@ interface BsLayout {
  * has only 2026-01..03; CPC has only 2026-01..04). Each present
  * month is written; missing months produce no row.
  */
-function findBsLayout(
+export function findBsLayout(
   aoa: unknown[][],
   preferYear: number,
 ): BsLayout | null {

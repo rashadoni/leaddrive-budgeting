@@ -70,7 +70,12 @@ export async function GET(req: NextRequest) {
       take: 2,
     })
     const holding = level1.length === 1 ? level1[0] : null
-    let companyFilter: { companyId?: string } = {}
+    // Phase 14.8 — an elimination row cancels balances BETWEEN group members,
+    // so it is never part of anyone's standalone sheet. Every branch that
+    // narrows to a single company excludes them; only the group branch (an
+    // empty filter) lets them through, which is what turns the sum into a
+    // consolidation.
+    let companyFilter: { companyId?: string; isElimination?: boolean } = {}
     let consolidated = false
     let viewCompanyId: string | null = null
     // null = not applicable (a company was requested, or there is no unique
@@ -78,7 +83,7 @@ export async function GET(req: NextRequest) {
     // balance sheet for this plan — the actionable half of the warning below.
     let holdingHasConsolidatedBs: boolean | null = null
     if (requestedCompanyId) {
-      companyFilter = { companyId: requestedCompanyId }
+      companyFilter = { companyId: requestedCompanyId, isElimination: false }
       viewCompanyId = requestedCompanyId
     } else if (holding) {
       const holdingLines = await tx.balanceSheetLine.count({
@@ -86,12 +91,13 @@ export async function GET(req: NextRequest) {
           organizationId: orgId,
           planId: sourcePlanId,
           companyId: holding.id,
+          isElimination: false,
           deletedAt: null,
         },
       })
       holdingHasConsolidatedBs = holdingLines > 0
       if (holdingLines > 0) {
-        companyFilter = { companyId: holding.id }
+        companyFilter = { companyId: holding.id, isElimination: false }
         consolidated = true
         viewCompanyId = holding.id
       }

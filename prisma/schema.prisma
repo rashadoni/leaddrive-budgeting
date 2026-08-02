@@ -1075,6 +1075,15 @@ model BalanceSheetLine {
   // Set by all adapters going forward; null = "unscoped / all-company".
   companyId      String?
   company        Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  /// Phase 14.8 (2026-08-03) — an INTRAGROUP ELIMINATION row, from the `EJE`
+  /// block the client ships on its own balance sheet. It cancels balances
+  /// BETWEEN group members, so it belongs to no company: `companyId` is null
+  /// and this says why it is null rather than legacy-unscoped. Load-bearing on
+  /// the read side — `resolveBalanceSheetScope` counts a null-company row as
+  /// its own contributor, so without the flag an elimination would push the
+  /// group view further INTO "sum_of_entities" instead of out of it. The group
+  /// read sums entities + eliminations; a per-company read excludes them.
+  isElimination  Boolean         @default(false)
   // Phase 2.1 session 3 (2026-05-26) — `accountCode` + `accountName`
   // dropped; ChartOfAccount FK is the canonical source for both.
   accountId      String
@@ -1111,6 +1120,7 @@ model BalanceSheetLine {
   @@index([companyId, year, month])
   @@index([organizationId, deletedAt])
   @@index([planId, companyId, sourceDocument])
+  @@index([planId, isElimination])
   @@map("balance_sheet_lines")
 }
 

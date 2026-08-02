@@ -9,6 +9,12 @@ export interface BalanceSheetEvidenceLine {
    * treated as its own contributor below — see `resolveBalanceSheetScope`.
    */
   companyId?: string | null
+  /**
+   * Phase 14.8 — an intragroup-elimination row from the client's own `EJE`
+   * block. Belongs to no company by construction, which is why `companyId` is
+   * null on it; see `resolveBalanceSheetScope`.
+   */
+  isElimination?: boolean | null
   lineType: string
   month: number
   amount: number
@@ -20,6 +26,11 @@ export interface BalanceSheetEvidenceLine {
  * `consolidated_holding` — the holding entity carries its own balance sheet,
  *   produced by the client's consolidation with eliminations already inside it
  *   (`azseker-consolidated-bs.ts` imports exactly that, verbatim).
+ * `consolidated_computed` — Phase 14.8. Entities summed PLUS the client's own
+ *   intragroup-elimination block, which the workbook ships as a fifth `EJE`
+ *   block and which the product used to drop. A real consolidated statement:
+ *   the eliminations are the client's, not ours, and they balance to zero on
+ *   their own before being applied.
  * `single_entity` — one company contributes rows. Nothing to eliminate.
  * `sum_of_entities` — two or more companies were added together and NOTHING
  *   was eliminated. Not a consolidated balance sheet, and must never be shown
@@ -27,6 +38,7 @@ export interface BalanceSheetEvidenceLine {
  */
 export type BalanceSheetBasis =
   | "consolidated_holding"
+  | "consolidated_computed"
   | "single_entity"
   | "sum_of_entities"
 
@@ -61,7 +73,7 @@ export interface BalanceSheetScope {
  * suspect, and over-warning is the safe direction here.
  */
 export function resolveBalanceSheetScope(
-  lines: ReadonlyArray<{ companyId?: string | null }>,
+  lines: ReadonlyArray<{ companyId?: string | null; isElimination?: boolean | null }>,
   opts: { holdingConsolidated: boolean },
 ): BalanceSheetScope {
   if (opts.holdingConsolidated) {
@@ -77,7 +89,16 @@ export function resolveBalanceSheetScope(
 
   const named = new Set<string>()
   let hasUnscoped = false
+  // Phase 14.8 — elimination rows are null-company BY CONSTRUCTION, so they
+  // must not be counted as an unscoped contributor. Counting them would push
+  // the answer deeper into `sum_of_entities` exactly when the sum has just
+  // become a real consolidation, which is backwards.
+  let hasEliminations = false
   for (const line of lines) {
+    if (line.isElimination) {
+      hasEliminations = true
+      continue
+    }
     if (line.companyId) named.add(line.companyId)
     else hasUnscoped = true
   }
@@ -85,6 +106,32 @@ export function resolveBalanceSheetScope(
   const companyIds = [...named].sort()
 
   if (entityCount > 1) {
+    // Eliminations turn the sum into a consolidated statement — but only over
+    // entities we can name. A legacy unscoped row mixed in is still an unknown
+    // contributor, and the client's elimination block was computed against its
+    // own four entities, not against whatever that row is. Over-warning is the
+    // safe direction, as it is everywhere else in this function.
+    if (hasEliminations && !hasUnscoped) {
+      return {
+        basis: "consolidated_computed",
+        entityCount,
+        companyIds,
+        eliminationsApplied: true,
+      }
+    }
+    return {
+      basis: "sum_of_entities",
+      entityCount,
+      companyIds,
+      eliminationsApplied: false,
+    }
+  }
+  if (hasEliminations) {
+    // Elimination rows with fewer than two entities to eliminate BETWEEN is an
+    // incomplete import — the entity sheets failed and the EJE sheet did not —
+    // not a basis. Calling it `single_entity` would publish the elimination
+    // block's own −119M as somebody's balance sheet, confidently. Refuse it
+    // the way an un-eliminated sum is refused.
     return {
       basis: "sum_of_entities",
       entityCount,
