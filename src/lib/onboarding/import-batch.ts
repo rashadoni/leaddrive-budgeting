@@ -267,7 +267,25 @@ export async function runImportBatch(
       // same as still being right, so a correction whose (account × period)
       // this import just rewrote is FLAGGED for a human rather than kept in
       // silence.
-      const notAManualCorrection = { origin: { not: MANUAL_CORRECTION_ORIGIN } }
+      //
+      // The OR with `null` is not defensive noise — without it this filter
+      // matches NOTHING. `origin` is nullable and every imported row has it
+      // NULL; in SQL `NULL <> 'manual_correction'` is UNKNOWN, not TRUE, so
+      // the row is excluded. Measured on production 2026-08-03: of 5,125 live
+      // rows, `origin <> 'manual_correction'` matched **0**, and
+      // `origin IS NULL OR origin <> …` matched all 5,125.
+      //
+      // Shipped without it on 2026-08-02, which turned the clean-slate archive
+      // into a no-op. The first import after that deploy failed on
+      // `Unique constraint failed on (planId, sourceDocument)` — the old rows
+      // were still live and the new ones collided with them. Nothing was
+      // corrupted because the transaction rolled back, and because the 11.8b
+      // unique index existed at all: without it every row would have been
+      // inserted a SECOND time and the whole P&L would have silently doubled.
+      // A control added for one reason caught a different bug.
+      const notAManualCorrection = {
+        OR: [{ origin: null }, { origin: { not: MANUAL_CORRECTION_ORIGIN } }],
+      }
 
       // 2026-06-16 derive-delete-from-write — the clean-slate DELETE scope is
       // derived from the identity the INSERTED rows actually carry, NOT from
@@ -498,7 +516,12 @@ async function defaultReadActualSums(
       planId: { in: footprintPlanIds },
       companyId: { in: footprintCompanyIds },
       deletedAt: null,
-      origin: { not: MANUAL_CORRECTION_ORIGIN },
+      // Same three-valued-logic trap as the archive filter above: `origin` is
+      // nullable and every imported row has it NULL, so a bare `not` matches
+      // nothing. Here the consequence is the mirror image — the readback would
+      // see zero rows, report every expected sum as `missing`, and turn a
+      // perfectly good import red.
+      OR: [{ origin: null }, { origin: { not: MANUAL_CORRECTION_ORIGIN } }],
     },
     select: {
       companyId: true,

@@ -38,6 +38,41 @@ interface FakeBudgetLineRow {
   deletedBy: string | null
 }
 
+/**
+ * SQL three-valued logic, reproduced — the thing this mock got wrong.
+ *
+ * The filter emulation used to be `(row.origin ?? null) === w.origin.not`,
+ * which is JavaScript semantics: `null === 'manual_correction'` is false, so a
+ * NULL-origin row was treated as "not a correction" and archived. Postgres
+ * disagrees. `NULL <> 'manual_correction'` is UNKNOWN, not TRUE, so the row is
+ * NOT matched and NOT archived.
+ *
+ * That difference is the whole of the 2026-08-03 production failure: the
+ * clean-slate archive became a no-op, the old rows stayed live, and the insert
+ * collided on `(planId, sourceDocument)`. Every test here passed, because the
+ * mock was more forgiving than the database.
+ */
+function matchesPrismaFilter(
+  row: { origin?: string | null },
+  w: { origin?: { not: string }; OR?: Array<{ origin?: null | { not: string } }> },
+): boolean {
+  const notValue = w.origin?.not
+  if (notValue !== undefined) {
+    // Bare `not` on a nullable column: NULL never matches.
+    return row.origin != null && row.origin !== notValue
+  }
+  if (w.OR) {
+    return w.OR.some((clause) =>
+      clause.origin === null
+        ? (row.origin ?? null) === null
+        : clause.origin?.not !== undefined
+          ? row.origin != null && row.origin !== clause.origin.not
+          : true,
+    )
+  }
+  return true
+}
+
 function accountCodeFromId(accountId: string): string {
   return accountId.startsWith("coa_") ? accountId.slice(4) : accountId
 }
@@ -59,12 +94,12 @@ function makeFakePrisma(opts: {
       updateMany: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
         let count = 0
         for (const row of budgetLines) {
-          const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; planId?: { in: string[] }; plan?: { year?: { in: number[] } }; origin?: { not: string } }
+          const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; planId?: { in: string[] }; plan?: { year?: { in: number[] } }; origin?: { not: string }; OR?: Array<{ origin?: null | { not: string } }> }
           if (w.organizationId && row.organizationId !== w.organizationId) continue
           // 13.6 — the clean-slate must SKIP manual corrections. Emulated here
           // so the mock is capable of being wrong: without this line the
           // survival test passes for the wrong reason.
-          if (w.origin?.not !== undefined && (row.origin ?? null) === w.origin.not) continue
+          if (!matchesPrismaFilter(row, w)) continue
           if (w.companyId && !w.companyId.in.includes(row.companyId)) continue
           if (w.deletedAt === null && row.deletedAt !== null) continue
           // Honor the planId scope (the 2026-06-16 cross-plan clean-slate
@@ -78,14 +113,14 @@ function makeFakePrisma(opts: {
         return { count }
       }),
       deleteMany: vi.fn(async (args: { where: Record<string, unknown> }) => {
-        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: { not: null }; planId?: { in: string[] }; plan?: { year?: { in: number[] } }; origin?: { not: string } }
+        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: { not: null }; planId?: { in: string[] }; plan?: { year?: { in: number[] } }; origin?: { not: string }; OR?: Array<{ origin?: null | { not: string } }> }
         let count = 0
         for (let i = budgetLines.length - 1; i >= 0; i--) {
           const row = budgetLines[i]
           if (w.organizationId && row.organizationId !== w.organizationId) continue
           if (w.companyId && !w.companyId.in.includes(row.companyId)) continue
           if (w.deletedAt?.not === null && row.deletedAt === null) continue
-          if (w.origin?.not !== undefined && (row.origin ?? null) === w.origin.not) continue
+          if (!matchesPrismaFilter(row, w)) continue
           if (w.planId && !w.planId.in.includes(row.planId)) continue
           if (w.plan?.year && !w.plan.year.in.includes(yearById[row.planId] ?? 2026)) continue
           budgetLines.splice(i, 1)
@@ -114,7 +149,7 @@ function makeFakePrisma(opts: {
         return { count: args.data.length }
       }),
       findMany: vi.fn(async (args: { where: Record<string, unknown>; select: Record<string, unknown> }) => {
-        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; origin?: { not: string } }
+        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; origin?: { not: string }; OR?: Array<{ origin?: null | { not: string } }> }
         return budgetLines
           .filter((r) => {
             if (w.organizationId && r.organizationId !== w.organizationId) return false
@@ -123,7 +158,7 @@ function makeFakePrisma(opts: {
             // 13.6 — the post-write verdict claims "the rows I wrote match
             // what I parsed", so a human adjustment must not be read back as
             // an `extra`, which is an unconditional red.
-            if (w.origin?.not !== undefined && (r.origin ?? null) === w.origin.not) return false
+            if (!matchesPrismaFilter(r, w)) return false
             return true
           })
           .map((r) => ({
@@ -138,13 +173,13 @@ function makeFakePrisma(opts: {
           }))
       }),
       count: vi.fn(async (args: { where: Record<string, unknown> }) => {
-        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; planId?: { in: string[] }; plan?: { year?: { in: number[] } }; origin?: { not: string } }
+        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; planId?: { in: string[] }; plan?: { year?: { in: number[] } }; origin?: { not: string }; OR?: Array<{ origin?: null | { not: string } }> }
         let n = 0
         for (const row of budgetLines) {
           if (w.organizationId && row.organizationId !== w.organizationId) continue
           if (w.companyId && !w.companyId.in.includes(row.companyId)) continue
           if (w.deletedAt === null && row.deletedAt !== null) continue
-          if (w.origin?.not !== undefined && (row.origin ?? null) === w.origin.not) continue
+          if (!matchesPrismaFilter(row, w)) continue
           if (w.planId && !w.planId.in.includes(row.planId)) continue
           if (w.plan?.year && !w.plan.year.in.includes(yearById[row.planId] ?? 2026)) continue
           n += 1
