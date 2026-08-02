@@ -61,6 +61,25 @@ export const FP_MAIN_COMMODITIES = [
 ] as const
 export type FpMainCommodity = (typeof FP_MAIN_COMMODITIES)[number]
 
+/**
+ * Phase 14.2 (2026-08-02) — fields every industry has.
+ *
+ * `REVENUE_FX_EXPOSURE` applies to all twelve industries in its seed list, so
+ * this cannot live in one of the per-industry schemas below. Merged into each
+ * of them because they are `.strict()`, and a record on the generic path.
+ *
+ * **`fxRevenueAzn` is the share of revenue collected IN MANAT, as a
+ * percentage.** The indicator computes `100 - fx_revenue_azn`, so entering
+ * the foreign-currency share instead inverts the answer: a company earning
+ * 90% in manat would be typed as 90 and read as 10% FX exposure, which is
+ * right; typed as 10 it reads as 90% exposure and turns a green cell red.
+ * Nothing downstream can catch that, because both numbers are valid
+ * percentages — hence the bound here and the wording on the form.
+ */
+export const CrossSectorSettingsSchema = z.object({
+  fxRevenueAzn: z.number().min(0).max(100).optional(),
+})
+
 export const HospitalitySettingsSchema = z
   .object({
     totalRooms: z.number().int().min(1).max(10_000).optional(),
@@ -72,6 +91,7 @@ export const HospitalitySettingsSchema = z
   // strict() so an agro field posted to a hospitality company fails loudly
   // instead of silently dropping (which would create cross-industry leakage
   // in the LLM prompt downstream).
+  .merge(CrossSectorSettingsSchema)
   .strict()
 
 export const AgroCropsSettingsSchema = z
@@ -83,6 +103,7 @@ export const AgroCropsSettingsSchema = z
      *  the AI explainer ("target 65 t/ha, came in at 58 t/ha — investigate"). */
     yieldTarget: z.number().min(0).max(200).optional(),
   })
+  .merge(CrossSectorSettingsSchema)
   .strict()
 
 export const FoodProcessingSettingsSchema = z
@@ -91,6 +112,7 @@ export const FoodProcessingSettingsSchema = z
     extractionRateTarget: z.number().min(0).max(100).optional(),
     mainInputCommodity: z.enum(FP_MAIN_COMMODITIES).optional(),
   })
+  .merge(CrossSectorSettingsSchema)
   .strict()
 
 /**
@@ -110,6 +132,18 @@ export const GenericSettingsSchema = z
   .refine((obj) => Object.keys(obj).length <= 32, {
     message: "Settings exceeds 32 keys",
   })
+  // 14.2 — the record accepts any primitive, so the one key with a known
+  // dangerous range is bounded explicitly. A percentage outside 0–100 makes
+  // `100 - fx_revenue_azn` negative, and a negative FX exposure is not a
+  // number anyone can act on.
+  .refine(
+    (obj) =>
+      obj.fxRevenueAzn === undefined ||
+      (typeof obj.fxRevenueAzn === "number" &&
+        obj.fxRevenueAzn >= 0 &&
+        obj.fxRevenueAzn <= 100),
+    { message: "fxRevenueAzn is a percentage of revenue collected in AZN (0–100)" },
+  )
 
 /**
  * Select the right schema for a company's industry. Unknown industry =

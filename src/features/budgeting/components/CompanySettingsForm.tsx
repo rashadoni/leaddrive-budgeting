@@ -97,6 +97,11 @@ export function CompanySettingsForm({
       {!["agro_crops", "hospitality", "food_processing"].includes(industry ?? "") && (
         <GenericSettingsFields draft={draft} setDraft={setDraft} canEdit={canEdit} />
       )}
+      {/* 14.2 — outside the industry switch on purpose: REVENUE_FX_EXPOSURE
+          applies to all twelve industries in its seed list, and this setting
+          is the only thing that can answer it. No workbook carries it, so a
+          form is not one way to supply it — it is the only way. */}
+      <CrossSectorSettingsFields draft={draft} setDraft={setDraft} canEdit={canEdit} />
 
       {saveError && (
         <div className="rounded border border-red-300 bg-red-50 dark:bg-red-950/30 p-2 text-xs text-red-700 dark:text-red-300 flex items-start gap-2">
@@ -305,6 +310,26 @@ function FoodProcessingSettingsFields({ draft, setDraft, canEdit }: FieldProps) 
         field="mainInputCommodity"
         label="Основное сырьё"
         options={FP_MAIN_COMMODITIES}
+      />
+    </div>
+  )
+}
+
+function CrossSectorSettingsFields({ draft, setDraft, canEdit }: FieldProps) {
+  return (
+    <div className="grid grid-cols-2 gap-4 border-t pt-4">
+      <NumberField
+        draft={draft}
+        setDraft={setDraft}
+        canEdit={canEdit}
+        field="fxRevenueAzn"
+        label="Доля выручки в манатах, %"
+        // The wording carries the whole safety of this field. The indicator
+        // computes `100 − это значение`, so entering the foreign-currency
+        // share instead inverts the result — 90% domestic typed as 10 reads
+        // as 90% FX exposure and turns a green cell red. Both are valid
+        // percentages, so nothing downstream can catch the mistake.
+        hint="Сколько процентов выручки компания получает В МАНАТАХ, не в валюте. Показатель «Валютная зависимость выручки» считает остаток: 90 здесь → 10% валютной зависимости."
       />
     </div>
   )
