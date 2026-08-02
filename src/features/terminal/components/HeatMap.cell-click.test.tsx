@@ -290,13 +290,21 @@ describe("HeatMap cell-click → store contract (Phase 7.D regression)", () => {
     // second fetch (companyId + companyCode + indicatorId +
     // indicatorCode + indicatorName).
     expect(setPendingMissingCellMock).toHaveBeenCalledTimes(1);
-    expect(setPendingMissingCellMock).toHaveBeenCalledWith({
+    expect(setPendingMissingCellMock).toHaveBeenCalledWith(
+      expect.objectContaining({
       companyId: "co_aac",
       companyCode: "AAC-MAIN",
       indicatorId: "ind_missing",
       indicatorCode: "IND_FX_EXPOSURE",
       indicatorName: "FX Exposure",
-    });
+    }),
+    );
+    // 14.6 — and the inputs the formula reads, so the panel can name what
+    // THIS cell is waiting for rather than telling everyone to upload a
+    // workbook. Dropping it silently restores the generic advice.
+    expect(setPendingMissingCellMock.mock.calls[0][0]).toHaveProperty(
+      'requiredInputs',
+    );
 
     // setActiveIv must NOT fire on a missing cell — the mutual-exclusion
     // invariant in the store would clear the pending hint we just set.

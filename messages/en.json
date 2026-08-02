@@ -2861,6 +2861,16 @@
         "difference": "Difference",
         "hint": "The imported rows were written exactly as parsed. This compares the derived figure against the subtotal your own sheet computes — either number can be the wrong one, so check the source rows before correcting anything.",
         "acceptedTitle": "Difference accepted"
+      },
+      "remedy": {
+        "manual_entry": "Nobody has entered this yet. It is typed in, not imported — open the agronomy panel or Data entry for this company and period.",
+        "company_setting": "This waits on a company setting, not on a file. No workbook carries it — open the company's settings and answer it once.",
+        "import_workbook": "This waits on rows from a workbook. Import the file for this company and year, then recompute.",
+        "external_feed": "This reads an external series. Neither an upload nor a recompute will produce it — the feed has to run for this period.",
+        "derived": "This is computed from other cells. Fill those and it follows; there is nothing to enter here.",
+        "not_applicable": "This indicator reads data this business does not produce. The blank is correct.",
+        "unknown": "The input behind this cell is not one the app can route. Check the indicator's definition.",
+        "alsoNeeds": "Also waiting on: {list}"
       }
     },
     "auditTicker": {

@@ -2861,6 +2861,16 @@
         "difference": "Fərq",
         "hint": "İdxal olunmuş sətirlər tam olaraq oxunduğu kimi yazılıb. Burada hesablanmış göstərici sizin öz vərəqinizin hesabladığı yekunla müqayisə olunur — iki rəqəmdən hər hansı biri səhv ola bilər, ona görə nəyisə düzəltməzdən əvvəl mənbə sətirlərini yoxlayın.",
         "acceptedTitle": "Fərq qəbul edilib"
+      },
+      "remedy": {
+        "manual_entry": "Bunu hələ kimsə daxil etməyib. O, idxal olunmur, əllə yazılır — bu şirkət və dövr üçün aqronomiya panelini və ya «Məlumat daxil etmə»ni açın.",
+        "company_setting": "Burada fayl yox, şirkət parametri lazımdır. Onu heç bir kitab daşımır — şirkətin parametrlərini açın və bir dəfə göstərin.",
+        "import_workbook": "Burada kitabdan sətirlər lazımdır. Bu şirkət və il üzrə faylı idxal edin, sonra yenidən hesablayın.",
+        "external_feed": "Göstərici xarici seriyanı oxuyur. Nə fayl yükləmək, nə yenidən hesablamaq onu yaratmayacaq — bu dövr üçün lentin işləməsi lazımdır.",
+        "derived": "Digər xanalardan hesablanır. Onları doldurun, bu özü görünəcək; burada daxil ediləsi bir şey yoxdur.",
+        "not_applicable": "Göstərici bu biznesin istehsal etmədiyi məlumatı oxuyur. Boş olması düzgündür.",
+        "unknown": "Tətbiq bu xananın girişinin haradan gəldiyini bilmir. Göstəricinin tərifini yoxlayın.",
+        "alsoNeeds": "Həmçinin gözləyir: {list}"
       }
     },
     "auditTicker": {

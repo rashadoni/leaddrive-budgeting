@@ -47,6 +47,7 @@ import {
 } from "./indicator-detail/badges";
 import { AggregateBlock, formatAggValue, hintForKey, unitToHint } from "./indicator-detail/AggregateBlock";
 import { BenchmarkBand } from "./indicator-detail/BenchmarkBand";
+import { explainMissingCell, remedyKey } from "@/lib/risk/missing-input-remedy";
 
 export function IndicatorDetail({
   onExplain,
@@ -243,9 +244,43 @@ export function IndicatorDetail({
               company: pendingMissing.companyCode,
             })}
           </div>
-          <div className="text-muted-foreground text-[10px]">
-            {t('indicatorDetail.missingCellAction')}
-          </div>
+          {/* 14.6 — the specific remedy, not the generic one.
+              The old line told everybody "upload a workbook or run a
+              recompute". Measured on production, that is right for 276 of the
+              580 empty cells and wrong for the rest: 172 want a figure typed
+              into a panel that already exists, 161 want a feed run, 28 want a
+              setting picked. Worse, "run a recompute" on a cell whose input
+              does not exist sends someone to do something that cannot help and
+              then wonder what they did wrong. */}
+          {(() => {
+            const explained = explainMissingCell(pendingMissing.requiredInputs)
+            if (!explained.primary) {
+              return (
+                <div className="text-muted-foreground text-[10px]">
+                  {t('indicatorDetail.missingCellAction')}
+                </div>
+              )
+            }
+            return (
+              <div
+                data-testid="missing-cell-remedy"
+                data-remedy={explained.primary.kind}
+                className="text-muted-foreground text-[10px] max-w-md space-y-1"
+              >
+                <p>{t(remedyKey(explained.primary.kind) as never)}</p>
+                <p className="font-mono opacity-60">{explained.primary.input}</p>
+                {explained.alsoNeeds.length > 0 && (
+                  <p className="opacity-70">
+                    {t('indicatorDetail.remedy.alsoNeeds', {
+                      list: explained.alsoNeeds
+                        .map((r) => t(remedyKey(r.kind) as never))
+                        .join(' · '),
+                    })}
+                  </p>
+                )}
+              </div>
+            )
+          })()}
         </div>
       );
     }

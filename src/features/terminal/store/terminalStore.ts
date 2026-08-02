@@ -48,6 +48,13 @@ export interface TerminalState {
     indicatorId: string;
     indicatorCode: string;
     indicatorName: string;
+    /**
+     * 14.6 — what the formula reads, so the panel can say what THIS cell is
+     * waiting for instead of giving everyone the same sentence. Optional:
+     * callers that predate it still open the panel, just with the generic
+     * advice they had before.
+     */
+    requiredInputs?: string[];
   } | null;
   /**
    * Phase 7.G Turn VI — Panel 3 sub-group rollup hint. Set when the user

@@ -371,13 +371,23 @@ describe('HeatMap activity-aware indicator disclosure', () => {
     fireEvent.click(actionableMissingCell);
     expect(terminalActions.selectCompany).toHaveBeenCalledWith('AGRO-CO');
     expect(terminalActions.setActivePanel).toHaveBeenCalledWith(3);
-    expect(terminalActions.setPendingMissingCell).toHaveBeenCalledWith({
-      companyId: 'agro-company',
-      indicatorId: 'universal',
-      companyCode: 'AGRO-CO',
-      indicatorCode: 'IND_UNIVERSAL',
-      indicatorName: 'Universal KPI',
-    });
+    expect(terminalActions.setPendingMissingCell).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId: 'agro-company',
+        indicatorId: 'universal',
+        companyCode: 'AGRO-CO',
+        indicatorCode: 'IND_UNIVERSAL',
+        indicatorName: 'Universal KPI',
+      }),
+    );
+    // 14.6 — the payload also carries what the formula reads, so the panel can
+    // name the ONE thing this cell is waiting for instead of telling everybody
+    // to upload a workbook. Asserted rather than absorbed by
+    // `objectContaining`: a click that forgets it silently returns the panel to
+    // the generic advice, which is the state this replaced.
+    expect(
+      terminalActions.setPendingMissingCell.mock.calls[0][0],
+    ).toHaveProperty('requiredInputs');
   });
 
   it('treats a parent-only rollup as N/A on a leaf and never opens missing/recompute', async () => {

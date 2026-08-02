@@ -711,6 +711,9 @@ export function HeatMap({ period }: Props) {
                                 // also renamed `indicatorNameEn → indicatorName`
                                 // since it's no longer EN-canonical.
                                 indicatorName: resolveIndicatorLabel(ind, locale),
+                                // 14.6 — carried so the panel can name the one
+                                // thing this cell is missing.
+                                requiredInputs: ind.requiredInputs ?? [],
                               });
                             }
                           } : undefined}
