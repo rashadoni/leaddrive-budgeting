@@ -3868,7 +3868,7 @@
       },
       "aliases": {
         "title": "Şirkət aliasları",
-        "description": "Müştərinin qısaltmalarını AI Import-a bir dəfə öyrədin: sonra filenames, headers, cells və BU columns avtomatik yönləndiriləcək.",
+        "description": "Bu, modelin öyrədilməsi deyil — sadəcə uyğunluq cədvəlidir: faylınızdakı qısaltmanı şirkətlə əlaqələndirir. Tam kod və son defisdən sonrakı hissə (AZSEKER-EDEN → EDEN) onsuz da tanınır; yazı yalnız fayl başqa şey yazanda lazımdır — tam ad, kiril yazılışı və ya səhv yazılmış qısaltma.",
         "open": "Aliasları idarə et",
         "close": "Aliasları gizlət",
         "loading": "Aliaslar yüklənir...",
@@ -3920,7 +3920,7 @@
       },
       "fixes": {
         "title": "Guided fixes — {n} vərəq",
-        "description": "Riskli vərəq yönləndirməsini burada düzəldin, sonra preview-u yenidən hesablayın ki, adapters və reconciliation düzəlişi yoxlasın.",
+        "description": "Vərəqin hara yönləndirildiyini burada dəyişin, sonra preview-u yenidən hesablayın ki, adapterlər və üzləşdirmə düzəlişi yoxlasın. Buradakı sətirlərin çoxuna toxunmaq lazım deyil — vərəq siyahıda ona görədir ki, rəqəm daşıyır, nəyisə səhv olduğu üçün yox.",
         "loadCompanies": "Şirkətləri yüklə",
         "noCompany": "AI / həll olunmayıb",
         "planAuto": "AI / avto",
@@ -3940,7 +3940,7 @@
       },
       "doctor": {
         "title": "İdxal diaqnostikası",
-        "subtitle": "Cari bloklanmanı saytın dilində izah edir və yalnız preview üçün təhlükəsiz düzəlişləri doldura bilir. Final DB yazısı yenə də təmiz preview və normal Apply addımı tələb edir.",
+        "subtitle": "Cari tapıntını saytın dilində izah edir və yalnız preview üçün təhlükəsiz düzəlişləri doldura bilir. Buradakı tapıntı həmişə bloklama demək deyil — panel hansı olduğunu göstərir. Final DB yazısı yenə də təmiz preview və normal Apply addımı tələb edir.",
         "explain": "İzah et",
         "explainLoading": "İzah olunur...",
         "suggest": "Fix təklif et",
@@ -3960,7 +3960,7 @@
         "issue": {
           "crossFileConflict": "{n} fayllar arası konflikt apply-ı bloklayır.",
           "coaReviewRequired": "{n} chart-of-accounts sətri qərar tələb edir.",
-          "routingUncertain": "{n} vərəqdə riskli yönləndirmə siqnalı var.",
+          "routingUncertain": "{n} vərəq yönləndirmə yoxlaması üçün siyahıdadır. Hər mənfəət-zərər, balans və pul axını vərəqi bura standart olaraq düşür, üstəlik şirkəti, büdcə/fakt təyinatı olmayan və ya etibarlılığı aşağı olan vərəqlər. Bu, idxalı bloklamır.",
           "reconciliationBlocked": "Reconciliation qırmızıdır, ona görə idxal təhlükəsiz tətbiq edilə bilməz.",
           "previewStale": "Routing fixes-dən sonra preview köhnəlib."
         },
@@ -3972,7 +3972,9 @@
           "reconciliationBlocked": "Üzləşdirmə",
           "previewStale": "Preview köhnədir",
           "manualReview": "Manual yoxlama"
-        }
+        },
+        "severityBlocking": "idxalı bloklayır",
+        "severityWarning": "bloklamır"
       },
       "routing": {
         "title": "Şirkət yönləndirməsi — {n} split vərəq",

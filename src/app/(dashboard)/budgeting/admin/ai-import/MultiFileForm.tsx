@@ -2414,6 +2414,27 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                 >
                   {doctorIssueLabel(primaryDoctorIssue.code)}
                 </span>
+                {/* 11.89 — the severity was already deciding the badge COLOUR
+                    and never said the word. Amber over «Routing check» reads
+                    as an alarm, and a routing finding blocks nothing: every
+                    P&L, balance-sheet and cash-flow sheet is listed there as a
+                    matter of course. Twice in one session that colour sent a
+                    reader hunting for a defect that did not exist. Colour is a
+                    hint; the sentence is the fact. */}
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    primaryDoctorIssue.severity === "blocking"
+                      ? "bg-red-100 text-red-800"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                  data-testid="import-doctor-severity"
+                >
+                  {t(
+                    primaryDoctorIssue.severity === "blocking"
+                      ? "doctor.severityBlocking"
+                      : "doctor.severityWarning",
+                  )}
+                </span>
               </div>
               <p className="mt-1 max-w-[72ch] text-xs text-slate-600">
                 {t("doctor.subtitle")}

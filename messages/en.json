@@ -3868,7 +3868,7 @@
       },
       "aliases": {
         "title": "Entity aliases",
-        "description": "Teach AI Import the client’s abbreviations once: filenames, headers, cells and BU columns then route automatically.",
+        "description": "A lookup table, not a model — it maps a short form your file uses to a company. The full code and the part after the last dash (AZSEKER-EDEN → EDEN) already resolve on their own; add an entry only when the file writes something else, such as a full name, a Cyrillic spelling or a typo.",
         "open": "Manage aliases",
         "close": "Hide aliases",
         "loading": "Loading aliases...",
@@ -3920,7 +3920,7 @@
       },
       "fixes": {
         "title": "Guided fixes — {n} sheet(s)",
-        "description": "Resolve risky sheet routing here, then rerun preview so adapters and reconciliation validate the corrected plan.",
+        "description": "Change where a sheet is routed, then rerun the preview so the adapters and the reconciliation check the corrected plan. Most rows here need nothing — a sheet is listed because it carries money, not because something is wrong with it.",
         "loadCompanies": "Load companies",
         "noCompany": "AI / unresolved",
         "planAuto": "AI / auto",
@@ -3940,7 +3940,7 @@
       },
       "doctor": {
         "title": "Import Doctor",
-        "subtitle": "Explains the current blocker in your language and can fill safe preview-only corrections. Final database writes still require a clean preview and the normal Apply step.",
+        "subtitle": "Explains the current finding in your language and can fill safe preview-only corrections. A finding here is not always a blocker — the panel says which it is. Final database writes still require a clean preview and the normal Apply step.",
         "explain": "Explain",
         "explainLoading": "Explaining...",
         "suggest": "Suggest fix",
@@ -3960,7 +3960,7 @@
         "issue": {
           "crossFileConflict": "{n} cross-file conflict(s) are blocking apply.",
           "coaReviewRequired": "{n} chart-of-accounts row(s) need a decision.",
-          "routingUncertain": "{n} sheet(s) have risky routing signals.",
+          "routingUncertain": "{n} sheet(s) listed for a routing check. Every P&L, balance-sheet and cash-flow sheet is listed as a matter of course, plus any sheet with no company, no budget/actual, or low confidence. This does not block the import.",
           "reconciliationBlocked": "Reconciliation is red, so the import cannot be applied safely.",
           "previewStale": "Preview is stale after routing fixes."
         },
@@ -3972,7 +3972,9 @@
           "reconciliationBlocked": "Reconciliation",
           "previewStale": "Preview stale",
           "manualReview": "Manual review"
-        }
+        },
+        "severityBlocking": "blocks the import",
+        "severityWarning": "does not block"
       },
       "routing": {
         "title": "Entity routing grid — {n} split sheet(s)",
