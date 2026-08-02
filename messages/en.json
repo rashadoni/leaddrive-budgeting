@@ -1636,7 +1636,18 @@
     "aiPdfFooterWithPlan": "Generated from data in \"{plan}\". Not audited. For internal review only.",
     "aiPdfFooterNoPlan": "Generated from data in the selected budget plan. Not audited. For internal review only.",
     "aiPdfExportFailed": "Failed to export PDF",
-    "pnlMarginCaption": "margin"
+    "pnlMarginCaption": "margin",
+    "missing": {
+      "counterpartPlanBudget": "There is no budget plan for {year}, so there is nothing to compare against.",
+      "counterpartPlanActual": "There is no actuals plan for {year}, so there is nothing to compare against.",
+      "budgetRows": "No budget {dataset} rows were loaded for this year.",
+      "actualRows": "No actual {dataset} rows were loaded for this year.",
+      "dataset": {
+        "pnl": "P&L",
+        "cogs": "COGS",
+        "product": "product"
+      }
+    }
   },
   "onboardingDashboard": {
     "title": "Onboarding Completeness",

@@ -2,6 +2,11 @@
 
 import { useMemo } from "react"
 import {
+  missingDataKey,
+  missingDataParams,
+  type MissingDataNotice,
+} from "@/lib/budgeting/missing-data"
+import {
   Bar,
   CartesianGrid,
   ComposedChart,
@@ -27,7 +32,7 @@ interface ProductPerformanceComparisonProps {
   description: string
   budgetLines: ProductVarianceInputLine[]
   actualLines: ProductVarianceInputLine[]
-  missingData?: string[]
+  missingData?: MissingDataNotice[]
   amountLabel: string
   rateVarianceLabel: string
   volumeVarianceLabel?: string
@@ -54,8 +59,15 @@ export function ProductPerformanceComparison({
     [budgetLines, actualLines],
   )
   const coverage = useMemo(() => productVarianceCoverage(rows), [rows])
+  // 11.90 — the server sends a code and the reader's locale turns it into a
+  // sentence. It used to send English prose straight onto an Azerbaijani page.
   const notices = unique([
-    ...missingData,
+    ...missingData.map((n) =>
+      t(
+        missingDataKey(n) as never,
+        missingDataParams(n, (d) => t(`missing.dataset.${d}` as never)) as never,
+      ),
+    ),
     ...coverage.missingCodes.map((code) => t(`productVarianceMissing.${code}`)),
   ])
   const monthlyData = useMemo(() => MONTHS.map((month, index) => {

@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import type { MissingDataNotice } from "@/lib/budgeting/missing-data"
 import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
@@ -64,7 +65,7 @@ interface CogsResponse {
   comparison?: {
     budgetLines: CogsLine[]
     actualLines: CogsLine[]
-    missingData?: string[]
+    missingData?: MissingDataNotice[]
     budgetSource?: "budget_lines"
     actualSource?: "budget_lines"
   }

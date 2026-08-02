@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { buildMissingData } from "@/lib/budgeting/missing-data"
 import type { Prisma } from "@prisma/client"
 import { getOrgId, getSession } from "@/lib/api-auth"
 // Stage 3 RLS — `prisma` kept ONLY for lockedResponse's 423-audit + the
@@ -64,11 +65,14 @@ export async function GET(req: NextRequest) {
       actualLines: actualRows?.cogsLines ?? [],
       budgetSource: budgetRows?.source,
       actualSource: actualRows?.source,
-      missingData: [
-        ...(counterpartPlan ? [] : [`No ${counterpartKind} plan exists for ${activePlan.year}.`]),
-        ...((budgetRows?.cogsLines.length ?? 0) > 0 ? [] : ["Budget COGS product rows are not available for this year."]),
-        ...((actualRows?.cogsLines.length ?? 0) > 0 ? [] : ["Actual COGS product rows are not available for this year."]),
-      ],
+      // 11.90 — codes, not sentences. The locale belongs to the viewer.
+      missingData: buildMissingData({
+        dataset: "cogs",
+        missingCounterpartKind: counterpartPlan ? null : counterpartKind,
+        year: activePlan.year,
+        hasBudgetRows: (budgetRows?.cogsLines.length ?? 0) > 0,
+        hasActualRows: (actualRows?.cogsLines.length ?? 0) > 0,
+      }),
     },
   })
   })

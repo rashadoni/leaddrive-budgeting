@@ -290,7 +290,7 @@ describe("GET /api/budgeting/pnl — happy path", () => {
       comparison: {
         hasActualLines: boolean
         hasBudgetLines: boolean
-        missingData: string[]
+        missingData: Array<{ code: string; dataset?: string; kind?: string; year?: number }>
         actual: { monthlyRevenue: Record<string, number>; monthlyCogs: Record<string, number> }
         budget: { monthlyRevenue: Record<string, number>; monthlyCogs: Record<string, number> }
       }
@@ -303,7 +303,12 @@ describe("GET /api/budgeting/pnl — happy path", () => {
     expect(body.comparison.actual.monthlyRevenue["1"]).toBe(1_000)
     expect(body.comparison.actual.monthlyCogs["1"]).toBe(300)
     expect(body.comparison.budget.monthlyRevenue["1"]).toBe(0)
-    expect(body.comparison.missingData).toContain("Budget P&L rows are not available for this year.")
+    // 11.90 — asserting on the CODE, not the sentence. The prose lives in the
+    // catalogue now, and a test that pins English is what kept it on the server.
+    expect(body.comparison.missingData).toContainEqual({
+      code: "budgetRows",
+      dataset: "pnl",
+    })
   })
 
   it("classifies Workbook PLF actual-plan lines for Actual vs Budget P&L", async () => {

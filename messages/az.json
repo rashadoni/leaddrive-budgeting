@@ -1636,7 +1636,18 @@
     "aiPdfFooterWithPlan": "«{plan}» planındakı məlumatlar əsasında hazırlanıb. Auditdən keçməyib. Yalnız daxili baxış üçündür.",
     "aiPdfFooterNoPlan": "Seçilmiş büdcə planındakı məlumatlar əsasında hazırlanıb. Auditdən keçməyib. Yalnız daxili baxış üçündür.",
     "aiPdfExportFailed": "PDF ixracı alınmadı",
-    "pnlMarginCaption": "marja"
+    "pnlMarginCaption": "marja",
+    "missing": {
+      "counterpartPlanBudget": "{year} üçün büdcə planı yoxdur — müqayisə etməyə bir şey yoxdur.",
+      "counterpartPlanActual": "{year} üçün fakt planı yoxdur — müqayisə etməyə bir şey yoxdur.",
+      "budgetRows": "Bu il üçün {dataset} üzrə büdcə sətirləri yüklənməyib.",
+      "actualRows": "Bu il üçün {dataset} üzrə fakt sətirləri yüklənməyib.",
+      "dataset": {
+        "pnl": "mənfəət-zərər",
+        "cogs": "maya dəyəri",
+        "product": "məhsul"
+      }
+    }
   },
   "onboardingDashboard": {
     "title": "Onboarding Tamlığı",

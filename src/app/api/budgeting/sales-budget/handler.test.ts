@@ -170,8 +170,16 @@ describe("GET /api/budgeting/sales-budget", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.comparison.actualLines).toEqual([])
-    expect(body.comparison.missingData).toContain("No actual plan exists for 2026.")
-    expect(body.comparison.missingData).toContain("Actual product rows are not available for this year.")
+    // 11.90 — codes, so the assertion survives a translation and a reword.
+    expect(body.comparison.missingData).toContainEqual({
+      code: "counterpartPlan",
+      kind: "actual",
+      year: 2026,
+    })
+    expect(body.comparison.missingData).toContainEqual({
+      code: "actualRows",
+      dataset: "product",
+    })
   })
 })
 

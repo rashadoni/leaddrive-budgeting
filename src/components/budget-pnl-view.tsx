@@ -1,6 +1,11 @@
 "use client"
 
 import { useState } from "react"
+import {
+  missingDataKey,
+  missingDataParams,
+  type MissingDataNotice,
+} from "@/lib/budgeting/missing-data"
 import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
 import { useQuery } from "@tanstack/react-query"
@@ -48,7 +53,7 @@ interface PnlComparisonPayload {
   budget?: PnlComparisonBuckets
   actual?: PnlComparisonBuckets
   hasActualLines?: boolean
-  missingData?: string[]
+  missingData?: MissingDataNotice[]
 }
 
 export function BudgetPnlView({ planId, companyId }: { planId: string; companyId?: string | null }) {
@@ -206,7 +211,14 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const hasActuals: boolean = Boolean(data.hasActuals)
   const comparison: PnlComparisonPayload | undefined = data.comparison
   const comparisonHasActuals = comparison?.hasActualLines ?? hasActuals
-  const comparisonMissingData = comparison?.missingData ?? []
+  // 11.90 — resolved here rather than passed down as codes: the chart panel
+  // takes plain strings and has no business knowing the notice vocabulary.
+  const comparisonMissingData = (comparison?.missingData ?? []).map((n) =>
+    t(
+      missingDataKey(n) as never,
+      missingDataParams(n, (d) => t(`missing.dataset.${d}` as never)) as never,
+    ),
+  )
   const comparisonValue = (
     side: "budget" | "actual",
     key: keyof Omit<PnlComparisonBuckets, "hasRows">,

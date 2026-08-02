@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { buildMissingData } from "@/lib/budgeting/missing-data"
 import { Prisma } from "@prisma/client"
 import { getSession } from "@/lib/api-auth"
 import { withOrgScope } from "@/lib/db/with-org-scope"
@@ -489,11 +490,15 @@ export async function GET(req: NextRequest) {
           },
       hasBudgetLines: budgetLineComparison.hasRows,
       hasActualLines: actualLineComparison.hasRows || hasActualRowsForYear,
-      missingData: [
-        ...(counterpartKind && !counterpartPlan ? [`No ${counterpartKind} plan exists for ${year}.`] : []),
-        ...(budgetLineComparison.hasRows ? [] : ["Budget P&L rows are not available for this year."]),
-        ...(actualLineComparison.hasRows || hasActualRowsForYear ? [] : ["Actual P&L rows are not available for this year."]),
-      ],
+      // 11.90 — codes, not sentences. The locale belongs to the viewer.
+      missingData: buildMissingData({
+        dataset: "pnl",
+        missingCounterpartKind:
+          counterpartKind && !counterpartPlan ? counterpartKind : null,
+        year,
+        hasBudgetRows: budgetLineComparison.hasRows,
+        hasActualRows: actualLineComparison.hasRows || hasActualRowsForYear,
+      }),
     },
     year,
     hasActuals: hasActualRowsForYear,
