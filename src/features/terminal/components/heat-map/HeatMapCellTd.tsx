@@ -332,15 +332,35 @@ export function HeatMapCellTd({
           every cell that has no mismatch (which today is all of them). */}
       {statementMismatch && (
         <>
+          {/* Measured 2026-08-02, after looking at a render instead of trusting
+              the test that said the marker was present: fuchsia #E879F9 sits at
+              1.25–1.36:1 against every status tile (green 1.29, amber 1.25, red
+              1.36). That is no luminance separation at all — the ring read only
+              as an edge, and on amber barely that. The brief was «чтоб было
+              заметно сразу».
+
+              So the marker carries a DARK component, which is what actually
+              separates here: #0A0E27 — the terminal's own background — gives
+              10.0 : 9.6 : 5.7 against the same three. Fuchsia stays as the
+              identity colour tying the tile to the header badge; it is no
+              longer asked to do the contrast work on its own.
+
+              Two stacked rings rather than one thick one: a dark halo on the
+              outside and the fuchsia line inside it, so the marker reads
+              against a light tile AND against the dark grid gutter. */}
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 rounded-[1px] ring-[1.5px] ring-inset ring-[#E879F9]"
+            className="pointer-events-none absolute inset-0 rounded-[1px] ring-2 ring-inset ring-[#0A0E27]"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-[2px] rounded-[1px] ring-[1.5px] ring-inset ring-[#E879F9]"
           />
           <span
             aria-hidden="true"
             data-testid="tile-statement-mismatch"
             title={mismatchTitle}
-            className="pointer-events-none absolute left-[1px] bottom-[1px] text-[8px] leading-none font-bold text-[#E879F9]"
+            className="pointer-events-none absolute left-[2px] bottom-[2px] rounded-[2px] bg-[#0A0E27] px-[2px] text-[9px] leading-[1.1] font-bold text-[#E879F9]"
           >
             ≠
           </span>
