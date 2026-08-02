@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { sendTradeAlertDigest } from "@/lib/trade/digest"
+import { bearerMatches } from "@/lib/cron-auth"
 
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET
@@ -23,7 +24,8 @@ export async function GET(request: NextRequest) {
       { status: 503 },
     )
   }
-  if (request.headers.get("authorization") !== `Bearer ${secret}`) {
+  // A07 — constant-time; see `bearerMatches`.
+  if (!bearerMatches(request.headers.get("authorization"), secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

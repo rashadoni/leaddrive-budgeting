@@ -85,6 +85,58 @@ const VIEWER_WRITABLE = [
   /^\/api\/telemetry\//,
 ]
 
+/**
+ * Phase 12 / A10 (2026-08-02) — the three response headers that were absent.
+ *
+ * Measured against production the same day (`curl -i http://46.225.60.142/login`):
+ * no `X-Frame-Options`, no `X-Content-Type-Options`, no `Referrer-Policy`.
+ * nginx sets none either — `deploy/nginx/budgetpro.conf` has the TLS block
+ * commented out entirely.
+ *
+ * What each one buys here, rather than as a checklist item:
+ *
+ *   X-Frame-Options: DENY
+ *     Clickjacking. This is a financial terminal with one-click destructive
+ *     actions — plan purge, data reset. Framing it under a transparent
+ *     overlay turns "delete every actual for 2026" into a misplaced click.
+ *
+ *   X-Content-Type-Options: nosniff
+ *     The app serves user-supplied bytes back: XLSX exports, and
+ *     `/api/help-videos/[file]`. Without this a browser may sniff a
+ *     mistyped response into HTML and run it same-origin.
+ *
+ *   Referrer-Policy: strict-origin-when-cross-origin
+ *     Terminal URLs carry company codes and periods. Any outbound link
+ *     otherwise hands the client's entity names to a third party in the
+ *     Referer header.
+ *
+ * Deliberately NOT added here:
+ *   Strict-Transport-Security — production is plain-IP HTTP with the TLS
+ *     server block commented out. Browsers ignore HSTS over HTTP, so setting
+ *     it now would be decoration that reads as protection. It belongs with
+ *     the certificate, in the same change.
+ *   Content-Security-Policy — a real one needs a nonce through the Next
+ *     render path, and a wrong one silently breaks the app. Worth doing, too
+ *     large to smuggle into a header patch.
+ *
+ * The cookie flags were checked at the same time and are correct: `HttpOnly`
+ * and `SameSite=Lax` are both set, and Lax is what actually stops a
+ * cross-site POST from carrying the session to any of the 117 mutating
+ * routes. `Secure` is absent — no TLS to require — which is the same
+ * owner-gated gap, and the reason the session cookie currently crosses the
+ * network in cleartext.
+ */
+const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
+  ["X-Frame-Options", "DENY"],
+  ["X-Content-Type-Options", "nosniff"],
+  ["Referrer-Policy", "strict-origin-when-cross-origin"],
+]
+
+function withSecurityHeaders(res: NextResponse): NextResponse {
+  for (const [k, v] of SECURITY_HEADERS) res.headers.set(k, v)
+  return res
+}
+
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"])
 
 /** True when this request must be refused for lacking write privilege. */
@@ -116,9 +168,11 @@ export async function proxy(req: NextRequest) {
     const locale = req.cookies.get(LOCALE_COOKIE_NAME)?.value || "en"
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set("x-locale", locale)
-    return NextResponse.next({
-      request: { headers: requestHeaders },
-    })
+    return withSecurityHeaders(
+      NextResponse.next({
+        request: { headers: requestHeaders },
+      }),
+    )
   }
 
   // Allow static files
@@ -127,7 +181,7 @@ export async function proxy(req: NextRequest) {
     pathname.startsWith("/favicon") ||
     pathname.includes(".")
   ) {
-    return NextResponse.next()
+    return withSecurityHeaders(NextResponse.next())
   }
 
   // Check authentication
@@ -138,19 +192,23 @@ export async function proxy(req: NextRequest) {
     // res.json() throws "Unexpected token '<', <!DOCTYPE ..." everywhere
     // in the terminal (MarketTicker, TodayBrief, VarianceExplainer, etc.)
     if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return withSecurityHeaders(
+        NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      )
     }
     const loginUrl = new URL("/login", req.url)
     loginUrl.searchParams.set("callbackUrl", pathname)
-    return NextResponse.redirect(loginUrl)
+    return withSecurityHeaders(NextResponse.redirect(loginUrl))
   }
 
   // A05 write floor — before the rate limiter, so a refused write does not
   // also consume the caller's quota.
   if (pathname.startsWith("/api/") && belowWriteFloor(pathname, req.method, session.user.role)) {
-    return NextResponse.json(
-      { error: "Forbidden", message: "This action requires editor access or above." },
-      { status: 403 },
+    return withSecurityHeaders(
+      NextResponse.json(
+        { error: "Forbidden", message: "This action requires editor access or above." },
+        { status: 403 },
+      ),
     )
   }
 
@@ -160,7 +218,8 @@ export async function proxy(req: NextRequest) {
     const orgId = session.user.organizationId || "unknown"
     const result = checkRateLimit(orgId, rule.cfg)
     if (!result.ok) {
-      return NextResponse.json(
+      return withSecurityHeaders(
+        NextResponse.json(
         {
           error: "Too many requests",
           message: `Rate limit exceeded. Retry in ${result.retryAfterSec}s.`,
@@ -174,6 +233,7 @@ export async function proxy(req: NextRequest) {
             "X-RateLimit-Remaining": "0",
           },
         },
+        ),
       )
     }
   }
@@ -190,9 +250,11 @@ export async function proxy(req: NextRequest) {
   requestHeaders.set("x-organization-id", session.user.organizationId || "")
   requestHeaders.set("x-locale", locale)
 
-  return NextResponse.next({
-    request: { headers: requestHeaders },
-  })
+  return withSecurityHeaders(
+    NextResponse.next({
+      request: { headers: requestHeaders },
+    }),
+  )
 }
 
 // 2026-05-27 — added `_next/data` (RSC payload fetches) and `_next/webpack-hmr`

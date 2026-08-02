@@ -39,6 +39,7 @@ import { listApiKeys } from "@/lib/intel/api-keys"
 import { acquireRefreshFeedsLock } from "@/lib/intel/refresh-feeds-lock"
 import { filterOperationalCompanies } from "@/lib/risk/targets"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
+import { bearerMatches } from "@/lib/cron-auth"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 300 // Vercel Pro — ingest + recompute can exceed 60s
@@ -74,7 +75,8 @@ export async function GET(req: NextRequest) {
       { status: 503 },
     )
   }
-  if (req.headers.get("authorization") !== `Bearer ${secret}`) {
+  // A07 — constant-time; see `bearerMatches`.
+  if (!bearerMatches(req.headers.get("authorization"), secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
