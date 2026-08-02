@@ -32,6 +32,8 @@ interface FakeBudgetLineRow {
   sortOrder: number | null
   planId: string
   sourceDocument: string
+  /** 13.6 — null for imported rows; "manual_correction" for a human one. */
+  origin?: string | null
   deletedAt: Date | null
   deletedBy: string | null
 }
@@ -57,8 +59,12 @@ function makeFakePrisma(opts: {
       updateMany: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
         let count = 0
         for (const row of budgetLines) {
-          const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; planId?: { in: string[] }; plan?: { year?: { in: number[] } } }
+          const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; planId?: { in: string[] }; plan?: { year?: { in: number[] } }; origin?: { not: string } }
           if (w.organizationId && row.organizationId !== w.organizationId) continue
+          // 13.6 — the clean-slate must SKIP manual corrections. Emulated here
+          // so the mock is capable of being wrong: without this line the
+          // survival test passes for the wrong reason.
+          if (w.origin?.not !== undefined && (row.origin ?? null) === w.origin.not) continue
           if (w.companyId && !w.companyId.in.includes(row.companyId)) continue
           if (w.deletedAt === null && row.deletedAt !== null) continue
           // Honor the planId scope (the 2026-06-16 cross-plan clean-slate
@@ -72,13 +78,14 @@ function makeFakePrisma(opts: {
         return { count }
       }),
       deleteMany: vi.fn(async (args: { where: Record<string, unknown> }) => {
-        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: { not: null }; planId?: { in: string[] }; plan?: { year?: { in: number[] } } }
+        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: { not: null }; planId?: { in: string[] }; plan?: { year?: { in: number[] } }; origin?: { not: string } }
         let count = 0
         for (let i = budgetLines.length - 1; i >= 0; i--) {
           const row = budgetLines[i]
           if (w.organizationId && row.organizationId !== w.organizationId) continue
           if (w.companyId && !w.companyId.in.includes(row.companyId)) continue
           if (w.deletedAt?.not === null && row.deletedAt === null) continue
+          if (w.origin?.not !== undefined && (row.origin ?? null) === w.origin.not) continue
           if (w.planId && !w.planId.in.includes(row.planId)) continue
           if (w.plan?.year && !w.plan.year.in.includes(yearById[row.planId] ?? 2026)) continue
           budgetLines.splice(i, 1)
@@ -107,12 +114,16 @@ function makeFakePrisma(opts: {
         return { count: args.data.length }
       }),
       findMany: vi.fn(async (args: { where: Record<string, unknown>; select: Record<string, unknown> }) => {
-        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null }
+        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; origin?: { not: string } }
         return budgetLines
           .filter((r) => {
             if (w.organizationId && r.organizationId !== w.organizationId) return false
             if (w.companyId && !w.companyId.in.includes(r.companyId)) return false
             if (w.deletedAt === null && r.deletedAt !== null) return false
+            // 13.6 — the post-write verdict claims "the rows I wrote match
+            // what I parsed", so a human adjustment must not be read back as
+            // an `extra`, which is an unconditional red.
+            if (w.origin?.not !== undefined && (r.origin ?? null) === w.origin.not) return false
             return true
           })
           .map((r) => ({
@@ -127,12 +138,13 @@ function makeFakePrisma(opts: {
           }))
       }),
       count: vi.fn(async (args: { where: Record<string, unknown> }) => {
-        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; planId?: { in: string[] }; plan?: { year?: { in: number[] } } }
+        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; planId?: { in: string[] }; plan?: { year?: { in: number[] } }; origin?: { not: string } }
         let n = 0
         for (const row of budgetLines) {
           if (w.organizationId && row.organizationId !== w.organizationId) continue
           if (w.companyId && !w.companyId.in.includes(row.companyId)) continue
           if (w.deletedAt === null && row.deletedAt !== null) continue
+          if (w.origin?.not !== undefined && (row.origin ?? null) === w.origin.not) continue
           if (w.planId && !w.planId.in.includes(row.planId)) continue
           if (w.plan?.year && !w.plan.year.in.includes(yearById[row.planId] ?? 2026)) continue
           n += 1
@@ -339,6 +351,54 @@ describe("runImportBatch — clean-slate is scoped to the TARGET plan (cross-pla
     expect(result.metrics.resetArchived).toBe(1)
     expect(prisma.__budgetLines.filter((b) => b.planId === "plan_actual" && b.deletedAt === null)).toHaveLength(1)
     expect(result.reconciliation.verdict).toBe("green")
+  })
+
+  it("a manual correction SURVIVES a re-import of the same file (13.6)", async () => {
+    // The load-bearing property of the whole correction feature.
+    //
+    // The clean-slate exists so a re-import fully replaces what the PREVIOUS
+    // import wrote. A row a person added — because the workbook disagreed with
+    // the client's own statement and someone decided which way to fix it — was
+    // never written by any import. Archiving it would silently un-apply their
+    // correction on the next run of the same file, and the number would revert
+    // to the one they had already rejected, with nothing on screen to say so.
+    //
+    // That is worse than never having offered the feature at all, which is why
+    // this is a test and not a comment.
+    const prisma = makeFakePrisma()
+    const plan = planFor([R("PLF.01.01.01", 1000), R("PLF.01.01.02", 2000)])
+    await runImportBatch(prisma, plan)
+    expect(prisma.__budgetLines.filter((b) => b.deletedAt === null)).toHaveLength(2)
+
+    // A person adds an adjustment against the same company and plan.
+    prisma.__budgetLines.push({
+      ...prisma.__budgetLines[0],
+      sourceDocument: "manual-correction-1",
+      plannedAmount: -40_000,
+      origin: "manual_correction",
+      deletedAt: null,
+      deletedBy: null,
+    })
+
+    // Re-import, WITH the purge step, which is the harsher of the two paths:
+    // an archived correction must not then be hard-deleted either.
+    const again = await runImportBatch(prisma, { ...plan, purgeArchivedFirst: true })
+
+    const correction = prisma.__budgetLines.find(
+      (b) => b.sourceDocument === "manual-correction-1",
+    )
+    expect(correction, "the correction row must still exist").toBeTruthy()
+    expect(correction!.deletedAt, "and must not have been archived").toBeNull()
+    expect(correction!.plannedAmount).toBe(-40_000)
+
+    // The imported rows were still replaced — the exclusion must not have
+    // switched the clean-slate off wholesale.
+    expect(again.metrics.resetArchived).toBe(2)
+    expect(again.metrics.rowsInserted).toBe(2)
+    expect(again.reconciliation.verdict).toBe("green")
+
+    // 3 live rows: two freshly imported plus the surviving correction.
+    expect(prisma.__budgetLines.filter((b) => b.deletedAt === null)).toHaveLength(3)
   })
 
   it("rows: [] is a safe no-op — preserves existing live rows (locks the footgun closure)", async () => {

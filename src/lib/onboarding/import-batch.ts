@@ -57,6 +57,7 @@
 import type { PrismaClient, Prisma } from "@prisma/client"
 import { archiveStamp } from "@/lib/server/soft-delete"
 import { assertNoCollateralDeletion } from "./collateral-guard"
+import { MANUAL_CORRECTION_ORIGIN } from "@/lib/budgeting/manual-correction"
 import { getLogger } from "@/lib/log"
 import {
   reconcile,
@@ -247,6 +248,27 @@ export async function runImportBatch(
       // delete-without-reinsert footgun.
       const planFilter = { planId: { in: planIds } }
 
+      // Phase 13.6 (2026-08-02) — a manual correction is not this import's to
+      // replace.
+      //
+      // The clean-slate exists so a re-import fully replaces what the PREVIOUS
+      // import wrote. A row a person added — because the workbook disagreed
+      // with the client's own statement and someone decided which way to fix
+      // it — was never written by any import, and archiving it would silently
+      // un-apply their correction on the next run of the same file. That is
+      // worse than never having offered the feature: the number would quietly
+      // revert to the one they already rejected.
+      //
+      // Applied to the purge as well as the archive. A correction that was
+      // archived by an older build must not then be hard-deleted by a newer
+      // one; `purgeArchivedFirst` would otherwise make the mistake permanent.
+      //
+      // The counterpart is in `flagCorrectionsForReview`: surviving is not the
+      // same as still being right, so a correction whose (account × period)
+      // this import just rewrote is FLAGGED for a human rather than kept in
+      // silence.
+      const notAManualCorrection = { origin: { not: MANUAL_CORRECTION_ORIGIN } }
+
       // 2026-06-16 derive-delete-from-write — the clean-slate DELETE scope is
       // derived from the identity the INSERTED rows actually carry, NOT from
       // caller-supplied `plan.companyIds` (which can be broader and wipe
@@ -268,6 +290,7 @@ export async function runImportBatch(
             organizationId: plan.organizationId,
             companyId: { in: footprintCompanyIds },
             deletedAt: { not: null },
+            ...notAManualCorrection,
             ...planFilter,
             ...periodFilter,
           },
@@ -286,6 +309,10 @@ export async function runImportBatch(
                 companyId: { in: footprintCompanyIds },
                 planId: { in: planIds },
                 deletedAt: null,
+                // Excluded here too, or the tripwire below compares an archive
+                // that skips corrections against a count that includes them
+                // and fires on every import after the first correction.
+                ...notAManualCorrection,
                 ...periodFilter,
               },
             })
@@ -297,6 +324,7 @@ export async function runImportBatch(
           organizationId: plan.organizationId,
           companyId: { in: footprintCompanyIds },
           deletedAt: null,
+          ...notAManualCorrection,
           ...planFilter,
           ...periodFilter,
         },
@@ -452,12 +480,25 @@ async function defaultReadActualSums(
   // Read back exactly what you were allowed to delete: same scope as
   // `planFilter`, so the two can no longer disagree.
   const footprintPlanIds = [...new Set(plan.rows.map((r) => r.planId))]
+  // Phase 13.6 — and exclude manual corrections, for the same reason the
+  // archive does.
+  //
+  // This verdict's claim is "the rows I WROTE match what I parsed". A human
+  // adjustment was not written by this import and is not in `expectedSums`, so
+  // counting it here turns it into an `extra` — and any `extra` is an
+  // unconditional red (`reconciliation.ts:152`) that aborts the whole group.
+  //
+  // Caught by the survival test, which put a correction on the same account as
+  // an imported row (the common case) and watched the NEXT import go red.
+  // Without this, the first correction anyone makes breaks every subsequent
+  // import of that file, and the feature would be abandoned within a week.
   const rows = await prisma.budgetLine.findMany({
     where: {
       organizationId: plan.organizationId,
       planId: { in: footprintPlanIds },
       companyId: { in: footprintCompanyIds },
       deletedAt: null,
+      origin: { not: MANUAL_CORRECTION_ORIGIN },
     },
     select: {
       companyId: true,

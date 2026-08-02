@@ -549,6 +549,42 @@ model BudgetLine {
   // under the index on their own, with no further migration.
   sourceDocument String?
 
+  /// Phase 13.6 (2026-08-02) — how this row came to exist.
+  ///
+  /// NULL on every row that exists today and on everything an import writes:
+  /// absence means "came from a workbook", which is what all 44,173 live rows
+  /// are. `manual_correction` marks a row a PERSON added, because the imported
+  /// figures disagreed with the client's own statement and someone decided
+  /// which way to fix it.
+  ///
+  /// A correction is a NEW row and never an edit of an imported one. The
+  /// imported rows are what the workbook said — that is what makes re-import
+  /// safe, what makes the 11.88 cross-foot meaningful, and what lets anyone
+  /// still answer "did we read it wrong, or was it wrong?". Editing in place
+  /// burns the evidence to fix the symptom.
+  ///
+  /// Load-bearing for `import-batch.ts`: the clean-slate archive must SKIP
+  /// these. An import replaces what IT wrote; it did not write this, and
+  /// silently un-applying someone's correction on the next run of the same
+  /// file is worse than never having offered one.
+  origin             String?
+  /// Why the person made this correction, in their words. Required by the
+  /// write path: a correction with no stated reason is indistinguishable from
+  /// a mistake six months later.
+  correctionReason   String?
+  /// Who, and when. Not redundant with the audit log — that records the
+  /// mutation, this records the claim, and the row must explain itself
+  /// wherever it is read, including in an export.
+  correctionBy       String?
+  correctionAt       DateTime?
+  /// Set when a LATER import wrote rows for this correction's (account ×
+  /// period), so the correction may now be double-counting.
+  ///
+  /// Flagged, never auto-resolved. The platform cannot know whether the new
+  /// workbook already contains the fix or merely coincides with it, and
+  /// guessing either way is silent. A human clears this by looking.
+  correctionReviewAt DateTime?
+
   @@index([organizationId])
   @@index([planId])
   @@index([parentId])
