@@ -1652,7 +1652,11 @@
       "partialRange": "{from}–{to} · 12 aydan {count}-i",
       "partialMonths": "{months} · 12 aydan {count}-i"
     },
-    "pnlSpanMismatch": "Bərabər olmayan dövrlərin müqayisəsi: fakt {actual}, büdcə isə bütün {budgetCount} ayı əhatə edir. Aşağıdakı kənarlaşmanın böyük hissəsi hələ baş verməmiş aylardır."
+    "pnlSpanMismatch": "Bərabər olmayan dövrlərin müqayisəsi: fakt {actual}, büdcə isə bütün {budgetCount} ayı əhatə edir. Aşağıdakı kənarlaşmanın böyük hissəsi hələ baş verməmiş aylardır.",
+    "corrections": {
+      "includes": "{count, plural, one {Bu yekuna # əl düzəlişi daxildir} other {Bu yekuna # əl düzəlişi daxildir}} — kitabdan oxunmuş deyil, insan tərəfindən daxil edilmiş rəqəmlər.",
+      "includesAndNeedsReview": "{count, plural, one {Bu yekuna # əl düzəlişi daxildir} other {Bu yekuna # əl düzəlişi daxildir}} və {needsReview, plural, one {onlardan #-i baxış tələb edir} other {onlardan #-i baxış tələb edir}}: sonrakı idxal eyni xananı yenidən yazdı, ona görə düzəliş indi iki dəfə sayıla bilər. Avtomatik heç nə dəyişdirilmədi — düzəlişlər siyahısını açın və qərar verin."
+    }
   },
   "onboardingDashboard": {
     "title": "Onboarding Tamlığı",
@@ -2855,7 +2859,8 @@
         "platform": "Platforma",
         "statement": "Hesabatınız",
         "difference": "Fərq",
-        "hint": "İdxal olunmuş sətirlər tam olaraq oxunduğu kimi yazılıb. Burada hesablanmış göstərici sizin öz vərəqinizin hesabladığı yekunla müqayisə olunur — iki rəqəmdən hər hansı biri səhv ola bilər, ona görə nəyisə düzəltməzdən əvvəl mənbə sətirlərini yoxlayın."
+        "hint": "İdxal olunmuş sətirlər tam olaraq oxunduğu kimi yazılıb. Burada hesablanmış göstərici sizin öz vərəqinizin hesabladığı yekunla müqayisə olunur — iki rəqəmdən hər hansı biri səhv ola bilər, ona görə nəyisə düzəltməzdən əvvəl mənbə sətirlərini yoxlayın.",
+        "acceptedTitle": "Fərq qəbul edilib"
       }
     },
     "auditTicker": {

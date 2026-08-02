@@ -637,7 +637,7 @@ export async function GET(request: NextRequest) {
           // explain — a bare expected figure with no status is unreadable.
           ...(v.reconStatus
             ? {
-                reconStatus: v.reconStatus as 'matched' | 'mismatched',
+                reconStatus: v.reconStatus as 'matched' | 'mismatched' | 'accepted',
                 ...(v.reconExpected !== null && v.reconExpected !== undefined
                   ? { reconExpected: v.reconExpected }
                   : {}),
@@ -790,7 +790,7 @@ export async function GET(request: NextRequest) {
         ...(v.lastReconciledAt ? { lastReconciledAt: v.lastReconciledAt.toISOString() } : {}),
         ...(v.reconStatus
           ? {
-            reconStatus: v.reconStatus as 'matched' | 'mismatched',
+            reconStatus: v.reconStatus as 'matched' | 'mismatched' | 'accepted',
             ...(v.reconExpected !== null && v.reconExpected !== undefined
             ? { reconExpected: v.reconExpected }
               : {}),

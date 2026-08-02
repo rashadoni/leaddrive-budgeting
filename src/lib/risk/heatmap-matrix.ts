@@ -213,7 +213,12 @@ export interface HeatMapCell {
    * and a value can pass either while failing the other: 72.3M of revenue was
    * a perfectly plausible figure for this holding and was 13.45M wrong.
    */
-  reconStatus?: 'matched' | 'mismatched' | null;
+  /// 13.7 adds `'accepted'`: a person signed for this SPECIFIC gap because the
+  /// client's own workbook is the stale side. Renders as ACCEPTED and never as
+  /// matched, and `lastReconciledAt` stays unwritten so the decision-grade gate
+  /// keeps withholding certification — accepting a difference is a decision
+  /// about a disagreement, not the absence of one.
+  reconStatus?: 'matched' | 'mismatched' | 'accepted' | null;
   /** What the source statement says. Present only alongside `reconStatus`. */
   reconExpected?: number | null;
 }
@@ -227,9 +232,19 @@ export interface HeatMapCell {
  * and a rule spelled out five times is a rule that will mean four things.
  */
 export function hasStatementMismatch(cell: {
-  reconStatus?: 'matched' | 'mismatched' | null;
+  reconStatus?: 'matched' | 'mismatched' | 'accepted' | null;
 }): boolean {
+  // `accepted` is deliberately NOT a mismatch here: somebody has looked and
+  // signed, so it must stop shouting. It is equally deliberately not a match —
+  // `hasAcceptedDifference` is its own quiet state.
   return cell.reconStatus === 'mismatched';
+}
+
+/** A difference a person signed for. Shown, but never as an alarm. */
+export function hasAcceptedDifference(cell: {
+  reconStatus?: 'matched' | 'mismatched' | 'accepted' | null;
+}): boolean {
+  return cell.reconStatus === 'accepted';
 }
 
 /**

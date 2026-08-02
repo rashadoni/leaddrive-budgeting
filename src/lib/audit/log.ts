@@ -133,6 +133,26 @@ export type AuditEventInput =
       };
     }
   | {
+      /**
+       * Phase 13.7 — somebody signed for a difference the data cannot close.
+       *
+       * The row records the signature so the screen can show it; this records
+       * the decision, which is the half that survives the value being
+       * recomputed away. `delta` is the specific gap accepted, not a licence
+       * for the cell.
+       */
+      action: 'indicator_difference_accept';
+      entityType: 'IndicatorValue';
+      entityId: string;
+      metadata: {
+        indicatorCode: string;
+        value: number;
+        expected: number;
+        delta: number;
+        reason: string;
+      };
+    }
+  | {
       action: 'import_budget_create';
       entityType: 'BudgetPlan';
       entityId: string;

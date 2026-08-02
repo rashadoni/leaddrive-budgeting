@@ -32,6 +32,11 @@ import {
 import { BudgetPnlDrillPanel, type DrillRow } from "./budget-pnl-drill-panel"
 import { PnlPerformanceCharts } from "./pnl-performance-charts"
 import { coverageOf, coverageNotice, tParam } from "@/lib/budgeting/period-coverage"
+import {
+  correctionNotice,
+  NO_CORRECTIONS,
+  type CorrectionSummary,
+} from "@/lib/budgeting/correction-summary"
 // Phase 8 D1 (2026-05-29) — pure formatters extracted to a sibling.
 import { fmtNum, fmtCurrency, pctOfRev, varianceStr, varianceClass } from "./budget-pnl-format"
 
@@ -55,6 +60,8 @@ interface PnlComparisonPayload {
   actual?: PnlComparisonBuckets
   hasActualLines?: boolean
   missingData?: MissingDataNotice[]
+  /** 13.6 — hand-entered rows inside these totals. */
+  corrections?: CorrectionSummary
 }
 
 export function BudgetPnlView({ planId, companyId }: { planId: string; companyId?: string | null }) {
@@ -220,6 +227,12 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       missingDataParams(n, (d) => t(`missing.dataset.${d}` as never)) as never,
     ),
   )
+  // 13.6 — a total that silently contains hand-entered money is the failure
+  // this phase keeps finding. Corrections DO belong in these figures — that is
+  // why they are rows and not overrides — but they must not arrive unannounced.
+  const corrections = comparison?.corrections ?? NO_CORRECTIONS
+  const correctionsNotice = correctionNotice(corrections)
+
   const comparisonValue = (
     side: "budget" | "actual",
     key: keyof Omit<PnlComparisonBuckets, "hasRows">,
@@ -568,6 +581,30 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
 
   return (
     <div className="space-y-4">
+      {/* 13.6 — above the KPI strip, because a reader who gets as far as the
+          numbers has already decided how to feel about them. Two tones on
+          purpose: violet states a fact (this total contains a correction),
+          amber asks for an action (one of them may now be double-counting
+          after a later import rewrote its cell). Collapsing them into one
+          sentence would bury the second. */}
+      {correctionsNotice && (
+        <div
+          data-testid="pnl-corrections-notice"
+          data-needs-review={corrections.needsReview > 0 ? "true" : undefined}
+          className={`rounded-lg border px-3 py-2 text-xs font-medium ${
+            corrections.needsReview > 0
+              ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+              : "border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-900/60 dark:bg-violet-950/30 dark:text-violet-300"
+          }`}
+        >
+          {tParam(t, correctionsNotice.key, correctionsNotice.params)}{" "}
+          <span className="font-mono tabular-nums opacity-80">
+            ({corrections.net > 0 ? "+" : ""}
+            {fmtNum(corrections.net)} AZN)
+          </span>
+        </div>
+      )}
+
       {/* KPI Strip — Power BI dark scorecards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {/* Revenue — Phase 3.3 v1.2 ext: clickable KPI card drills to

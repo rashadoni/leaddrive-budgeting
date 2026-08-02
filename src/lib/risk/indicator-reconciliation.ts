@@ -117,6 +117,42 @@ export function reconcileAgainstStatement(
   return out
 }
 
+/**
+ * Phase 13.7 — a difference somebody signed for, and whether the signature
+ * still covers what is on screen.
+ *
+ * Sometimes the platform is right and the workbook is stale, and then no
+ * correction to our data can ever clear the `≠`. AZSF 2025 is the live case:
+ * that block does not cross-foot in either direction, so the workbook
+ * disagrees with itself. Without a way to accept the difference, the only way
+ * to silence the marker is to falsify a row — the feature would create exactly
+ * the behaviour it exists to prevent.
+ *
+ * What makes this a signature and not a mute button: the acceptance records
+ * the GAP that was signed for. Re-checking compares the current gap against
+ * it, and a moved number is a different disagreement that nobody has looked
+ * at. Blanket "ignore this cell" would silence tomorrow's error too.
+ *
+ * Tolerance is the unit's own, so accepting a ratio does not quietly accept a
+ * hundredth of a percent of drift as "the same gap".
+ */
+export function acceptanceStillHolds(
+  result: IndicatorReconResult,
+  acceptedDelta: number | null | undefined,
+  unit: "absolute" | "ratio" = "absolute",
+): boolean {
+  if (acceptedDelta === null || acceptedDelta === undefined) return false
+  if (!Number.isFinite(acceptedDelta)) return false
+  const tolerance =
+    unit === "ratio" ? RECON_RATIO_TOLERANCE * 100 : RECON_ABS_TOLERANCE
+  return Math.abs(result.delta - acceptedDelta) <= tolerance
+}
+
+/** The unit a code is compared in — the caller needs it for the check above. */
+export function unitOf(code: string): "absolute" | "ratio" | null {
+  return FROM_STATEMENT[code]?.unit ?? null
+}
+
 /** The codes this module is able to check at all — for the caller's report. */
 export function reconcilableIndicatorCodes(): string[] {
   return Object.keys(FROM_STATEMENT)

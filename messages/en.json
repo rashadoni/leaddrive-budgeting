@@ -1652,7 +1652,11 @@
       "partialRange": "{from}–{to} · {count} of 12 months",
       "partialMonths": "{months} · {count} of 12 months"
     },
-    "pnlSpanMismatch": "Not like for like: the actual covers {actual}, the budget covers all {budgetCount}. Most of the variance below is months that have not happened yet."
+    "pnlSpanMismatch": "Not like for like: the actual covers {actual}, the budget covers all {budgetCount}. Most of the variance below is months that have not happened yet.",
+    "corrections": {
+      "includes": "{count, plural, one {This total includes # manual correction} other {This total includes # manual corrections}} — figures entered by a person, not read from the workbook.",
+      "includesAndNeedsReview": "{count, plural, one {This total includes # manual correction} other {This total includes # manual corrections}}, and {needsReview, plural, one {# of them needs review} other {# of them need review}}: a later import rewrote the same cell, so the correction may now be counted twice. Nothing was changed automatically — open the corrections list and decide."
+    }
   },
   "onboardingDashboard": {
     "title": "Onboarding Completeness",
@@ -2855,7 +2859,8 @@
         "platform": "Platform",
         "statement": "Your statement",
         "difference": "Difference",
-        "hint": "The imported rows were written exactly as parsed. This compares the derived figure against the subtotal your own sheet computes — either number can be the wrong one, so check the source rows before correcting anything."
+        "hint": "The imported rows were written exactly as parsed. This compares the derived figure against the subtotal your own sheet computes — either number can be the wrong one, so check the source rows before correcting anything.",
+        "acceptedTitle": "Difference accepted"
       }
     },
     "auditTicker": {

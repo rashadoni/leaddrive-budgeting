@@ -70,6 +70,10 @@ export async function GET(
       reconStatus: true,
       reconExpected: true,
       reconCheckedAt: true,
+      // 13.7 — the signature is what the reader is asked to rely on instead of
+      // a reconciliation, so it has to reach the panel.
+      reconAcceptedBy: true,
+      reconAcceptedReason: true,
       indicator: {
         select: {
           id: true,
@@ -154,6 +158,8 @@ export async function GET(
     reconStatus: iv.reconStatus,
     reconExpected: iv.reconExpected,
     reconCheckedAt: iv.reconCheckedAt?.toISOString() ?? null,
+    reconAcceptedBy: iv.reconAcceptedBy,
+    reconAcceptedReason: iv.reconAcceptedReason,
     indicator: iv.indicator,
     company: iv.company,
   })

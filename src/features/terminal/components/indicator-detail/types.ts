@@ -83,9 +83,12 @@ export interface IndicatorValueDetail {
    *  compared to anything, which the panel states outright rather than
    *  omitting — "nobody has checked this" is the answer to the question the
    *  reader is asking, not the absence of one. */
-  reconStatus?: 'matched' | 'mismatched' | null;
+  reconStatus?: 'matched' | 'mismatched' | 'accepted' | null;
   reconExpected?: number | null;
   reconCheckedAt?: string | null;
+  /** Phase 13.7 — who signed for the difference, and why. */
+  reconAcceptedBy?: string | null;
+  reconAcceptedReason?: string | null;
   indicator: IndicatorMeta;
   company: CompanyMeta;
 }

@@ -14,6 +14,7 @@ import {
   revenueContribution,
 } from "@/lib/budgeting/coa-role"
 import { isDaCode } from "@/lib/budgeting/da-codes"
+import { summarizeCorrections } from "@/lib/budgeting/correction-summary"
 
 /**
  * GET /api/budgeting/pnl
@@ -68,6 +69,12 @@ const BUDGET_LINE_SELECT = {
   sortOrder: true,
   monthIndex: true,
   plannedAmount: true,
+  // 13.6 — a total that silently contains hand-entered money is the same
+  // failure this phase keeps finding: the number is right and the sentence
+  // around it is missing. Corrections DO belong in the total (that is why they
+  // are rows and not overrides); what they must not do is arrive unannounced.
+  origin: true,
+  correctionReviewAt: true,
   account: { select: { code: true, name: true, accountType: true } },
 } satisfies Prisma.BudgetLineSelect
 type BudgetLineRow = Prisma.BudgetLineGetPayload<{ select: typeof BUDGET_LINE_SELECT }>
@@ -488,6 +495,9 @@ export async function GET(req: NextRequest) {
             byKey: actualByKey,
             hasRows: hasActualRowsForYear,
           },
+      // 13.6 — summarised over the SELECTED plan's own lines, which are the
+      // ones this page's totals are built from.
+      corrections: summarizeCorrections(budgetLines),
       hasBudgetLines: budgetLineComparison.hasRows,
       hasActualLines: actualLineComparison.hasRows || hasActualRowsForYear,
       // 11.90 — codes, not sentences. The locale belongs to the viewer.

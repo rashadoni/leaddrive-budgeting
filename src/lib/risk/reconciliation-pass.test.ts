@@ -13,6 +13,8 @@ type Row = {
   indicatorId: string
   period: string
   value: number
+  reconStatus?: string | null
+  reconAcceptedDelta?: number | null
 }
 
 /** Records every update so a test can assert what was written, not just returned. */
@@ -218,6 +220,90 @@ describe("reconcileImportedIndicators", () => {
       },
     )
     expect(ok.matched).toBe(1)
+  })
+
+  it("keeps an accepted difference accepted while it is the SAME difference (13.7)", async () => {
+    // AZSF 2025 is the live case: that block does not cross-foot in either
+    // direction, so no correction to our data can ever clear its marker.
+    // Without acceptance the only way to silence it is to falsify a row.
+    const db = fakeDb(DEFS, [
+      {
+        id: "iv1",
+        companyId: "c1",
+        indicatorId: "d-rev",
+        period: "2026",
+        value: 32_000_000,
+        reconStatus: "accepted",
+        reconAcceptedDelta: 32_000_000 - 31_986_950,
+      },
+    ])
+    const s = await reconcileImportedIndicators(db, {
+      organizationId: "org",
+      year: 2026,
+      sources: [{ companyId: "c1", statedSubtotals: EDEN }],
+      actor: "import",
+      now: NOW,
+    })
+    expect(s.stillAccepted).toBe(1)
+    expect(s.mismatched).toBe(0)
+    // Reported separately from `matched`, never folded into it: an accepted
+    // difference is a decision ABOUT a disagreement, not the absence of one.
+    expect(s.matched).toBe(0)
+    // And left alone — the signature already says what this row is.
+    expect(db.updates).toHaveLength(0)
+  })
+
+  it("drops the acceptance the moment the number moves", async () => {
+    // The property that makes this a signature rather than a mute button. A
+    // moved figure is a DIFFERENT disagreement, which nobody has looked at,
+    // and it must not inherit yesterday's approval.
+    const db = fakeDb(DEFS, [
+      {
+        id: "iv1",
+        companyId: "c1",
+        indicatorId: "d-rev",
+        period: "2026",
+        value: 39_000_000,
+        reconStatus: "accepted",
+        reconAcceptedDelta: 32_000_000 - 31_986_950,
+      },
+    ])
+    const s = await reconcileImportedIndicators(db, {
+      organizationId: "org",
+      year: 2026,
+      sources: [{ companyId: "c1", statedSubtotals: EDEN }],
+      actor: "import",
+      now: NOW,
+    })
+    expect(s.stillAccepted).toBe(0)
+    expect(s.mismatched).toBe(1)
+    expect(db.updates[0].data.reconStatus).toBe("mismatched")
+    expect(db.updates[0].data.lastReconciledAt).toBeNull()
+  })
+
+  it("ignores an acceptance with no recorded gap rather than trusting it", async () => {
+    // A row marked accepted but carrying no delta cannot be re-verified, so it
+    // is not an acceptance — it is a mark of unknown provenance, and the safe
+    // reading is the one that shows the disagreement.
+    const db = fakeDb(DEFS, [
+      {
+        id: "iv1",
+        companyId: "c1",
+        indicatorId: "d-rev",
+        period: "2026",
+        value: 39_000_000,
+        reconStatus: "accepted",
+        reconAcceptedDelta: null,
+      },
+    ])
+    const s = await reconcileImportedIndicators(db, {
+      organizationId: "org",
+      year: 2026,
+      sources: [{ companyId: "c1", statedSubtotals: EDEN }],
+      actor: "import",
+      now: NOW,
+    })
+    expect(s.mismatched).toBe(1)
   })
 
   it("does nothing at all when no statement was supplied", async () => {

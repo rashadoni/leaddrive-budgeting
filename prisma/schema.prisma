@@ -1447,6 +1447,29 @@ model IndicatorValue {
   reconStatus       String?
   reconExpected     Float?
   reconCheckedAt    DateTime?
+  /// Phase 13.7 (2026-08-02) — a difference somebody signed for.
+  ///
+  /// Sometimes the platform is right and the workbook is stale. AZSF 2025 is
+  /// the live case: that block does not cross-foot in EITHER direction
+  /// (−95,053 with `PLF.08.*`, +79,438 without; the difference is exactly
+  /// `PLF.08.01` = 174,491), so no correction to our data can ever clear its
+  /// `≠`. Without a way to accept a difference, the only way to silence the
+  /// marker is to falsify a row — which would make the feature create the
+  /// exact behaviour it exists to prevent.
+  ///
+  /// `reconStatus = 'accepted'` renders as ACCEPTED, never as matched, and
+  /// `lastReconciledAt` is deliberately NOT written: an accepted difference is
+  /// a decision about a disagreement, not the absence of one.
+  ///
+  /// `reconAcceptedDelta` is the gap that was signed for, and it is what makes
+  /// this safe. The next check compares the CURRENT gap against it; if the
+  /// number moved, the signature no longer covers what is on screen and the
+  /// value returns to `mismatched`. A blanket "ignore this cell" would silence
+  /// tomorrow's different error too.
+  reconAcceptedBy     String?
+  reconAcceptedReason String?
+  reconAcceptedAt     DateTime?
+  reconAcceptedDelta  Float?
   // Phase 10 / Stage B5 — lineage. The DataRevision whose pinned source and
   // mapping state produced this value (03-DATA-KPI-TRUST-SPEC §5, ADR Trust
   // Core §4). Nullable and additive on purpose: every one of the 1,269 IVs

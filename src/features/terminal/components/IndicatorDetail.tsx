@@ -533,6 +533,8 @@ export function IndicatorDetail({
         reconStatus={detail.reconStatus}
         reconExpected={detail.reconExpected}
         reconCheckedAt={detail.reconCheckedAt}
+        reconAcceptedBy={detail.reconAcceptedBy}
+        reconAcceptedReason={detail.reconAcceptedReason}
         value={detail.value}
         unit={detail.indicator.unit ?? ''}
         t={t}

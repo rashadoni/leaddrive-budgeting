@@ -200,7 +200,10 @@ export function MaterialityBadge({
  * would be a guess presented as a finding.
  */
 export function StatementCheckStrip(props: {
-  reconStatus?: 'matched' | 'mismatched' | null;
+  reconStatus?: 'matched' | 'mismatched' | 'accepted' | null;
+  /** 13.7 — who signed for the difference, and why. */
+  reconAcceptedBy?: string | null;
+  reconAcceptedReason?: string | null;
   reconExpected?: number | null;
   reconCheckedAt?: string | null;
   /** The value on the screen — the other half of the comparison. */
@@ -221,6 +224,57 @@ export function StatementCheckStrip(props: {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(n)}${unit ? ` ${unit}` : ''}`;
+
+  // 13.7 — a difference somebody signed for. Its own state, deliberately:
+  // rendered as ACCEPTED and never as matched, because it is a decision ABOUT
+  // a disagreement rather than the absence of one. Both figures stay on
+  // screen — accepting is not forgetting — and the signature is shown, because
+  // the signature is what the reader is being asked to rely on instead of the
+  // reconciliation.
+  if (reconStatus === 'accepted') {
+    const expected = reconExpected ?? 0
+    const delta = value - expected
+    return (
+      <div
+        data-testid="statement-check-strip"
+        data-recon="accepted"
+        className="rounded border border-slate-400/60 bg-slate-400/10 px-2 py-1.5 text-[10px] leading-snug"
+      >
+        <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+          <span aria-hidden="true">≠</span>
+          <span>
+            {lookup(
+              'indicatorDetail.statementCheck.acceptedTitle',
+              'Difference accepted',
+            )}
+          </span>
+        </div>
+        <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono tabular-nums">
+          <dt className="text-muted-foreground">
+            {lookup('indicatorDetail.statementCheck.platform', 'Platform')}
+          </dt>
+          <dd className="text-foreground">{fmt(value)}</dd>
+          <dt className="text-muted-foreground">
+            {lookup('indicatorDetail.statementCheck.statement', 'Your statement')}
+          </dt>
+          <dd className="text-foreground">{fmt(expected)}</dd>
+          <dt className="text-muted-foreground">
+            {lookup('indicatorDetail.statementCheck.difference', 'Difference')}
+          </dt>
+          <dd className="font-semibold text-slate-600 dark:text-slate-300">
+            {delta > 0 ? '+' : ''}
+            {fmt(delta)}
+          </dd>
+        </dl>
+        {props.reconAcceptedReason && (
+          <p className="mt-1 text-muted-foreground">
+            &ldquo;{props.reconAcceptedReason}&rdquo;
+            {props.reconAcceptedBy ? ` — ${props.reconAcceptedBy}` : null}
+          </p>
+        )}
+      </div>
+    )
+  }
 
   if (reconStatus !== 'mismatched') {
     const label =

@@ -26,6 +26,8 @@
 import {
   reconcileAgainstStatement,
   reconcilableIndicatorCodes,
+  acceptanceStillHolds,
+  unitOf,
   type IndicatorReconResult,
 } from "./indicator-reconciliation"
 
@@ -54,6 +56,13 @@ export interface StatementReconciliationSummary {
   checked: number
   matched: number
   mismatched: number
+  /**
+   * 13.7 — differences a person had already signed for, where the gap is
+   * unchanged. Reported separately from `matched` on purpose: an accepted
+   * difference is a decision about a disagreement, not the absence of one, and
+   * folding it into `matched` would be the false green in a summary line.
+   */
+  stillAccepted: number
   /**
    * Reconcilable indicators that had no stored value, or whose company sent
    * no statement figure for them. Reported so a zero-mismatch run cannot be
@@ -85,6 +94,8 @@ export interface ReconciliationDb {
         indicatorId: true
         period: true
         value: true
+        reconStatus: true
+        reconAcceptedDelta: true
       }
     }): Promise<
       Array<{
@@ -93,6 +104,8 @@ export interface ReconciliationDb {
         indicatorId: string
         period: string
         value: number
+        reconStatus?: string | null
+        reconAcceptedDelta?: number | null
       }>
     >
     update(args: {
@@ -138,6 +151,7 @@ export async function reconcileImportedIndicators(
     checked: 0,
     matched: 0,
     mismatched: 0,
+    stillAccepted: 0,
     notChecked: 0,
     mismatches: [],
   }
@@ -182,6 +196,10 @@ export async function reconcileImportedIndicators(
       indicatorId: true,
       period: true,
       value: true,
+      // 13.7 — an acceptance is for a SPECIFIC gap; re-checking has to know
+      // which one, or a moved number would keep somebody's old signature.
+      reconStatus: true,
+      reconAcceptedDelta: true,
     },
   })
 
@@ -207,6 +225,20 @@ export async function reconcileImportedIndicators(
 
     summary.checked += 1
     summary.notChecked -= 1
+
+    // 13.7 — a previously accepted difference stays accepted only while it is
+    // the SAME difference. If the number moved, the signature no longer covers
+    // what is on screen: that is a new disagreement nobody has looked at, and
+    // it falls back to `mismatched` rather than inheriting the old approval.
+    if (
+      !verdict.reconciled &&
+      row.reconStatus === "accepted" &&
+      acceptanceStillHolds(verdict, row.reconAcceptedDelta, unitOf(code) ?? "absolute")
+    ) {
+      summary.stillAccepted += 1
+      continue
+    }
+
     if (verdict.reconciled) summary.matched += 1
     else {
       summary.mismatched += 1
