@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Sparkles, Loader2, Send, Search, X, Eraser, Database, AlertTriangle, FileDown } from "lucide-react"
+import { Sparkles, Loader2, Send, Search, Eraser, Database, AlertTriangle, FileDown } from "lucide-react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -384,9 +384,15 @@ export function AIAnalyticsPanel({
                 </Button>
               </>
             )}
-            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
+            {/* 2026-08-03 — there is no close button here on purpose.
+                `SheetContent` already renders one, absolutely positioned at
+                `right-4 top-4`, for every Sheet in the app. This header added a
+                second, and the two drew on top of each other — the panel showed
+                a doubled ✕. The shared one is kept rather than this one: it
+                carries an `sr-only` "close" label (this had none), and it is
+                what every other Sheet uses, so the panel closes the same way as
+                the rest of the product. Closing through it still reaches
+                `onClose` via `onOpenChange`. */}
           </div>
         </SheetHeader>
 
