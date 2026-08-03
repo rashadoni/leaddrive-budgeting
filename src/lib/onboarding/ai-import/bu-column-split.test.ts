@@ -462,3 +462,132 @@ describe("inferStatementMeta", () => {
   it("null for a non-statement sheet", () =>
     expect(inferStatementMeta("Satış CPC Fakt")).toBeNull())
 })
+
+/**
+ * Phase 14.8 — the EJE block stops being dropped, on a BALANCE SHEET only.
+ *
+ * `BS Actual 2026` ships the client's own INTRAGROUP ELIMINATIONS as a fifth
+ * block. It nets 123,200,854.11 of intercompany holdings and receivables out
+ * of the 373,152,064.18 the screen shows at 2026-05. Dropping it is why the
+ * product has no consolidated balance sheet at any surface.
+ */
+describe("elimination block routing (14.8)", () => {
+  const bsWith = (blocks: Array<[string, number]>) =>
+    wbWith("BS Actual 2026", makeConsolidated(blocks))
+
+  const splitBs = (blocks: Array<[string, number]>, dataType: "BS" | "PLF" = "BS") =>
+    applyBuColumnSplit(bsWith(blocks), XLSX, {
+      sheetName: "BS Actual 2026",
+      dataType,
+      planKind: "actual",
+      aliasMap,
+    })
+
+  it("materialises the EJE block as its own BS_ELIMINATIONS sheet", () => {
+    const out = splitBs([["CPC", 5], ["EDEN", 5], ["EJE", 4]])
+    const elim = out.sheetMapEntries.filter((e) => e.dataType === "BS_ELIMINATIONS")
+    expect(elim).toHaveLength(1)
+    expect(elim[0].match).toBe("BS Actual 2026 [ELIMINATIONS]")
+    expect(elim[0].role).toBe("source")
+    expect(elim[0].planKind).toBe("actual")
+  })
+
+  it("gives it NO entityCode — the load-bearing one", () => {
+    // The block's own labels name four companies ("Investments in Joint
+    // Ventures (ProMalt Investment)", "Receivable from Corn sold to CPC"), so
+    // a cell scan is perfectly capable of guessing one. A guess here puts the
+    // whole group's −119M reversal on that company.
+    const out = splitBs([["CPC", 5], ["EDEN", 5], ["EJE", 4]])
+    const elim = out.sheetMapEntries.find((e) => e.dataType === "BS_ELIMINATIONS")!
+    expect(elim.entityCode).toBeUndefined()
+  })
+
+  it("reports it as a write exactly once, never also as a skip", () => {
+    const out = splitBs([["CPC", 5], ["EDEN", 5], ["EJE", 4]])
+    const eje = out.mapping.filter((m) => m.buValue === "EJE")
+    expect(eje).toHaveLength(1)
+    expect(eje[0].action).toBe("write")
+    expect(eje[0].entityCode).toBeNull()
+    expect(eje[0].reason).toBe("elimination")
+  })
+
+  it("leaves the entity blocks exactly as they were", () => {
+    const out = splitBs([["CPC", 5], ["EDEN", 5], ["EJE", 4]])
+    expect(
+      out.sheetMapEntries.filter((e) => e.dataType === "BS").map((e) => e.entityCode).sort(),
+    ).toEqual(["AZSEKER-CPC", "AZSEKER-EDEN"])
+    expect(out.applied).toBe(true)
+  })
+
+  it("still SKIPS the elimination block on a P&L sheet", () => {
+    // 11.83 settled the ADJUSTMENT half of the P&L question and deliberately
+    // left the elimination half alone. This must not change it by accident.
+    const out = splitBs([["CPC", 5], ["EDEN", 5], ["EJE", 4]], "PLF")
+    expect(out.sheetMapEntries.some((e) => e.dataType === "BS_ELIMINATIONS")).toBe(false)
+    const eje = out.mapping.filter((m) => m.buValue === "EJE")
+    expect(eje).toHaveLength(1)
+    expect(eje[0].action).toBe("skip")
+  })
+
+  it("refuses TWO elimination blocks rather than importing either", () => {
+    // The write path clean-slates per (plan × scope × year) once per sheet, so
+    // two elimination sheets would each archive the other's rows — the
+    // 2026-06-11 collateral-wipe shape. Both are skipped, loudly.
+    const out = splitBs([["CPC", 5], ["EJE", 4], ["EDEN", 5], ["INTERCOMPANY", 4]])
+    expect(out.sheetMapEntries.some((e) => e.dataType === "BS_ELIMINATIONS")).toBe(false)
+    expect(out.warnings.join("\n")).toMatch(/2 elimination blocks/)
+    for (const m of out.mapping.filter((x) => x.reason === "elimination")) {
+      expect(m.action).toBe("skip")
+    }
+  })
+
+  it("says what happened, in the warning a reviewer reads", () => {
+    const out = splitBs([["CPC", 5], ["EDEN", 5], ["EJE", 4]])
+    const text = out.warnings.join("\n")
+    expect(text).toMatch(/intragroup-elimination block/)
+    expect(text).toMatch(/belonging to no company/)
+    // The old "skipped (not imported)" line must be gone for this block.
+    expect(text).not.toMatch(/"EJE".*looks like elimination/)
+  })
+})
+
+/**
+ * The narrowest and most dangerous distinction in 14.8: a CONSOLIDATED block
+ * is the group's TOTALS, not its eliminations. Both are "not a company", both
+ * balance to zero, and only the label tells them apart.
+ */
+describe("CONSOLIDATED is not an elimination (14.8)", () => {
+  const splitBs = (blocks: Array<[string, number]>) =>
+    applyBuColumnSplit(wbWith("BS Actual 2026", makeConsolidated(blocks)), XLSX, {
+      sheetName: "BS Actual 2026",
+      dataType: "BS",
+      planKind: "actual",
+      aliasMap,
+    })
+
+  it("never routes a CONSOLIDATED block to the elimination writer", () => {
+    // Importing the group's totals as eliminations would ADD a second whole
+    // balance sheet to the sum instead of subtracting the intercompany
+    // balances — and the parser's A + L + E = 0 gate cannot object, because a
+    // consolidated balance sheet balances exactly as an elimination block does.
+    const out = splitBs([["CPC", 5], ["EDEN", 5], ["CONSOLIDATED", 6]])
+    expect(out.sheetMapEntries.some((e) => e.dataType === "BS_ELIMINATIONS")).toBe(false)
+    const cons = out.mapping.find((m) => m.buValue === "CONSOLIDATED")
+    expect(cons?.action).toBe("skip")
+  })
+
+  it("still routes the real EJE block when a CONSOLIDATED block sits beside it", () => {
+    const out = splitBs([["CPC", 5], ["EDEN", 5], ["EJE", 4], ["CONSOL", 6]])
+    const elim = out.sheetMapEntries.filter((e) => e.dataType === "BS_ELIMINATIONS")
+    expect(elim).toHaveLength(1)
+    expect(out.mapping.find((m) => m.buValue === "EJE")?.action).toBe("write")
+    expect(out.mapping.find((m) => m.buValue === "CONSOL")?.action).toBe("skip")
+  })
+
+  it("does not route a management adjustment as an elimination either", () => {
+    // AJE is elimination-LIKE and belongs to a real entity (11.83). It must
+    // keep going to its owner, not to the group's elimination bucket.
+    const out = splitBs([["CPC", 5], ["EDEN", 5], ["AJE", 4]])
+    expect(out.sheetMapEntries.some((e) => e.dataType === "BS_ELIMINATIONS")).toBe(false)
+  })
+})

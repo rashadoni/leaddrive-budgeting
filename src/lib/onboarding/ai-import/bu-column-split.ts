@@ -45,6 +45,7 @@ import {
   resolveAdjustmentOwner,
   BU_DIMENSION_SCAN_ROWS,
 } from "./bu-adjustment"
+import { isIntragroupEliminationBuValue } from "../adapters/bs-eliminations"
 
 /** Header label (exact, case-insensitive) that marks the owning-entity column. */
 const BU_HEADER = "BU"
@@ -542,7 +543,79 @@ export function applyBuColumnSplit(
   const usedNames = new Set<string>(workbook.SheetNames)
   const sheetNameByBlock = new Map<BuBlock, string>()
   const firstSheetByEntity = new Map<string, string>()
+  /**
+   * Phase 14.8 — the elimination block gets a sheet too, on a BALANCE SHEET.
+   *
+   * It stays entity-less: `dataType: "BS_ELIMINATIONS"` and no `entityCode`,
+   * so nothing downstream can mistake it for a company's own position. The
+   * handler writes it with `companyId: null, isElimination: true`, and only
+   * the group-level balance-sheet read admits those rows.
+   *
+   * BS only, and only ONE such block. A P&L elimination is a different
+   * question with a different answer (11.83 settled the adjustment half of it
+   * and deliberately left the elimination half alone), and two EJE blocks on
+   * one sheet would each clean-slate the other's rows — the write path resets
+   * per (plan × scope × year) once per sheet, which is the 2026-06-11
+   * collateral-wipe shape. Both cases fall through to the old skip-with-a-
+   * warning path, which is what they got before this existed.
+   *
+   * `isIntragroupEliminationBuValue` and NOT `skipReason === "elimination"`.
+   * `skipReason` comes from `isEliminationLikeEntityValue`, which answers "is
+   * this not a company?" and therefore also matches `CONSOLIDATED` — a block
+   * of the group's TOTALS, the arithmetic opposite of an elimination. Feeding
+   * that to the elimination writer would add a whole second balance sheet to
+   * the group instead of subtracting the intercompany balances, and the
+   * parser's `A + L + E = 0` gate would wave it through, because a
+   * consolidated balance sheet balances too.
+   */
+  const eliminationBlocks =
+    dataType === "BS"
+      ? split.blocks.filter(
+          (b) =>
+            !b.entityCode &&
+            b.skipReason === "elimination" &&
+            isIntragroupEliminationBuValue(b.buValue),
+        )
+      : []
+  const eliminationBlock = eliminationBlocks.length === 1 ? eliminationBlocks[0] : null
+  if (eliminationBlocks.length > 1) {
+    out.warnings.push(
+      `Sheet "${sheetName}": ${eliminationBlocks.length} elimination blocks — importing them would ` +
+        `have each one clean-slate the other's rows, so none is imported. Merge them into one block ` +
+        `in the workbook to load the group's eliminations.`,
+    )
+  }
   for (const block of split.blocks) {
+    if (block === eliminationBlock) {
+      let elimName = `${sheetName} [ELIMINATIONS]`
+      let e = 2
+      while (usedNames.has(elimName)) elimName = `${sheetName} [ELIMINATIONS] #${e++}`
+      usedNames.add(elimName)
+      sheetNameByBlock.set(block, elimName)
+      workbook.Sheets[elimName] = block.worksheet
+      workbook.SheetNames.push(elimName)
+      out.sheetMapEntries.push({
+        match: elimName,
+        dataType: "BS_ELIMINATIONS",
+        ...(planKind ? { planKind } : {}),
+        role: "source",
+        // No entityCode, deliberately. See the note above.
+      })
+      out.mapping.push({
+        sheetName: elimName,
+        entityCode: null,
+        buValue: block.buValue,
+        rowCount: block.rowCount,
+        action: "write",
+        reason: "elimination",
+      })
+      out.warnings.push(
+        `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) is the group's ` +
+          `intragroup-elimination block — imported as eliminations, belonging to no company. ` +
+          `The group balance sheet is consolidated with it; each company's own sheet excludes it.`,
+      )
+      continue
+    }
     if (!block.entityCode) continue
     let newName = `${sheetName} [${block.entityCode}]`
     let n = 2
@@ -566,6 +639,10 @@ export function applyBuColumnSplit(
 
   // Pass 2 — the reviewer-facing mapping, in document order.
   for (const block of split.blocks) {
+    // Already reported as a write in pass 1; it has a sheet but no entity, so
+    // it would otherwise fall through to the skip branch and be listed twice —
+    // once as imported and once as dropped.
+    if (block === eliminationBlock) continue
     const written = sheetNameByBlock.get(block)
     if (written && block.entityCode) {
       out.mapping.push({

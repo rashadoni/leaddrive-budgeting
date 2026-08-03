@@ -22,6 +22,7 @@ import {
   isCashFlowMovementActivity,
 } from "../cf-bridge"
 import { parseWorkbookBsSheet } from "../adapters/azseker-workbook-bs"
+import { parseEliminationBlock } from "../adapters/bs-eliminations"
 import {
   parseWorkbookFarmingKpiSheet,
   parseWorkbookProcessingKpiSheet,
@@ -657,6 +658,154 @@ export function makeBsHandler(
         return {
           rowsInserted: result.metrics.rowsInserted,
           // Phase 11.2 — surface the batch layer's post-write DB re-read.
+          reconciliation: result.reconciliation,
+        }
+      },
+    } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// BS_ELIMINATIONS — the group's intragroup eliminations (Phase 14.8)
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Write the client's own INTRAGROUP ELIMINATIONS block.
+ *
+ * A sibling of `makeBsHandler` rather than a branch inside it, because almost
+ * every line of that handler is about placing rows on a company, and this
+ * handler's defining property is that it must never do so. Sharing the
+ * function would mean an `if (isElimination)` beside each of those lines —
+ * eleven chances for one of them to be missed, on the one code path where a
+ * miss puts −119M of the group's intercompany reversal onto a single entity.
+ *
+ * Three rules it holds that the entity handler does not need:
+ *
+ *  1. `companyId: null` + `isElimination: true`, always. There is no entity to
+ *     resolve, so there is nothing to guess wrong.
+ *  2. The parser's `blocked` is honoured as a hard stop. A half-read
+ *     elimination unbalances a group total that was at least honestly
+ *     un-eliminated before — see `bs-eliminations.ts`.
+ *  3. Recon keys carry no entity prefix, because there is no entity. The BS
+ *     handler prefixes to keep four companies' identical CoA codes apart;
+ *     here there is exactly one contributor per plan, so the bare code is
+ *     already unique and a prefix would only have to be undone on read.
+ */
+export function makeBsEliminationsHandler(
+  prisma: PrismaClient,
+  ctxRef: { value: OrgContext | null },
+  ensureCtx: () => Promise<OrgContext>,
+): AdapterHandler {
+  return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
+    const ctx = await ensureCtx()
+    const parsed = parseEliminationBlock(
+      input.workbook,
+      input.sheetName,
+      input.XLSX,
+      { preferYear: input.year },
+    )
+
+    if (parsed.blocked) {
+      // BLOCKS rather than skipping. The entity blocks of the same sheet are
+      // importing right now; letting this one fall through would produce a
+      // group balance sheet described as consolidated and missing part of its
+      // eliminations — wrong AND balanced, which nothing downstream detects.
+      return {
+        summary: `BS eliminations "${input.sheetName}" refused — ${parsed.blocked}`,
+        itemCount: 0,
+        warnings: [...parsed.warnings, parsed.blocked],
+        blocked: { reason: parsed.blocked },
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
+
+    const rows: BsImportRow[] = []
+    const expectedSums = new Map<ReconciliationKey, number>()
+    const accountSpecs = new Map<
+      string,
+      { code: string; name: string; accountType: string }
+    >()
+
+    for (const line of parsed.lines) {
+      if (!accountSpecs.has(line.code)) {
+        accountSpecs.set(line.code, {
+          code: line.code,
+          name: line.name,
+          accountType: line.lineType,
+        })
+      }
+      for (const [period, amount] of Object.entries(line.monthlyAmounts)) {
+        if (amount === 0) continue
+        const month = Number(period.slice(5, 7))
+        rows.push({
+          planId: ctx.planId,
+          companyId: null,
+          isElimination: true,
+          accountCode: line.code,
+          accountId: "",
+          lineType: line.lineType,
+          subType: line.subType,
+          year: Number(period.slice(0, 4)),
+          month,
+          amount,
+          sourceCell: `eliminations#${input.sheetName}!${line.code}@${period}`,
+        })
+        const key = buildReconKey(ctx.planId, line.code, period)
+        expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
+      }
+    }
+
+    const monthsCovered = Object.keys(parsed.totalsByMonth).sort()
+    return {
+      summary:
+        rows.length === 0
+          ? `BS eliminations "${input.sheetName}": nothing to import`
+          : `${rows.length} intragroup-elimination rows over ${monthsCovered.length} month(s) — no company`,
+      itemCount: rows.length,
+      warnings: parsed.warnings,
+      ...(rows.length > 0 ? { expectedSums } : ({} as Record<string, never>)),
+      applyToDb: async (tx: Prisma.TransactionClient) => {
+        if (rows.length === 0) return { rowsInserted: 0 }
+        const coaCache = createCoACache()
+        preWarmCoACache(
+          coaCache,
+          ctx.organizationId,
+          Array.from(ctx.coaByCode.entries()).map(([code, id]) => ({ code, id })),
+        )
+        const accountIdByCode = new Map<string, string>()
+        for (const spec of accountSpecs.values()) {
+          accountIdByCode.set(
+            spec.code,
+            await resolveOrCreateAccountId(tx, coaCache, {
+              organizationId: ctx.organizationId,
+              code: spec.code,
+              defaultName: spec.name,
+              defaultAccountType: spec.accountType,
+            }),
+          )
+        }
+        const resolvedRows: BsImportRow[] = rows.map((r) => {
+          const accountId = accountIdByCode.get(r.accountCode)
+          if (!accountId) {
+            throw new Error(
+              `[BS eliminations] accountId not resolved for "${r.accountCode}"`,
+            )
+          }
+          return { ...r, accountId }
+        })
+        const result = await runBalanceSheetBatch(tx, {
+          organizationId: ctx.organizationId,
+          label: `WB BS eliminations ${input.year}`,
+          actorUserId: "ai-multi-import",
+          sourceDocument: `multi-import:${input.sheetName}`,
+          planIds: [ctx.planId],
+          periodScope: buildPeriodScope(input.year),
+          rows: resolvedRows,
+          expectedSums,
+          // No `reconAccountPrefix` — see rule 3 above.
+        })
+        return {
+          rowsInserted: result.metrics.rowsInserted,
           reconciliation: result.reconciliation,
         }
       },

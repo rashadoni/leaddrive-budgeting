@@ -3100,14 +3100,24 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                             row.foldedInto
                               ? "bg-teal-100 text-teal-800"
                               : row.action === "write"
-                                ? "bg-emerald-100 text-emerald-800"
+                                ? // 14.8 — an eliminations write is a write, but
+                                  // it deliberately lands on no company, so the
+                                  // entity column reads "—". Plain green "write"
+                                  // beside that dash reads as a bug; the indigo
+                                  // badge says which kind of write it is, the
+                                  // same way the teal one does for a fold.
+                                  row.reason === "elimination"
+                                  ? "bg-indigo-100 text-indigo-800"
+                                  : "bg-emerald-100 text-emerald-800"
                                 : "bg-orange-100 text-orange-800"
                           }`}
                         >
                           {row.foldedInto
                             ? t("routing.fold", { column: row.foldedInto.viaHeader })
                             : row.action === "write"
-                              ? t("routing.write")
+                              ? row.reason === "elimination"
+                                ? t("routing.writeElim")
+                                : t("routing.write")
                               : row.reason === "elimination"
                                 ? t("routing.skipElim")
                                 : row.reason === "adjustment"

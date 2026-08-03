@@ -92,6 +92,40 @@ import {
 } from "./azseker-workbook-bs"
 
 /**
+ * A BU label that names an INTRAGROUP ELIMINATION specifically.
+ *
+ * Strictly narrower than `isEliminationLikeEntityValue`, and the difference is
+ * the whole point. That predicate answers "is this not a company?", so it
+ * matches `CONSOLIDATED` and `CONSOL` too — and a CONSOLIDATED block is the
+ * group's TOTALS, the arithmetic opposite of an elimination. Importing one as
+ * eliminations would add a second full balance sheet to the sum instead of
+ * subtracting the intercompany balances.
+ *
+ * The balance gate below cannot catch that: a consolidated balance sheet
+ * balances to zero exactly as an elimination block does, so `A + L + E = 0`
+ * says yes to both. This list is the only guard there is, which is why it is a
+ * closed enumeration rather than a loosening of the existing regex.
+ *
+ * `AJE` and the rest of the adjustment subset are absent by construction — the
+ * splitter classifies those as `adjustment` and folds them into the entity
+ * their parent BU column names (11.83), which is a different answer to a
+ * different question.
+ */
+const INTRAGROUP_ELIMINATION_BU_RE =
+  /^(EJE|ELIM|ELIMINATION|ELIMINATIONS|ELIMINASIYA|INTERCOMPANY|INTRAGROUP|INTRA-GROUP|IC ELIM|IC ELIMINATION)$/i
+
+/**
+ * True only for a BU label that names an intragroup-elimination block.
+ *
+ * Matched WHOLE, not as a substring: a company legitimately called
+ * "Intergroup Trading LLC" must stay a company.
+ */
+export function isIntragroupEliminationBuValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false
+  return INTRAGROUP_ELIMINATION_BU_RE.test(String(value).trim().replace(/\s+/g, " "))
+}
+
+/**
  * Three or four numeric segments. A fourth segment is detail BELOW the level
  * the statement is imported at and is posted to its three-segment parent.
  */

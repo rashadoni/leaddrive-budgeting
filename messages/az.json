@@ -4028,6 +4028,7 @@
         "title": "Şirkət yönləndirməsi — {n} split vərəq",
         "description": "Bu kitabda bir neçə şirkət tək vərəqdə, biznes-vahid sütunu ilə ayrılıb. «yaz» sətirləri göstərilən şirkətə gedir. Eliminasiya yazılışları (EJE) qrupdaxili dövriyyəni silir — onlar heç bir şirkətə aid deyil, ona görə idxal olunmur. Düzəliş bloku (AJE) isə bir şirkətə aiddir: valideyn BU sütununun göstərdiyi şirkətə birləşdirilir.",
         "write": "yaz",
+        "writeElim": "eliminasiyalar — qrup, şirkətsiz",
         "skipElim": "atla — konsolidasiya düzəlişi",
         "skipUnknown": "atla — şirkət tanınmadı",
         "fold": "birləşdirildi — düzəliş, sahib {column} sütunundan",

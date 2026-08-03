@@ -887,6 +887,68 @@ describe("MultiFileForm", () => {
     expect(screen.getByText(/skip/i)).toBeTruthy()
   })
 
+  it("labels an eliminations WRITE as eliminations, not as a plain write or a skip", async () => {
+    // 14.8 — the eliminations row is a write that deliberately lands on no
+    // company, so its entity column reads "—". A plain green "write" beside
+    // that dash reads as a bug, and the old `reason === "elimination"` branch
+    // would have called an imported block "skip — consolidation entry".
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "preview",
+      perFile: [],
+      groups: [],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+      buColumnSplits: [
+        {
+          filename: "bs.xlsx",
+          sheetName: "BS Actual 2026",
+          mapping: [
+            {
+              sheetName: "BS Actual 2026 [AZSEKER-CPC]",
+              entityCode: "AZSEKER-CPC",
+              buValue: "CPC",
+              rowCount: 10,
+              action: "write",
+            },
+            {
+              sheetName: "BS Actual 2026 [ELIMINATIONS]",
+              entityCode: null,
+              buValue: "EJE",
+              rowCount: 20,
+              action: "write",
+              reason: "elimination",
+            },
+          ],
+          warnings: [],
+        },
+      ],
+    })
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("bs.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+    await waitFor(() => {
+      expect(screen.getByTestId("bu-routing-grid")).toBeTruthy()
+    })
+    // The harness renders a translation key as its de-camel-cased upper-case
+    // tail, so `routing.writeElim` reads "WRITE ELIM" — the assertion is on
+    // which key the badge chose, which is what this test is about.
+    const grid = screen.getByTestId("bu-routing-grid").textContent ?? ""
+    expect(grid).toMatch(/WRITE ELIM/)
+    // And crucially not a skip: the block is imported, and the pre-14.8 branch
+    // order would have labelled it "skip — consolidation entry".
+    expect(grid).not.toMatch(/SKIP/)
+    // The entity column is a dash on purpose — that is what the badge explains.
+    expect(grid).toMatch(/EJE—20WRITE ELIM/)
+  })
+
   it("guided sheet fixes mark preview stale and rerun preview with guidedSheetFixes", async () => {
     mockFetchOnce(200, {
       ok: true,

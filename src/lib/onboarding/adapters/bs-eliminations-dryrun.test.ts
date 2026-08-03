@@ -24,7 +24,7 @@
 import { describe, it, expect } from "vitest"
 import * as fs from "node:fs"
 import * as XLSX from "xlsx"
-import { splitByBuColumn } from "../ai-import/bu-column-split"
+import { applyBuColumnSplit, splitByBuColumn } from "../ai-import/bu-column-split"
 import { buildEntityAliasMap } from "../ai-import/entity-inference"
 import { parseEliminationBlock } from "./bs-eliminations"
 import { parseWorkbookBsSheet } from "./azseker-workbook-bs"
@@ -180,5 +180,95 @@ describe.skipIf(!AVAILABLE)("BS eliminations — the real block", () => {
       // module header. Everything else must land somewhere real.
       .filter((c) => c !== "BS.01.01.99" && !entityCodes.has(c))
     expect(orphans).toEqual([])
+  })
+})
+
+/**
+ * Part 2 — the routing. The parser reading the block correctly is worth
+ * nothing until `applyBuColumnSplit` actually hands it to a writer, and the
+ * failure mode if it hands it to the wrong one is the whole group's −119M
+ * intercompany reversal landing on a single company.
+ */
+describe.skipIf(!AVAILABLE)("BS eliminations — routing on the real workbook", () => {
+  function routed() {
+    const wb = XLSX.readFile(WORKBOOK)
+    const out = applyBuColumnSplit(wb, XLSX, {
+      sheetName: SHEET,
+      dataType: "BS",
+      planKind: "actual",
+      aliasMap: ALIAS_MAP,
+    })
+    return { wb, out }
+  }
+
+  it("gives the EJE block its own sheet, typed BS_ELIMINATIONS and entity-less", () => {
+    const { out } = routed()
+    const elim = out.sheetMapEntries.filter((e) => e.dataType === "BS_ELIMINATIONS")
+    expect(elim).toHaveLength(1)
+    expect(elim[0].match).toBe(`${SHEET} [ELIMINATIONS]`)
+    expect(elim[0].planKind).toBe("actual")
+    // The load-bearing assertion. An entityCode here — even a plausible one —
+    // is the whole group's reversal on one company.
+    expect(elim[0].entityCode).toBeUndefined()
+  })
+
+  it("still routes all four entities, unchanged", () => {
+    const { out } = routed()
+    const entities = out.sheetMapEntries
+      .filter((e) => e.dataType === "BS")
+      .map((e) => e.entityCode)
+      .sort()
+    expect(entities).toEqual([
+      "AZSEKER-AZSF",
+      "AZSEKER-CPC",
+      "AZSEKER-EDEN",
+      "AZSEKER-PROMALT",
+    ])
+  })
+
+  it("reports the block as a write, once, not as a skip", () => {
+    // It was listed as "skipped (not imported)" for as long as it existed.
+    // Reporting it twice — a write in one pass and a drop in another — would
+    // be its own kind of wrong.
+    const { out } = routed()
+    const eje = out.mapping.filter((m) => m.buValue === "EJE")
+    expect(eje).toHaveLength(1)
+    expect(eje[0].action).toBe("write")
+    expect(eje[0].entityCode).toBeNull()
+    expect(out.warnings.join("\n")).toMatch(/belonging to no company/)
+    expect(out.warnings.join("\n")).not.toMatch(/looks like elimination.*skipped/)
+  })
+
+  it("the materialised sheet parses back to the same numbers", () => {
+    // End to end: split → the sheet the writer will actually be handed →
+    // parser. Guards against the virtual worksheet losing the month header or
+    // the block's first row in the slicing.
+    const { wb, out } = routed()
+    const name = `${SHEET} [ELIMINATIONS]`
+    expect(out.applied).toBe(true)
+    expect(wb.SheetNames).toContain(name)
+    const parsed = parseEliminationBlock(wb, name, XLSX, { preferYear: 2026 })
+    expect(parsed.blocked).toBeNull()
+    expect(parsed.totalsByMonth["2026-05"].assets).toBeCloseTo(-123_200_854.11, 2)
+    expect(Math.abs(parsed.totalsByMonth["2026-01"].residual)).toBeLessThan(TOL)
+  })
+
+  it("a P&L sheet's EJE block is still skipped, not imported", () => {
+    // 11.83 settled the ADJUSTMENT half of the P&L question and deliberately
+    // left the elimination half alone. This must not have quietly changed it.
+    const wb = XLSX.readFile(WORKBOOK)
+    const out = applyBuColumnSplit(wb, XLSX, {
+      sheetName: "PLF Actual 2026",
+      dataType: "PLF",
+      planKind: "actual",
+      aliasMap: ALIAS_MAP,
+    })
+    expect(
+      out.sheetMapEntries.some((e) => e.dataType === "BS_ELIMINATIONS"),
+      "a PLF sheet must never produce a balance-sheet eliminations sheet",
+    ).toBe(false)
+    for (const m of out.mapping.filter((x) => x.reason === "elimination")) {
+      expect(m.action).toBe("skip")
+    }
   })
 })

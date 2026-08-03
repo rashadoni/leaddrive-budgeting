@@ -28,6 +28,7 @@ import { type OrgContext, resolveOrgContext } from "./prod-adapter-context"
 import {
   makePlfHandler,
   makeBsHandler,
+  makeBsEliminationsHandler,
   makeCfHandler,
   makeKpiHandler,
 } from "./production-adapter-handlers-financial"
@@ -118,6 +119,9 @@ export function buildProductionAdapterRegistry(
   return buildRegistryWith({
     PLF: wrap(makePlfHandler),
     BS: wrap(makeBsHandler),
+    // Phase 14.8 — the client's own intragroup-elimination block, split off a
+    // consolidated balance sheet by `applyBuColumnSplit`. Belongs to no company.
+    BS_ELIMINATIONS: wrap(makeBsEliminationsHandler),
     CF: wrap(makeCfHandler),
     KPI_FARMING: wrap((p, c, e) => makeKpiHandler(p, c, e, "farming")),
     KPI_PROCESSING: wrap((p, c, e) => makeKpiHandler(p, c, e, "processing")),

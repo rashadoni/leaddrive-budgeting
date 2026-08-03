@@ -4028,6 +4028,7 @@
         "title": "Entity routing grid — {n} split sheet(s)",
         "description": "This workbook keeps several companies in one sheet, split by a business-unit column. Rows marked write go to the company named. Elimination entries (EJE) cancel out trade between group companies — they belong to no single company, so they are not imported. An adjustment block (AJE) does belong to one: it is merged into the company its parent BU column names.",
         "write": "write",
+        "writeElim": "eliminations — the group, no company",
         "skipElim": "skip — consolidation entry",
         "skipUnknown": "skip — company not recognised",
         "fold": "merged — adjustment, owner from {column}",

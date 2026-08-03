@@ -163,6 +163,27 @@ export function cfTargetsHolding(
   )
 }
 
+/**
+ * Phase 14.8 — true when an intragroup-elimination sheet arrived carrying an
+ * entity, which it must never do.
+ *
+ * The cell scan is perfectly capable of producing one: the block's own labels
+ * name four companies ("Investments in Joint Ventures (ProMalt Investment)",
+ * "Trade Receivables (Receivable from Corn sold to CPC)"). A guess that
+ * survives here puts the whole group's intercompany reversal — −119M of assets
+ * on the client's 2026 file — onto whichever company got named most often, and
+ * all twelve downstream routing gates key on this value.
+ *
+ * Exported for the same reason `cfTargetsHolding` is: the invariant is worth
+ * a test of its own, not just a line inside a 2,000-line function.
+ */
+export function eliminationsCarryEntity(
+  dataType: string,
+  effectiveEntityCode: string | null,
+): boolean {
+  return dataType === "BS_ELIMINATIONS" && effectiveEntityCode !== null
+}
+
 /** Apply-order dependency graph (lower index = applied first). See
  *  module header for rationale. unknown is always last (skipped). */
 const APPLY_ORDER: Record<FileType, number> = {
@@ -776,6 +797,21 @@ async function parseFileSheets(
     if (cfTargetsHolding(cls.dataType, effectiveEntityCode, input.holdingCompanyCode)) {
       warnings.push(
         `${filename}: sheet "${cls.sheetName}" is cash flow targeting the holding "${input.holdingCompanyCode}" — refused (CF is per-company only); skipped (0 rows)`,
+      )
+      effectiveEntityCode = null
+    }
+
+    // Phase 14.8 — an elimination block belongs to NO company, and the cell
+    // scan is perfectly capable of guessing one: the block's labels name four
+    // of them ("Investments in Joint Ventures (ProMalt Investment)", "Trade
+    // Receivables (Receivable from Corn sold to CPC)"). A guess here would put
+    // the whole group's intercompany reversal — −119M of assets — on whichever
+    // company got named most often, and every downstream gate keys on this
+    // value. Forced null, the same invariant and the same reason as CF above.
+    if (eliminationsCarryEntity(cls.dataType, effectiveEntityCode)) {
+      warnings.push(
+        `${filename}: sheet "${cls.sheetName}" is the intragroup-elimination block — its entity guess ` +
+          `"${effectiveEntityCode}" is discarded; eliminations belong to no company.`,
       )
       effectiveEntityCode = null
     }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import * as XLSX from "xlsx"
-import { parseEliminationBlock } from "./bs-eliminations"
+import { parseEliminationBlock, isIntragroupEliminationBuValue } from "./bs-eliminations"
 
 /** The serials the client's own header row uses for Jan/Feb 2026. */
 const JAN = 46023
@@ -136,5 +136,38 @@ describe("what it refuses, and why refusing is the safe direction", () => {
   it("does not blow up on a sheet that is not there", () => {
     const r = parseEliminationBlock(sheetOf(BALANCED), "nope", XLSX, { preferYear: 2026 })
     expect(r.blocked).toMatch(/not found/i)
+  })
+})
+
+describe("isIntragroupEliminationBuValue — the label is the only guard", () => {
+  it("accepts the labels a real elimination block carries", () => {
+    for (const v of ["EJE", "eje", " Eje ", "ELIM", "Eliminations", "INTERCOMPANY", "Intragroup", "eliminasiya"]) {
+      expect(isIntragroupEliminationBuValue(v), v).toBe(true)
+    }
+  })
+
+  it("REFUSES consolidation labels — they are totals, not eliminations", () => {
+    // The dangerous case. `isEliminationLikeEntityValue` says true to all of
+    // these because it answers "is this not a company?". Routing a totals
+    // block to the elimination writer adds a second whole balance sheet to the
+    // group, and the A + L + E = 0 gate cannot object because a consolidated
+    // balance sheet balances too.
+    for (const v of ["CONSOLIDATED", "CONSOL", "CONSOLIDATION", "Total", "GROUP"]) {
+      expect(isIntragroupEliminationBuValue(v), v).toBe(false)
+    }
+  })
+
+  it("REFUSES the management-adjustment labels", () => {
+    // AJE belongs to a real entity and is folded into it (11.83), never
+    // treated as the group's elimination.
+    for (const v of ["AJE", "ADJ", "MJE", "TB ADJ"]) {
+      expect(isIntragroupEliminationBuValue(v), v).toBe(false)
+    }
+  })
+
+  it("matches whole labels, so a company keeps its name", () => {
+    for (const v of ["Intergroup Trading LLC", "Elimco MMC", "EJE Holdings", "", null, undefined]) {
+      expect(isIntragroupEliminationBuValue(v), String(v)).toBe(false)
+    }
   })
 })

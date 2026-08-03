@@ -40,6 +40,21 @@ import type { SemanticCoaDecision } from "./adapter-registry"
 export type SheetDataType =
   | "PLF"
   | "BS"
+  // Phase 14.8 (2026-08-03) — the client's own INTRAGROUP ELIMINATIONS block,
+  // split off a consolidated balance sheet by `applyBuColumnSplit`.
+  //
+  // Deliberately ABSENT from `VALID_DATA_TYPES`: the LLM must never be able to
+  // classify a sheet as eliminations. Only the BU splitter creates one, and it
+  // pins the dataType on the virtual sheet's map entry, which wins over the
+  // classifier (`dataTypeOverride ?? c.dataType`). A misclassified elimination
+  // would write the group's intercompany reversal onto one company.
+  //
+  // It carries NO entity, by construction and by force: the orchestrator nulls
+  // any entity guess for this dataType, the same way it refuses a CF on the
+  // holding. Every routing gate already handles a null-entity record — that is
+  // what makes this the safe shape rather than a sentinel company code, which
+  // would look like a real company to all twelve of them.
+  | "BS_ELIMINATIONS"
   | "CF"
   | "KPI_FARMING"
   | "KPI_PROCESSING"
