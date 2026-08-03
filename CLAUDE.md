@@ -23,6 +23,7 @@ When completing a task:
 
 - Solo flow: main Claude writes code and runs `npx tsc --noEmit` / `npx vitest run` before committing; user (Rashad) owns ship/cut decisions and supplies Excel data + business rules.
 - Pre-commit hook (`.githooks/pre-commit`) runs the M7 status-band scanner + secret scanner. Activate once per clone with `git config core.hooksPath .githooks`; bypass with `git commit --no-verify`.
+- **Merge PRs with `gh pr merge --merge`. Squash and rebase merging are DISABLED on the repo (2026-08-03) and this is why.** Work happens on one long-lived branch (`claude/import-lineage`). A squash or rebase merge rewrites the commit onto main under a new SHA, so the branch's own commits stop being ancestors of main — GitHub then reports the next PR as CONFLICTING, CI never starts, and the fix is a `git rebase --onto origin/main <old-base>` every single time. That happened four times in one session, costing a CI cycle each. A merge commit keeps the branch an ancestor, so the next PR opens clean with no rebase. Squash also discards the per-commit messages, which in this repo are the same evidence the ROADMAP changelog carries. To undo: `gh api -X PATCH repos/rashadrahimov/leaddrive-budgeting -F allow_squash_merge=true -F allow_rebase_merge=true`.
 - Subagents (architect / Explore / Plan) are on-demand only — invoke when the user asks or for high-risk work (RLS rollout, auth/security additions, schema migrations, new API routes, LLM integration). Not part of the default turn flow.
 - End each turn by announcing the next step as a fact, not a question.
 
