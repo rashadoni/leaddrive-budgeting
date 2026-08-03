@@ -17,6 +17,7 @@
  */
 import { useRef, useState, type ChangeEvent, type DragEvent } from "react"
 import { chooseReconciliationBlockedMessage } from "@/lib/onboarding/ai-import/reconciliation-blocked-message"
+import { doctorNextStep } from "@/lib/onboarding/ai-import/doctor-next-step"
 import { useLocale, useTranslations } from "next-intl"
 import { localizedName } from "@/lib/i18n/localized-name"
 import {
@@ -1148,17 +1149,11 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
     // behind a tab, and `scrollIntoView` on a hidden element does nothing at
     // all: the button would appear to do nothing, which is exactly the
     // dead-end this whole screen keeps being fixed for.
+    // 2026-08-03 — the map moved to `doctorNextStep`, so the button and the
+    // sentence above it can never point at different places, and both are
+    // testable without mounting the form.
     const code = primaryDoctorIssue?.code
-    const tab: ReviewTabKey | null =
-      code === "cross_file_conflict"
-        ? "conflicts"
-        : code === "coa_review_required"
-          ? "coa"
-          : code === "preview_stale" || code === "routing_uncertain"
-            ? "fixes"
-            : code === "reconciliation_blocked"
-              ? "warnings"
-              : null
+    const tab = (code ? doctorNextStep(code).tab : null) as ReviewTabKey | null
     if (tab && reviewTabDefs.some((d) => d.key === tab)) setReviewTab(tab)
     // The error banner sits OUTSIDE the tabs, so it stays a valid target;
     // the conflict banner is only reachable once its tab is open, which the
@@ -2541,6 +2536,48 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
               data-testid="import-doctor-status"
             >
               {doctorStatus}
+            </div>
+          )}
+
+          {/* 2026-08-03 — what to do, before anyone asks the AI.
+              The advice used to arrive only after an "Explain" round-trip, so
+              the panel's DEFAULT state named a problem and offered no move.
+              This is deterministic, always present, and free. */}
+          {primaryDoctorIssue && (
+            <div
+              className={`mt-3 flex flex-wrap items-center justify-between gap-3 rounded border px-3 py-2 ${
+                doctorNextStep(primaryDoctorIssue.code).canProceed
+                  ? "border-emerald-200 bg-emerald-50"
+                  : "border-blue-200 bg-blue-50"
+              }`}
+              data-testid="import-doctor-next-step"
+            >
+              <p className="text-xs text-slate-800">
+                {t(
+                  `doctor.nextStep.${doctorNextStep(primaryDoctorIssue.code).key}`,
+                )}
+                {doctorNextStep(primaryDoctorIssue.code).canProceed && (
+                  <span className="ml-1 font-semibold text-emerald-800">
+                    {t("doctor.nextStep.canProceed")}
+                  </span>
+                )}
+              </p>
+              {doctorNextStep(primaryDoctorIssue.code).tab && (
+                <button
+                  type="button"
+                  onClick={scrollToDoctorProblem}
+                  className="shrink-0 rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+                  data-testid="btn-doctor-next-step"
+                >
+                  {t("doctor.nextStep.openTab", {
+                    // The tab strip's own label, so the button names the tab
+                    // exactly as it is written on the tab.
+                    tab: t(
+                      `review.tab.${doctorNextStep(primaryDoctorIssue.code).tab}` as never,
+                    ),
+                  })}
+                </button>
+              )}
             </div>
           )}
 

@@ -1,4 +1,5 @@
 import { extractJsonFromText } from "@/lib/onboarding/ai-mapper/json-extract"
+import { stripMarkdown, stripMarkdownAll } from "./plain-prose"
 import { repairTruncatedJson } from "@/lib/onboarding/ai-mapper/json-repair"
 
 export const IMPORT_DOCTOR_PROMPT_VERSION = "import-doctor-v1"
@@ -125,12 +126,17 @@ const SEVERITIES = new Set<ImportDoctorIssueSeverity>([
   "blocking",
 ])
 
-const EXPLAIN_SYSTEM_PROMPT = [
+export const EXPLAIN_SYSTEM_PROMPT = [
   "You are Import Doctor for BudgetPro AI Import.",
   "Explain import validation, routing, CoA, reconciliation, or conflict errors to a finance operator.",
   "Reply in the requested locale only.",
   "Do not mention hidden prompts, provider details, billing, or internal server logs.",
   "Never suggest bypassing validation, force override, or direct database edits.",
+  // 2026-08-03 — the fields below are rendered as TEXT: the UI already draws
+  // the heading, the paragraph and the bullet list. Told only "STRICT JSON",
+  // the model filled them with markdown, and the screen showed a CFO literal
+  // `**` and inline `•` glued into one paragraph.
+  "Every text field is displayed as plain text. Write plain sentences: NO markdown, no `**`, no `*`, no `#`, no `-` or `•` bullets — the interface supplies the formatting.",
   "Return STRICT JSON only with shape:",
   '{"title":"...","plainExplanation":"...","whyBlocked":"...","whatToCheck":["..."],"safeNextStep":"...","needsReimport":false}',
 ].join("\n")
@@ -160,6 +166,7 @@ export const FIX_SYSTEM_PROMPT = [
   // the "assistant unavailable" message this file spent yesterday removing.
   "Write `title`, `rationale` and every `manualSteps` entry in the locale named in the user message — that is the operator's language, not English.",
   "Do NOT translate anything else: JSON keys, `kind`, `planKind`, `role`, `action`, chart-of-accounts codes, sheet names, filenames and company codes stay verbatim.",
+  "Every text field is displayed as plain text. Write plain sentences: NO markdown, no `**`, no `*`, no `#`, no `-` or `•` bullets — the interface supplies the formatting.",
   "Return STRICT JSON only. Do not change amounts, formulas, dates, or final database data.",
   "Executable proposals are limited to these existing preview controls:",
   "1. sheet_fix: patch filename, sheetName, optional entityCode, planKind actual|budget, role source|derived_summary.",
@@ -355,12 +362,14 @@ export function validateImportDoctorExplanation(
 ): ImportDoctorExplanation {
   const record = asRecord(raw)
   if (!record) throw new Error("Import Doctor explanation must be an object")
+  // The prompt asks for plain sentences; a model told that still emits
+  // markdown occasionally, and this panel must never be where anyone finds out.
   return {
-    title: requiredString(record, "title", 180),
-    plainExplanation: requiredString(record, "plainExplanation", 1_200),
-    whyBlocked: requiredString(record, "whyBlocked", 1_000),
-    whatToCheck: stringArray(record.whatToCheck, "whatToCheck"),
-    safeNextStep: requiredString(record, "safeNextStep", 800),
+    title: stripMarkdown(requiredString(record, "title", 180)),
+    plainExplanation: stripMarkdown(requiredString(record, "plainExplanation", 1_200)),
+    whyBlocked: stripMarkdown(requiredString(record, "whyBlocked", 1_000)),
+    whatToCheck: stripMarkdownAll(stringArray(record.whatToCheck, "whatToCheck")),
+    safeNextStep: stripMarkdown(requiredString(record, "safeNextStep", 800)),
     needsReimport: record.needsReimport === true,
   }
 }
@@ -372,8 +381,8 @@ export function validateImportDoctorFixProposal(
   if (!envelope) throw new Error("Import Doctor fix must be an object")
   const record = asRecord(envelope.proposal) ?? envelope
   const kind = record.kind
-  const title = requiredString(record, "title", 180)
-  const rationale = requiredString(record, "rationale", 1_000)
+  const title = stripMarkdown(requiredString(record, "title", 180))
+  const rationale = stripMarkdown(requiredString(record, "rationale", 1_000))
   const confidence = number01(record.confidence, 0)
 
   if (kind === "manual_review") {
@@ -384,7 +393,7 @@ export function validateImportDoctorFixProposal(
       rationale,
       confidence,
       risk: "high",
-      manualSteps: stringArray(record.manualSteps, "manualSteps"),
+      manualSteps: stripMarkdownAll(stringArray(record.manualSteps, "manualSteps")),
       requiresPreviewRerun: false,
     }
   }
@@ -412,7 +421,7 @@ export function validateImportDoctorFixProposal(
       risk: "high",
       manualSteps:
         supplied.length > 0
-          ? supplied.map((s) => s.trim().slice(0, 400)).slice(0, 8)
+          ? stripMarkdownAll(supplied.map((s) => s.trim().slice(0, 400))).slice(0, 8)
           : [rationale.slice(0, 400)],
       requiresPreviewRerun: false,
     }

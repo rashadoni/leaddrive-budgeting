@@ -6,6 +6,7 @@ import {
   validateImportDoctorExplanation,
   validateImportDoctorFixProposal,
   FIX_SYSTEM_PROMPT,
+  EXPLAIN_SYSTEM_PROMPT,
   buildImportDoctorUserMessage,
 } from "./import-doctor"
 
@@ -319,5 +320,75 @@ describe("both doctor prompts carry the same rules", () => {
       context: {},
     })
     expect(msg).toContain("Locale: az")
+  })
+})
+
+/**
+ * 2026-08-03 — the panel showed a CFO literal asterisks.
+ *
+ * The prose fields render as text; the UI already supplies heading, paragraph
+ * and bullet list. Told only "STRICT JSON", the model filled them with
+ * markdown. Root fix in the prompts, belt in the validators — because a model
+ * told not to emit markdown still will, and this screen must never be where
+ * anyone finds out.
+ */
+describe("prose fields arrive as plain text", () => {
+  it("both prompts forbid markdown", () => {
+    for (const [name, prompt] of [
+      ["fix", FIX_SYSTEM_PROMPT],
+      ["explain", EXPLAIN_SYSTEM_PROMPT],
+    ] as const) {
+      expect(prompt, name).toMatch(/plain text/i)
+      expect(prompt, name).toMatch(/no markdown/i)
+    }
+  })
+
+  it("strips markdown out of an explanation the model marked up anyway", () => {
+    const e = validateImportDoctorExplanation({
+      title: "**Reconciliation blocked**",
+      plainExplanation: "The sheet is **not** routed to a company.",
+      whyBlocked: "*Nothing* was verified.",
+      whatToCheck: ["- Open the routing tab", "• Pick the year"],
+      safeNextStep: "## Continue the import",
+      needsReimport: false,
+    })
+    expect(e.title).toBe("Reconciliation blocked")
+    expect(e.plainExplanation).toBe("The sheet is not routed to a company.")
+    expect(e.whyBlocked).toBe("Nothing was verified.")
+    expect(e.whatToCheck).toEqual(["Open the routing tab", "Pick the year"])
+    expect(e.safeNextStep).toBe("Continue the import")
+  })
+
+  it("strips it out of a fix proposal too", () => {
+    const p = validateImportDoctorFixProposal({
+      kind: "manual_review",
+      title: "**Check the year**",
+      rationale: "The tab says *2025*.",
+      confidence: 0.7,
+      manualSteps: ["**Open** the import screen", "- Set year to 2025"],
+    })
+    expect(p.title).toBe("Check the year")
+    expect(p.rationale).toBe("The tab says 2025.")
+    if (!p.executable) {
+      expect(p.manualSteps).toEqual(["Open the import screen", "Set year to 2025"])
+    }
+  })
+
+  it("leaves account codes and identifiers exactly as written", () => {
+    // The cleaner must not rename a metric or an account on the one screen
+    // whose job is to be believed.
+    const e = validateImportDoctorExplanation({
+      title: "PLF.05.12.06 and pl_ebitda",
+      plainExplanation: "Group \"*\" was not committed; rows = 2 * 3.",
+      whyBlocked: "allCommittedGroupsVerified is false",
+      whatToCheck: ["1,677,014.63 ₼ vs 1,665,000.00 ₼"],
+      safeNextStep: "Re-run",
+      needsReimport: false,
+    })
+    expect(e.title).toBe("PLF.05.12.06 and pl_ebitda")
+    expect(e.plainExplanation).toContain('"*"')
+    expect(e.plainExplanation).toContain("2 * 3")
+    expect(e.whyBlocked).toBe("allCommittedGroupsVerified is false")
+    expect(e.whatToCheck[0]).toBe("1,677,014.63 ₼ vs 1,665,000.00 ₼")
   })
 })

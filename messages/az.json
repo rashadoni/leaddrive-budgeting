@@ -4024,7 +4024,18 @@
         "severityWarning": "bloklamır",
         "errorBadResponse": "Assistent cavab verdi, amma bu ekranın gözlədiyi formada yox. Bu, sizin faylınızda deyil, bizim tərəfimizdə qüsurdur — heç nə dəyişmədi, idxala təsir etmir. Avtomatik bildirildi.",
         "errorUnavailable": "Assistent hazırda əlçatan deyil. Heç nə dəyişmədi, idxal ondan asılı deyil — preview və tətbiqi həmişəki kimi davam etdirə bilərsiniz.",
-        "errorBusy": "Assistent məşğuldur. Bir az gözləyib yenidən basın; heç nə dəyişmədi."
+        "errorBusy": "Assistent məşğuldur. Bir az gözləyib yenidən basın; heç nə dəyişmədi.",
+        "nextStep": {
+          "crossFileConflict": "İki fayl eyni rəqəmləri yazır. «Konfliktlər» bölməsini açın və hər biri üçün hansı faylın üstün olduğunu seçin.",
+          "coaReviewRequired": "Bəzi sətirlərin adı var, hesabı yoxdur. «Hesablar» bölməsini açın və onların hara aid olduğunu təsdiqləyin.",
+          "reconciliationBlocked": "Yazılan rəqəmlər baza ilə üzləşdirildi və üzləşdirmə keçmədi. Nəyin uyğun gəlmədiyini görmək üçün «Xəbərdarlıqlar» bölməsini açın.",
+          "previewStale": "Preview işlədikdən sonra yönləndirməni dəyişdiniz. Rəqəmlərin dəyişikliklərə uyğun olması üçün preview-i yenidən işə salın.",
+          "routingUncertain": "Aşağıdakı siyahı məlumat üçündür, problem deyil — idxal olduğu kimi keçir. Yalnız yazmadan əvvəl vərəqi düzəltmək istəyirsinizsə «Düzəlişlər» bölməsini açın.",
+          "importFailed": "İdxal xəta ilə dayandı. Mesaj səhifənin yuxarısındadır.",
+          "generic": "Nəyin yazılacağını dəqiq görmək üçün təhlükəsizlik qəbzini açın.",
+          "openTab": "Aç: {tab}",
+          "canProceed": "İdxalı davam etdirə bilərsiniz."
+        }
       },
       "routing": {
         "title": "Şirkət yönləndirməsi — {n} split vərəq",

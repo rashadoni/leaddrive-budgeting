@@ -4024,7 +4024,18 @@
         "severityWarning": "does not block",
         "errorBadResponse": "The assistant replied, but not in the shape this screen expects. That is a defect on our side, not in your file — nothing was changed, and the import is unaffected. Reported automatically.",
         "errorUnavailable": "The assistant is not reachable right now. Nothing was changed, and the import does not depend on it — you can continue with the preview and apply as usual.",
-        "errorBusy": "The assistant is busy. Wait a moment and press again; nothing was changed."
+        "errorBusy": "The assistant is busy. Wait a moment and press again; nothing was changed.",
+        "nextStep": {
+          "crossFileConflict": "Two files write the same figures. Open Conflicts and choose which file wins for each one.",
+          "coaReviewRequired": "Some rows carry a label with no account behind it. Open Accounts and confirm where each one belongs.",
+          "reconciliationBlocked": "The written figures were checked against the database and the check did not pass. Open Warnings to see what disagreed.",
+          "previewStale": "You changed the routing after the preview ran. Run the preview again so the figures match your changes.",
+          "routingUncertain": "The list below is information, not a problem — the import runs as it is. Open Fixes only if you want to correct a sheet before writing.",
+          "importFailed": "The import stopped with an error. The message is at the top of the page.",
+          "generic": "Open the safety receipt to see exactly what would be written.",
+          "openTab": "Open: {tab}",
+          "canProceed": "You can continue the import."
+        }
       },
       "routing": {
         "title": "Entity routing grid — {n} split sheet(s)",
