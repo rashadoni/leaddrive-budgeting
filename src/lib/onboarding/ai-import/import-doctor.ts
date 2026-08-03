@@ -135,7 +135,13 @@ const EXPLAIN_SYSTEM_PROMPT = [
   '{"title":"...","plainExplanation":"...","whyBlocked":"...","whatToCheck":["..."],"safeNextStep":"...","needsReimport":false}',
 ].join("\n")
 
-const FIX_SYSTEM_PROMPT = [
+/**
+ * Exported for the contract test in `import-doctor.test.ts`, which checks that
+ * every field `validateImportDoctorFixProposal` can reject on is actually
+ * NAMED here. Twice now the prompt has described the shape while omitting a
+ * required field, and both times the model was blamed for it.
+ */
+export const FIX_SYSTEM_PROMPT = [
   "You are Import Doctor for BudgetPro AI Import.",
   "Suggest one safe preview-only correction based only on the supplied issue and preview context.",
   "Return STRICT JSON only. Do not change amounts, formulas, dates, or final database data.",
@@ -155,10 +161,26 @@ const FIX_SYSTEM_PROMPT = [
   //
   // The sibling EXPLAIN_SYSTEM_PROMPT twenty lines above has always spelled its
   // shape out. This is that, applied to the half that was missing it.
+  // 2026-08-03 — the same defect, one field over, and it was mine.
+  //
+  // The 2026-08-02 fix below finally stated the JSON shape, and left `risk`
+  // out of it. `validateImportDoctorFixProposal` calls `riskLowMedium(record
+  // .risk)` on every executable kind, so an omitted field threw "Executable
+  // Import Doctor fix must be low or medium risk" — a sentence that reads as
+  // though the model had rated the fix dangerous. It had said nothing at all
+  // about risk, because nothing ever asked it to. Measured on production
+  // 2026-08-03 11:43, surfaced to the operator as "the assistant is
+  // unavailable".
+  //
+  // Enumerating the required fields is not enough on its own; the enumeration
+  // has to be COMPLETE, and checked against the validator rather than against
+  // the last error seen.
   "Return STRICT JSON only with shape:",
-  '{"kind":"sheet_fix|coa_mapping|conflict_resolution|manual_review","title":"...","rationale":"...","confidence":0.0,"patch":{...},"manualSteps":["..."]}',
-  "`title`, `rationale` and `kind` are REQUIRED on every proposal, including manual_review.",
+  '{"kind":"sheet_fix|coa_mapping|conflict_resolution|manual_review","title":"...","rationale":"...","confidence":0.0,"risk":"low|medium|high","patch":{...},"manualSteps":["..."]}',
+  "`title`, `rationale`, `kind` and `risk` are REQUIRED on every proposal, including manual_review.",
   "`manualSteps` is required for manual_review and ignored otherwise; `patch` is required for the three executable kinds.",
+  "The three executable kinds must be `low` or `medium` risk — they are applied to the preview without further review.",
+  "If a change is worth making but you would call it high risk, return `manual_review` with `risk`:`high` and manualSteps, not an executable kind.",
 ].join("\n")
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -203,9 +225,26 @@ function number01(value: unknown, fallback = 0): number {
   return Math.max(0, Math.min(1, value))
 }
 
-function riskLowMedium(value: unknown): "low" | "medium" {
-  if (value === "low" || value === "medium") return value
-  throw new Error("Executable Import Doctor fix must be low or medium risk")
+/**
+ * The risk an executable proposal declares, or null when it cannot be applied
+ * automatically.
+ *
+ * Returns rather than throws, which is the 2026-08-03 change. Throwing lost
+ * the whole answer for two quite different reasons and reported both as an
+ * outage:
+ *
+ *  • The field was ABSENT — the prompt never named it (fixed above). A model
+ *    that omits a field nobody asked for has not failed; our prompt has.
+ *  • The model said `high` on an executable kind. That is a legitimate,
+ *    well-formed answer meaning "I can describe this change but I would not
+ *    apply it unreviewed", and it is exactly the answer a person most wants to
+ *    read. Discarding it to raise an error is the worst possible response.
+ *
+ * Either way the caller degrades the proposal to `manual_review` and keeps the
+ * model's title and rationale, so the operator sees the reasoning and decides.
+ */
+function executableRisk(value: unknown): "low" | "medium" | null {
+  return value === "low" || value === "medium" ? value : null
 }
 
 /**
@@ -334,7 +373,34 @@ export function validateImportDoctorFixProposal(
     }
   }
 
-  const risk = riskLowMedium(record.risk)
+  const risk = executableRisk(record.risk)
+  if (risk === null) {
+    // Not an error — a proposal that cannot be auto-applied. Keep the model's
+    // reasoning and hand it to a person, rather than throwing away a useful
+    // answer and calling the assistant unavailable.
+    //
+    // `manualSteps` when the model supplied them; otherwise its own rationale,
+    // quoted. Quoting is not inventing a step, and inventing one here would be
+    // the product telling an operator to do something no one proposed.
+    const supplied = Array.isArray(record.manualSteps)
+      ? record.manualSteps.filter(
+          (s): s is string => typeof s === "string" && !!s.trim(),
+        )
+      : []
+    return {
+      kind: "manual_review",
+      executable: false,
+      title,
+      rationale,
+      confidence,
+      risk: "high",
+      manualSteps:
+        supplied.length > 0
+          ? supplied.map((s) => s.trim().slice(0, 400)).slice(0, 8)
+          : [rationale.slice(0, 400)],
+      requiresPreviewRerun: false,
+    }
+  }
   const patch = asRecord(record.patch)
   if (!patch) throw new Error("Executable Import Doctor fix needs patch")
 

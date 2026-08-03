@@ -42,7 +42,20 @@ export function classifyAiError(raw: string): AiErrorCode {
   // Our own validators, not the provider. Checked AFTER the provider patterns
   // so a genuine 429 that happens to mention a field name is still a rate
   // limit.
-  if (/response must be|response missing|must be an object|must be a JSON object/.test(s)) {
+  //
+  // 2026-08-03 — widened after the 2026-08-02 list proved to be an enumeration
+  // of the errors seen so far rather than of the ones the validators throw.
+  // `Executable Import Doctor fix must be low or medium risk` matched none of
+  // the four patterns and was reported to the operator as an outage. The
+  // additions are the remaining shapes in `import-doctor.ts`: `must be low or
+  // medium risk`, `needs patch`, `array is empty`, and the generic
+  // `Import Doctor …` prefix as a backstop, so a validator added later is
+  // wrong-shaped rather than silently mislabelled as a provider failure.
+  if (
+    /response must be|response missing|must be an object|must be a JSON object/.test(s) ||
+    /must be low or medium risk|needs patch|array is empty|must change/.test(s) ||
+    /^import doctor |import doctor (response|fix|explanation)/.test(s)
+  ) {
     return "ai_bad_response"
   }
   return "ai_unavailable"
