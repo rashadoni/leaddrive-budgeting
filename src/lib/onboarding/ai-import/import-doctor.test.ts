@@ -6,6 +6,7 @@ import {
   validateImportDoctorExplanation,
   validateImportDoctorFixProposal,
   FIX_SYSTEM_PROMPT,
+  buildImportDoctorUserMessage,
 } from "./import-doctor"
 
 function mockClient(text: string) {
@@ -280,5 +281,43 @@ describe("the prompt names every field the validator requires", () => {
     // exists can still answer "high" on an executable kind.
     expect(FIX_SYSTEM_PROMPT).toMatch(/low.*medium/i)
     expect(FIX_SYSTEM_PROMPT).toMatch(/manual_review/)
+  })
+})
+
+/**
+ * 2026-08-03 — the panel whose entire job is explaining answered an
+ * Azerbaijani operator in English.
+ *
+ * Third rule in this file that lived in EXPLAIN_SYSTEM_PROMPT and not in
+ * FIX_SYSTEM_PROMPT (after the shape, after `risk`). The contract test above
+ * catches a missing FIELD; this one catches a missing RULE, which is the other
+ * half of the same class.
+ */
+describe("both doctor prompts carry the same rules", () => {
+  it("the fix prompt tells the model to answer in the operator's locale", () => {
+    expect(FIX_SYSTEM_PROMPT).toMatch(/locale/i)
+    // Named fields, not a bare instruction — see the note in the prompt.
+    for (const field of ["title", "rationale", "manualSteps"]) {
+      expect(FIX_SYSTEM_PROMPT, field).toContain(field)
+    }
+  })
+
+  it("and to leave the machine-readable values alone", () => {
+    // A localized `"sheet_fix"` fails validation, which would turn a
+    // translation bug into the "assistant unavailable" message.
+    expect(FIX_SYSTEM_PROMPT).toMatch(/do not translate/i)
+    for (const enumField of ["kind", "planKind", "role", "action"]) {
+      expect(FIX_SYSTEM_PROMPT, enumField).toContain(enumField)
+    }
+  })
+
+  it("carries the locale to the model in the user message", () => {
+    // The rule is useless if the locale never arrives.
+    const msg = buildImportDoctorUserMessage({
+      locale: "az",
+      issue: { code: "recon_red", severity: "blocking", message: "x" },
+      context: {},
+    })
+    expect(msg).toContain("Locale: az")
   })
 })

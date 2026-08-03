@@ -171,3 +171,53 @@ describe("isIntragroupEliminationBuValue — the label is the only guard", () =>
     }
   })
 })
+
+/**
+ * 2026-08-03 — the blast radius of the refusal.
+ *
+ * `parseEliminationBlock` refusing an unreadable block is right. Turning that
+ * refusal into an import-wide `blocked` was not: measured on the client's own
+ * `BS Actual 2025`, the EJE block has eight uncoded lines worth up to
+ * 458,949,840, a two-segment `BS.02.04`, and misses balance by 2,451,158 in
+ * December — so the whole 2025 import, P&L and all, could not run because of a
+ * block the product managed without entirely until the day before.
+ *
+ * These lock the parser's contract that the handler depends on: a refusal
+ * carries the reason and NO rows, so a caller that downgrades it to a warning
+ * cannot accidentally write a partial elimination.
+ */
+describe("a refusal is total — no partial rows escape it", () => {
+  it("returns zero lines with the reason, never a subset", () => {
+    const r = parse([
+      ...BALANCED,
+      ["---", "Uncoded And Material", null, 458_949_840, 458_949_840],
+    ])
+    expect(r.blocked).toBeTruthy()
+    // The balanced lines that DID parse must not leak out alongside the
+    // refusal — that would be the half-import the refusal exists to prevent.
+    expect(r.lines).toEqual([])
+    expect(r.totalsByMonth).toEqual({})
+  })
+
+  it("refuses a two-segment code rather than guessing its parent", () => {
+    // `BS.02.04` on the real 2025 sheet. Three segments is the level the
+    // statement is imported at; inventing the missing one would post a
+    // six-figure reversal to a line nobody chose.
+    const r = parse([
+      ...BALANCED,
+      ["BS.02.04", "Retained Earnings (Accumulated Loss)", null, 5_542_925.52, 0],
+    ])
+    expect(r.blocked).toMatch(/no usable chart code/i)
+    expect(r.blocked).toMatch(/Retained Earnings/)
+  })
+
+  it("names the biggest offender so the reader starts at the top", () => {
+    const r = parse([
+      ...BALANCED,
+      ["---", "Small One", null, 10, 10],
+      ["---", "The Big One", null, 458_949_840, 0],
+    ])
+    expect(r.blocked).toMatch(/The Big One/)
+    expect(r.blocked).toMatch(/2 line\(s\)/)
+  })
+})

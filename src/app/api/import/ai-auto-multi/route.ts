@@ -65,6 +65,7 @@ import {
   looksLikeReportingPack,
 } from "@/lib/onboarding/ai-import/reporting-pack-sheet-map"
 import { applyBudgetPlfSplit } from "@/lib/onboarding/ai-import/consolidated-plf-split"
+import { worstDrifts } from "@/lib/onboarding/ai-import/drift-summary"
 import {
   applyBuColumnSplit,
   inferStatementMeta,
@@ -198,6 +199,21 @@ type SafetyReceipt = {
       unverifiedSheetNames: string[]
       /** True only when every committed group produced a DB re-read. */
       allCommittedGroupsVerified: boolean
+      /**
+       * The biggest disagreements between the workbook and the database,
+       * worst absolute manat first. Empty when nothing drifted — or when
+       * nothing was checked, which is a different finding and says so.
+       */
+      worstDrift: Array<{
+        entityCode: string | null
+        sheetName: string
+        account: string
+        period: string
+        expected: number
+        actual: number
+        drift: number
+        driftPct: number
+      }>
     }
     groups: Array<{
       fileType: string
@@ -407,6 +423,22 @@ function buildSafetyReceipt(
               g.reconciliation?.evidence === "db-readback" &&
               (g.reconciliation?.perSheet.length ?? 0) > 0,
           ),
+        /**
+         * 2026-08-03 — the money, which stopped one layer short of the screen.
+         *
+         * `perSheet` has always carried `topDrift` with `expected`, `actual`
+         * and the company and sheet it belongs to; this receipt reduced all of
+         * it to `perSheet.length`. So a red verdict reached a controller as a
+         * colour and a count, and the figure they actually had to chase —
+         * measured, ranked, sitting in memory — was dropped on the way out.
+         *
+         * Three lines, worst absolute gap first. Enough to start looking; not
+         * so many that the panel becomes a report of its own.
+         */
+        worstDrift: worstDrifts(
+          committedGroups.flatMap((g) => g.reconciliation?.perSheet ?? []),
+          3,
+        ),
       },
       groups: result.perGroup.map((group) => ({
         fileType: group.fileType,

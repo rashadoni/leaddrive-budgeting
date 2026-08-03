@@ -4007,6 +4007,8 @@
           "coaReviewRequired": "{n} chart-of-accounts row(s) need a decision.",
           "routingUncertain": "{n} sheet(s) listed for a routing check. Every P&L, balance-sheet and cash-flow sheet is listed as a matter of course, plus any sheet with no company, no budget/actual, or low confidence. This does not block the import.",
           "reconciliationBlocked": "Reconciliation is red, so the import cannot be applied safely.",
+          "reconciliationBlockedNothingChecked": "Reconciliation is red, but it checked NOTHING: 0 sheets were re-read from the database and 0 were skipped, so no group was formed. This is not a mismatch — it is a check that did not run. Do not read the red as proof the numbers are wrong.",
+          "reconciliationBlockedDrifted": "Reconciliation is red: {verified} of {total} sheets were re-read from the database and disagreed. {unverified} could not be checked at all ({names}).",
           "previewStale": "Preview is stale after routing fixes."
         },
         "labels": {

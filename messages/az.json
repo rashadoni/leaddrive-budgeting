@@ -4007,6 +4007,8 @@
           "coaReviewRequired": "{n} chart-of-accounts sətri qərar tələb edir.",
           "routingUncertain": "{n} vərəq yönləndirmə yoxlaması üçün siyahıdadır. Hər mənfəət-zərər, balans və pul axını vərəqi bura standart olaraq düşür, üstəlik şirkəti, büdcə/fakt təyinatı olmayan və ya etibarlılığı aşağı olan vərəqlər. Bu, idxalı bloklamır.",
           "reconciliationBlocked": "Reconciliation qırmızıdır, ona görə idxal təhlükəsiz tətbiq edilə bilməz.",
+          "reconciliationBlockedNothingChecked": "Üzləşdirmə qırmızıdır, lakin HEÇ NƏ yoxlamayıb: bazadan 0 vərəq yenidən oxunub, 0 vərəq buraxılıb — heç bir qrup formalaşmayıb. Bu, uyğunsuzluq deyil, aparılmamış yoxlamadır. Qırmızı rəng burada rəqəmlərin səhv olduğunu sübut etmir.",
+          "reconciliationBlockedDrifted": "Üzləşdirmə qırmızıdır: {total} vərəqdən {verified} bazadan yenidən oxunub və uyğun gəlməyib. Daha {unverified} vərəq ümumiyyətlə yoxlanıla bilməyib ({names}).",
           "previewStale": "Routing fixes-dən sonra preview köhnəlib."
         },
         "labels": {

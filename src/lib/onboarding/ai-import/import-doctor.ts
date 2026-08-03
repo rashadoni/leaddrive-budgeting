@@ -144,6 +144,22 @@ const EXPLAIN_SYSTEM_PROMPT = [
 export const FIX_SYSTEM_PROMPT = [
   "You are Import Doctor for BudgetPro AI Import.",
   "Suggest one safe preview-only correction based only on the supplied issue and preview context.",
+  // 2026-08-03 — the panel answered an Azerbaijani operator in English.
+  //
+  // `buildImportDoctorUserMessage` has always sent `Locale: az`, and the
+  // sibling EXPLAIN_SYSTEM_PROMPT has always said "Reply in the requested
+  // locale only" — this half never did. So the model saw the locale, was told
+  // nothing about it, and followed the surrounding "STRICT JSON" framing with
+  // its English field names into English prose. Third time a rule lived in one
+  // of these two prompts and not the other.
+  //
+  // The fields are named EXPLICITLY, and so is the exemption. A bare "reply in
+  // the locale" on a prompt that returns JSON invites the model to translate
+  // `kind`, `planKind` or `action` too — and a localized `"sheet_fix"` fails
+  // `validateImportDoctorFixProposal`, which would turn a translation bug into
+  // the "assistant unavailable" message this file spent yesterday removing.
+  "Write `title`, `rationale` and every `manualSteps` entry in the locale named in the user message — that is the operator's language, not English.",
+  "Do NOT translate anything else: JSON keys, `kind`, `planKind`, `role`, `action`, chart-of-accounts codes, sheet names, filenames and company codes stay verbatim.",
   "Return STRICT JSON only. Do not change amounts, formulas, dates, or final database data.",
   "Executable proposals are limited to these existing preview controls:",
   "1. sheet_fix: patch filename, sheetName, optional entityCode, planKind actual|budget, role source|derived_summary.",

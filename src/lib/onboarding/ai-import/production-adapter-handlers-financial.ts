@@ -706,15 +706,31 @@ export function makeBsEliminationsHandler(
     )
 
     if (parsed.blocked) {
-      // BLOCKS rather than skipping. The entity blocks of the same sheet are
-      // importing right now; letting this one fall through would produce a
-      // group balance sheet described as consolidated and missing part of its
-      // eliminations — wrong AND balanced, which nothing downstream detects.
+      // 2026-08-03 — this used to return `blocked`, and that was wrong at a
+      // scope I had not thought about.
+      //
+      // Refusing a half-readable elimination block is right: a group balance
+      // sheet missing part of its eliminations is wrong AND balanced, which
+      // nothing downstream detects. But `blocked` aborts the ENTIRE import at
+      // the routing safety gate — the P&L, the sales sheets, the risk register,
+      // every sheet in the workbook that has nothing to do with eliminations.
+      // Measured on the client's own file: `BS Actual 2025` carries eight
+      // uncoded lines worth up to 458,949,840, a two-segment `BS.02.04`, and a
+      // block that misses balance by 2,451,158 in December — so the 2025 import
+      // could not run at all, because of a block the product managed without
+      // entirely until yesterday.
+      //
+      // Skipping costs exactly what the product had before 14.8: an
+      // un-eliminated group total, which the balance sheet already declares
+      // (`sum_of_entities`, the amber banner, D/E withheld). A known and
+      // disclosed state is not worth blocking a whole workbook for.
       return {
-        summary: `BS eliminations "${input.sheetName}" refused — ${parsed.blocked}`,
+        summary: `BS eliminations "${input.sheetName}" not imported — ${parsed.blocked}`,
         itemCount: 0,
-        warnings: [...parsed.warnings, parsed.blocked],
-        blocked: { reason: parsed.blocked },
+        warnings: [
+          ...parsed.warnings,
+          `${parsed.blocked} The rest of this workbook still imports; the group balance sheet stays UN-ELIMINATED for this plan and says so on screen.`,
+        ],
         applyToDb: async () => ({ rowsInserted: 0 }),
       }
     }

@@ -16,6 +16,7 @@
  *  - Total size cap (20 MB) enforced client-side + server-side
  */
 import { useRef, useState, type ChangeEvent, type DragEvent } from "react"
+import { chooseReconciliationBlockedMessage } from "@/lib/onboarding/ai-import/reconciliation-blocked-message"
 import { useLocale, useTranslations } from "next-intl"
 import { localizedName } from "@/lib/i18n/localized-name"
 import {
@@ -219,6 +220,18 @@ interface SafetyReceipt {
   reconciliation: {
     verdict: "green" | "yellow" | "red"
     conflicts: number
+    /**
+     * 2026-08-03 — the server has sent this since Phase 11.2 and this type
+     * never declared it, so the only surface that could have shown WHY a
+     * verdict is red could not see the reason. Optional because a receipt from
+     * an older deployment carries none.
+     */
+    evidence?: {
+      sheetsVerified: number
+      sheetsUnverified: number
+      unverifiedSheetNames?: string[]
+      allCommittedGroupsVerified: boolean
+    }
     groups: Array<{
       fileType: string
       verdict: string
@@ -924,10 +937,19 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
       previewResult.safetyReceipt?.status === "blocked" ||
       previewResult.overallVerdict === "red"
     ) {
+      // 2026-08-03 — every other issue here names a number; this one stated a
+      // colour. The evidence is already in the receipt and the route's own
+      // comment says what it means: "a verdict with `sheetsVerified: 0` is NOT
+      // proof of anything". Rendering that as a flat "reconciliation is red"
+      // told an operator their data was wrong when what actually happened was
+      // that the check never ran.
+      const choice = chooseReconciliationBlockedMessage(
+        previewResult.safetyReceipt?.reconciliation?.evidence,
+      )
       return {
         code: "reconciliation_blocked",
         severity: "blocking",
-        message: t("doctor.issue.reconciliationBlocked"),
+        message: t(`doctor.issue.${choice.key}`, choice.params),
         evidence: { safetyReceipt: previewResult.safetyReceipt },
       }
     }
