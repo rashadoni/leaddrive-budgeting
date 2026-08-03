@@ -5245,7 +5245,7 @@
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Mənbə Reyestri",
-    "description": "Hər şirkəti gecə drift-watchdog üçün öz xlsx faylına bağlayır. Dəyişikliklər atomik şəkildə <file></file> faylına yazılır.",
+    "description": "Hər şirkəti gecə drift-watchdog üçün öz xlsx faylına bağlayır. Reyestr metadatası <file></file> bazasında saxlanılır.",
     "entriesHeading": "Yazılar",
     "loading": "Yüklənir…",
     "emptyEntries": "Hələ yazı yoxdur. Aşağıda əlavə edin.",

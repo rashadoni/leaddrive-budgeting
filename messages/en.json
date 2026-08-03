@@ -5245,7 +5245,7 @@
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Source Registry",
-    "description": "Maps each company to its authoritative xlsx file for the nightly drift-watchdog. Edits write atomically to <file></file>.",
+    "description": "Maps each company to its authoritative xlsx file for the nightly drift-watchdog. Registry metadata is persisted in <file></file>.",
     "entriesHeading": "Entries",
     "loading": "Loading…",
     "emptyEntries": "No entries yet. Add one below.",

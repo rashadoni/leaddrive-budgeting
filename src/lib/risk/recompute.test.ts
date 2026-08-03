@@ -3303,9 +3303,9 @@ describe('recomputeIndicator — commodityPriceResolver (Phase 7.I)', () => {
   it('fails closed when a 12M statistic has insufficient calendar-month coverage', async () => {
     // Three real months are not a substitute for a 12-month statistic.
     const series = [
-      { metric: 'SUGAR_RAW_USD_TONNE', datetime: new Date(2026, 0, 1), value: 400, unit: 'USD/tonne' },
-      { metric: 'SUGAR_RAW_USD_TONNE', datetime: new Date(2026, 1, 1), value: 420, unit: 'USD/tonne' },
-      { metric: 'SUGAR_RAW_USD_TONNE', datetime: new Date(2026, 2, 1), value: 440, unit: 'USD/tonne' },
+      { metric: 'SUGAR_RAW_USD_TONNE', datetime: new Date(Date.UTC(2026, 0, 1)), value: 400, unit: 'USD/tonne' },
+      { metric: 'SUGAR_RAW_USD_TONNE', datetime: new Date(Date.UTC(2026, 1, 1)), value: 420, unit: 'USD/tonne' },
+      { metric: 'SUGAR_RAW_USD_TONNE', datetime: new Date(Date.UTC(2026, 2, 1)), value: 440, unit: 'USD/tonne' },
     ];
     const ds = mockDs({
       intelDataPoints: { 'sugar-yahoo-sb-f:SUGAR_RAW_USD_TONNE': series },

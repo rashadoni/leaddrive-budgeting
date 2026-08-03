@@ -6,8 +6,13 @@
 
 set -e
 
-echo "→ [entrypoint] Applying pending Prisma migrations (migrate deploy)..."
-prisma migrate deploy
+if [ "${RUN_MIGRATIONS_ON_START:-true}" = "true" ]; then
+  echo "→ [entrypoint] Applying pending Prisma migrations (migrate deploy)..."
+  prisma migrate deploy
+  echo "→ [entrypoint] Migrations up to date."
+else
+  echo "→ [entrypoint] Skipping migrations; a dedicated migration job owns schema changes."
+fi
 
-echo "→ [entrypoint] Migrations up to date. Starting Next.js server..."
+echo "→ [entrypoint] Starting Next.js server..."
 exec "$@"

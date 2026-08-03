@@ -113,9 +113,9 @@ USER nextjs
 
 EXPOSE 3000
 
-# Simple healthcheck — any 200/30x response means the Next.js server is alive.
+# Healthcheck verifies both the HTTP process and its database dependency.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=3 \
-  CMD curl -fsS -o /dev/null http://localhost:3000/ || exit 1
+  CMD curl -fsS -o /dev/null http://localhost:3000/api/health || exit 1
 
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "server.js"]

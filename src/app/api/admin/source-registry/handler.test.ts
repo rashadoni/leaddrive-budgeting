@@ -2,72 +2,55 @@
 /**
  * Handler test for `/api/admin/source-registry` (GET + PUT + DELETE).
  *
- * Truth-infra L4 — file-backed source registry CRUD. Locks admin-only
- * gate, validation envelopes, and 404 on missing entries.
- *
- * Filesystem: the route writes to `data/onboarding-source-registry.json`
- * via `fs.promises`. Tests use an in-memory vi.mock("fs") store so the
- * suite is hermetic (no real disk I/O, no sandbox EPERM, CI-safe).
+ * The production route persists deployment-wide registry metadata in
+ * PostgreSQL. Tests use a small in-memory Prisma surface so no database or
+ * filesystem state leaks into the suite.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
-// ── in-memory fs mock ──────────────────────────────────────────────────
-// Shared via vi.hoisted so the mock factory can reference the store
-// before imports are resolved.
-const { fsMock } = vi.hoisted(() => {
-  const store: Record<string, string> = {}
-  const fsMock = {
-    readFile: vi.fn(async (p: string): Promise<string> => {
-      if (Object.prototype.hasOwnProperty.call(store, p)) return store[p]
-      const err = Object.assign(new Error(`ENOENT: no such file or directory, open '${p}'`), { code: "ENOENT" })
-      throw err
-    }),
-    writeFile: vi.fn(async (p: string, content: string): Promise<void> => {
-      store[p] = content
-    }),
-    rename: vi.fn(async (src: string, dst: string): Promise<void> => {
-      if (!Object.prototype.hasOwnProperty.call(store, src)) {
-        throw Object.assign(new Error(`ENOENT: no such file, rename '${src}' -> '${dst}'`), { code: "ENOENT" })
-      }
-      store[dst] = store[src]
-      delete store[src]
-    }),
-    unlink: vi.fn(async (p: string): Promise<void> => {
-      delete store[p]
-    }),
-    _store: store,
-    _reset() { for (const k of Object.keys(store)) delete store[k] },
+const { prismaMock, rows } = vi.hoisted(() => {
+  type Row = {
+    companyCode: string
+    xlsx: string
+    sheet: string | null
+    period: string
   }
-  return { fsMock }
-})
-
-// Mock both the named `promises` export AND the default export so that
-// `import { promises as fs } from "fs"` + `import fs from "fs"` both work.
-// Without `default`, a future transitive import of `fs.existsSync` etc.
-// silently returns undefined instead of a function.
-vi.mock("fs", () => {
-  const proms = {
-    readFile: fsMock.readFile,
-    writeFile: fsMock.writeFile,
-    rename: fsMock.rename,
-    unlink: fsMock.unlink,
+  const rows = new Map<string, Row>()
+  const prismaMock = {
+    sourceRegistryEntry: {
+      findMany: vi.fn(async () => [...rows.values()].sort((a, b) => a.companyCode.localeCompare(b.companyCode))),
+      upsert: vi.fn(async ({ create, update, where }: {
+        create: Row
+        update: Omit<Row, "companyCode">
+        where: { companyCode: string }
+      }) => {
+        const existing = rows.get(where.companyCode)
+        const row = existing
+          ? { ...existing, ...update }
+          : { ...create }
+        rows.set(where.companyCode, row)
+        return row
+      }),
+      deleteMany: vi.fn(async ({ where }: { where: { companyCode: string } }) => {
+        const deleted = rows.delete(where.companyCode)
+        return { count: deleted ? 1 : 0 }
+      }),
+    },
   }
-  return { default: { promises: proms }, promises: proms }
+  return { prismaMock, rows }
 })
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: {} }))
+vi.mock("@/lib/db/prisma-admin", () => ({ prismaAdmin: prismaMock }))
 
-import { mockSession, makeRequest } from "@/test/api-harness"
-import { GET, PUT, DELETE } from "./route"
+import { makeRequest, mockSession } from "@/test/api-harness"
+import { DELETE, GET, PUT } from "./route"
 
 beforeEach(() => {
-  fsMock._reset()
-  fsMock.readFile.mockClear()
-  fsMock.writeFile.mockClear()
-  fsMock.rename.mockClear()
-  fsMock.unlink.mockClear()
+  rows.clear()
+  vi.clearAllMocks()
 })
 
 describe("GET /api/admin/source-registry", () => {
@@ -83,71 +66,51 @@ describe("GET /api/admin/source-registry", () => {
     expect(res.status).toBe(403)
   })
 
-  it("200 returns entries (empty {} when no file)", async () => {
+  it("200 returns persisted entries", async () => {
+    rows.set("B", { companyCode: "B", xlsx: "b.xlsx", sheet: null, period: "2026" })
+    rows.set("A", { companyCode: "A", xlsx: "a.xlsx", sheet: "Main", period: "2025" })
     await mockSession({ orgId: "org_demo", userId: "u1", role: "admin" })
     const res = await GET(makeRequest("/api/admin/source-registry"))
     expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body.entries).toEqual({})
+    expect(await res.json()).toEqual({
+      entries: {
+        A: { xlsx: "a.xlsx", sheet: "Main", period: "2025" },
+        B: { xlsx: "b.xlsx", sheet: null, period: "2026" },
+      },
+    })
   })
 })
 
 describe("PUT /api/admin/source-registry", () => {
   it("401 unauthenticated", async () => {
     await mockSession(null)
-    const res = await PUT(
-      makeRequest("/api/admin/source-registry", {
-        method: "PUT",
-        json: { companyCode: "TEST-X", xlsx: "tmp/x.xlsx", sheet: null, period: "2026-Q1" },
-      }),
-    )
+    const res = await PUT(makeRequest("/api/admin/source-registry", {
+      method: "PUT",
+      json: { companyCode: "TEST-X", xlsx: "tmp/x.xlsx", sheet: null, period: "2026-Q1" },
+    }))
     expect(res.status).toBe(401)
   })
 
-  it("400 missing companyCode", async () => {
+  it.each([
+    [{ xlsx: "tmp/x.xlsx", period: "2026-Q1" }, "companyCode required"],
+    [{ companyCode: "TEST-X", period: "2026-Q1" }, "xlsx path required"],
+    [{ companyCode: "TEST-X", xlsx: "tmp/x.xlsx" }, "period required"],
+  ])("400 validates required fields", async (json, error) => {
     await mockSession({ orgId: "org_demo", userId: "u1", role: "admin" })
-    const res = await PUT(
-      makeRequest("/api/admin/source-registry", {
-        method: "PUT",
-        json: { xlsx: "tmp/x.xlsx", period: "2026-Q1" },
-      }),
-    )
+    const res = await PUT(makeRequest("/api/admin/source-registry", { method: "PUT", json }))
     expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error })
   })
 
-  it("400 missing xlsx path", async () => {
+  it("200 upserts an entry", async () => {
     await mockSession({ orgId: "org_demo", userId: "u1", role: "admin" })
-    const res = await PUT(
-      makeRequest("/api/admin/source-registry", {
-        method: "PUT",
-        json: { companyCode: "TEST-X", period: "2026-Q1" },
-      }),
-    )
-    expect(res.status).toBe(400)
-  })
-
-  it("400 missing period", async () => {
-    await mockSession({ orgId: "org_demo", userId: "u1", role: "admin" })
-    const res = await PUT(
-      makeRequest("/api/admin/source-registry", {
-        method: "PUT",
-        json: { companyCode: "TEST-X", xlsx: "tmp/x.xlsx" },
-      }),
-    )
-    expect(res.status).toBe(400)
-  })
-
-  it("200 writes new entry (in-memory store, no real I/O)", async () => {
-    await mockSession({ orgId: "org_demo", userId: "u1", role: "admin" })
-    const res = await PUT(
-      makeRequest("/api/admin/source-registry", {
-        method: "PUT",
-        json: { companyCode: "TEST-PUT", xlsx: "tmp/test.xlsx", sheet: "Sheet1", period: "2026-Q1" },
-      }),
-    )
+    const res = await PUT(makeRequest("/api/admin/source-registry", {
+      method: "PUT",
+      json: { companyCode: "TEST-PUT", xlsx: "tmp/test.xlsx", sheet: "Sheet1", period: "2026-Q1" },
+    }))
     expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body.entry).toMatchObject({ xlsx: "tmp/test.xlsx", period: "2026-Q1" })
+    expect((await res.json()).entry).toEqual({ xlsx: "tmp/test.xlsx", sheet: "Sheet1", period: "2026-Q1" })
+    expect(rows.has("TEST-PUT")).toBe(true)
   })
 })
 
@@ -166,24 +129,20 @@ describe("DELETE /api/admin/source-registry", () => {
 
   it("404 entry not found", async () => {
     await mockSession({ orgId: "org_demo", userId: "u1", role: "admin" })
-    const res = await DELETE(
-      makeRequest("/api/admin/source-registry?companyCode=NONEXISTENT-FAKE-XYZ", { method: "DELETE" }),
-    )
+    const res = await DELETE(makeRequest("/api/admin/source-registry?companyCode=MISSING", { method: "DELETE" }))
     expect(res.status).toBe(404)
   })
 
-  it("200 removes existing entry (in-memory store, no real I/O)", async () => {
+  it("200 removes an existing entry", async () => {
+    rows.set("TEST-DELETE", {
+      companyCode: "TEST-DELETE",
+      xlsx: "tmp/test.xlsx",
+      sheet: null,
+      period: "2026-Q1",
+    })
     await mockSession({ orgId: "org_demo", userId: "u1", role: "admin" })
-    // First PUT an entry into the in-memory store
-    await PUT(
-      makeRequest("/api/admin/source-registry", {
-        method: "PUT",
-        json: { companyCode: "TEST-DELETE", xlsx: "tmp/test.xlsx", sheet: null, period: "2026-Q1" },
-      }),
-    )
-    const res = await DELETE(
-      makeRequest("/api/admin/source-registry?companyCode=TEST-DELETE", { method: "DELETE" }),
-    )
+    const res = await DELETE(makeRequest("/api/admin/source-registry?companyCode=TEST-DELETE", { method: "DELETE" }))
     expect(res.status).toBe(200)
+    expect(rows.has("TEST-DELETE")).toBe(false)
   })
 })

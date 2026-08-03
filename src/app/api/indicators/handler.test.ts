@@ -56,6 +56,7 @@ import { GET, POST } from "./route"
 const ORG_ID = "cm3rlswraporg00000001demo"
 
 beforeEach(() => {
+  delete process.env.SERVERLESS_SYNC_RECOMPUTE
   prismaMock.indicatorDefinition.findMany.mockReset().mockResolvedValue([])
   prismaMock.company.findMany.mockReset().mockResolvedValue([])
   prismaMock.companyIndicator.findMany.mockReset().mockResolvedValue([])
@@ -318,6 +319,30 @@ describe("POST /api/indicators (recompute)", () => {
     expect(body.async).toBe(true)
     expect(body.jobId).toBe("job_1")
     expect(enqueueRecomputeJobMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("runs a large fan-out inline on scale-to-zero serverless deployments", async () => {
+    process.env.SERVERLESS_SYNC_RECOMPUTE = "true"
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
+    const companies = Array.from({ length: 60 }, (_, i) => ({
+      id: `c${i}`, code: `C${i}`, industry: "tech", level: 2, isActive: true, role: "operational",
+    }))
+    prismaMock.company.findMany.mockResolvedValue(companies)
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+      {
+        id: "i1", organizationId: null, code: "IND_X", formula: {},
+        sparklineFormula: null, thresholds: {}, requiredInputs: [],
+        industries: [], isActive: true, unit: "%", defaultValueSource: "computed",
+      },
+    ])
+
+    const res = await POST(
+      makeRequest("/api/indicators", { method: "POST", json: { period: "2026-Q1" } }),
+    )
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).processed).toBe(60)
+    expect(enqueueRecomputeJobMock).not.toHaveBeenCalled()
   })
 
   it("error in recompute doesn't abort batch — captured as outcome", async () => {

@@ -57,6 +57,13 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO budgetpro_app;
 
+-- The source registry is deployment-wide operational metadata. It has no
+-- tenant scope, so request traffic must not access it directly; the admin
+-- client is the only supported path.
+SELECT 'REVOKE ALL PRIVILEGES ON TABLE public.source_registry_entries FROM budgetpro_app'
+WHERE to_regclass('public.source_registry_entries') IS NOT NULL
+\gexec
+
 -- DataRevision is append-only evidence. Its RLS migration exposes no DELETE
 -- policy to this request role; the explicit privilege revoke is defence in
 -- depth and keeps this provisioning script idempotent after the broad grants

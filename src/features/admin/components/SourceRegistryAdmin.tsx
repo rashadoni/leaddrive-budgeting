@@ -2,9 +2,9 @@
 /**
  * Financial-truth-infra L4 — registry editor UI.
  *
- * Replaces the manual edit of `data/onboarding-source-registry.json`
- * with an admin page where the watchdog operator can add / edit /
- * remove company → xlsx mappings without filesystem access.
+ * Provides an admin page where the watchdog operator can add / edit /
+ * remove company → xlsx mappings without filesystem access. Registry
+ * metadata is persisted in PostgreSQL.
  *
  * One table row per entry: companyCode, xlsx path, sheet name (or
  * `(none)`), period. Edit-in-place via the form below. Removal via
@@ -120,7 +120,7 @@ export function SourceRegistryAdmin() {
           {t.rich("description", {
             file: () => (
               <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                data/onboarding-source-registry.json
+                PostgreSQL
               </code>
             ),
           })}

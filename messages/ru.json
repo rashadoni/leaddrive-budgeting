@@ -5245,7 +5245,7 @@
   },
   "adminSourceRegistry": {
     "title": "Реестр источников Drift Watchdog",
-    "description": "Сопоставляет каждую компанию с её авторитетным xlsx-файлом для ночного drift-watchdog. Изменения записываются атомарно в <file></file>.",
+    "description": "Сопоставляет каждую компанию с её авторитетным xlsx-файлом для ночного drift-watchdog. Метаданны реестра хранятся в <file></file>.",
     "entriesHeading": "Записи",
     "loading": "Загрузка…",
     "emptyEntries": "Записей пока нет. Добавьте ниже.",

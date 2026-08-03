@@ -46,11 +46,14 @@ const logger = getLogger('api:indicators');
 // The old 500 cap is gone — async path has no fan-out limit.
 const SYNC_THRESHOLD = 50;
 
-// Next.js/Vercel function budget. Default is 10s on Hobby and 30s on Pro,
-// which is tight for 500 × 5 Prisma calls even on warm connections. Lift
-// explicitly so period-only recomputes don't time out half-way through a
-// batch and leave IndicatorValue rows in an inconsistent state.
-export const maxDuration = 60;
+function serverlessSyncRecomputeEnabled(): boolean {
+  return process.env.SERVERLESS_SYNC_RECOMPUTE === 'true';
+}
+
+// Keep the route compatible with the Cloud Run request timeout used by the
+// scale-to-zero deployment. Large fan-outs run inline there so the platform
+// cannot freeze an unfinished setImmediate worker after the response.
+export const maxDuration = 900;
 
 // Phase 5.2 Stage 2 (2026-05-21) — resolveTargets accepts an optional
 // `db` argument so callers wrapped in `withOrgScope` can pass the tx
@@ -316,7 +319,8 @@ export async function POST(request: NextRequest) {
   // Phase 6.1 — async path for large fan-outs. Returns 202 + jobId; the
   // client polls /api/recompute/jobs/[jobId] for progress. No more 413
   // ceiling — workloads of 5000+ pairs are now safe.
-  if (targets.length > SYNC_THRESHOLD) {
+  const runLargeFanoutInline = serverlessSyncRecomputeEnabled();
+  if (targets.length > SYNC_THRESHOLD && !runLargeFanoutInline) {
     const orgId = session.orgId;
     // Phase 6 (2026-05-21) — BullMQ-backed path. Activates only when
     // QUEUE_BACKEND=bullmq AND a worker process is running. Defaults
@@ -482,7 +486,9 @@ export async function POST(request: NextRequest) {
       }
     }
     return localResults;
-  });
+  }, runLargeFanoutInline
+    ? { timeoutMs: 10 * 60 * 1000, maxWaitMs: 10_000 }
+    : undefined);
 
   const ok = results.filter((r) =>
     ['green', 'amber', 'red'].includes(r.status),

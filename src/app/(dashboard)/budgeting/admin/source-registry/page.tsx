@@ -1,6 +1,6 @@
 /**
  * Phase L4 — admin route for the drift-watchdog source registry.
- * CRUDs `data/onboarding-source-registry.json` via the API; admin-only.
+ * CRUDs PostgreSQL-backed registry metadata via the API; admin-only.
  */
 import { SourceRegistryAdmin } from "@/features/admin/components/SourceRegistryAdmin";
 

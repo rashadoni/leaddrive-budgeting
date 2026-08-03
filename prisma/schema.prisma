@@ -151,6 +151,19 @@ model UserLayoutPreference {
   @@map("user_layout_preferences")
 }
 
+// Deployment-wide metadata used by the source-registry admin tool. This was
+// previously stored in a JSON file, which is not durable on Cloud Run.
+model SourceRegistryEntry {
+  companyCode String   @id @map("company_code")
+  xlsx        String
+  sheet       String?
+  period      String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("source_registry_entries")
+}
+
 model Account {
   id                String  @id @default(cuid())
   userId            String
