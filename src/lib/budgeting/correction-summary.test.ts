@@ -3,6 +3,7 @@ import {
   summarizeCorrections,
   correctionNotice,
   NO_CORRECTIONS,
+  correctionDisclosureLine,
 } from "./correction-summary"
 
 const imported = (plannedAmount: number) => ({ plannedAmount })
@@ -77,5 +78,57 @@ describe("correctionNotice", () => {
     const n = correctionNotice({ count: 3, net: 0, needsReview: 1 })
     expect(n?.key).toBe("corrections.includesAndNeedsReview")
     expect(n?.params).toEqual({ count: 3, needsReview: 1 })
+  })
+})
+
+/**
+ * Phase 14.5 — the same fact, in a file that leaves the company.
+ *
+ * The screen has a banner; a banner has a session. A spreadsheet is opened by
+ * a bank, an auditor or a board months later, by someone who was never in the
+ * conversation where the correction was agreed.
+ */
+describe("correctionDisclosureLine", () => {
+  it("says nothing on a clean plan", () => {
+    // A disclosure on every file is furniture by the second week, and then the
+    // one that matters reads like furniture too.
+    expect(correctionDisclosureLine(NO_CORRECTIONS)).toBeNull()
+  })
+
+  it("states the count and the signed net effect", () => {
+    const line = correctionDisclosureLine({ count: 3, net: 2200, needsReview: 0 })!
+    expect(line).toMatch(/3 MANUAL CORRECTIONS/)
+    expect(line).toMatch(/\+2,200\.00 ₼/)
+    // The point of the sentence: these figures are not in the client's file.
+    expect(line).toMatch(/not present in the source workbook/)
+  })
+
+  it("keeps the sign, because a removal reads differently from an addition", () => {
+    expect(correctionDisclosureLine({ count: 1, net: -40_000, needsReview: 0 })!).toMatch(
+      /-40,000\.00 ₼/,
+    )
+  })
+
+  it("uses the singular for one correction", () => {
+    expect(correctionDisclosureLine({ count: 1, net: 5, needsReview: 0 })!).toMatch(
+      /1 MANUAL CORRECTION,/,
+    )
+  })
+
+  it("adds the double-count warning as its own sentence", () => {
+    // "Included" is information; "may be double-counting" is a call to act.
+    // One buries the other when they share a sentence.
+    const line = correctionDisclosureLine({ count: 3, net: 2200, needsReview: 1 })!
+    expect(line).toMatch(/1 of them has had the same cell rewritten/)
+    expect(line).toMatch(/double-count/)
+    expect(line).toMatch(/not yet reviewed/)
+    // Still says the base fact too.
+    expect(line).toMatch(/3 MANUAL CORRECTIONS/)
+  })
+
+  it("agrees in number when several need review", () => {
+    expect(correctionDisclosureLine({ count: 5, net: 0.5, needsReview: 2 })!).toMatch(
+      /2 of them have had/,
+    )
   })
 })

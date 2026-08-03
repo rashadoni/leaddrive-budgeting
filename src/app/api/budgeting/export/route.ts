@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { getOrgId } from "@/lib/api-auth"
 import { withOrgScope } from "@/lib/db/with-org-scope"
+// Phase 14.5 (2026-08-03) — the export must state what it contains.
+import {
+  summarizeCorrections,
+  correctionDisclosureLine,
+} from "@/lib/budgeting/correction-summary"
+import { MANUAL_CORRECTION_ORIGIN } from "@/lib/budgeting/manual-correction"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
@@ -247,6 +253,23 @@ export async function GET(req: NextRequest) {
   const subtitleCell = wsDash.getCell("A2")
   subtitleCell.value = `Status: ${plan.status === "active" ? "Active" : plan.status === "draft" ? "Draft" : "Closed"} | Generated: ${new Date().toLocaleDateString(undefined)} | LeadDrive CRM`
   subtitleCell.font = { size: 10, color: { argb: MUTED_TEXT } }
+
+  // Phase 14.5 (2026-08-03) — this file goes outside the company. A total that
+  // silently contains hand-entered money, in a workbook a bank or an auditor
+  // opens months from now, is a misrepresentation nobody in this building will
+  // be there to correct. Row 3 was blank; the KPI grid starts at 4, so nothing
+  // below shifts.
+  const corrections = summarizeCorrections(lines)
+  const disclosure = correctionDisclosureLine(corrections)
+  if (disclosure) {
+    wsDash.mergeCells("A3:F3")
+    const c = wsDash.getCell("A3")
+    c.value = disclosure
+    c.font = { size: 10, bold: true, color: { argb: AMBER } }
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AMBER_BG } }
+    c.alignment = { horizontal: "left", vertical: "middle", wrapText: true }
+    wsDash.getRow(3).height = 28
+  }
 
   // KPI Section
   const kpiStartRow = 4
@@ -793,13 +816,20 @@ export async function GET(req: NextRequest) {
     { header: "Cost Model Key", key: "costModelKey", width: 22 },
     { header: "Auto-calc", key: "isAuto", width: 12 },
     { header: "Notes", key: "notes", width: 36 },
+    // 14.5 — saying it once on the Dashboard tells a reader the file contains
+    // corrections; it does not let them find WHICH rows, and "somewhere in
+    // 2,340 lines" is not a disclosure anyone can act on. The reason column is
+    // the one that answers the question a recipient actually has.
+    { header: "Manual correction", key: "correction", width: 18 },
+    { header: "Correction reason", key: "correctionReason", width: 44 },
   ]
   applyHeaderRow(wsLines)
   freezeFirstRow(wsLines)
-  autoFilter(wsLines, 8)
+  autoFilter(wsLines, 10)
 
   for (const line of lines) {
     const l = line as BudgetLineWithAccount
+    const isCorrection = l.origin === MANUAL_CORRECTION_ORIGIN
     const row = wsLines.addRow({
       category: l.account?.name ?? l.account?.code ?? "",
       lineType: typeLabels[l.lineType] || l.lineType,
@@ -809,9 +839,25 @@ export async function GET(req: NextRequest) {
       costModelKey: l.costModelKey || "",
       isAuto: l.isAutoActual ? "Yes" : "No",
       notes: l.notes || "",
+      correction: isCorrection
+        ? l.correctionReviewAt
+          ? "Yes — needs review"
+          : "Yes"
+        : "",
+      correctionReason: isCorrection ? l.correctionReason ?? "" : "",
     })
     row.getCell("planned").numFmt = currFmt
     row.getCell("forecast").numFmt = currFmt
+    if (isCorrection) {
+      // Findable by eye as well as by filter — a recipient scrolling the tab
+      // should not have to know there is a column to filter on.
+      row.getCell("correction").font = { bold: true, color: { argb: AMBER } }
+      row.getCell("correction").fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: AMBER_BG },
+      }
+    }
   }
 
   const linesTotalRow = wsLines.addRow({

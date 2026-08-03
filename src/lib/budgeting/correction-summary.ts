@@ -91,3 +91,45 @@ export function correctionNotice(
   }
   return { key: "corrections.includes", params: { count: s.count } }
 }
+
+/**
+ * Phase 14.5 (2026-08-03) — the same fact, for a file that leaves the company.
+ *
+ * `correctionNotice` returns an i18n key for a React surface. An exported XLSX
+ * has no translation runtime and no reader we control: it goes to a bank, an
+ * auditor, a board pack, and it is opened months later by someone who was
+ * never in this conversation. That is the whole argument for saying it in the
+ * file rather than only on the screen — the screen has a banner, a banner has
+ * a session, and a spreadsheet outlives both.
+ *
+ * A plain sentence in the export's own language (English, like every header in
+ * it), formatted here rather than in the route so the wording is testable and
+ * cannot drift between the two exports that need it.
+ *
+ * Returns null on a clean plan. A disclosure on every file is furniture by the
+ * second week, and then the one that matters reads like furniture too.
+ */
+export function correctionDisclosureLine(s: CorrectionSummary): string | null {
+  if (s.count === 0) return null
+  const rows = s.count === 1 ? "1 manual correction" : `${s.count} manual corrections`
+  const net = s.net.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  const signed = s.net > 0 ? `+${net}` : net
+  const base =
+    `CONTAINS ${rows.toUpperCase()}, net ${signed} ₼ — figures adjusted by hand after import, ` +
+    `not present in the source workbook.`
+  if (s.needsReview === 0) return base
+  // Deliberately a second sentence rather than a clause: "included" is
+  // information, "may be double-counting" is a call to act, and one buries
+  // the other when they share a sentence.
+  const which =
+    s.needsReview === 1
+      ? "1 of them has"
+      : `${s.needsReview} of them have`
+  return (
+    `${base} ${which} had the same cell rewritten by a later import and may now ` +
+    `double-count — not yet reviewed.`
+  )
+}
