@@ -123,9 +123,6 @@ const AI_DOCTOR_STATUS = [
   '[data-testid="import-doctor-panel"]',
   '[data-testid="preview-result"]',
 ];
-// Only rendered when the preview detected years beyond the picked one; the
-// scene that points at it falls back to the year selector when it is absent.
-const AI_YEAR_OFFER = ['[data-testid="multi-year-offer"]', AI_YEAR];
 const AI_APPLY = '[data-testid="btn-apply"]';
 const AI_APPLY_RESULT = '[data-testid="apply-result"]';
 const AI_RECEIPT = [
@@ -136,7 +133,6 @@ const AI_RECEIPT = [
 const AI_OPEN_PNL = ['[data-testid="receipt-open-pnl"]', '[data-testid="apply-result"]'];
 const AI_ALIASES = ['[data-testid="entity-aliases-panel"]', AI_ROOT];
 const AI_ALIASES_BTN = ['[data-testid="btn-toggle-aliases"]', '[data-testid="entity-aliases-panel"]'];
-const AI_RESET_BTN = ['[data-testid="btn-reset"]', '[data-testid="apply-result"]'];
 
 // The workbook the guide actually imports. Override with GUIDE_IMPORT_XLSX to
 // record against the customer's own file — the narration deliberately never
@@ -1524,7 +1520,7 @@ export default {
           await h.moveTo(AI_TEMPLATE);
           await h.hover(AI_TEMPLATE);
           await h.holdUntil(0.5);
-          await h.safeClick(AI_ANALYZE);
+          await h.mutatingClick(AI_ANALYZE);
           await p.waitForSelector(
             '[data-testid="preview-result"], [data-testid="error-banner"]',
             { timeout: 240000 },
@@ -1581,7 +1577,7 @@ export default {
         do: async (p, l, h) => {
           await h.moveTo(AI_APPLY);
           await h.holdUntil(0.4);
-          await h.safeClick(AI_APPLY);
+          await h.mutatingClick(AI_APPLY);
           await p.waitForSelector(
             '[data-testid="apply-result"], [data-testid="error-banner"]',
             { timeout: 300000 },

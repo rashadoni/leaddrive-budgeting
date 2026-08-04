@@ -193,7 +193,48 @@ describe('Cash Flow help-video scenario', () => {
       'FC_EXPENSE',
       'TERM_COMPANY',
       'TERM_CELL',
+      // ai-import: tab switches only. Both flip local React state in
+      // AIImportTabs and issue no request — the writes in that scenario go
+      // through mutatingClick below, never through this list.
+      'AI_TAB_SINGLE',
+      'AI_TAB_MULTI',
       'RUN_BTN',
     ]);
+  });
+
+  it('pins every MUTATING click and keeps it off prod', async () => {
+    // A guide to the importer that never imports teaches nothing, so the
+    // ai-import scenario really does press Analyze and Apply. Those are writes
+    // and must never appear in the READONLY-safe list above, or that tripwire
+    // stops meaning anything. They get their own pinned list, and the helper
+    // refuses to run unless the target is a throwaway stand.
+    const url = pathToFileURL(
+      resolve(process.cwd(), 'video/scenarios/overrides.mjs'),
+    ).href;
+    const module = (await import(url)) as {
+      default: Record<string, GuideScenario>;
+    };
+    const actions = Object.values(module.default)
+      .flatMap((scenario) => scenario.scenes)
+      .map((scene) => scene.do.toString())
+      .join('\n');
+    const mutatingTargets = Array.from(
+      actions.matchAll(/h\.mutatingClick\(([^)]+)\)/g),
+    ).map((match) => match[1]);
+
+    expect(mutatingTargets).toEqual(['AI_ANALYZE', 'AI_APPLY']);
+
+    const producer = readFileSync(
+      resolve(process.cwd(), 'scripts/produce-guides.mjs'),
+      'utf8',
+    );
+    const helper = producer.slice(producer.indexOf('async mutatingClick(sel)'));
+    // Fails closed: refuses before touching the page when READONLY is on.
+    expect(helper).toContain('if (READONLY) {');
+    expect(helper.indexOf('if (READONLY) {')).toBeLessThan(helper.indexOf('page.locator(sel)'));
+    // Same single-visible-target discipline as safeClick.
+    expect(helper).toContain('typeof sel !== "string"');
+    expect(helper).toContain('count !== 1');
+    expect(helper).toContain('loc.isVisible()');
   });
 });

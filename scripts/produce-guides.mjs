@@ -906,6 +906,45 @@ function makeHelpers(page, scene) {
       await loc?.selectText().catch(() => {});
       await loc?.pressSequentially(String(text), { delay: 26, timeout: 20000 }).catch(() => {});
     },
+    // The deliberate opposite of safeClick: a control that WRITES. Some guides
+    // are worthless without it — a tour of the importer that never imports
+    // teaches nothing — but a write must never be smuggled into the
+    // "READONLY-safe" allowlist, or that tripwire stops meaning anything.
+    //
+    // So mutating targets get their own helper, their own pinned list in
+    // `cash-flow-guide-scenario.test.ts`, and a hard refusal under READONLY:
+    // a scenario that writes can only ever run against a throwaway stand
+    // launched with ALLOW_MUTATIONS=1, never against prod. The same
+    // single-visible-target checks as safeClick still apply.
+    async mutatingClick(sel) {
+      if (READONLY) {
+        throw new Error(
+          `mutatingClick(${sel}) needs a mutating stand — refusing under READONLY. `
+          + "Record this scenario against a throwaway tenant with ALLOW_MUTATIONS=1.",
+        );
+      }
+      if (typeof sel !== "string") {
+        throw new Error("mutatingClick requires one exact selector string");
+      }
+      const loc = page.locator(sel);
+      const count = await loc.count();
+      if (count !== 1) {
+        throw new Error(`mutatingClick expected exactly one ${sel}, found ${count}`);
+      }
+      if (!(await loc.isVisible())) {
+        throw new Error(`mutatingClick target is not visible: ${sel}`);
+      }
+      await loc.scrollIntoViewIfNeeded({ timeout: 8000 });
+      const box = await loc.boundingBox();
+      if (!box) throw new Error(`mutatingClick has no bounding box: ${sel}`);
+      const x = box.x + box.width / 2;
+      const y = box.y + Math.min(box.height / 2, 40);
+      await page.mouse.move(x, y, { steps: 18 });
+      await page.waitForTimeout(250);
+      await loc.click({ timeout: 8000 });
+      await pulse(page, x, y);
+      await page.waitForTimeout(400);
+    },
   };
 }
 
