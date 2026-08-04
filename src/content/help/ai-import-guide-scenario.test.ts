@@ -46,30 +46,59 @@ describe("AI Import help-video scenario", () => {
     expect(enMessages.adminAiImport.page.safetyBody).toContain("destructive workflow")
   })
 
-  it("provides a substantial nine-scene trilingual walkthrough", () => {
+  it("provides a substantial twelve-scene trilingual walkthrough", () => {
     expect(aiImport.route).toBe("/budgeting/admin/ai-import")
-    expect(aiImport.scenes).toHaveLength(9)
+    expect(aiImport.scenes).toHaveLength(12)
     for (const language of ["az", "en", "ru"] as const) {
       const wordCounts = aiImport.scenes.map(
         (scene) => scene.voice[language].trim().split(/\s+/).length,
       )
       expect(Math.min(...wordCounts)).toBeGreaterThanOrEqual(35)
-      expect(wordCounts.reduce((sum, count) => sum + count, 0)).toBeGreaterThanOrEqual(380)
+      expect(wordCounts.reduce((sum, count) => sum + count, 0)).toBeGreaterThanOrEqual(500)
     }
   })
 
-  it("is strictly hover-only and never activates an import workflow", () => {
+  // 2026-08-04 — this scenario stopped being hover-only ON PURPOSE, and the old
+  // assertion ("strictly hover-only and never activates an import workflow")
+  // was replaced rather than deleted.
+  //
+  // The previous version narrated "this guide never presses the button" over
+  // nine static blocks. For a screen whose entire subject is importing a
+  // workbook, that teaches nothing: the viewer never sees a preview, a routing
+  // decision, the Import Doctor or a receipt. It also told the viewer the page
+  // opens on the single-file tab, which stopped being true on 2026-07-30.
+  //
+  // What replaces "touch nothing" is a narrower, checkable promise: the two
+  // writes are named explicitly, they go through the helper that REFUSES to run
+  // under READONLY (so this scenario can only ever be recorded against a
+  // throwaway stand, never prod), and nothing destructive is reachable.
+  it("drives the real import, and only through explicitly named writes", () => {
+    const actions = aiImport.scenes.map((scene) => scene.do.toString()).join("\n")
+
+    expect(actions.match(/h\.mutatingClick\(/g)).toHaveLength(2)
+    expect(actions).toContain("h.mutatingClick(AI_ANALYZE)")
+    expect(actions).toContain("h.mutatingClick(AI_APPLY)")
+
+    // Local view state only — these two flip a React tab and issue no request.
+    expect(actions.match(/h\.safeClick\(/g)).toHaveLength(2)
+    expect(actions).toContain("h.safeClick(AI_TAB_SINGLE)")
+    expect(actions).toContain("h.safeClick(AI_TAB_MULTI)")
+
+    // One file selection, into the multi-file input, and nothing else typed.
+    expect(actions.match(/setInputFiles\(/g)).toHaveLength(1)
+    expect(actions).not.toContain("h.fill")
+
+    // Nothing destructive: no reset/rollback, no force-override of a blocked
+    // apply, no route into the delete-data workflow.
+    for (const forbidden of ["btn-reset", "AI_RESET", "force-override", "guide-reset", "data-archive"]) {
+      expect(actions).not.toContain(forbidden)
+    }
+
+    // Paced on narration length, not fixed sleeps — az runs ~2x longer than
+    // en/ru, so fixed pauses would freeze the short takes.
+    expect(actions).toContain("h.holdUntil(")
     for (const scene of aiImport.scenes) {
-      const action = scene.do.toString()
-      expect(action).toContain("waitForSelector")
-      expect(action).toMatch(/h\.(?:hover|moveTo)\(/)
-      expect(action).not.toContain("safeClick")
-      expect(action).not.toContain("h.click")
-      expect(action).not.toContain("h.fill")
-      expect(action).not.toContain("selectOption")
-      expect(action).not.toContain("setInputFiles")
-      expect(action).not.toContain(".catch(() => {})")
-      expect(action).not.toMatch(/\.(?:post|put|patch|delete)\s*\(/i)
+      expect(scene.do.toString()).toMatch(/h\.(?:hover|moveTo|holdUntil)\(/)
     }
   })
 

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Sun, Moon, LogOut } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { LanguageSwitcher } from "@/components/language-switcher"
+import { HelpVideoButton } from "@/components/help/help-video-button"
 import { useTranslations } from "next-intl"
 
 interface HeaderProps {
@@ -25,6 +26,10 @@ export function Header({ orgName = "BudgetPro", userName = "User", compact = fal
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Re-opens this section's guide video after the card was dismissed.
+            Renders null where no video is mapped. */}
+        <HelpVideoButton />
+
         <LanguageSwitcher />
 
         <Button

@@ -89,3 +89,6 @@ budgetpro-backup-*.sql
 
 # Design reference mockup — must NOT be committed (client-facing prototype)
 public/crisis-mockup.html
+
+# Recorder scratch: per-scene TTS mp3 cache + raw webm takes.
+video/.tmp-guides/
