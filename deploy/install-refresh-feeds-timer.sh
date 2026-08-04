@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
-# Install the BudgetPro free-feed systemd units on the production VM.
+# Install a BudgetPro cron systemd unit pair on the production VM.
+#
+# 2026-08-04: parameterised by BUDGETPRO_UNIT_BASE so the paid intel-crawl timer
+# reuses this installer's backup/rollback/canary logic rather than duplicating
+# it. Default is the free-feed pair, so existing usage is unchanged.
+#   BUDGETPRO_UNIT_BASE   unit basename  (default budgetpro-refresh-feeds)
+#   BUDGETPRO_CRON_LABEL  canary dir key (default refresh-feeds)
 # Installation does not change the timer's enable state by default. `--enable`
 # is the explicit owner/SRE action after provider keys are configured.
 
 set -euo pipefail
 
 APP_DIR="/opt/budgetpro"
+UNIT_BASE="${BUDGETPRO_UNIT_BASE:-budgetpro-refresh-feeds}"
+CANARY_KEY="${BUDGETPRO_CRON_LABEL:-refresh-feeds}"
 UNIT_DIR="${SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
 ENABLE=0
 
@@ -23,8 +31,8 @@ if [ "${EUID:-$(id -u)}" -ne 0 ]; then
   exit 1
 fi
 
-SERVICE_SOURCE="$APP_DIR/deploy/systemd/budgetpro-refresh-feeds.service"
-TIMER_SOURCE="$APP_DIR/deploy/systemd/budgetpro-refresh-feeds.timer"
+SERVICE_SOURCE="$APP_DIR/deploy/systemd/$UNIT_BASE.service"
+TIMER_SOURCE="$APP_DIR/deploy/systemd/$UNIT_BASE.timer"
 RUNNER="$APP_DIR/deploy/run-refresh-feeds.sh"
 
 for file in "$SERVICE_SOURCE" "$TIMER_SOURCE" "$RUNNER"; do
@@ -37,10 +45,10 @@ done
 systemd-analyze verify "$SERVICE_SOURCE" "$TIMER_SOURCE"
 
 BACKUP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/budgetpro-refresh-feeds-units.XXXXXX")
-SERVICE_TARGET="$UNIT_DIR/budgetpro-refresh-feeds.service"
-TIMER_TARGET="$UNIT_DIR/budgetpro-refresh-feeds.timer"
-WAS_ENABLED=$(systemctl is-enabled budgetpro-refresh-feeds.timer 2>/dev/null || true)
-WAS_ACTIVE=$(systemctl is-active budgetpro-refresh-feeds.timer 2>/dev/null || true)
+SERVICE_TARGET="$UNIT_DIR/$UNIT_BASE.service"
+TIMER_TARGET="$UNIT_DIR/$UNIT_BASE.timer"
+WAS_ENABLED=$(systemctl is-enabled $UNIT_BASE.timer 2>/dev/null || true)
+WAS_ACTIVE=$(systemctl is-active $UNIT_BASE.timer 2>/dev/null || true)
 
 if [ -f "$SERVICE_TARGET" ]; then
   cp -p "$SERVICE_TARGET" "$BACKUP_DIR/service"
@@ -64,14 +72,14 @@ rollback() {
   fi
   systemctl daemon-reload || true
   if [ "$WAS_ENABLED" = "enabled" ]; then
-    systemctl enable budgetpro-refresh-feeds.timer >/dev/null 2>&1 || true
+    systemctl enable "$UNIT_BASE.timer" >/dev/null 2>&1 || true
   else
-    systemctl disable budgetpro-refresh-feeds.timer >/dev/null 2>&1 || true
+    systemctl disable "$UNIT_BASE.timer" >/dev/null 2>&1 || true
   fi
   if [ "$WAS_ACTIVE" = "active" ]; then
-    systemctl start budgetpro-refresh-feeds.timer || true
+    systemctl start "$UNIT_BASE.timer" || true
   else
-    systemctl stop budgetpro-refresh-feeds.timer || true
+    systemctl stop "$UNIT_BASE.timer" || true
   fi
   rm -rf "$BACKUP_DIR"
   echo "install-refresh-feeds-timer: installation failed; previous state restored" >&2
@@ -79,8 +87,8 @@ rollback() {
 }
 trap rollback ERR
 
-install -m 0644 "$SERVICE_SOURCE" "$UNIT_DIR/budgetpro-refresh-feeds.service"
-install -m 0644 "$TIMER_SOURCE" "$UNIT_DIR/budgetpro-refresh-feeds.timer"
+install -m 0644 "$SERVICE_SOURCE" "$SERVICE_TARGET"
+install -m 0644 "$TIMER_SOURCE" "$TIMER_TARGET"
 chmod 0755 "$RUNNER"
 
 systemctl daemon-reload
@@ -88,17 +96,17 @@ systemd-analyze verify "$SERVICE_TARGET" "$TIMER_TARGET"
 
 if [ "$ENABLE" -eq 1 ]; then
   "$RUNNER" --check
-  CANARY_MARKER="/run/budgetpro-refresh-feeds/canary-ok"
+  CANARY_MARKER="/run/budgetpro-$CANARY_KEY/canary-ok"
   RECENT_CANARY=$(find "$CANARY_MARKER" -mmin -60 -type f -print -quit 2>/dev/null || true)
   if [ -z "$RECENT_CANARY" ]; then
     echo "install-refresh-feeds-timer: no successful canary in the last 60 minutes" >&2
     echo "Run: $RUNNER --canary" >&2
     false
   fi
-  systemctl enable --now budgetpro-refresh-feeds.timer
-  echo "budgetpro-refresh-feeds.timer installed and enabled"
+  systemctl enable --now "$UNIT_BASE.timer"
+  echo "$UNIT_BASE.timer installed and enabled"
 else
-  echo "budgetpro-refresh-feeds.timer installed; enable state unchanged"
+  echo "$UNIT_BASE.timer installed; enable state unchanged"
   echo "After provider keys are configured: $0 --enable"
 fi
 

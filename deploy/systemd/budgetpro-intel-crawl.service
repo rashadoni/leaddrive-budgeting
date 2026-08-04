@@ -1,0 +1,45 @@
+[Unit]
+Description=BudgetPro daily AI intel crawl (paid Anthropic web_search)
+Documentation=file:/opt/budgetpro/deploy/README.md
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+StartLimitIntervalSec=45min
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/budgetpro
+# Same hardened runner as the free-feed job; only the endpoint differs. The
+# 24h skip-if-recent gate lives inside the scheduler, so an extra fire is a
+# cheap no-op rather than a second paid crawl.
+Environment=BUDGETPRO_CRON_PATH=/api/cron/intel-crawl
+Environment=BUDGETPRO_CRON_LABEL=intel-crawl
+ExecStart=/opt/budgetpro/deploy/run-refresh-feeds.sh
+TimeoutStartSec=10min
+Restart=on-failure
+RestartSec=15min
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=budgetpro-intel-crawl
+
+# The caller only reads the deployment and makes one loopback HTTP request.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

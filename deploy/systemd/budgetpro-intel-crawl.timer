@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the BudgetPro AI intel crawl daily
+
+[Timer]
+# An hour after the free-feed refresh (06:00 UTC), so commodity/FX points are
+# already ingested when the crawl and any downstream fusion run.
+OnCalendar=*-*-* 07:00:00 UTC
+RandomizedDelaySec=10m
+Persistent=false
+Unit=budgetpro-intel-crawl.service
+
+[Install]
+WantedBy=timers.target
