@@ -14,6 +14,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import {
+  parseTimeMachineSelection,
+  sliderPositionFor,
+} from "../lib/time-machine-selection";
 import { Play, Pause, SkipBack, RotateCcw } from "lucide-react";
 
 interface Props {
@@ -39,11 +43,13 @@ function detectMonth(period: string): number | null {
 export function TimeMachineSlider({ current, onChange, year, stepMs = 700 }: Props) {
   const t = useTranslations("terminal");
   const fallbackYear = new Date().getUTCFullYear();
-  const activeYear = year ?? detectYear(current, fallbackYear);
-  const currentMonth = detectMonth(current);
-
-  // Slider position: 0..12 where 0 = "annual" (whole year), 1..12 = months.
-  const sliderValue = currentMonth ?? 0;
+  // 2026-08-04 audit — `detectMonth` returned null for "2025-Q1", which
+  // collapsed the position to 0 and made the label read "All of 2025" beside a
+  // chip row showing Q1. The selection is now parsed once, for both.
+  const selection = parseTimeMachineSelection(current, year ?? fallbackYear);
+  const activeYear = year ?? selection.year;
+  const currentMonth = selection.kind === "month" ? selection.month : null;
+  const sliderValue = sliderPositionFor(selection);
   const [playing, setPlaying] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -81,9 +87,12 @@ export function TimeMachineSlider({ current, onChange, year, stepMs = 700 }: Pro
     onChange(String(activeYear));
   };
 
-  const label = sliderValue === 0
-    ? t("timeMachine.annual", { year: activeYear })
-    : `M${sliderValue} ${activeYear}`;
+  const label =
+    selection.kind === "month"
+      ? `M${selection.month} ${activeYear}`
+      : selection.kind === "quarter"
+        ? `Q${selection.quarter} ${activeYear}`
+        : t("timeMachine.annual", { year: activeYear });
 
   return (
     <div
