@@ -46,9 +46,9 @@ describe("AI Import help-video scenario", () => {
     expect(enMessages.adminAiImport.page.safetyBody).toContain("destructive workflow")
   })
 
-  it("provides a substantial nine-scene trilingual walkthrough", () => {
+  it("provides a substantial ten-scene trilingual walkthrough", () => {
     expect(aiImport.route).toBe("/budgeting/admin/ai-import")
-    expect(aiImport.scenes).toHaveLength(9)
+    expect(aiImport.scenes).toHaveLength(10)
     for (const language of ["az", "en", "ru"] as const) {
       const wordCounts = aiImport.scenes.map(
         (scene) => scene.voice[language].trim().split(/\s+/).length,
@@ -58,19 +58,73 @@ describe("AI Import help-video scenario", () => {
     }
   })
 
-  it("is strictly hover-only and never activates an import workflow", () => {
+  /**
+   * 2026-08-04 — this guide stopped being hover-only, on the owner's decision.
+   *
+   * The previous test forbade every click, and it was right for a narrated
+   * tour: this is the screen where a wrong click destroys a year of financial
+   * data. But a tour of an import that never imports leaves the viewer to
+   * guess whether it works, so the guide now performs a real clear-then-load
+   * run against a real stand.
+   *
+   * The blanket ban is replaced by a targeted one rather than deleted. A click
+   * is allowed only on a named control of the import or the GUARDED delete
+   * flow; anything else — another route, a raw HTTP verb — still fails here.
+   */
+  /** Mutating controls. `h.click` degrades to a hover when READONLY is on. */
+  const ALLOWED_CLICK_TARGETS = [
+    "AI_IMPORT_ANALYZE",
+    "AI_IMPORT_APPLY",
+    "DD_CHECK",
+    "DD_CONFIRM_SUBMIT",
+  ]
+
+  /**
+   * `safeClick` clicks for real even under READONLY, so its targets are pinned
+   * here — the helper's own contract says scenario tests must do exactly that.
+   * Only GET navigations and local view toggles belong on this list; a mutating
+   * control here would silently defeat the recorder's main safety switch.
+   */
+  const ALLOWED_SAFECLICK_TARGETS = ["AI_IMPORT_RESET_CTA", "DD_TAB_ROUTING"]
+
+  it("clicks only named controls of the import and guarded-delete flows", () => {
     for (const scene of aiImport.scenes) {
       const action = scene.do.toString()
-      expect(action).toContain("waitForSelector")
-      expect(action).toMatch(/h\.(?:hover|moveTo)\(/)
-      expect(action).not.toContain("safeClick")
-      expect(action).not.toContain("h.click")
-      expect(action).not.toContain("h.fill")
-      expect(action).not.toContain("selectOption")
-      expect(action).not.toContain("setInputFiles")
-      expect(action).not.toContain(".catch(() => {})")
+      for (const call of action.match(/h\.click\(([^)]*)\)/g) ?? []) {
+        const target = call.replace(/h\.click\(|\)/g, "").trim()
+        expect(ALLOWED_CLICK_TARGETS, `unexpected click target: ${target}`).toContain(target)
+      }
+      for (const call of action.match(/h\.safeClick\(([^)]*)\)/g) ?? []) {
+        const target = call.replace(/h\.safeClick\(|\)/g, "").trim()
+        expect(
+          ALLOWED_SAFECLICK_TARGETS,
+          `safeClick bypasses READONLY — ${target} must be a GET or a view toggle`,
+        ).toContain(target)
+      }
+      // No scenario may reach past the UI into the API directly.
       expect(action).not.toMatch(/\.(?:post|put|patch|delete)\s*\(/i)
+      expect(action).not.toContain("evaluate(")
     }
+  })
+
+  it("never confirms a deletion without running the dry check first", () => {
+    // The invariant worth protecting now that clicking is allowed. `check`
+    // computes the blast radius and deletes nothing; confirming without it is
+    // exactly the habit this guide must not teach.
+    const flat = aiImport.scenes.map((s) => s.do.toString()).join("\n")
+    const checkAt = flat.indexOf("h.click(DD_CHECK)")
+    const confirmAt = flat.indexOf("h.click(DD_CONFIRM_SUBMIT)")
+    expect(checkAt, "the dry check is never clicked").toBeGreaterThan(-1)
+    expect(confirmAt, "the deletion is never confirmed").toBeGreaterThan(-1)
+    expect(checkAt).toBeLessThan(confirmAt)
+  })
+
+  it("actually attaches the workbook it narrates", () => {
+    // The narration says the file is dropped in. A tour that says so and does
+    // not do it is the failure this rewrite exists to remove.
+    const flat = aiImport.scenes.map((s) => s.do.toString()).join("\n")
+    expect(flat).toContain("setInputFiles")
+    expect(flat).toContain("WORKBOOK_PATH")
   })
 
   it("pins stable anchors across the page, tabs, cleanup warning, and default form", () => {

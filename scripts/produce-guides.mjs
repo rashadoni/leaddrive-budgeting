@@ -386,7 +386,14 @@ async function recordSection(context, slug, lang, audio, out, poster) {
     posterSaved = true;
 
     await injectCursor(page);
-    const helpers = makeHelpers(page); // cursor move/click/hover/fill for `do` scenes
+    // 2026-08-04 — `sceneRef` is re-pointed at every scene below so `h.holdUntil()`
+    // can place beats as FRACTIONS of the narration instead of fixed sleeps. The
+    // az voice runs roughly twice as long as en/ru, so a scenario tuned with
+    // `sleep()` under az freezes the screen on the short languages and leaves
+    // tail silence. Ported from the reference recorder, which has had it since
+    // the pipeline was written.
+    const sceneRef = { t0, startMs: 0, durMs: 0 };
+    const helpers = makeHelpers(page, sceneRef); // cursor move/click/hover/fill for `do` scenes
 
     for (let i = 0; i < units.length; i += 1) {
       const unit = units[i];
@@ -398,6 +405,8 @@ async function recordSection(context, slug, lang, audio, out, poster) {
       }
 
       offsets[i] = Date.now() - t0;           // when scene i's voice begins
+      sceneRef.startMs = offsets[i];
+      sceneRef.durMs = durMs;
       await sleep(LEAD_MS);                    // voice leads, cursor follows
       try {
         if (isDo) await unit.do?.(page, lang, helpers);
@@ -815,7 +824,7 @@ async function pulse(page, x, y) {
 // Cursor-driven helpers passed to hand-authored `do` scenes: they move the
 // VISIBLE cursor to a real element, then hover / click / type — so the recording
 // shows the cursor purposefully using the section's real controls (not wandering).
-function makeHelpers(page) {
+function makeHelpers(page, scene) {
   const point = async (sel) => {
     const loc = await firstLocator(page, sel);
     await loc?.scrollIntoViewIfNeeded({ timeout: 8000 }).catch(() => {});
@@ -828,6 +837,18 @@ function makeHelpers(page) {
   return {
     firstLocator: (sel) => firstLocator(page, sel),
     sleep,
+    /**
+     * Hold until `fraction` of THIS scene's narration has played (0…1, clamped
+     * to 0.98 so a beat can never outlive its own scene). Returns immediately
+     * if that moment already passed, so a slow action eats its own beat instead
+     * of pushing the rest of the scene out of sync.
+     */
+    async holdUntil(fraction) {
+      if (!scene?.durMs) return;
+      const target = scene.startMs + Math.min(Math.max(fraction, 0), 0.98) * scene.durMs;
+      const remain = target - (Date.now() - scene.t0);
+      if (remain > 0) await sleep(remain);
+    },
     async moveTo(sel) { await point(sel); await page.waitForTimeout(200); },
     async hover(sel) { const { loc } = await point(sel); await loc?.hover({ timeout: 6000 }).catch(() => {}); await page.waitForTimeout(300); },
     async click(sel) {

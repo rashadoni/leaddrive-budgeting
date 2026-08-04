@@ -93,6 +93,8 @@ const AI_IMPORT_PIPELINE = '[data-testid="ai-import-guide-pipeline"]';
 const AI_IMPORT_SAFETY = '[data-testid="ai-import-guide-safety"]';
 const AI_IMPORT_CLEANUP = '[data-testid="ai-import-guide-cleanup"]';
 const AI_IMPORT_RESET = '[data-testid="ai-import-guide-reset"]';
+// The CTA itself, not the panel around it — clicking the wrapper hits empty space.
+const AI_IMPORT_RESET_CTA = '[data-testid="ai-import-guide-reset-cta"]';
 const AI_IMPORT_WORKFLOWS = '[data-testid="ai-import-guide-workflows"]';
 const AI_IMPORT_TABS = '[data-testid="ai-import-guide-tabs"]';
 const AI_IMPORT_SINGLE = '[data-testid="tab-single"]';
@@ -101,6 +103,28 @@ const AI_IMPORT_UNIVERSAL = '[data-testid="tab-universal"]';
 const AI_IMPORT_MULTISHEET = '[data-testid="tab-multisheet"]';
 const AI_IMPORT_DROP = '[data-testid="ai-import-guide-drop-zone"]';
 const AI_IMPORT_ANALYZE = '[data-testid="ai-import-guide-analyze"]';
+// 2026-08-04 — the import guide became a REAL run (clear → import), so it needs
+// the controls the old hover-only version never touched. All harvested from the
+// components, not guessed: the delete flow is fully `data-testid`-covered.
+const AI_IMPORT_APPLY = '[data-testid="btn-apply"]';
+const DD_TASK_CHOOSER = '[data-testid="task-chooser"]';
+const DD_COMPANY_PICKER = '[data-testid="company-picker"]';
+const DD_CHECK = '[data-testid="check-button"]';
+const DD_BLAST_RADIUS = '[data-testid="blast-radius"]';
+const DD_CONFIRM_SUBMIT = '[data-testid="confirm-submit"]';
+const DD_RUN_DONE = '[data-testid="run-result-done"]';
+const DD_MULTI_YEAR = '[data-testid="multi-year"]';
+const DD_PREVIEW_RESULT = '[data-testid="preview-result"]';
+const DD_REVIEW_TABS = '[data-testid="import-review-tabs"]';
+const DD_TAB_ROUTING = '[data-testid="review-tab-routing"]';
+const DD_ROUTING_GRID = '[data-testid="bu-routing-grid"]';
+const DD_DOCTOR_PANEL = '[data-testid="import-doctor-panel"]';
+const DD_DOCTOR_NEXT_STEP = '[data-testid="import-doctor-next-step"]';
+const DD_APPLY_RESULT = '[data-testid="apply-result"]';
+const DD_FILE_INPUT = '[data-testid="multi-file-input"]';
+// The client's own workbook, the one this guide is about. Resolved from the
+// repo root so the recorder finds it whatever directory it was launched from.
+const WORKBOOK_PATH = "data/budget azersheker/actual-budget-v1.xlsx";
 
 // ── Alert evaluation snapshot guide ────────────────────────────────────
 // Strictly hover-only. Opening the route and the feed's initial load issue
@@ -1378,115 +1402,174 @@ export default {
   "ai-import": {
     route: "/budgeting/admin/ai-import",
     title: {
-      az: "AI import: təhlükəsiz iş axını",
-      en: "AI Import: safe workflow",
-      ru: "AI-импорт: безопасный workflow",
+      az: "Məlumat idxalı: silmədən yükləməyə qədər",
+      en: "Data import: from clearing to loaded",
+      ru: "Импорт данных: от очистки до загрузки",
     },
     scenes: [
+      // 1 — where you are, and the three different risks on this screen.
       {
         voice: {
-          az: "AI Import maliyyə workbook-larını bir giriş nöqtəsindən qəbul edir, lakin bu ekranın vədi kor avtomatlaşdırma deyil. Sistem dəstəklənən xlsx formasını təsnif edir və adapter təklif edir; təklif mənbənin düzgünlüyünü, tamlığını və qərar üçün yararlı olduğunu sübut etmir. Bu təlim yalnız mövcud ekranı oxuyur.",
-          en: "AI Import accepts financial workbooks through one entry point, but its promise is not blind automation. The system classifies a supported xlsx shape and proposes an adapter; that proposal does not prove the source is accurate, complete, reconciled, or decision-grade. This walkthrough only reads the initial page and triggers no workflow action.",
-          ru: "AI Import принимает финансовые книги через единую точку входа, но не обещает слепую автоматизацию. Система классифицирует поддерживаемую форму xlsx и предлагает адаптер; это предложение не доказывает точность, полноту, сверку или пригодность источника для решений. Этот обзор только читает исходную страницу и ничего не запускает.",
+          az: "Bu ekran maliyyə kitablarını sistemə gətirir. Yuxarıdakı mavi lövhə üç fərqli riski ayırır, çünki onlar eyni şey deyil. Faylı seçmək brauzerdə qalır və heç nə göndərmir. «AI analizi» faylın məzmununu serverə göndərir və pullu təchizatçını çağırır. «Tətbiq et» isə bazaya yazır. Yalnız sonuncusu məlumatı dəyişir, ona görə ilk ikisini qorxmadan işlədə bilərsiniz.",
+          en: "This screen brings financial workbooks into the system. The blue panel at the top separates three different risks, because they are not the same thing. Choosing a file stays in your browser and sends nothing. AI analysis uploads the contents and calls a paid provider. Apply writes to the database. Only the last one changes your data, so the first two are safe to use freely.",
+          ru: "Этот экран заводит финансовые книги в систему. Синяя плашка сверху разделяет три разных риска, потому что это не одно и то же. Выбор файла остаётся в браузере и ничего не отправляет. «AI-анализ» отправляет содержимое на сервер и зовёт платного провайдера. «Применить» пишет в базу. Данные меняет только последнее, поэтому первыми двумя можно пользоваться спокойно.",
         },
         do: async (p, l, h) => {
-          await p.waitForSelector(AI_IMPORT_ROOT, { timeout: 15000 });
-          await h.hover(AI_IMPORT_ROOT);
-        },
-      },
-      {
-        voice: {
-          az: "Yuxarıdakı axın əməliyyat sərhədlərini göstərir. Upload və Analyze açıq istifadəçi addımıdır; uyğun saxlanmış şablon varsa pullu klassifikator keçilə bilər, əks halda Anthropic çağırıla və preview metadata-sı saxlanıla bilər. Sonra adapter preview-u, manual yoxlama, reconciliation və ayrıca Apply gəlir. Səhifənin açılması bu addımların heç birini etmir.",
-          en: "The flow line names the operational boundaries. Upload and Analyze are explicit user actions; a matching saved template can skip the paid classifier, otherwise Anthropic may be called and preview metadata may be stored. Adapter preview, human review, reconciliation, and a separate Apply step follow. Merely opening this page performs none of those actions.",
-          ru: "Строка процесса показывает операционные границы. Upload и Analyze являются явными действиями пользователя; подходящий сохранённый шаблон может пропустить платный классификатор, иначе возможен вызов Anthropic и сохранение служебного preview. Затем идут preview адаптера, ручная проверка, сверка и отдельный Apply. Простое открытие страницы ничего из этого не выполняет.",
-        },
-        do: async (p, l, h) => {
-          await p.waitForSelector(AI_IMPORT_PIPELINE, { timeout: 15000 });
-          await h.hover(AI_IMPORT_PIPELINE);
-        },
-      },
-      {
-        voice: {
-          az: "Mavi təhlükəsizlik açıqlaması üç fərqli riski ayırır. Faylı browser-də seçmək lokaldır, Analyze məzmunu serverə göndərə və provider işi başlada bilər, Apply isə təsdiqlənmiş import datalarını bazaya yazır. Bu addımlar eyni şey deyil və yalnız düzgün fayl, səlahiyyət, şirkət, period və açıq niyyət olduqda ardıcıl istifadə edilməlidir.",
-          en: "The blue safety disclosure separates three different risks. Choosing a file in the browser is local, Analyze can send its contents to the server and start provider work, and Apply writes approved import data to the database. These are not equivalent actions and should proceed only with the correct file, authority, company, period, and explicit intent.",
-          ru: "Синее раскрытие безопасности разделяет три разных риска. Выбор файла в браузере локален, Analyze может отправить содержимое на сервер и запустить провайдера, а Apply записывает одобренные данные импорта в базу. Это не равнозначные действия; для каждого нужны правильный файл, полномочия, компания, период и явное намерение.",
-        },
-        do: async (p, l, h) => {
-          await p.waitForSelector(AI_IMPORT_SAFETY, { timeout: 15000 });
+          await p.waitForSelector(AI_IMPORT_ROOT, { timeout: 20000 });
           await h.hover(AI_IMPORT_SAFETY);
+          await h.holdUntil(0.55);
+          await h.moveTo(AI_IMPORT_PIPELINE);
         },
       },
+      // 2 — the question everyone asks first, answered before they ask it.
       {
         voice: {
-          az: "Sarı cleanup sahəsi importdan ayrı dağıdıcı workflow-dur. Preview belə server sorğusudur; təsdiqlənmiş reset seçilmiş şirkət və il üzrə bəzi sətirləri arxivləyir, bəzilərini isə silir və sonra recompute edir. Ona görə düzgün import faylı hazır olmadan və scoped backup düşünülmədən bu panelə keçmək olmaz. Təlim yalnız xəbərdarlığı göstərir.",
-          en: "The amber cleanup area is a destructive workflow separate from import. Even its preview is a server request; a confirmed reset archives some rows, deletes other scoped records, and recomputes after commit for the selected company and year. Do not enter that path without the replacement workbook, verified scope, and recovery plan. This guide only points out the warning.",
-          ru: "Жёлтая область cleanup — отдельный разрушительный workflow. Даже preview отправляет запрос на сервер; подтверждённый reset архивирует часть строк, удаляет другие записи выбранной компании и года, затем запускает recompute. Не входите в этот путь без готовой замены, проверенной области и плана восстановления. Гайд лишь показывает предупреждение.",
+          az: "İkinci sual həmişə eyni olur: yükləmədən əvvəl köhnəni silmək lazımdırmı? Xeyr. Faylı yenidən yükləmək onun əhatə etdiyi illəri və şirkətləri əvəz edir — həmin illər üzrə köhnə sətirlər avtomatik arxivə keçir. Silmə tamam ayrı əməliyyatdır və o, yalnız məlumatın sistemdən büsbütün yox olmasını istədiyiniz halda lazımdır. Bu fərqi bilməmək bahalı səhvdir.",
+          en: "The second question is always the same: do I need to delete the old data first? No. Re-uploading a file replaces the years and companies it covers — the old rows for those years are archived automatically. Deleting is a separate operation, and it is only for when you want the data gone from the system entirely. Not knowing that difference is an expensive mistake.",
+          ru: "Второй вопрос всегда один и тот же: нужно ли сначала удалить старое? Нет. Повторная загрузка файла заменяет те годы и компании, которые в нём есть — старые строки за эти годы уходят в архив сами. Удаление — отдельная операция, и она нужна только если вы хотите, чтобы данные исчезли из системы совсем. Не знать эту разницу — дорогая ошибка.",
         },
         do: async (p, l, h) => {
-          await p.waitForSelector(AI_IMPORT_CLEANUP, { timeout: 15000 });
-          await p.waitForSelector(AI_IMPORT_RESET, { timeout: 15000 });
+          await h.moveTo(AI_IMPORT_CLEANUP);
+          await h.holdUntil(0.5);
           await h.hover(AI_IMPORT_RESET);
+          await h.holdUntil(0.9);
         },
       },
+      // 3 — the guarded flow. Deliberately shows the guards, not just the button.
       {
         voice: {
-          az: "Aşağıdakı dörd tab fərqli etibar səviyyələrini deyil, fərqli workflow formalarını göstərir. Bir fayl sürətli classification preview üçündür və onun köhnə commit addımı qəsdən söndürülüb. Bir neçə fayl atomik qruplar və cross-file conflict review verir. İstənilən fayl və multi-sheet isə column mapping, anomaly və control-total qapıları əlavə edir. Rejim seçimi datanın yoxlanmasını əvəz etmir.",
-          en: "The four tabs represent different workflow shapes, not different guarantees. One file provides a fast classification preview and its legacy commit step is intentionally disabled. Multiple files adds atomic groups and cross-file conflict review. Any file and Multi-sheet add column mapping, anomaly, and control-total gates. Choosing a more advanced mode never replaces validation of the actual workbook.",
-          ru: "Четыре вкладки обозначают разные формы workflow, а не разные гарантии. «1 файл» даёт быстрый classification preview, его старый commit намеренно отключён. Несколько файлов добавляют атомарные группы и межфайловую проверку конфликтов. Произвольный файл и multi-sheet добавляют mapping колонок, anomalies и control totals. Выбор режима не заменяет проверку самой книги.",
+          az: "İndi məhz silməni göstərəcəyik ki, onun necə qorunduğu görünsün. Ekran addım-addım gedir: əvvəlcə nə etmək istədiyinizi seçirsiniz, sonra şirkəti, sonra hansı məlumatı və hansı illəri. Heç bir addımı atlamaq olmur və heç nə susmaqla seçilmir. Bu, təsadüfən yanlış şeyi silməyi çətinləşdirmək üçün belə qurulub.",
+          en: "Now we will actually run a deletion, so you can see how it is guarded. The screen walks you through it: first what you want to do, then which company, then which data and which years. No step can be skipped and nothing is chosen for you by default. It is built this way to make deleting the wrong thing by accident hard.",
+          ru: "Сейчас мы действительно выполним удаление, чтобы было видно, как оно защищено. Экран ведёт по шагам: сначала что вы хотите сделать, потом компания, потом какие данные и какие годы. Ни один шаг нельзя пропустить, и ничего не выбирается за вас по умолчанию. Так сделано, чтобы случайно удалить не то было трудно.",
         },
         do: async (p, l, h) => {
-          await p.waitForSelector(AI_IMPORT_WORKFLOWS, { timeout: 15000 });
-          await p.waitForSelector(AI_IMPORT_TABS, { timeout: 15000 });
-          await h.hover(AI_IMPORT_TABS);
+          // A <Link> to /budgeting/admin/data-archive — a GET navigation, which
+          // is what `safeClick` exists for. `h.click` would degrade to a hover
+          // under READONLY and the page would never move.
+          await h.safeClick(AI_IMPORT_RESET_CTA);
+          await p.waitForSelector(DD_TASK_CHOOSER, { timeout: 20000 }).catch(() => {});
+          await h.holdUntil(0.4);
+          await h.hover(DD_TASK_CHOOSER);
+          await h.holdUntil(0.72);
+          await h.moveTo(DD_COMPANY_PICKER);
         },
       },
+      // 4 — the dry run. This is the feature worth the whole scene.
       {
         voice: {
-          az: "Başlanğıc tab bir xlsx üçün yalnız classification preview hazırlayır. Drop zone-a fayl verməzdən əvvəl onun düzgün təşkilata aid olduğunu, şəxsi və həssas məlumat siyasətinə uyğun olduğunu, şirkət kodlarını, periodu və vahidləri yoxlayın. Bu təlim fayl seçmir: beləliklə heç bir workbook browser-dən çıxmır və provider çağırışı yaranmır.",
-          en: "The default single-file tab prepares only a classification preview. Before placing a workbook in the drop zone, verify its organization, confidentiality policy, company codes, periods, and units. This guide selects no file, so no workbook leaves the browser and no classification provider can be invoked. The empty disabled state is the safe starting point.",
-          ru: "Исходная вкладка одного файла готовит только classification preview. До помещения книги в drop zone проверьте организацию, правила конфиденциальности, коды компаний, периоды и единицы. Гайд не выбирает файл, поэтому книга не покидает браузер и классификатор не вызывается. Пустое отключённое состояние — безопасная отправная точка.",
+          az: "Ən vacib düymə buradadır — «Yoxla». O, heç nə silmir. O, sizə silinəcəyin dəqiq siyahısını verir: neçə sətir, hansı illər, hansı şirkət, nəyi geri qaytarmaq mümkün olacaq və nəyi yox. Bunu oxumadan təsdiq etməyin. Sistem sizə zərəri əvvəlcədən göstərir, çünki sonradan göstərmək gec olur.",
+          en: "The most important button is here — Check. It deletes nothing. It hands you the exact list of what would go: how many rows, which years, which company, what could be brought back and what could not. Do not confirm without reading it. The system shows you the damage in advance, because showing it afterwards is too late.",
+          ru: "Самая важная кнопка здесь — «Проверить». Она ничего не удаляет. Она отдаёт вам точный список того, что уйдёт: сколько строк, какие годы, какая компания, что можно будет вернуть, а что нет. Не подтверждайте, не прочитав. Система показывает ущерб заранее, потому что показывать его потом уже поздно.",
         },
         do: async (p, l, h) => {
-          await p.waitForSelector(AI_IMPORT_SINGLE, { timeout: 15000 });
-          await p.waitForSelector(AI_IMPORT_DROP, { timeout: 15000 });
+          await h.click(DD_CHECK);
+          await p.waitForSelector(DD_BLAST_RADIUS, { timeout: 25000 }).catch(() => {});
+          await h.holdUntil(0.55);
+          await h.hover(DD_BLAST_RADIUS);
+          await h.holdUntil(0.9);
+        },
+      },
+      // 5 — the confirm, and then the empty screen as proof it happened.
+      {
+        voice: {
+          az: "Təsdiq ayrıca gəlir və o da avtomatik deyil. Təsdiqdən sonra nəticə göstərilir: nə silindi və neçə sətir. İndi terminal boşdur. Bu, gözəl mənzərə deyil, amma bilərəkdən göstəririk — çünki növbəti addımdan sonra rəqəmlərin həqiqətən fayldan gəldiyi şübhəsiz olacaq.",
+          en: "The confirmation is a separate step, and it is not automatic either. After it, the result is shown: what was deleted and how many rows. The terminal is empty now. It is not a pretty picture, and we are showing it on purpose — because after the next step there will be no doubt that the numbers really came from the file.",
+          ru: "Подтверждение — отдельный шаг, и оно тоже не автоматическое. После него показывается результат: что удалено и сколько строк. Сейчас терминал пуст. Зрелище так себе, и мы показываем его намеренно — потому что после следующего шага не останется сомнений, что цифры действительно пришли из файла.",
+        },
+        do: async (p, l, h) => {
+          await h.click(DD_CONFIRM_SUBMIT);
+          await p.waitForSelector(DD_RUN_DONE, { timeout: 30000 }).catch(() => {});
+          await h.holdUntil(0.6);
+          await h.hover(DD_RUN_DONE);
+        },
+      },
+      // 6 — the upload itself, and the one rule people get wrong.
+      {
+        voice: {
+          az: "Geri qayıdırıq və faylı olduğu kimi atırıq — doldurulacaq şablon yoxdur, kitabınız necə varsa elə də qəbul edilir. Bir qayda var və ona əməl etmək lazımdır: bir keçiddə bir il. İl seçicisi məhz bunun üçündür. Period kilidi, köhnə qalıqların yoxlanması və backlog müqayisəsi yalnız birinci ili oxuyur, ona görə iki ili birlikdə göndərsəniz, bu üç yoxlamanın heç biri ikinci ili görməyəcək.",
+          en: "We go back and drop the file in as it is — there is no template to fill, your workbook is taken as it comes. There is one rule and it matters: one year per run. That is what the year selector is for. The period lock, the stale-leftover check and the backlog comparison all read only the first year, so if you send two years together, none of those three checks sees the second one.",
+          ru: "Возвращаемся и кладём файл как есть — шаблона заполнять не надо, книга принимается в том виде, в каком она у вас. Есть одно правило, и его надо соблюдать: один год за прогон. Для этого и нужен переключатель года. Период-лок, проверка устаревших остатков и сравнение с бэклогом читают только первый год, поэтому если отправить два года разом, ни одна из трёх проверок второй год не увидит.",
+        },
+        do: async (p, l, h) => {
+          await p.goto(`${p.url().split("/budgeting")[0]}/budgeting/admin/ai-import`, { waitUntil: "domcontentloaded" }).catch(() => {});
+          await p.waitForSelector(AI_IMPORT_DROP, { timeout: 20000 }).catch(() => {});
           await h.hover(AI_IMPORT_DROP);
+          await h.holdUntil(0.35);
+          // The narration says we drop the workbook in, so the recording has to
+          // actually do it — the file input is hidden behind the drop zone, and
+          // `setInputFiles` is the only way to reach it from a script.
+          await p.setInputFiles(DD_FILE_INPUT, WORKBOOK_PATH).catch(() => {});
+          await h.holdUntil(0.6);
+          await h.moveTo(DD_MULTI_YEAR);
+          await h.holdUntil(0.85);
         },
       },
+      // 7 — analysis running; nothing is written yet. Covers the machine wait.
       {
         voice: {
-          az: "Analyze düyməsi yalnız fayl seçildikdən sonra aktivləşir. Bu, sadə lokal preview düyməsi deyil: faylı server classifier marşrutuna upload edir və büdcə ilə rate-limit yoxlamalarından sonra Anthropic istifadə edə bilər. LLM yalnız bütün vərəqlər separator və ya boş vərəq kimi deterministik əvvəlcədən təsnif ediləndə keçilir. Confidence və reasoning yenə təklifdir; riskli nəticələr manual review tələb edir. Təlim düyməyə basmır.",
-          en: "Analyze becomes available only after a file is selected. It is not a local preview button: it uploads to the server classifier and, after budget and rate-limit checks, can invoke Anthropic. The LLM is skipped only when every sheet is deterministically preclassified, such as separator or empty sheets. Confidence and reasoning remain proposals, and risky results require human review. This guide never presses the button.",
-          ru: "Analyze становится доступным только после выбора файла. Это не локальный preview: файл отправляется серверному классификатору, который после budget и rate-limit проверок может вызвать Anthropic. LLM пропускается лишь когда каждый лист детерминированно распознан заранее, например как separator или пустой лист. Confidence и reasoning остаются предложениями, а рискованные результаты требуют ручной проверки. Гайд кнопку не нажимает.",
+          az: "«AI analizi» başlayır. Bu bir dəqiqəyə qədər çəkə bilər, çünki hər vərəq oxunur və nə olduğu müəyyən edilir: mənfəət-zərər, balans, satış, kimin vərəqi olduğu. Bu müddətdə bazaya heç nə yazılmır — nəticə yalnız baxış üçündür. Şirkət aliasları burada işə düşür: fayldakı qısaltma sistemdəki şirkətlə uyğunlaşdırılır, məsələn EDEN tam koda çevrilir.",
+          en: "AI analysis starts. It can take up to a minute, because every sheet is read and identified: profit and loss, balance sheet, sales, and which company it belongs to. Nothing is written to the database during this — the result is a preview only. Company aliases do their work here: an abbreviation in the file is matched to a company in the system, so EDEN becomes the full code.",
+          ru: "Запускается «AI-анализ». Это может занять до минуты, потому что читается каждый лист и определяется, что это: прибыли и убытки, баланс, продажи, чей это лист. За это время в базу не пишется ничего — результат только для просмотра. Здесь же работают алиасы компаний: сокращение из файла сопоставляется с компанией в системе, например EDEN разворачивается в полный код.",
         },
         do: async (p, l, h) => {
-          await p.waitForSelector(AI_IMPORT_ANALYZE, { timeout: 15000 });
-          await h.hover(AI_IMPORT_ANALYZE);
+          await h.click(AI_IMPORT_ANALYZE);
+          await h.holdUntil(0.35);
+          await p.waitForSelector(DD_PREVIEW_RESULT, { timeout: 180000 }).catch(() => {});
+          await h.holdUntil(0.72);
+          await h.hover(DD_REVIEW_TABS);
         },
       },
+      // 8 — routing grid: the eliminations block is the interesting part.
       {
         voice: {
-          az: "Bir neçə fayl rejimi shared business load üçün nəzərdə tutulub: əvvəl bütün qruplar preview olunur, cross-file konflikt və CoA qərarları həll edilir, sonra uyğun qruplar birlikdə tətbiq olunur. Oradakı Import Doctor Explain və Suggest ayrıca provider əməliyyatlarıdır; template və alias save də yazır. Bu ümumi təlim tabı açmır və həmin kontrolleri yükləmir.",
-          en: "Multiple files is designed for a shared business load: all groups are previewed first, cross-file conflicts and chart-of-accounts decisions are resolved, then eligible groups apply together. Import Doctor Explain and Suggest are separate provider actions, while saving templates or aliases also writes metadata. This overview does not open the tab or activate any of those controls.",
-          ru: "Режим нескольких файлов предназначен для связанной бизнес-загрузки: сначала preview всех групп, затем разрешение межфайловых конфликтов и решений плана счетов, после чего допустимые группы применяются вместе. Explain и Suggest в Import Doctor — отдельные provider-действия, сохранение шаблонов и aliases тоже записывает metadata. Обзор не открывает вкладку и ничего не запускает.",
+          az: "Yönləndirmə cədvəli göstərir ki, hansı vərəq hansı şirkətə gedir. Burada bir xüsusi sətir var: qrupdaxili eliminasiya bloku. O, heç bir şirkətə aid deyil, çünki şirkətlər arasındakı hesablaşmaları söndürür — ona görə şirkət sütununda tire durur və nişanı ayrıdır. Onsuz qrup üzrə cəmi bir-birinə satılanı iki dəfə sayır.",
+          en: "The routing grid shows which sheet goes to which company. One row is special: the intragroup eliminations block. It belongs to no company, because it cancels balances between the companies — hence the dash in the company column and its own badge. Without it the group total counts what they sold each other twice.",
+          ru: "Таблица маршрутизации показывает, какой лист в какую компанию. Одна строка особая: блок внутригрупповых элиминаций. Он не принадлежит ни одной компании, потому что гасит расчёты между ними — отсюда прочерк в колонке компании и отдельный бейдж. Без него итог по группе считает проданное друг другу дважды.",
         },
         do: async (p, l, h) => {
-          await p.waitForSelector(AI_IMPORT_MULTI, { timeout: 15000 });
-          await h.hover(AI_IMPORT_MULTI);
+          // Local tab state only — no request, no write. Guarded on presence:
+          // the routing tab exists only once a preview has produced BU splits,
+          // which is also the honest case for a workbook with no per-company
+          // blocks. `safeClick` throws on a missing target by design, so the
+          // check belongs here rather than in the helper.
+          if (await p.locator(DD_TAB_ROUTING).count()) {
+            await h.safeClick(DD_TAB_ROUTING);
+          }
+          await p.waitForSelector(DD_ROUTING_GRID, { timeout: 15000 }).catch(() => {});
+          await h.holdUntil(0.5);
+          await h.hover(DD_ROUTING_GRID);
+          await h.holdUntil(0.88);
         },
       },
+      // 9 — the doctor: advisory, never blocking. The distinction matters.
       {
         voice: {
-          az: "İstənilən fayl və multi-sheet rejimləri manual review qapısı əlavə edir: source columns, company və account mapping, critical anomaly acknowledgement, control totals, dry-run və yalnız sonra commit. GREEN reconciliation mənbənin audit olunmuş və qərar üçün yararlı olduğunu avtomatik sübut etmir; o, müəyyən texniki yoxlamaların keçdiyini göstərir. Təhlükəsiz qayda budur: əvvəl preview-u oxuyun, sonra səlahiyyətli Apply qərarı verin.",
-          en: "Any file and Multi-sheet add an explicit human-review gate: source columns, company and account mapping, critical-anomaly acknowledgement, control totals, dry run, and only then commit. A green reconciliation does not automatically make source figures audited or decision-grade; it shows that defined technical checks passed. The safe rule is simple: inspect the preview first, then make an authorized Apply decision.",
-          ru: "«Любой файл» и Multi-sheet добавляют явный human-review gate: исходные колонки, mapping компаний и счетов, подтверждение critical anomalies, control totals, dry run и только затем commit. Зелёная сверка не делает исходные цифры автоматически аудированными или пригодными для решений; она означает прохождение заданных технических проверок. Правило: сначала изучить preview, затем уполномоченно решить об Apply.",
+          az: "İdxal diaqnostikası panelidir. O, məsləhət verir və idxalı dayandırmır — bunu qarışdırmaq asandır. Panel sizin dilinizdə cavab verir və problemi konkret adlandırır: hansı şirkət, hansı hesab, hansı ay, faylda nə yazılıb və bazada nə var. Yaşıl sətir isə birbaşa deyir ki, davam etmək olar; ona etibar edin, siyahının uzunluğuna yox.",
+          en: "This is the Import Doctor panel. It advises and it does not stop the import — that is easy to confuse. The panel answers in your language and names the problem concretely: which company, which account, which month, what the file says and what the database holds. A green line says outright that you can continue; trust that, not the length of the list.",
+          ru: "Это панель диагностики импорта. Она советует и не останавливает импорт — это легко перепутать. Панель отвечает на вашем языке и называет проблему конкретно: какая компания, какой счёт, какой месяц, что написано в файле и что лежит в базе. А зелёная строка прямо говорит, что можно продолжать; верьте ей, а не длине списка.",
         },
         do: async (p, l, h) => {
-          await p.waitForSelector(AI_IMPORT_UNIVERSAL, { timeout: 15000 });
-          await p.waitForSelector(AI_IMPORT_MULTISHEET, { timeout: 15000 });
-          await h.hover(AI_IMPORT_UNIVERSAL);
-          await h.moveTo(AI_IMPORT_MULTISHEET);
-          await p.waitForSelector(AI_IMPORT_SAFETY, { timeout: 15000 });
-          await h.hover(AI_IMPORT_SAFETY);
+          await p.waitForSelector(DD_DOCTOR_PANEL, { timeout: 15000 }).catch(() => {});
+          await h.hover(DD_DOCTOR_PANEL);
+          await h.holdUntil(0.55);
+          await h.moveTo(DD_DOCTOR_NEXT_STEP);
+          await h.holdUntil(0.9);
+        },
+      },
+      // 10 — apply, receipt, and the data back on screen.
+      {
+        voice: {
+          az: "«Tətbiq et» — yeganə addım ki, bazaya yazır. Sonda təhlükəsizlik qəbzi verilir: neçə sətir yazıldı, hansı əhatədə köhnə sətirlər arxivə keçdi, göstəricilər yenidən hesablandımı. Əgər yoxlamalardan biri işə düşsəydi, heç nə yazılmayacaqdı — ya hamısı, ya heç nə. Rəqəmlər yerindədir və onların fayldan gəldiyi indi şübhəsizdir.",
+          en: "Apply is the only step that writes to the database. At the end you get a safety receipt: how many rows were written, in what scope the old rows were archived, and whether the indicators were recomputed. If one of the gates had fired, nothing would have been written — all or nothing. The numbers are back, and there is now no doubt they came from the file.",
+          ru: "«Применить» — единственный шаг, который пишет в базу. В конце выдаётся чек безопасности: сколько строк записано, в какой области старые строки ушли в архив, пересчитались ли показатели. Если бы сработал один из предохранителей, не записалось бы ничего — либо всё, либо ничего. Цифры на месте, и теперь нет сомнений, что они пришли из файла.",
+        },
+        do: async (p, l, h) => {
+          await h.click(AI_IMPORT_APPLY);
+          await h.holdUntil(0.3);
+          await p.waitForSelector(DD_APPLY_RESULT, { timeout: 240000 }).catch(() => {});
+          await h.holdUntil(0.68);
+          await h.hover(DD_APPLY_RESULT);
+          await h.holdUntil(0.92);
         },
       },
     ],

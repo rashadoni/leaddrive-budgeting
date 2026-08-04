@@ -193,6 +193,13 @@ describe('Cash Flow help-video scenario', () => {
       'FC_EXPENSE',
       'TERM_COMPANY',
       'TERM_CELL',
+      // 2026-08-04 — the AI-import guide became a real clear-then-load run.
+      // Only these two of its clicks bypass READONLY, and both are safe by
+      // inspection: a GET navigation to the deletion screen, and a local tab
+      // toggle. Every mutating control in that scenario uses `h.click`, which
+      // degrades to a hover unless ALLOW_MUTATIONS is set explicitly.
+      'AI_IMPORT_RESET_CTA',
+      'DD_TAB_ROUTING',
       'RUN_BTN',
     ]);
   });
