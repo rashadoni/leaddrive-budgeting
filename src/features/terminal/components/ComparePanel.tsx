@@ -24,7 +24,7 @@
 import React, { useEffect, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
-import { statusShape } from "@/lib/risk/heatmap-matrix";
+import { statusShape, hasEvidencedValue } from "@/lib/risk/heatmap-matrix";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 
 interface CompareEvent {
@@ -242,8 +242,14 @@ function CompareRow({
   rhs: MatrixCell | undefined;
 }) {
   const locale = useLocale();
-  const lhsValue = lhs?.value;
-  const rhsValue = rhs?.value;
+  // 2026-08-04 audit — an unscored row still carries a stored 0. Reading
+  // `.value` without the status printed that 0 in the brightest text colour
+  // and, worse, subtracted it: a company with no data showed a precise delta
+  // against one that had figures.
+  const lhsEvidenced = hasEvidencedValue(lhs?.status, lhs?.value);
+  const rhsEvidenced = hasEvidencedValue(rhs?.status, rhs?.value);
+  const lhsValue = lhsEvidenced ? lhs?.value : undefined;
+  const rhsValue = rhsEvidenced ? rhs?.value : undefined;
 
   let delta: number | null = null;
   if (typeof lhsValue === "number" && typeof rhsValue === "number") {
