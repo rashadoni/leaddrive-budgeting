@@ -30,6 +30,12 @@ dist/
 .env.test.local
 .env.production.local
 .env*.local
+# 2026-08-04 — a `.env.bak-<date>` holding a live ANTHROPIC_API_KEY was sitting
+# un-ignored in the working tree and got staged by a routine `git add -A`. The
+# pre-commit secret scanner caught it, which is the last line of defence, not
+# the first. A backup of an env file is an env file.
+.env.bak*
+.env.*.bak*
 prisma/.env
 
 # Misc

@@ -4472,6 +4472,56 @@
       "started": "Başlanıb",
       "finished": "Bitib",
       "failedReason": "Uğursuzluq səbəbi"
+    },
+    "queueSection": "BullMQ növbəsi",
+    "jobs": {
+      "title": "Fon işləri",
+      "subtitle": "İstifadəçi sorğusundan kənarda nə icra olunur və hər iş sonuncu dəfə bazada nə vaxt iz qoyub. Heç nə qeyd etməyən iş sağlam yox, «uçot yoxdur» kimi göstərilir — monitor təxmin etmir.",
+      "refresh": "yenilə",
+      "loading": "Yüklənir…",
+      "noTrace": "iz yoxdur",
+      "col": {
+        "job": "İş",
+        "trigger": "Kim başladır",
+        "lastRun": "Sonuncu iz",
+        "status": "Status"
+      },
+      "name": {
+        "recompute": "İndikatorların yenidən hesablanması",
+        "import": "Data idxalı",
+        "intelCrawl": "Xəbər toplanması (Intel)",
+        "feedRefresh": "Pulsuz lentlərin yenilənməsi",
+        "tradeDigest": "Ticarət siqnallarının icmalı",
+        "softDeletePurge": "Yumşaq silinmişlərin təmizlənməsi"
+      },
+      "desc": {
+        "recompute": "İdxaldan və ya əl ilə yeniləmədən sonra indikator dəyərlərini yenidən hesablayır.",
+        "import": "Yüklənmiş kitabı oxuyur və büdcə, balans və pul axını sətirlərini yazır.",
+        "intelCrawl": "Intel panellərini qidalandıran gündəlik xəbər və bazar toplanması.",
+        "feedRefresh": "Pulsuz əmtəə və makro lentləri data nöqtələrinə çəkir.",
+        "tradeDigest": "Ticarət siqnallarının gündəlik icmalı. Heartbeat yazmır, ona görə buradan icrasını təsdiqləmək mümkün deyil.",
+        "softDeletePurge": "30 gündən çox əvvəl yumşaq silinmiş sətirləri fiziki olaraq silir. Yalnız BullMQ işçisinin daxilində planlaşdırılır."
+      },
+      "trigger": {
+        "request": "istifadəçi sorğusu",
+        "timer": "systemd taymeri",
+        "cron": "crontab",
+        "worker": "BullMQ işçisi"
+      },
+      "status": {
+        "ok": "cədvələ uyğun",
+        "stale": "gecikir",
+        "never": "heç vaxt icra olunmayıb",
+        "onDemand": "tələb üzrə",
+        "noRunner": "icra edən yoxdur",
+        "untracked": "uçot yoxdur"
+      },
+      "detail": {
+        "recomputedLast24h": "24 saatda yenidən hesablanan dəyər",
+        "verdict": "hökm",
+        "runStatus": "icra statusu",
+        "errors": "xəta"
+      }
     }
   },
   "adminDataArchive": {
