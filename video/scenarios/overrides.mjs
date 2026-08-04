@@ -365,6 +365,34 @@ const selectCompany = async (p, h) => {
   await h.sleep(400);
 };
 
+// ── Indicator backlog anchors ───────────────────────────────────────────
+// Every one of these is a read-only surface or a client-state control; the
+// page issues a single GET and nothing here can write. Verified live against
+// the stand before recording (handoff rule #2).
+const IB_TITLE = ["main h1", "h1", "main"];
+const IB_PERIOD = '[data-testid="data-control-backlog-period"]';
+const IB_KPI_ENTITIES = '[data-testid="backlog-kpi-entities"]';
+const IB_KPI_APPLICABLE = '[data-testid="backlog-kpi-applicable"]';
+const IB_KPI_PRESENT = '[data-testid="backlog-kpi-present"]';
+const IB_KPI_MISSING = '[data-testid="backlog-kpi-missing"]';
+const IB_KPI_READINESS = '[data-testid="backlog-kpi-readiness"]';
+const IB_PROGRESS = '[data-testid="backlog-progress"]';
+const IB_BY_OWNER = '[data-testid="backlog-by-owner"]';
+// The dashed amber chip: gaps with nobody assigned. Exactly one per page.
+const IB_OWNER_UNKNOWN = '[data-testid="backlog-owner-chip"][data-owner-unknown="1"]';
+const IB_FILTERS = '[data-testid="backlog-filters"]';
+const IB_HIDE_COMPLETE = '[data-testid="backlog-hide-complete"]';
+const IB_SHOWN_COUNT = '[data-testid="backlog-shown-count"]';
+const IB_ENTITY_CARD = ['[data-testid="backlog-entity-card"]', "main"];
+const IB_ENTITY_SUMMARY = ['[data-testid="backlog-entity-summary"]', '[data-testid="backlog-entity-card"]'];
+const IB_ENTITY_PRESENT = ['[data-testid="backlog-entity-present"]', '[data-testid="backlog-entity-card"]'];
+const IB_ENTITY_MISSING = ['[data-testid="backlog-entity-missing"]', '[data-testid="backlog-entity-card"]'];
+const IB_ENTITY_ACTIONS = ['[data-testid="backlog-entity-actions"]', '[data-testid="backlog-entity-card"]'];
+// Hover targets only — never clicked. See the scenario note.
+const IB_CSV = ['[data-testid="backlog-csv"]', '[data-testid="backlog-entity-actions"]'];
+const IB_EMAIL = ['[data-testid="backlog-email"]', '[data-testid="backlog-entity-actions"]'];
+const IB_UPLOAD = ['[data-testid="backlog-upload"]', '[data-testid="backlog-entity-actions"]'];
+
 export default {
   "workspace": {
     route: "/budgeting?tab=workspace",
@@ -1866,6 +1894,160 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(BANNER);
+        },
+      },
+    ],
+  },
+  // ── Indicator backlog (İndikator məlumat boşluqları) ──────────────────────
+  // READONLY-safe by construction: every control on this page is client state.
+  // The owner chips and the hide-complete toggle only re-filter an already
+  // rendered list; the page itself issues a single GET. The three buttons on an
+  // entity card are deliberately NEVER clicked — CSV builds a local blob (a
+  // silent download, nothing to see), "write to owners" opens a mailto: in a new
+  // tab and would wreck the take, and "upload file" navigates away to AI Import.
+  // The narration explains all three instead.
+  "indicator-backlog": {
+    route: "/budgeting/admin/indicator-backlog",
+    title: {
+      az: "İndikator məlumat boşluqları",
+      en: "Indicator data gaps",
+      ru: "Пробелы в данных по индикаторам",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "Bu ekran bir suala cavab verir: holdinqin risk mənzərəsini qurmaq üçün hansı məlumat çatışmır və onu kim verməlidir. Yuxarıdakı qeyd sərhədi dəqiq göstərir: burada yalnız saxlanmış dəyərlərin əhatəsi var. Bu, məlumatın təzə, üzləşdirilmiş və ya keyfiyyətli olduğunu təsdiqləmir — sadəcə deyir ki, dəyər var, yoxsa yoxdur.",
+          en: "This screen answers one question: which data is missing before the holding's risk picture can be built, and who is supposed to supply it. The note at the top states the boundary precisely — what you see here is the coverage of stored values only. It is not a claim that the data is fresh, reconciled or good quality; it only says a value exists, or it does not.",
+          ru: "Этот экран отвечает на один вопрос: каких данных не хватает, чтобы собрать картину рисков холдинга, и кто должен их предоставить. Заметка вверху точно очерчивает границу: здесь показан только охват сохранённых значений. Это не подтверждение того, что данные свежие, сверенные или качественные, — лишь факт, что значение есть или его нет.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(IB_PERIOD, { timeout: 30000 });
+          await h.moveTo(IB_TITLE);
+          await h.holdUntil(0.45);
+          await h.hover(IB_PERIOD);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "Beş rəqəm bütün mənzərəni verir. Neçə aktiv törəmə şirkət nəzərə alınır, onlara cəmi neçə indikator tətbiq olunur, neçəsinin saxlanmış dəyəri var, neçəsi mənbə məlumatını gözləyir və nəticədə holdinqin hazırlığı faizlə. Altdakı zolaq həmin nisbəti göz üçün çəkir: qırmızı hissə hələ bağlanmamış boşluqdur.",
+          en: "Five numbers give the whole picture: how many active subsidiaries are counted, how many indicators apply to them in total, how many already have a stored value, how many are still waiting for source data, and the resulting holding readiness as a percentage. The bar underneath draws that same ratio, so the red part is simply the gap that is still open.",
+          ru: "Пять чисел дают всю картину: сколько активных дочерних компаний учтено, сколько индикаторов к ним применимо, у скольких уже есть сохранённое значение, сколько ждут данных от источника и какая в итоге готовность холдинга в процентах. Полоса под ними рисует то же соотношение: красная часть — это ещё не закрытый пробел.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_KPI_ENTITIES);
+          await h.holdUntil(0.25);
+          await h.hover(IB_KPI_APPLICABLE);
+          await h.holdUntil(0.45);
+          await h.hover(IB_KPI_PRESENT);
+          await h.holdUntil(0.6);
+          await h.hover(IB_KPI_MISSING);
+          await h.holdUntil(0.78);
+          await h.moveTo(IB_KPI_READINESS);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "İkinci rəqəmə diqqət edin: bu, sistemdəki bütün indikatorların kataloqu deyil. Burada yalnız həmin şirkətlərə bu gün tətbiq olunanlar sayılır — sahəyə, fəaliyyət növünə və şirkətin konfiqurasiyasına görə. Ona görə şirkət əlavə ediləndə və ya sahə dəyişəndə məxrəc də dəyişir, və faizi müxtəlif dövrlər arasında kor-koranə müqayisə etmək olmaz.",
+          en: "Look closely at the second number: it is not a catalogue of every indicator in the system. It counts only those that apply to these companies today, by industry, activity and each company's configuration. So the denominator moves when a company is added or an industry changes, which means the percentage cannot be compared blindly across different periods.",
+          ru: "Присмотритесь ко второму числу: это не каталог всех индикаторов системы. Здесь считаются только те, что применимы к этим компаниям сегодня — по отрасли, виду деятельности и настройке самой компании. Поэтому знаменатель меняется, когда добавляют компанию или меняют отрасль, и процент нельзя вслепую сравнивать между разными периодами.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_KPI_APPLICABLE);
+          await h.holdUntil(0.5);
+          await h.hover(IB_KPI_APPLICABLE);
+          await h.holdUntil(0.85);
+          await h.moveTo(IB_PROGRESS);
+        },
+      },
+      {
+        voice: {
+          az: "Aşağıda boşluqlar məlumat sahibinə görə qruplaşdırılır — yəni siyahı dərhal tapşırıq növbəsinə çevrilir. Kəsik sarı haşiyəli nişana diqqət edin: orada məsul şəxsi ümumiyyətlə təyin edilməmiş boşluqlar sayılır. Bu, birinci işdir: sahibi olmayan boşluq heç kimin gündəliyində deyil və öz-özünə bağlanmayacaq. İndi həmin nişana basıram.",
+          en: "Below, the gaps are grouped by data owner, which turns the list straight into a work queue. Notice the chip with the dashed amber outline: it counts the gaps with no responsible person assigned at all. That is job number one — a gap with no owner is on nobody's agenda and will not close by itself. I am clicking that chip now.",
+          ru: "Ниже пробелы сгруппированы по владельцу данных — и список сразу превращается в очередь задач. Обратите внимание на чип с пунктирной янтарной рамкой: в нём считаются пробелы, у которых вообще не назначен ответственный. Это задача номер один: пробел без владельца не стоит ни у кого в плане и сам не закроется. Нажимаю на этот чип.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_BY_OWNER);
+          await h.holdUntil(0.4);
+          await h.hover(IB_OWNER_UNKNOWN);
+          await h.holdUntil(0.62);
+          await h.safeClick(IB_OWNER_UNKNOWN);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "Sağdakı sayğac filtrdən sonra neçə şirkətin qaldığını göstərir. Diqqət edin: burada rəqəm dəyişmir, dördü də yerində qalır. Bu, filtrin işləmədiyi demək deyil — əksinə, cavabdır: sahibi təyin olunmamış boşluqlar hər dörd şirkətdə var. Tam hazır şirkətləri gizlədəndə də siyahı azalmır, çünki hələ heç biri yüz faizə çatmayıb.",
+          en: "The counter on the right shows how many companies are left after filtering. Watch it closely: the number does not move, all four stay. That is not a broken filter — it is the answer. Gaps with no assigned owner exist in every one of the four companies. Hiding the fully ready ones changes nothing either, because not a single company has reached a hundred percent yet.",
+          ru: "Счётчик справа показывает, сколько компаний осталось после фильтра. Присмотритесь: число не меняется, все четыре на месте. Это не сломанный фильтр, а ответ: пробелы без назначенного владельца есть у всех четырёх компаний. Скрытие полностью готовых тоже ничего не убирает — ни одна компания пока не дошла до ста процентов.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_FILTERS);
+          await h.holdUntil(0.35);
+          await h.hover(IB_SHOWN_COUNT);
+          await h.holdUntil(0.55);
+          await h.safeClick(IB_HIDE_COMPLETE);
+          await h.holdUntil(0.78);
+          await h.safeClick(IB_HIDE_COMPLETE);
+          await h.safeClick(IB_OWNER_UNKNOWN);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Filtrlərdən sonra iş vahidi şirkət kartıdır. Başlıqda kodu, adı və sahə nişanı var, yanında isə üç rəqəm: neçə indikator saxlanılıb, neçəsi çatışmır və əhatə faizi. Altdakı zolaq eyni nisbəti təkrarlayır. Beləcə hansı şirkətin ən çox geridə qaldığını siyahını oxumadan, bir baxışla görmək olur.",
+          en: "Once filtered, the unit of work is the company card. Its header carries the code, the name and an industry badge, and beside them three numbers: how many indicators are stored, how many are missing and the resulting coverage. The bar underneath repeats that ratio, so you can see at a glance which company is furthest behind without reading a single row.",
+          ru: "После фильтров единица работы — карточка компании. В её шапке код, название и отраслевой бейдж, а рядом три числа: сколько индикаторов сохранено, сколько отсутствует и какой в итоге охват. Полоса под ними повторяет то же соотношение, поэтому видно с первого взгляда, какая компания отстаёт сильнее всех, не читая ни одной строки.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_ENTITY_CARD);
+          await h.holdUntil(0.45);
+          await h.hover(IB_ENTITY_SUMMARY);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "Kartın içi iki sütuna bölünür. Solda artıq dəyəri olan indikatorlar var — bu, artıq bağlanmış hissədir. Sağda isə çatışmayanlar, və bu sütun daha vacibdir: hər sətir yanında hansı məlumatın tələb olunduğunu və kimin cavabdeh olduğunu yazır. Yəni sual «nə yoxdur» deyil, «kimdən nəyi istəmək lazımdır» şəklində qoyulur.",
+          en: "Inside, the card splits into two columns. On the left are the indicators that already have a value — the part that is closed. On the right are the missing ones, and that column matters more: each row names the input that is required and who is accountable for it. The question stops being what is missing and becomes what to ask, and from whom.",
+          ru: "Внутри карточка делится на две колонки. Слева индикаторы, у которых значение уже есть, — это закрытая часть. Справа отсутствующие, и эта колонка важнее: в каждой строке указано, какие данные требуются и кто за них отвечает. Вопрос перестаёт быть «чего нет» и становится «что и у кого запросить».",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_ENTITY_PRESENT);
+          await h.holdUntil(0.4);
+          await h.hover(IB_ENTITY_MISSING);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "Kartın sağ küncündə üç düymə var və hər biri fərqli iş görür. CSV çatışmayanların siyahısını fayl kimi endirir — sorğunu məktuba əlavə etmək üçün. İkincisi hazır məktub şablonlarını açır, hər məlumat sahibinə ayrıca. Üçüncüsü isə həmin şirkət seçilmiş halda AI avtomatik idxala aparır. Bu təlimdə heç birinə basmıram: ikincisi poçt proqramını açır, üçüncüsü isə səhifədən çıxarır.",
+          en: "Three buttons sit in the card's corner and each does something different. CSV downloads the list of missing items as a file, so the request can be attached to a message. The second opens prepared e-mail drafts, one per data owner. The third takes you into AI Auto Import with that company already selected. This guide presses none of them: the second opens your mail client and the third leaves the page.",
+          ru: "В углу карточки три кнопки, и каждая делает своё. CSV выгружает список отсутствующего файлом, чтобы приложить запрос к письму. Вторая открывает готовые черновики писем — по одному на каждого владельца данных. Третья ведёт в AI автоматический импорт с уже выбранной компанией. В этом гайде я не нажимаю ни одну: вторая откроет почтовую программу, а третья уведёт со страницы.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_ENTITY_ACTIONS);
+          await h.holdUntil(0.35);
+          await h.hover(IB_CSV);
+          await h.holdUntil(0.58);
+          await h.hover(IB_EMAIL);
+          await h.holdUntil(0.8);
+          await h.moveTo(IB_UPLOAD);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Ardıcıllıq belədir: əvvəl dövrü yoxlayın, sonra sahibi naməlum boşluqları götürün, filtrlə diqqəti daraldın, ən aşağı əhatəli şirkəti seçin və məlumatı ya məktubla istəyin, ya da faylı idxal edin. Uğurlu idxal uyğun boşluqları avtomatik bağlayır və faiz özü qalxır. Və sonda sərhədi unutmayın: bu rəqəm əhatəni ölçür, məlumatın keyfiyyətini yox.",
+          en: "The working order is this: check the period first, then take the gaps with an unknown owner, narrow the view with filters, pick the company with the lowest coverage, and either request the data by e-mail or import the file. A successful import closes the matching gaps automatically and the percentage rises on its own. And remember the boundary at the end: this number measures coverage, not the quality of the data.",
+          ru: "Рабочий порядок такой: сначала проверьте период, затем возьмите пробелы с неизвестным владельцем, сузьте фильтрами, выберите компанию с наименьшим охватом и либо запросите данные письмом, либо импортируйте файл. Успешный импорт закрывает соответствующие пробелы сам, и процент поднимается без ручной правки. И помните про границу: это число измеряет охват, а не качество данных.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_KPI_READINESS);
+          await h.holdUntil(0.5);
+          await h.hover(IB_PROGRESS);
+          await h.holdUntil(0.92);
         },
       },
     ],
