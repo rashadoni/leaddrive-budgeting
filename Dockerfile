@@ -29,6 +29,19 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Keep the help-guide videos out of the Next build. They are pure runtime
+# assets — streamed by /api/help-videos/[file], never imported by any module —
+# but `COPY . .` puts them in front of the build's file tracer, which walks
+# them and holds them in memory for nothing.
+#
+# 2026-08-04: adding the AI Import guide took video/player from ~20MB to ~51MB
+# and the prod build died with "JavaScript heap out of memory" at 1.9GB on a
+# 3.8GB server (node's default old-space ceiling is ~2GB there). The runtime
+# stage now copies these straight from the build context instead of from this
+# stage, so the image is unchanged and the next guide cannot push the build
+# over the edge again.
+RUN rm -rf video/player
+
 # Prisma client is required by the build (server components / API routes import it).
 RUN npx prisma generate
 
@@ -103,7 +116,10 @@ COPY --from=build --chown=nextjs:nodejs /app/scripts                       ./scr
 COPY --from=build --chown=nextjs:nodejs /app/node_modules/bcryptjs         ./node_modules/bcryptjs
 # Git-tracked help-guide videos, served by /api/help-videos/[file]. The
 # standalone output does not trace plain data files, so copy them explicitly.
-COPY --from=build --chown=nextjs:nodejs /app/video/player                  ./video/player
+# Straight from the build CONTEXT, not from the build stage — that stage deletes
+# them before `npm run build` so the Next file tracer never walks ~51MB of mp4
+# (see the note there). Same files in the image either way.
+COPY --chown=nextjs:nodejs video/player ./video/player
 
 # Entrypoint: run migrations then exec the server.
 COPY --chown=nextjs:nodejs deploy/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
