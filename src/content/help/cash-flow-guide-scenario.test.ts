@@ -198,6 +198,11 @@ describe('Cash Flow help-video scenario', () => {
       // through mutatingClick below, never through this list.
       // Navigation to the deletion screen — a GET, not a write.
       'AI_RESET_CTA',
+      // Мастер удаления пошаговый: задача → компания → год. Все три меняют
+      // только клиентское состояние; сама очистка идёт через mutatingClick.
+      'DD_TASK_CLEAR_YEAR',
+      'DD_COMPANY_OPTION',
+      'DD_YEAR_CHIP',
       'AI_TAB_SINGLE',
       'AI_TAB_MULTI',
       'RUN_BTN',
@@ -236,8 +241,10 @@ describe('Cash Flow help-video scenario', () => {
     // DD_CHECK computes the blast radius and deletes nothing, DD_CONFIRM_SUBMIT
     // is the deletion itself and can only follow it.
     expect(mutatingTargets).toEqual([
+      // The deletion's dry check computes the blast radius and deletes nothing.
+      // The confirmation itself is deliberately NOT in this list — see the note
+      // in ai-import-guide-scenario.test.ts.
       'DD_CHECK',
-      'DD_CONFIRM_SUBMIT',
       'AI_ANALYZE',
       'AI_APPLY',
     ]);

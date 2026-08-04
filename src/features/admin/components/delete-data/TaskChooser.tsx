@@ -29,6 +29,7 @@ export function TaskChooser({ onPick }: { onPick: (task: TaskId) => void }) {
         {SAFE_TASKS.map(({ id, icon: Icon }) => (
           <TaskCard
             key={id}
+            testId={`task-${id}`}
             icon={Icon}
             title={t(`task.${id}.title`)}
             body={t(`task.${id}.body`)}
@@ -47,6 +48,7 @@ export function TaskChooser({ onPick }: { onPick: (task: TaskId) => void }) {
       </div>
 
       <TaskCard
+        testId="task-deleteAll"
         danger
         icon={Flame}
         title={t("task.deleteAll.title")}
@@ -59,6 +61,7 @@ export function TaskChooser({ onPick }: { onPick: (task: TaskId) => void }) {
 }
 
 function TaskCard({
+  testId,
   icon: Icon,
   title,
   body,
@@ -72,9 +75,14 @@ function TaskCard({
   cta: string
   onPick: () => void
   danger?: boolean
+  /** Stable anchor for the guide recorder: the task cards carried no id of
+   *  their own, so a scenario could only target them by position or by
+   *  localised text — neither survives a reorder or a language switch. */
+  testId?: string
 }) {
   return (
     <button
+      data-testid={testId}
       type="button"
       onClick={onPick}
       className={`flex h-full flex-col items-start gap-1.5 rounded-lg border p-4 text-left transition ${

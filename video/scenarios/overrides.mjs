@@ -44,6 +44,13 @@ const BANNER_DETAIL = ['[data-testid="statement-controls-shadow-banner"] p', BAN
 const COMPANY_SELECT_SEL = '[data-testid="statement-controls-company-select"]';
 const COMPANY_SELECT = [COMPANY_SELECT_SEL, "main select"];
 const RUN_BTN = '[data-testid="statement-controls-run"]';
+// 2026-08-04 — период обязателен для осмысленной записи. Он опционален в UI, но
+// без него контроли не находят отчётность и экран показывает пустое состояние
+// «əvvəlcə fayl idxal edin» — восемь сцен подряд под озвучку про карточки
+// баланса. Поймано просмотром кадров, silencedetect такое не видит.
+const PERIOD_INPUT = '[data-testid="statement-controls-period-input"]';
+/** Месяц, за который на стенде есть отчётность AZSEKER-AZSF. */
+const DEMO_PERIOD = process.env.GUIDE_SC_PERIOD || "2026-05";
 const RESULT = '[data-testid="statement-controls-result"]';
 const CARD_BS = ['[data-testid="statement-control-balance_sheet"]', "main"];
 const SIGN_CONV = ['[data-testid="statement-controls-sign-convention"]', "main"];
@@ -82,6 +89,10 @@ const DC_DRIFT = '[data-testid="data-control-drift"]';
 const DC_DRIFT_FRESHNESS = '[data-testid="data-control-drift-freshness"]';
 const DC_INTEL = '[data-testid="data-control-intel-health"]';
 const DC_INTEL_SUMMARY = '[data-testid="data-control-intel-health-summary"]';
+// Заголовок текущей страницы — второй бит там, где у раздела всего один якорь.
+// Обзор ведёт по восьми маршрутам, и на каждом курсор сначала называет экран,
+// потом показывает то, о чём идёт речь.
+const DC_TITLE = ["main h1", "h1", "main"];
 
 // ── AI Import (Data İmportu) — the real end-to-end workflow ─────────────
 // 2026-08-03 rewrite. The previous version of this scenario was hover-only and
@@ -119,6 +130,16 @@ const DD_COMPANY_PICKER = '[data-testid="company-picker"]';
 const DD_WHAT_PICKER = '[data-testid="what-picker"]';
 const DD_YEAR_CHIPS = '[data-testid="year-chips"]';
 const DD_CHECK = '[data-testid="check-button"]';
+// 2026-08-04 — мастер удаления пошаговый: задача → компания → год, и только
+// после этого появляется «Проверить». Сценарий раньше лишь наводился на эти
+// блоки, ничего не выбирая, поэтому запись падала на check-button (найдено 0).
+// Задача и компания получили собственные якоря (их не было); год цепляется по
+// числу — оно одинаково на всех трёх языках.
+const DD_TASK_CLEAR_YEAR = '[data-testid="task-clearYears"]';
+const DD_COMPANY_OPTION = '[data-testid="company-option-AZSEKER-AZSF"]';
+/** 2025, а не 2026: год очищается по-настоящему, а на 2026 держатся все
+ *  остальные записи стенда. Озвучка год не называет, так что рассказ честен. */
+const DD_YEAR_CHIP = '[data-testid="year-chips"] button:has-text("2025")';
 const DD_BLAST_RADIUS = '[data-testid="blast-radius"]';
 const DD_CONFIRM_STRIP = '[data-testid="confirm-strip"]';
 const DD_CONFIRM_SUBMIT = '[data-testid="confirm-submit"]';
@@ -172,6 +193,16 @@ const ALERTS_READ_SEVERITY = '[data-testid="alerts-guide-read-severity"]';
 const ALERTS_READ_MESSAGE = '[data-testid="alerts-guide-read-message"]';
 const ALERTS_READ_PAGINATION = '[data-testid="alerts-guide-read-pagination"]';
 const ALERTS_READ_DEEPLINK = '[data-testid="alerts-guide-read-deeplink"]';
+// 2026-08-04 — найдены probe'ом; сценарий их не использовал, из-за чего каждая
+// сцена состояла из одного наведения и кадр замирал под озвучку.
+const ALERTS_FEED = ['[data-testid="alerts-guide-feed"]', ALERTS_ROOT];
+const ALERTS_RESULTS = ['[data-testid="alerts-guide-results"]', ALERTS_ROOT];
+const ALERTS_SUMMARY = ['[data-testid="alerts-guide-summary"]', ALERTS_ROOT];
+const ALERTS_EVENT_ROW = [
+  '[data-testid="alert-event-row"]',
+  '[data-testid="alerts-guide-events-list"]',
+  ALERTS_ROOT,
+];
 
 // ── Board Deck evidence-boundary guide ─────────────────────────────────
 // Strictly hover-only. The page, language state and exports are cache-read-only;
@@ -188,6 +219,17 @@ const BOARD_TREND = '[data-testid="composite-trend-chart"]';
 const BOARD_ALERTS = '[data-testid="board-deck-top-alerts"]';
 const BOARD_FLAGS = '[data-testid="board-deck-risk-flags"]';
 const BOARD_FOOTER = '[data-testid="board-deck-footer-actions"]';
+// 2026-08-04 — найдены probe'ом. Каждая сцена сценария была одним наведением
+// на крупный блок; эти якоря позволяют вести курсор по конкретным числам.
+// Генерация нарратива и переключатели языка НЕ трогаются: первая — платное
+// действие, вторые могут её запустить.
+const BOARD_HEADLINE = ['[data-testid="hero-headline"]', BOARD_HERO];
+const BOARD_RED_CELLS = ['[data-testid="metric-red-cells-value"]', '[data-testid="metric-red-cells"]', BOARD_METRICS];
+const BOARD_RED_SUBCOS = ['[data-testid="metric-red-subcos-value"]', '[data-testid="metric-red-subcos"]', BOARD_METRICS];
+const BOARD_COVERAGE = ['[data-testid="metric-indicator-coverage-value"]', '[data-testid="metric-indicator-coverage"]', BOARD_METRICS];
+// Последняя точка тренда: самый свежий месяц на графике.
+const BOARD_TREND_LAST = ['[data-testid="trend-point-2026-08"]', '[data-testid="trend-line"]', BOARD_TREND];
+const BOARD_ALERTS_LIST = ['[data-testid="top-alerts-list"]', BOARD_ALERTS];
 
 // ── Workspace / P&L execution view ────────────────────────────────────────
 // READONLY-safe: the only clicks toggle local list/matrix/materiality state.
@@ -367,7 +409,12 @@ const selectCompany = async (p, h) => {
   const value = await p
     .$eval(COMPANY_SELECT_SEL, (el) => {
       const opts = [...el.options].filter((o) => o.value);
-      const hit = opts.find((o) => /azseker|azsf/i.test(o.textContent || "")) || opts[0];
+      // Именно операционная компания: у родительского «AZSEKER» отчётности нет,
+      // и раньше выбор падал на него первым — экран выходил пустым.
+      const hit =
+        opts.find((o) => /azsf/i.test(o.textContent || "")) ||
+        opts.find((o) => /azseker/i.test(o.textContent || "")) ||
+        opts[0];
       return hit ? hit.value : "";
     })
     .catch(() => "");
@@ -423,8 +470,11 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(WS_TITLE);
+          await h.holdUntil(0.35);
           await h.hover(WS_PLAN);
+          await h.holdUntil(0.7);
           await h.moveTo(WS_COMPANY);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -435,7 +485,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(WS_CONTEXT);
+          await h.holdUntil(0.5);
           await h.hover(WS_CONTEXT);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -446,9 +498,13 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(WS_REVENUE);
+          await h.holdUntil(0.28);
           await h.hover(WS_COGS);
+          await h.holdUntil(0.5);
           await h.hover(WS_EXPENSES);
+          await h.holdUntil(0.72);
           await h.moveTo(WS_PROFIT);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -459,8 +515,11 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(WS_WATERFALL);
+          await h.holdUntil(0.4);
           await h.hover(WS_WATERFALL);
+          await h.holdUntil(0.72);
           await h.moveTo(WS_GAUGE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -471,7 +530,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(WS_CATEGORY_BARS);
+          await h.holdUntil(0.5);
           await h.hover(WS_CATEGORY_BARS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -482,8 +543,11 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(WS_CONTROLS);
+          await h.holdUntil(0.35);
           await h.safeClick(WS_MATERIAL);
+          await h.holdUntil(0.7);
           await h.hover(WS_CONTROLS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -493,9 +557,12 @@ export default {
           ru: "Переключение со Списка на Матрицу меняет только представление на экране. Если матрица настроена, план раскладывается по подразделениям и типам затрат. Если она не настроена, экран прямо сообщает об этом и отдельно предлагает создание. В этом гайде мы не нажимаем эту кнопку: только проверяем вид, не создаём строки, не меняем суммы и не запускаем согласование.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.3);
           await h.safeClick(WS_MATRIX_BUTTON);
           await p.waitForSelector('[data-testid="workspace-matrix"]', { timeout: 8000 });
+          await h.holdUntil(0.65);
           await h.moveTo(WS_MATRIX);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -505,10 +572,14 @@ export default {
           ru: "После возврата в Список главная P&L-таблица становится дорожкой разбора. Выручка, себестоимость и операционные расходы разделены, а между ними по каноническим формулам рассчитаны валовая и операционная прибыль. План, факт и процент отклонения стоят рядом, поэтому от сводки можно перейти к конкретной строке счёта без смены логики.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.25);
           await h.safeClick(WS_LIST_BUTTON);
           await p.waitForSelector('[data-testid="workspace-table"]', { timeout: 8000 });
+          await h.holdUntil(0.55);
           await h.moveTo(WS_TABLE);
+          await h.holdUntil(0.78);
           await h.hover(WS_TABLE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -519,7 +590,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(WS_KPIS);
+          await h.holdUntil(0.5);
           await h.hover(WS_PROFIT);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -541,7 +614,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BS_ROOT, { timeout: 12000 });
           await h.moveTo(BS_ROOT);
+          await h.holdUntil(0.45);
           await h.hover(BS_SOURCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -552,7 +627,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(BS_CONSOLIDATED);
+          await h.holdUntil(0.5);
           await h.hover(BS_CONSOLIDATED);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -563,7 +640,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(BS_KPIS);
+          await h.holdUntil(0.5);
           await h.hover(BS_SOURCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -574,9 +653,13 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(BS_ASSETS);
+          await h.holdUntil(0.28);
           await h.hover(BS_LIABILITIES);
+          await h.holdUntil(0.5);
           await h.hover(BS_EQUITY);
+          await h.holdUntil(0.72);
           await h.moveTo(BS_DE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -587,7 +670,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(BS_STRUCTURE);
+          await h.holdUntil(0.5);
           await h.hover(BS_STRUCTURE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -598,7 +683,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(BS_COMPOSITION);
+          await h.holdUntil(0.5);
           await h.hover(BS_COMPOSITION);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -609,7 +696,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(BS_DETAIL);
+          await h.holdUntil(0.5);
           await h.hover(BS_EDIT_WARNING);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -619,10 +708,15 @@ export default {
           ru: "Заголовки разделов — доступные кнопки, управляющие только локальным представлением. Сейчас я сворачиваю и снова раскрываю Активы и Обязательства, показывая навигацию по длинной таблице. Эти клики ничего не записывают на сервер, не меняют выбранный план и финансовые строки, а лишь скрывают и возвращают соответствующие счета на экране.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.18);
           await h.safeClick(BS_ASSETS_TOGGLE);
+          await h.holdUntil(0.38);
           await h.safeClick(BS_ASSETS_TOGGLE);
+          await h.holdUntil(0.58);
           await h.safeClick(BS_LIABILITIES_TOGGLE);
+          await h.holdUntil(0.78);
           await h.safeClick(BS_LIABILITIES_TOGGLE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -632,9 +726,13 @@ export default {
           ru: "В завершение я сворачиваю и снова раскрываю Капитал. Безопасная последовательность такова: подтвердите план, источник «Факт», границу консолидации и последний доказанный месяц, затем читайте KPI, структуру и счета. Если данных не хватает, не придумывайте ноль, не меняйте input и не запускайте импорт вслепую; сначала проверьте утверждённый исходный файл в preview.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.25);
           await h.safeClick(BS_EQUITY_TOGGLE);
+          await h.holdUntil(0.5);
           await h.safeClick(BS_EQUITY_TOGGLE);
+          await h.holdUntil(0.75);
           await h.moveTo(BS_KPIS);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -655,7 +753,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CF_ROOT);
+          await h.holdUntil(0.5);
           await h.hover(CF_HEADER);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -666,7 +766,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CF_OVERVIEW);
+          await h.holdUntil(0.5);
           await h.hover(CF_EVIDENCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -677,7 +779,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CF_TOTALS);
+          await h.holdUntil(0.5);
           await h.hover(CF_TOTALS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -688,7 +792,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CF_MONTHLY);
+          await h.holdUntil(0.5);
           await h.hover(CF_MONTHLY);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -699,7 +805,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CF_GENERATE);
+          await h.holdUntil(0.5);
           await h.hover(CF_GENERATE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -710,7 +818,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CF_TABS);
+          await h.holdUntil(0.5);
           await h.hover(CF_TABS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -720,9 +830,12 @@ export default {
           ru: "«Записи» — это переход к источникам расчёта: месяц, тип поступления или платежа, деятельность, описание и сумма. Для менеджера и администратора строки могут содержать inline-редактирование и восстановимое мягкое удаление. Гайд лишь переключает локальную вкладку: не фокусирует поля, не меняет значения, не вызывает blur и не касается удаления.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.3);
           await h.safeClick(CF_ENTRIES_BUTTON);
           await p.waitForSelector(CF_ENTRIES_VIEW, { timeout: 8000 });
+          await h.holdUntil(0.65);
           await h.moveTo(CF_ENTRIES_EVIDENCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -732,9 +845,12 @@ export default {
           ru: "После возврата в Обзор безопасный порядок прост: подтвердите год и scope организации, проверьте наличие исходных записей и только затем читайте график, месячные балансы и отчёт по деятельности. Если доказательств нет, следующий шаг — не придумывать нули и не запускать генератор вслепую, а сделать preview и импортировать утверждённый исходный файл Cash Flow.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.3);
           await h.safeClick(CF_OVERVIEW_BUTTON);
           await p.waitForSelector(CF_OVERVIEW, { timeout: 8000 });
+          await h.holdUntil(0.65);
           await h.moveTo(CF_EVIDENCE);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -756,7 +872,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(CMP_ROOT, { timeout: 12000 });
           await h.moveTo(CMP_PROVENANCE);
+          await h.holdUntil(0.45);
           await h.hover(CMP_PICKER);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -766,10 +884,14 @@ export default {
           ru: "Теперь я выбираю два заполненных совместимых годовых фактических периода. Первый выбор фиксирует основу сравнения: должны совпасть вид плана, годовая или месячная детализация и соответствующий месяц либо квартал. Пустые планы и карточки, смешивающие факт с бюджетом или месячный период с годовым, автоматически отключаются.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.22);
           await h.safeClick(CMP_PRIMARY);
+          await h.holdUntil(0.45);
           await h.safeClick(CMP_SECONDARY);
           await p.waitForSelector(CMP_KPIS, { timeout: 15000 });
+          await h.holdUntil(0.72);
           await h.moveTo(CMP_BASIS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -780,7 +902,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CMP_CURRENCY);
+          await h.holdUntil(0.5);
           await h.hover(CMP_PROVENANCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -791,7 +915,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CMP_KPIS);
+          await h.holdUntil(0.5);
           await h.hover(CMP_KPIS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -802,7 +928,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CMP_CHART);
+          await h.holdUntil(0.5);
           await h.hover(CMP_CHART);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -813,7 +941,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CMP_TOTALS);
+          await h.holdUntil(0.5);
           await h.hover(CMP_TOTALS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -824,7 +954,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CMP_TABLE);
+          await h.holdUntil(0.5);
           await h.hover(CMP_TABLE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -835,7 +967,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CMP_ABSENCE);
+          await h.holdUntil(0.5);
           await h.hover(CMP_TABLE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -846,7 +980,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CMP_PROVENANCE);
+          await h.holdUntil(0.5);
           await h.hover(CMP_TABLE);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -868,7 +1004,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(FC_ROOT, { timeout: 12000 });
           await h.moveTo(FC_ROOT);
+          await h.holdUntil(0.45);
           await h.hover(FC_PROVENANCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -879,7 +1017,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(FC_CURRENCY);
+          await h.holdUntil(0.5);
           await h.hover(FC_KPIS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -890,7 +1030,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(FC_KPIS);
+          await h.holdUntil(0.5);
           await h.hover(FC_COMPARISON);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -900,9 +1042,13 @@ export default {
           ru: "Теперь я переключаюсь на оптимистичный вид; он применяет только локальные экранные множители: доходы могут вырасти, а себестоимость и операционные расходы снизиться. Переключение не сохраняет новый прогноз и не меняет план. На месячном графике зелёные столбцы — доходы, оранжевые — все затраты, фиолетовая линия — EBITDA по той же полной формуле.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.25);
           await h.safeClick(FC_OPTIMISTIC);
+          await h.holdUntil(0.55);
           await h.moveTo(FC_MONTHLY);
+          await h.holdUntil(0.78);
           await h.hover(FC_COMPARISON);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -912,9 +1058,13 @@ export default {
           ru: "Теперь я переключаюсь на пессимистичный сценарий — локальный стресс-вид, который снижает доходы и повышает затраты. Карточка сравнения оценивает три сценария на одной основе, вычитая из доходов все затраты до EBITDA. Настройки открывают множители, но гайд не открывает и не меняет input, поэтому не создаёт новый смысл в производственных данных.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.25);
           await h.safeClick(FC_PESSIMISTIC);
+          await h.holdUntil(0.55);
           await h.moveTo(FC_SETTINGS);
+          await h.holdUntil(0.78);
           await h.hover(FC_PNL);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -924,9 +1074,13 @@ export default {
           ru: "Теперь я возвращаюсь в базовый сценарий и проверяю сводку P&L. Для каждого месяца показаны доходы, все затраты, EBITDA и маржа, а сумма месячных колонок должна сходиться с итогом периода справа. Затем раскрываем Доходы до бюджетных категорий, но не нажимаем числовые ячейки, потому что они могут перейти в режим редактирования.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.25);
           await h.safeClick(FC_BASE);
+          await h.holdUntil(0.55);
           await h.safeClick(FC_REVENUE);
+          await h.holdUntil(0.8);
           await h.moveTo(FC_MATRIX);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -936,9 +1090,13 @@ export default {
           ru: "Я закрываю Доходы, раскрываю Себестоимость и оставляю её строки видимыми на время объяснения. Себестоимость вычитается из доходов до валовой прибыли, а локальное изменение вида ничего не сохраняет. Курсивная сумма пришла из плановой базы; явный сохранённый ноль может быть месячным переопределением и должен отличаться от отсутствующей записи.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.25);
           await h.safeClick(FC_REVENUE);
+          await h.holdUntil(0.55);
           await h.safeClick(FC_COGS);
+          await h.holdUntil(0.8);
           await h.moveTo(FC_MATRIX);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -948,9 +1106,13 @@ export default {
           ru: "Я закрываю Себестоимость, раскрываю Операционные расходы и оставляю строки на экране. Это последний крупный компонент EBITDA. Месячная EBITDA в матрице должна совпадать с верхней сводкой P&L и линией тренда; если экраны расходятся, гайд нельзя публиковать и цифру нельзя интерпретировать до сверки формулы, источника и периода.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.25);
           await h.safeClick(FC_COGS);
+          await h.holdUntil(0.55);
           await h.safeClick(FC_EXPENSE);
+          await h.holdUntil(0.8);
           await h.moveTo(FC_PNL);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -960,10 +1122,15 @@ export default {
           ru: "В завершение я закрываю Операционные расходы. Безопасная последовательность такова: подтвердите план и период, проверьте число сохранённых переопределений и валюту, затем сверьте KPI, тренд, сценарии и детальную матрицу. Если записей прогноза нет, не называйте плановую базу готовым для решений историческим прогнозом; до импорта и выводов сначала сделайте preview утверждённого месячного источника.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.2);
           await h.safeClick(FC_EXPENSE);
+          await h.holdUntil(0.45);
           await h.moveTo(FC_PROVENANCE);
+          await h.holdUntil(0.68);
           await h.hover(FC_KPIS);
+          await h.holdUntil(0.88);
           await h.moveTo(FC_MATRIX);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -985,7 +1152,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(PLANS_ROOT, { timeout: 12000 });
           await h.moveTo(PLANS_PROVENANCE);
+          await h.holdUntil(0.5);
           await h.hover(PLANS_ROOT);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -996,7 +1165,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(PLANS_COUNT);
+          await h.holdUntil(0.5);
           await h.hover(PLANS_EVIDENCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1007,7 +1178,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(PLANS_CARD);
+          await h.holdUntil(0.5);
           await h.hover(PLANS_EVIDENCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1018,7 +1191,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(PLANS_STATUS);
+          await h.holdUntil(0.5);
           await h.hover(PLANS_CARD);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1029,7 +1204,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(PLANS_EVIDENCE);
+          await h.holdUntil(0.5);
           await h.hover(PLANS_CARD);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1040,7 +1217,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(PLANS_CURRENCY);
+          await h.holdUntil(0.5);
           await h.hover(PLANS_PROVENANCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1051,7 +1230,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(PLANS_APPROVAL);
+          await h.holdUntil(0.5);
           await h.hover(PLANS_APPROVAL_HISTORY);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1062,7 +1243,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(PLANS_VERSION);
+          await h.holdUntil(0.5);
           await h.hover(PLANS_VERSION);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1073,8 +1256,11 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(PLANS_MUTATIONS);
+          await h.holdUntil(0.38);
           await h.hover(PLANS_COUNT);
+          await h.holdUntil(0.7);
           await h.moveTo(PLANS_PROVENANCE);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -1097,7 +1283,9 @@ export default {
           await p.waitForSelector(TERM_ROOT, { timeout: 15000 });
           await p.waitForSelector(TERM_TOOLBAR, { timeout: 15000 });
           await h.moveTo(TERM_ROOT);
+          await h.holdUntil(0.5);
           await h.hover(TERM_TOOLBAR);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1110,7 +1298,9 @@ export default {
           await p.waitForSelector(TERM_TOOLBAR, { timeout: 15000 });
           await p.waitForSelector(TERM_COMMAND, { timeout: 15000 });
           await h.moveTo(TERM_TOOLBAR);
+          await h.holdUntil(0.5);
           await h.hover(TERM_COMMAND);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1122,9 +1312,10 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(TERM_TREE, { timeout: 15000 });
           await h.moveTo(TERM_TREE);
+          await h.holdUntil(0.35);
           await p.waitForSelector(TERM_COMPANY, { timeout: 15000 });
           await h.safeClick(TERM_COMPANY);
-          await h.sleep(500);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1136,7 +1327,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(TERM_SNAPSHOT, { timeout: 15000 });
           await h.moveTo(TERM_SNAPSHOT);
+          await h.holdUntil(0.5);
           await h.hover(TERM_SNAPSHOT);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1149,7 +1342,9 @@ export default {
           await p.waitForSelector(TERM_TRUST, { timeout: 15000 });
           await p.waitForSelector(TERM_MATRIX, { timeout: 15000 });
           await h.moveTo(TERM_TRUST);
+          await h.holdUntil(0.5);
           await h.hover(TERM_MATRIX);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1160,11 +1355,13 @@ export default {
         },
         do: async (p, l, h) => {
           await p.waitForSelector(TERM_CELL, { timeout: 15000 });
+          await h.holdUntil(0.25);
           await h.safeClick(TERM_CELL);
-          await h.sleep(600);
           await p.waitForSelector('[data-testid="indicator-detail-result"]', { timeout: 15000 });
           await p.waitForSelector(TERM_DETAIL, { timeout: 15000 });
+          await h.holdUntil(0.65);
           await h.moveTo(TERM_DETAIL);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1177,7 +1374,9 @@ export default {
           await p.waitForSelector(TERM_DETAIL, { timeout: 15000 });
           await p.waitForSelector(TERM_VARIANCE, { timeout: 15000 });
           await h.hover(TERM_DETAIL);
+          await h.holdUntil(0.55);
           await h.moveTo(TERM_VARIANCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1189,7 +1388,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(TERM_PERIODS, { timeout: 15000 });
           await h.moveTo(TERM_PERIODS);
+          await h.holdUntil(0.5);
           await h.hover(TERM_PERIODS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1201,8 +1402,10 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(TERM_AUDIT, { timeout: 10000 });
           await h.hover(TERM_AUDIT);
+          await h.holdUntil(0.55);
           await p.waitForSelector(TERM_ROOT, { timeout: 15000 });
           await h.moveTo(TERM_ROOT);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -1225,6 +1428,9 @@ export default {
           await p.waitForSelector(ALERTS_ROOT, { timeout: 15000 });
           await p.waitForSelector(ALERTS_HEADER, { timeout: 15000 });
           await h.hover(ALERTS_HEADER);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_FEED);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1236,6 +1442,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_SCOPE, { timeout: 15000 });
           await h.hover(ALERTS_SCOPE);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_SUMMARY);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1247,6 +1456,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_FILTER, { timeout: 15000 });
           await h.hover(ALERTS_FILTER);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_RULE_INPUT);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1258,6 +1470,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_RULE_INPUT, { timeout: 15000 });
           await h.hover(ALERTS_RULE_INPUT);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_APPLY);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1269,8 +1484,10 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_APPLY, { timeout: 15000 });
           await h.hover(ALERTS_APPLY);
+          await h.holdUntil(0.55);
           await p.waitForSelector(ALERTS_FILTER_DISCLOSURE, { timeout: 15000 });
           await h.moveTo(ALERTS_FILTER_DISCLOSURE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1282,7 +1499,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_RESET, { timeout: 15000 });
           await h.hover(ALERTS_RESET);
+          await h.holdUntil(0.55);
           await h.moveTo(ALERTS_FILTER_DISCLOSURE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1295,6 +1514,9 @@ export default {
           await p.waitForSelector(ALERTS_READING, { timeout: 15000 });
           await p.waitForSelector(ALERTS_READ_SEVERITY, { timeout: 15000 });
           await h.hover(ALERTS_READ_SEVERITY);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_EVENT_ROW);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1306,6 +1528,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_READ_MESSAGE, { timeout: 15000 });
           await h.hover(ALERTS_READ_MESSAGE);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_EVENT_ROW);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1317,6 +1542,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_READ_PAGINATION, { timeout: 15000 });
           await h.hover(ALERTS_READ_PAGINATION);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_RESULTS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1328,7 +1556,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_READ_DEEPLINK, { timeout: 15000 });
           await h.hover(ALERTS_READ_DEEPLINK);
+          await h.holdUntil(0.55);
           await h.moveTo(ALERTS_SCOPE);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -1351,6 +1581,9 @@ export default {
           await p.waitForSelector(BOARD_ROOT, { timeout: 15000 });
           await p.waitForSelector(BOARD_HERO, { timeout: 15000 });
           await h.hover(BOARD_HERO);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_HEADLINE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1362,6 +1595,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_EVIDENCE, { timeout: 15000 });
           await h.hover(BOARD_EVIDENCE);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_SCORE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1373,6 +1609,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_SCORE, { timeout: 15000 });
           await h.hover(BOARD_SCORE);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_HERO);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1384,6 +1623,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_METRICS, { timeout: 15000 });
           await h.hover(BOARD_METRICS);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_RED_CELLS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1395,6 +1637,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_TREND, { timeout: 15000 });
           await h.hover(BOARD_TREND);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_TREND_LAST);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1406,6 +1651,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_AI, { timeout: 15000 });
           await h.hover(BOARD_AI);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_EVIDENCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1416,7 +1664,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.hover(BOARD_AI);
+          await h.holdUntil(0.55);
           await h.moveTo(BOARD_EVIDENCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1428,6 +1678,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_ALERTS, { timeout: 15000 });
           await h.hover(BOARD_ALERTS);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_ALERTS_LIST);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1439,6 +1692,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_FLAGS, { timeout: 15000 });
           await h.hover(BOARD_FLAGS);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_ALERTS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1450,7 +1706,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_FOOTER, { timeout: 15000 });
           await h.hover(BOARD_FOOTER);
+          await h.holdUntil(0.55);
           await h.moveTo(BOARD_ROOT);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -1515,12 +1773,17 @@ export default {
           // and the page would never move.
           await h.safeClick(AI_RESET_CTA);
           await p.waitForSelector(DD_TASK_CHOOSER, { timeout: 20000 });
-          await h.holdUntil(0.4);
+          await h.holdUntil(0.3);
           await h.hover(DD_TASK_CHOOSER);
-          await h.holdUntil(0.65);
-          await h.moveTo(DD_COMPANY_PICKER);
-          await h.holdUntil(0.85);
-          await h.moveTo(DD_WHAT_PICKER);
+          await h.holdUntil(0.5);
+          // Шаг за шагом, как о том и говорит озвучка: сначала задача…
+          await h.safeClick(DD_TASK_CLEAR_YEAR);
+          await p.waitForSelector(DD_COMPANY_PICKER, { timeout: 20000 });
+          await h.holdUntil(0.72);
+          // …затем компания. Выбор раскрывает следующий шаг с годами.
+          await h.safeClick(DD_COMPANY_OPTION);
+          await p.waitForSelector(DD_YEAR_CHIPS, { timeout: 20000 });
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1531,7 +1794,10 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(DD_YEAR_CHIPS);
-          await h.holdUntil(0.25);
+          await h.holdUntil(0.2);
+          await h.safeClick(DD_YEAR_CHIP);
+          await p.waitForSelector(DD_CHECK, { timeout: 20000 });
+          await h.holdUntil(0.4);
           await h.mutatingClick(DD_CHECK);
           await p.waitForSelector(DD_BLAST_RADIUS, { timeout: 30000 });
           await h.holdUntil(0.6);
@@ -1541,21 +1807,28 @@ export default {
       },
       {
         voice: {
-          az: "Təsdiq ayrıca addımdır və o da avtomatik deyil: sistem sizdən niyyəti bir daha soruşur. Ondan sonra nəticə göstərilir — nə silindi, hansı əhatədə və neçə sətir, yəni hesabat qalır. İndi məlumat yoxdur və ekran boşdur. Bunu bilərəkdən göstəririk, çünki növbəti addımdan sonra rəqəmlərin həqiqətən fayldan gəldiyi şübhəsiz olacaq.",
-          en: "The confirmation is a separate step, and it is not automatic either. After it the result is shown: what was deleted and how many rows. The data is gone now — we show that on purpose, because after the next step there will be no doubt that the numbers really came from the file.",
-          ru: "Подтверждение — отдельный шаг, и оно тоже не автоматическое. После него показывается результат: что удалено и сколько строк. Сейчас данных нет — мы показываем это намеренно, потому что после следующего шага не останется сомнений, что цифры действительно пришли из файла.",
+          az: "Təsdiq ayrıca addımdır və qəsdən çətindir: səbəb yazmalı, ekrandakı təsdiq kodunu əl ilə köçürməli, geri qaytarılmayan hər sətri ayrıca qəbul etməli və hazırlıq sayğacını gözləməlisiniz. Dördü də tamamlanmayana qədər düymə işləmir. Bu təlim burada dayanır və təsdiqi basmır: məqsəd qoruyucunun necə göründüyünü göstərmək, onu keçməyi öyrətmək deyil.",
+          en: "Confirmation is a separate step and deliberately awkward: you type a reason, copy the confirmation code shown on screen by hand, acknowledge every irreversible line on its own, and wait out an arming countdown. Until all four are done the button stays dead. This guide stops here and does not press it: the point is to show you what the guard looks like, not to teach you through it.",
+          ru: "Подтверждение — отдельный шаг, и он намеренно неудобный: нужно написать причину, вручную переписать код подтверждения с экрана, отдельно принять каждую безвозвратную строку и дождаться отсчёта готовности. Пока не выполнены все четыре условия, кнопка не работает. Этот гайд здесь останавливается и не нажимает её: задача — показать, как выглядит защита, а не провести через неё.",
         },
         do: async (p, l, h) => {
+          // 2026-08-04 — сознательно НЕ подтверждаем. Кнопка заблокирована до
+          // тех пор, пока не введены причина и точный код подтверждения, не
+          // отмечены безвозвратные строки и не истёк отсчёт. Пройти этот
+          // заслон на камеру технически можно, но тогда получится пошаговое
+          // руководство по самой разрушительной операции продукта. Показываем,
+          // что защита есть и из чего состоит; проходить её зритель будет сам,
+          // осознанно. Решение владельца, 2026-08-04.
           await h.hover(DD_CONFIRM_STRIP);
-          await h.holdUntil(0.3);
-          await h.mutatingClick(DD_CONFIRM_SUBMIT);
-          await p.waitForSelector(DD_RUN_DONE, { timeout: 60000 });
-          await h.holdUntil(0.7);
-          await h.hover(DD_RUN_DONE);
-          await h.holdUntil(0.9);
-          // Back to the import screen for the rest of the guide.
+          await h.holdUntil(0.45);
+          await h.moveTo(DD_BLAST_RADIUS);
+          // Возврат на экран импорта идёт ДО последнего holdUntil: навигация
+          // занимает секунды, и после почти закончившейся фразы она оставила бы
+          // между сценами тишину.
+          await h.holdUntil(0.72);
           await p.goto(new URL("/budgeting/admin/ai-import", p.url()).href, { waitUntil: "domcontentloaded" });
           await p.waitForSelector(AI_TABS, { timeout: 20000 });
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1716,6 +1989,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(DC_READINESS, { timeout: 15000 });
           await h.hover(DC_READINESS);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_READINESS_TABLE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1728,6 +2004,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(DC_READINESS_TABLE, { timeout: 15000 });
           await h.hover(DC_READINESS_TABLE);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_READINESS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1741,6 +2020,9 @@ export default {
           await p.waitForSelector(DC_BACKLOG, { timeout: 15000 });
           await p.waitForSelector(DC_BACKLOG_PERIOD, { timeout: 15000 });
           await h.hover(DC_BACKLOG_PERIOD);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_BACKLOG);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1754,6 +2036,9 @@ export default {
           await p.waitForSelector(DC_HEALTH, { timeout: 15000 });
           await p.waitForSelector(DC_HEALTH_PERIOD, { timeout: 15000 });
           await h.hover(DC_HEALTH_PERIOD);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_HEALTH);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1767,6 +2052,9 @@ export default {
           await p.waitForSelector(DC_STATEMENT, { timeout: 15000 });
           await p.waitForSelector(DC_STATEMENT_BANNER, { timeout: 15000 });
           await h.hover(DC_STATEMENT_BANNER);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_STATEMENT);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1779,6 +2067,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(DC_IFRS, { timeout: 15000 });
           await h.hover(DC_IFRS);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_TITLE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1791,6 +2082,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(DC_COMPLIANCE, { timeout: 15000 });
           await h.hover(DC_COMPLIANCE);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_TITLE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1804,6 +2098,9 @@ export default {
           await p.waitForSelector(DC_DRIFT, { timeout: 15000 });
           await p.waitForSelector(DC_DRIFT_FRESHNESS, { timeout: 15000 });
           await h.hover(DC_DRIFT_FRESHNESS);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_DRIFT);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1817,6 +2114,9 @@ export default {
           await p.waitForSelector(DC_INTEL, { timeout: 15000 });
           await p.waitForSelector(DC_INTEL_SUMMARY, { timeout: 15000 });
           await h.hover(DC_INTEL_SUMMARY);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_INTEL);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1829,6 +2129,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(DC_READINESS, { timeout: 15000 });
           await h.hover(DC_READINESS);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_TITLE);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -1850,8 +2153,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(TITLE);
-          await h.sleep(300);
+          await h.holdUntil(0.45);
           await h.hover(BANNER);
+          await h.holdUntil(0.92);
         },
       },
       // 2 — The permanent SHADOW/PROVISIONAL banner: why no pass/fail yet.
@@ -1863,7 +2167,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(BANNER);
+          await h.holdUntil(0.5);
           await h.hover(BANNER_DETAIL);
+          await h.holdUntil(0.92);
         },
       },
       // 3 — Pick the company (AZSEKER / AZSF) from the selector.
@@ -1874,7 +2180,14 @@ export default {
           ru: "Запустим на практике. В выборе компании я беру AZSEKER — код A-Z-S-F. Контроли всегда работают с собственными импортированными отчётами одной компании, поэтому все цифры, которые вы сейчас увидите, — это реальные данные этой организации, ничего смоделированного.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.28);
           await selectCompany(p, h);
+          await h.holdUntil(0.6);
+          await h.moveTo(PERIOD_INPUT);
+          await p.fill(PERIOD_INPUT, DEMO_PERIOD).catch(() => {});
+          await h.holdUntil(0.85);
+          await h.moveTo(RUN_BTN);
+          await h.holdUntil(0.92);
         },
       },
       // 4 — Run the six controls on real statement data.
@@ -1886,8 +2199,17 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(RUN_BTN);
+          // Клик у самого начала фразы: расчёт контролей занимает ~16 с, и всё
+          // это время должно идти ПОД озвучку. При клике на 40% фразы её
+          // остатка не хватало и между сценами оставалась пауза 4.4 с.
+          await h.holdUntil(0.12);
           await h.safeClick(RUN_BTN);
+          // Ожидание идёт СРАЗУ за кликом: расчёт занимает больше времени, чем
+          // остаток фразы, и если ждать после holdUntil(0.92), сцена
+          // переваливает за свою озвучку и между сценами возникает тишина.
+          // Поймано проверкой silencedetect: пауза 13.9 с на 87-й секунде.
           await p.waitForSelector(RESULT, { timeout: 15000 }).catch(() => {});
+          await h.holdUntil(0.92);
         },
       },
       // 5 — The balance-sheet card: delta, tolerance, source rows.
@@ -1900,7 +2222,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(RESULT, { timeout: 12000 }).catch(() => {});
           await h.moveTo(CARD_BS);
+          await h.holdUntil(0.5);
           await h.hover(CARD_BS);
+          await h.holdUntil(0.92);
         },
       },
       // 6 — The sign-convention / residuals disclosure line.
@@ -1912,7 +2236,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(SIGN_CONV);
+          await h.holdUntil(0.5);
           await h.hover(SIGN_CONV);
+          await h.holdUntil(0.92);
         },
       },
       // 7 — A blocked card (cash_flow_sum) + its missing-evidence list.
@@ -1924,8 +2250,11 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CARD_CFS);
+          await h.holdUntil(0.35);
           await h.hover(CARD_CFS);
+          await h.holdUntil(0.68);
           await h.moveTo(CFS_REASON);
+          await h.holdUntil(0.92);
         },
       },
       // 8 — net_income_link / fx_translation card + fx rate-dates staleness line.
@@ -1937,8 +2266,11 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CARD_NI);
+          await h.holdUntil(0.35);
           await h.hover(CARD_FX);
+          await h.holdUntil(0.68);
           await h.moveTo(FX_DATES);
+          await h.holdUntil(0.92);
         },
       },
       // 9 — The explainer footer + its concrete limitations.
@@ -1950,7 +2282,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(WHY);
+          await h.holdUntil(0.5);
           await h.hover(WHY);
+          await h.holdUntil(0.92);
         },
       },
       // 10 — Wrap on the banner: the section's honest promise.
@@ -1962,6 +2296,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(BANNER);
+          await h.holdUntil(0.5);
+          await h.hover(WHY);
+          await h.holdUntil(0.92);
         },
       },
     ],
