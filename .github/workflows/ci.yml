@@ -99,4 +99,13 @@ jobs:
           DATABASE_URL: 'postgresql://ci:ci@localhost:5432/ci'
           NEXTAUTH_SECRET: 'ci-build-only-not-a-real-secret'
           NEXTAUTH_URL: 'http://localhost:3000'
+          # 2026-08-04 — this build peaks just under node's ~2GB default
+          # old-space ceiling, so it had started failing intermittently with
+          # "Ineffective mark-compacts near heap limit": the SAME commit built
+          # clean on one run and died at 2009MB on the next, and the prod image
+          # build died the same way at 1.9GB on a 3.8GB server. Nothing about
+          # the app needs 2GB-shaped bundles — the build is simply large enough
+          # that the default ceiling is now a coin flip. Give it explicit
+          # headroom instead of re-running until it's lucky.
+          NODE_OPTIONS: '--max-old-space-size=4096'
         run: npm run build

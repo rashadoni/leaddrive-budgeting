@@ -29,11 +29,31 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Keep the help-guide videos out of the Next build. They are pure runtime
+# assets — streamed by /api/help-videos/[file], never imported by any module —
+# but `COPY . .` puts them in front of the build's file tracer, which walks
+# them and holds them in memory for nothing.
+#
+# 2026-08-04: adding the AI Import guide took video/player from ~20MB to ~51MB
+# and the prod build died with "JavaScript heap out of memory" at 1.9GB on a
+# 3.8GB server (node's default old-space ceiling is ~2GB there). The runtime
+# stage now copies these straight from the build context instead of from this
+# stage, so the image is unchanged and the next guide cannot push the build
+# over the edge again.
+RUN rm -rf video/player
+
 # Prisma client is required by the build (server components / API routes import it).
 RUN npx prisma generate
 
 # Disable telemetry; `output: "standalone"` is already set in next.config.ts.
 ENV NEXT_TELEMETRY_DISABLED=1
+# The build peaks just under node's default ~2GB old-space ceiling on the 3.8GB
+# prod server, and started tipping over it ("Ineffective mark-compacts near heap
+# limit" at 1.9GB). CI hit the identical wall at 2009MB on an unchanged commit,
+# so this is the build's real size, not a leak introduced by one branch. 2560MB
+# leaves the server ~1.2GB for postgres and the running container during the
+# build; going higher would trade a heap error for the OOM killer.
+ENV NODE_OPTIONS=--max-old-space-size=2560
 RUN npm run build
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -103,7 +123,10 @@ COPY --from=build --chown=nextjs:nodejs /app/scripts                       ./scr
 COPY --from=build --chown=nextjs:nodejs /app/node_modules/bcryptjs         ./node_modules/bcryptjs
 # Git-tracked help-guide videos, served by /api/help-videos/[file]. The
 # standalone output does not trace plain data files, so copy them explicitly.
-COPY --from=build --chown=nextjs:nodejs /app/video/player                  ./video/player
+# Straight from the build CONTEXT, not from the build stage — that stage deletes
+# them before `npm run build` so the Next file tracer never walks ~51MB of mp4
+# (see the note there). Same files in the image either way.
+COPY --chown=nextjs:nodejs video/player ./video/player
 
 # Entrypoint: run migrations then exec the server.
 COPY --chown=nextjs:nodejs deploy/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
