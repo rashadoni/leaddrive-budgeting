@@ -82,6 +82,10 @@ const DC_DRIFT = '[data-testid="data-control-drift"]';
 const DC_DRIFT_FRESHNESS = '[data-testid="data-control-drift-freshness"]';
 const DC_INTEL = '[data-testid="data-control-intel-health"]';
 const DC_INTEL_SUMMARY = '[data-testid="data-control-intel-health-summary"]';
+// Заголовок текущей страницы — второй бит там, где у раздела всего один якорь.
+// Обзор ведёт по восьми маршрутам, и на каждом курсор сначала называет экран,
+// потом показывает то, о чём идёт речь.
+const DC_TITLE = ["main h1", "h1", "main"];
 
 // ── AI Import (Data İmportu) — the real end-to-end workflow ─────────────
 // 2026-08-03 rewrite. The previous version of this scenario was hover-only and
@@ -172,6 +176,16 @@ const ALERTS_READ_SEVERITY = '[data-testid="alerts-guide-read-severity"]';
 const ALERTS_READ_MESSAGE = '[data-testid="alerts-guide-read-message"]';
 const ALERTS_READ_PAGINATION = '[data-testid="alerts-guide-read-pagination"]';
 const ALERTS_READ_DEEPLINK = '[data-testid="alerts-guide-read-deeplink"]';
+// 2026-08-04 — найдены probe'ом; сценарий их не использовал, из-за чего каждая
+// сцена состояла из одного наведения и кадр замирал под озвучку.
+const ALERTS_FEED = ['[data-testid="alerts-guide-feed"]', ALERTS_ROOT];
+const ALERTS_RESULTS = ['[data-testid="alerts-guide-results"]', ALERTS_ROOT];
+const ALERTS_SUMMARY = ['[data-testid="alerts-guide-summary"]', ALERTS_ROOT];
+const ALERTS_EVENT_ROW = [
+  '[data-testid="alert-event-row"]',
+  '[data-testid="alerts-guide-events-list"]',
+  ALERTS_ROOT,
+];
 
 // ── Board Deck evidence-boundary guide ─────────────────────────────────
 // Strictly hover-only. The page, language state and exports are cache-read-only;
@@ -188,6 +202,17 @@ const BOARD_TREND = '[data-testid="composite-trend-chart"]';
 const BOARD_ALERTS = '[data-testid="board-deck-top-alerts"]';
 const BOARD_FLAGS = '[data-testid="board-deck-risk-flags"]';
 const BOARD_FOOTER = '[data-testid="board-deck-footer-actions"]';
+// 2026-08-04 — найдены probe'ом. Каждая сцена сценария была одним наведением
+// на крупный блок; эти якоря позволяют вести курсор по конкретным числам.
+// Генерация нарратива и переключатели языка НЕ трогаются: первая — платное
+// действие, вторые могут её запустить.
+const BOARD_HEADLINE = ['[data-testid="hero-headline"]', BOARD_HERO];
+const BOARD_RED_CELLS = ['[data-testid="metric-red-cells-value"]', '[data-testid="metric-red-cells"]', BOARD_METRICS];
+const BOARD_RED_SUBCOS = ['[data-testid="metric-red-subcos-value"]', '[data-testid="metric-red-subcos"]', BOARD_METRICS];
+const BOARD_COVERAGE = ['[data-testid="metric-indicator-coverage-value"]', '[data-testid="metric-indicator-coverage"]', BOARD_METRICS];
+// Последняя точка тренда: самый свежий месяц на графике.
+const BOARD_TREND_LAST = ['[data-testid="trend-point-2026-08"]', '[data-testid="trend-line"]', BOARD_TREND];
+const BOARD_ALERTS_LIST = ['[data-testid="top-alerts-list"]', BOARD_ALERTS];
 
 // ── Workspace / P&L execution view ────────────────────────────────────────
 // READONLY-safe: the only clicks toggle local list/matrix/materiality state.
@@ -1381,6 +1406,9 @@ export default {
           await p.waitForSelector(ALERTS_ROOT, { timeout: 15000 });
           await p.waitForSelector(ALERTS_HEADER, { timeout: 15000 });
           await h.hover(ALERTS_HEADER);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_FEED);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1392,6 +1420,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_SCOPE, { timeout: 15000 });
           await h.hover(ALERTS_SCOPE);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_SUMMARY);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1403,6 +1434,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_FILTER, { timeout: 15000 });
           await h.hover(ALERTS_FILTER);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_RULE_INPUT);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1414,6 +1448,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_RULE_INPUT, { timeout: 15000 });
           await h.hover(ALERTS_RULE_INPUT);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_APPLY);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1425,8 +1462,10 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_APPLY, { timeout: 15000 });
           await h.hover(ALERTS_APPLY);
+          await h.holdUntil(0.55);
           await p.waitForSelector(ALERTS_FILTER_DISCLOSURE, { timeout: 15000 });
           await h.moveTo(ALERTS_FILTER_DISCLOSURE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1438,7 +1477,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_RESET, { timeout: 15000 });
           await h.hover(ALERTS_RESET);
+          await h.holdUntil(0.55);
           await h.moveTo(ALERTS_FILTER_DISCLOSURE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1451,6 +1492,9 @@ export default {
           await p.waitForSelector(ALERTS_READING, { timeout: 15000 });
           await p.waitForSelector(ALERTS_READ_SEVERITY, { timeout: 15000 });
           await h.hover(ALERTS_READ_SEVERITY);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_EVENT_ROW);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1462,6 +1506,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_READ_MESSAGE, { timeout: 15000 });
           await h.hover(ALERTS_READ_MESSAGE);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_EVENT_ROW);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1473,6 +1520,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_READ_PAGINATION, { timeout: 15000 });
           await h.hover(ALERTS_READ_PAGINATION);
+          await h.holdUntil(0.55);
+          await h.moveTo(ALERTS_RESULTS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1484,7 +1534,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(ALERTS_READ_DEEPLINK, { timeout: 15000 });
           await h.hover(ALERTS_READ_DEEPLINK);
+          await h.holdUntil(0.55);
           await h.moveTo(ALERTS_SCOPE);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -1507,6 +1559,9 @@ export default {
           await p.waitForSelector(BOARD_ROOT, { timeout: 15000 });
           await p.waitForSelector(BOARD_HERO, { timeout: 15000 });
           await h.hover(BOARD_HERO);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_HEADLINE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1518,6 +1573,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_EVIDENCE, { timeout: 15000 });
           await h.hover(BOARD_EVIDENCE);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_SCORE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1529,6 +1587,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_SCORE, { timeout: 15000 });
           await h.hover(BOARD_SCORE);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_HERO);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1540,6 +1601,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_METRICS, { timeout: 15000 });
           await h.hover(BOARD_METRICS);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_RED_CELLS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1551,6 +1615,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_TREND, { timeout: 15000 });
           await h.hover(BOARD_TREND);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_TREND_LAST);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1562,6 +1629,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_AI, { timeout: 15000 });
           await h.hover(BOARD_AI);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_EVIDENCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1572,7 +1642,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.hover(BOARD_AI);
+          await h.holdUntil(0.55);
           await h.moveTo(BOARD_EVIDENCE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1584,6 +1656,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_ALERTS, { timeout: 15000 });
           await h.hover(BOARD_ALERTS);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_ALERTS_LIST);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1595,6 +1670,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_FLAGS, { timeout: 15000 });
           await h.hover(BOARD_FLAGS);
+          await h.holdUntil(0.55);
+          await h.moveTo(BOARD_ALERTS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1606,7 +1684,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(BOARD_FOOTER, { timeout: 15000 });
           await h.hover(BOARD_FOOTER);
+          await h.holdUntil(0.55);
           await h.moveTo(BOARD_ROOT);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -1872,6 +1952,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(DC_READINESS, { timeout: 15000 });
           await h.hover(DC_READINESS);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_READINESS_TABLE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1884,6 +1967,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(DC_READINESS_TABLE, { timeout: 15000 });
           await h.hover(DC_READINESS_TABLE);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_READINESS);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1897,6 +1983,9 @@ export default {
           await p.waitForSelector(DC_BACKLOG, { timeout: 15000 });
           await p.waitForSelector(DC_BACKLOG_PERIOD, { timeout: 15000 });
           await h.hover(DC_BACKLOG_PERIOD);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_BACKLOG);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1910,6 +1999,9 @@ export default {
           await p.waitForSelector(DC_HEALTH, { timeout: 15000 });
           await p.waitForSelector(DC_HEALTH_PERIOD, { timeout: 15000 });
           await h.hover(DC_HEALTH_PERIOD);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_HEALTH);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1923,6 +2015,9 @@ export default {
           await p.waitForSelector(DC_STATEMENT, { timeout: 15000 });
           await p.waitForSelector(DC_STATEMENT_BANNER, { timeout: 15000 });
           await h.hover(DC_STATEMENT_BANNER);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_STATEMENT);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1935,6 +2030,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(DC_IFRS, { timeout: 15000 });
           await h.hover(DC_IFRS);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_TITLE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1947,6 +2045,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(DC_COMPLIANCE, { timeout: 15000 });
           await h.hover(DC_COMPLIANCE);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_TITLE);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1960,6 +2061,9 @@ export default {
           await p.waitForSelector(DC_DRIFT, { timeout: 15000 });
           await p.waitForSelector(DC_DRIFT_FRESHNESS, { timeout: 15000 });
           await h.hover(DC_DRIFT_FRESHNESS);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_DRIFT);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1973,6 +2077,9 @@ export default {
           await p.waitForSelector(DC_INTEL, { timeout: 15000 });
           await p.waitForSelector(DC_INTEL_SUMMARY, { timeout: 15000 });
           await h.hover(DC_INTEL_SUMMARY);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_INTEL);
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1985,6 +2092,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(DC_READINESS, { timeout: 15000 });
           await h.hover(DC_READINESS);
+          await h.holdUntil(0.55);
+          await h.moveTo(DC_TITLE);
+          await h.holdUntil(0.92);
         },
       },
     ],
@@ -2006,8 +2116,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(TITLE);
-          await h.sleep(300);
+          await h.holdUntil(0.45);
           await h.hover(BANNER);
+          await h.holdUntil(0.92);
         },
       },
       // 2 — The permanent SHADOW/PROVISIONAL banner: why no pass/fail yet.
@@ -2019,7 +2130,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(BANNER);
+          await h.holdUntil(0.5);
           await h.hover(BANNER_DETAIL);
+          await h.holdUntil(0.92);
         },
       },
       // 3 — Pick the company (AZSEKER / AZSF) from the selector.
@@ -2030,7 +2143,11 @@ export default {
           ru: "Запустим на практике. В выборе компании я беру AZSEKER — код A-Z-S-F. Контроли всегда работают с собственными импортированными отчётами одной компании, поэтому все цифры, которые вы сейчас увидите, — это реальные данные этой организации, ничего смоделированного.",
         },
         do: async (p, l, h) => {
+          await h.holdUntil(0.3);
           await selectCompany(p, h);
+          await h.holdUntil(0.75);
+          await h.moveTo(RUN_BTN);
+          await h.holdUntil(0.92);
         },
       },
       // 4 — Run the six controls on real statement data.
@@ -2042,7 +2159,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(RUN_BTN);
+          await h.holdUntil(0.4);
           await h.safeClick(RUN_BTN);
+          await h.holdUntil(0.92);
           await p.waitForSelector(RESULT, { timeout: 15000 }).catch(() => {});
         },
       },
@@ -2056,7 +2175,9 @@ export default {
         do: async (p, l, h) => {
           await p.waitForSelector(RESULT, { timeout: 12000 }).catch(() => {});
           await h.moveTo(CARD_BS);
+          await h.holdUntil(0.5);
           await h.hover(CARD_BS);
+          await h.holdUntil(0.92);
         },
       },
       // 6 — The sign-convention / residuals disclosure line.
@@ -2068,7 +2189,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(SIGN_CONV);
+          await h.holdUntil(0.5);
           await h.hover(SIGN_CONV);
+          await h.holdUntil(0.92);
         },
       },
       // 7 — A blocked card (cash_flow_sum) + its missing-evidence list.
@@ -2080,8 +2203,11 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CARD_CFS);
+          await h.holdUntil(0.35);
           await h.hover(CARD_CFS);
+          await h.holdUntil(0.68);
           await h.moveTo(CFS_REASON);
+          await h.holdUntil(0.92);
         },
       },
       // 8 — net_income_link / fx_translation card + fx rate-dates staleness line.
@@ -2093,8 +2219,11 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(CARD_NI);
+          await h.holdUntil(0.35);
           await h.hover(CARD_FX);
+          await h.holdUntil(0.68);
           await h.moveTo(FX_DATES);
+          await h.holdUntil(0.92);
         },
       },
       // 9 — The explainer footer + its concrete limitations.
@@ -2106,7 +2235,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(WHY);
+          await h.holdUntil(0.5);
           await h.hover(WHY);
+          await h.holdUntil(0.92);
         },
       },
       // 10 — Wrap on the banner: the section's honest promise.
@@ -2118,6 +2249,9 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(BANNER);
+          await h.holdUntil(0.5);
+          await h.hover(WHY);
+          await h.holdUntil(0.92);
         },
       },
     ],
