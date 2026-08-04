@@ -47,6 +47,13 @@ RUN npx prisma generate
 
 # Disable telemetry; `output: "standalone"` is already set in next.config.ts.
 ENV NEXT_TELEMETRY_DISABLED=1
+# The build peaks just under node's default ~2GB old-space ceiling on the 3.8GB
+# prod server, and started tipping over it ("Ineffective mark-compacts near heap
+# limit" at 1.9GB). CI hit the identical wall at 2009MB on an unchanged commit,
+# so this is the build's real size, not a leak introduced by one branch. 2560MB
+# leaves the server ~1.2GB for postgres and the running container during the
+# build; going higher would trade a heap error for the OOM killer.
+ENV NODE_OPTIONS=--max-old-space-size=2560
 RUN npm run build
 
 # ═════════════════════════════════════════════════════════════════════════════
