@@ -13,6 +13,7 @@ import { markNonScoringCells } from '@/lib/risk/indicator-provenance';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useTerminalStore } from '../store/terminalStore';
+import { companyScopeCodes } from '../lib/company-scope';
 import { getLogger } from '@/lib/log';
 import { clearAISummaryCache } from './heat-map/ai-summary';
 import {
@@ -377,7 +378,11 @@ export function useHeatMapModel(period: string | undefined) {
     // Search filter still applies *within* the selected scope (single row,
     // so search trivially passes or fails) — kept for code symmetry.
     if (activeCompanyCode) {
-      return data.companies.filter((c) => c.code === activeCompanyCode);
+      // 2026-08-04 audit — this compared codes, so selecting the holding row
+      // (which is never a matrix row) matched nothing and emptied the grid.
+      // A tree selection means the company AND everything under it.
+      const scope = companyScopeCodes(activeCompanyCode, companyTree);
+      return data.companies.filter((c) => scope.has(c.code));
     }
     const q = search.trim().toUpperCase();
     if (q === '') return data.companies;
@@ -387,7 +392,10 @@ export function useHeatMapModel(period: string | undefined) {
         c.name.toUpperCase().includes(q) ||
         (c.industry ?? '').toUpperCase().includes(q),
     );
-  }, [data, search, activeCompanyCode]);
+    // `companyTree` arrives async (see the note at its declaration); without
+    // it in the deps the scope would stay frozen at the pre-load fallback and
+    // a holding selection would keep rendering an empty grid.
+  }, [data, search, activeCompanyCode, companyTree]);
 
   const summary = useMemo(() => {
     if (!data) return null;
