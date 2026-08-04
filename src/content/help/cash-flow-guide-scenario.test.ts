@@ -196,6 +196,8 @@ describe('Cash Flow help-video scenario', () => {
       // ai-import: tab switches only. Both flip local React state in
       // AIImportTabs and issue no request — the writes in that scenario go
       // through mutatingClick below, never through this list.
+      // Navigation to the deletion screen — a GET, not a write.
+      'AI_RESET_CTA',
       'AI_TAB_SINGLE',
       'AI_TAB_MULTI',
       'RUN_BTN',
@@ -229,7 +231,16 @@ describe('Cash Flow help-video scenario', () => {
       actions.matchAll(/h\.mutatingClick\(([^)]+)\)/g),
     ).map((match) => match[1]);
 
-    expect(mutatingTargets).toEqual(['AI_ANALYZE', 'AI_APPLY']);
+    // 2026-08-04 — the import guide now SHOWS a clearing before it loads, so
+    // two more writes join the list. Both go through the guarded delete flow:
+    // DD_CHECK computes the blast radius and deletes nothing, DD_CONFIRM_SUBMIT
+    // is the deletion itself and can only follow it.
+    expect(mutatingTargets).toEqual([
+      'DD_CHECK',
+      'DD_CONFIRM_SUBMIT',
+      'AI_ANALYZE',
+      'AI_APPLY',
+    ]);
 
     const producer = readFileSync(
       resolve(process.cwd(), 'scripts/produce-guides.mjs'),

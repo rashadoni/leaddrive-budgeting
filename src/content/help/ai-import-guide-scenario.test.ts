@@ -46,9 +46,9 @@ describe("AI Import help-video scenario", () => {
     expect(enMessages.adminAiImport.page.safetyBody).toContain("destructive workflow")
   })
 
-  it("provides a substantial twelve-scene trilingual walkthrough", () => {
+  it("provides a substantial fifteen-scene trilingual walkthrough", () => {
     expect(aiImport.route).toBe("/budgeting/admin/ai-import")
-    expect(aiImport.scenes).toHaveLength(12)
+    expect(aiImport.scenes).toHaveLength(15)
     for (const language of ["az", "en", "ru"] as const) {
       const wordCounts = aiImport.scenes.map(
         (scene) => scene.voice[language].trim().split(/\s+/).length,
@@ -75,12 +75,15 @@ describe("AI Import help-video scenario", () => {
   it("drives the real import, and only through explicitly named writes", () => {
     const actions = aiImport.scenes.map((scene) => scene.do.toString()).join("\n")
 
-    expect(actions.match(/h\.mutatingClick\(/g)).toHaveLength(2)
+    expect(actions.match(/h\.mutatingClick\(/g)).toHaveLength(4)
+    expect(actions).toContain("h.mutatingClick(DD_CHECK)")
+    expect(actions).toContain("h.mutatingClick(DD_CONFIRM_SUBMIT)")
     expect(actions).toContain("h.mutatingClick(AI_ANALYZE)")
     expect(actions).toContain("h.mutatingClick(AI_APPLY)")
 
-    // Local view state only — these two flip a React tab and issue no request.
-    expect(actions.match(/h\.safeClick\(/g)).toHaveLength(2)
+    // Local view state, plus one GET navigation to the deletion screen.
+    expect(actions.match(/h\.safeClick\(/g)).toHaveLength(3)
+    expect(actions).toContain("h.safeClick(AI_RESET_CTA)")
     expect(actions).toContain("h.safeClick(AI_TAB_SINGLE)")
     expect(actions).toContain("h.safeClick(AI_TAB_MULTI)")
 
@@ -88,11 +91,24 @@ describe("AI Import help-video scenario", () => {
     expect(actions.match(/setInputFiles\(/g)).toHaveLength(1)
     expect(actions).not.toContain("h.fill")
 
-    // Nothing destructive: no reset/rollback, no force-override of a blocked
-    // apply, no route into the delete-data workflow.
-    for (const forbidden of ["btn-reset", "AI_RESET", "force-override", "guide-reset", "data-archive"]) {
+    // 2026-08-04 — this list used to forbid the delete-data route outright, and
+    // that was right while the guide only talked about clearing. The owner
+    // asked it to SHOW one, so the ban is narrowed rather than dropped, and it
+    // separates three things the old list ran together:
+    //
+    //   `force-override`  bypasses a BLOCKED apply. Still absolutely forbidden:
+    //                     a guide must never demonstrate overriding a safety
+    //                     gate, whatever stand it runs on.
+    //   `btn-reset`       clears the form (`resetAll`), not any data. Harmless
+    //                     but pointless on camera, so it stays out.
+    //   the delete flow   now allowed — but only through the guarded route,
+    //                     which the ordering test below pins: the dry check
+    //                     runs first and the confirmation cannot precede it.
+    for (const forbidden of ["force-override", "btn-reset"]) {
       expect(actions).not.toContain(forbidden)
     }
+    // The unguarded one-shot entry points stay unreachable.
+    expect(actions).not.toContain("h.mutatingClick(AI_RESET_CTA)")
 
     // Paced on narration length, not fixed sleeps — az runs ~2x longer than
     // en/ru, so fixed pauses would freeze the short takes.
@@ -157,5 +173,31 @@ describe("AI Import help-video scenario", () => {
     expect(single).toContain('form.append("year", String(initialYear ?? new Date().getFullYear()))')
     expect(single).not.toContain('form.append("year", "2026")')
     expect(single).not.toContain("handleConfirmImport")
+  })
+
+  /**
+   * 2026-08-04 — the one ordering that must never slip.
+   *
+   * `DD_CHECK` computes the blast radius and deletes nothing; `DD_CONFIRM_SUBMIT`
+   * is the deletion. A guide that confirmed first would be teaching the habit
+   * this screen was built to prevent.
+   */
+  it("never confirms a deletion before the dry check has run", () => {
+    const flat = aiImport.scenes.map((scene) => scene.do.toString()).join("\n")
+    const checkAt = flat.indexOf("h.mutatingClick(DD_CHECK)")
+    const confirmAt = flat.indexOf("h.mutatingClick(DD_CONFIRM_SUBMIT)")
+    expect(checkAt, "the dry check is never clicked").toBeGreaterThan(-1)
+    expect(confirmAt, "the deletion is never confirmed").toBeGreaterThan(-1)
+    expect(checkAt).toBeLessThan(confirmAt)
+  })
+
+  it("clears before it loads, not after", () => {
+    // The arc only makes sense in this order: empty the year, then show the
+    // file filling it back in. Reversed, the video would end on an empty
+    // screen.
+    const flat = aiImport.scenes.map((scene) => scene.do.toString()).join("\n")
+    expect(flat.indexOf("h.mutatingClick(DD_CONFIRM_SUBMIT)")).toBeLessThan(
+      flat.indexOf("h.mutatingClick(AI_ANALYZE)"),
+    )
   })
 })
