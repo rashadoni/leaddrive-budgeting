@@ -10,21 +10,33 @@
 
 1. [What it is and why](#1-what-it-is-and-why)
 2. [Login and navigation](#2-login-and-navigation)
-3. [Risk Terminal — finance professional's workday](#3-risk-terminal--finance-professionals-workday)
+   - [2.1 Login](#21-login)
+   - [2.2 Sidebar navigation](#22-sidebar-navigation)
+3. [Risk Terminal — finance professional's workday](#3-risk-terminal-—-finance-professionals-workday)
    - [3.1 What-if scenarios](#31-what-if-scenarios)
-4. [Board Deck — snapshot for the board](#4-board-deck--snapshot-for-the-board)
+   - [3.2 Risk Registry — qualitative risk flags](#32-risk-registry-—-qualitative-risk-flags)
+   - [3.3 Compliance & Legal — real indicators from audit reports and courts](#33-compliance-legal-—-real-indicators-from-audit-reports-and-courts)
+   - [3.4 Concentration — who holds your revenue](#34-concentration-—-who-holds-your-revenue)
+   - [3.5 FX risk — what portion of revenue is vulnerable to exchange rate](#35-fx-risk-—-what-portion-of-revenue-is-vulnerable-to-exchange-rate)
+4. [Board Deck — snapshot for the board](#4-board-deck-—-snapshot-for-the-board)
 5. [Budgeting](#5-budgeting)
-   - [5.1 Report Builder (ANALYTICS) — custom slices + charts](#51-report-builder-analytics--custom-slices--charts)
-6. [Onboarding a new company](#6-onboarding-a-new-company)
-7. [Admin Tools — 16 tools in 4 groups](#7-admin-tools--16-tools-in-4-groups)
-8. [AI Auto Import — import any Excel](#8-ai-auto-import--import-any-excel)
-9. [Risk Registry — qualitative risk flags](#9-risk-registry--qualitative-risk-flags)
-   - [9.1 Compliance & Legal — real indicators](#91-compliance--legal--real-indicators-from-audit-reports-and-courts)
-   - [9.2 Concentration — who holds your revenue](#92-concentration--who-holds-your-revenue)
-10. [AI functions — what, where, how much it costs](#10-ai-functions--what-where-how-much-it-costs)
+   - [5.1 Report Builder (ANALYTICS) — custom slices + charts](#51-report-builder-analytics-—-custom-slices-charts)
+6. [Trade Tower — trade marketing budget control](#6-trade-tower-—-trade-marketing-budget-control)
+7. [Onboarding a new company](#7-onboarding-a-new-company)
+8. [AI Auto Import — import any Excel](#8-ai-auto-import-—-import-any-excel)
+9. [Admin Tools — 16 tools in 4 groups](#9-admin-tools-—-16-tools-in-4-groups)
+   - [9.1 Indicator Health — must-check before demo](#91-indicator-health-—-must-check-before-demo)
+   - [9.2 Companies Readiness — readiness grid](#92-companies-readiness-—-readiness-grid)
+   - [9.3 Data Archive — soft-delete with restore](#93-data-archive-—-soft-delete-with-restore)
+   - [9.4 Compliance Hub — single screen for audit findings + courts](#94-compliance-hub-—-single-screen-for-audit-findings-courts)
+   - [9.5 Indicator Backlog — what's missing per company](#95-indicator-backlog-—-whats-missing-per-company)
+10. [AI functions — what, where, how much it costs](#10-ai-functions-—-what-where-how-much-it-costs)
+   - [10.1 Morning Brief](#101-morning-brief)
+   - [10.2 Variance Explainer](#102-variance-explainer)
+   - [10.3 Board Deck Narration](#103-board-deck-narration)
+   - [10.4 AI Auto Import Classifier](#104-ai-auto-import-classifier)
 11. [Audit log](#11-audit-log)
 12. [Self-check checklist](#12-self-check-checklist)
-13. [Trade Tower — trade marketing budget control](#13-trade-tower--trade-marketing-budget-control)
 
 ---
 
@@ -92,7 +104,7 @@ This is the **main screen**. You open it in the morning — everything you need 
 Tree of all holding companies with a **composite-score** badge for each:
 - 🟢 **green %** — composite score (0-100)
 - 🔴 **R##** — number of red indicators
-- **Chips:** `Sub` / `Opq` / `NoD` — qualitative risk flags (see section 9)
+- **Chips:** `Sub` / `Opq` / `NoD` — qualitative risk flags (see section 3.2)
 
 **What to check:** click on a company → the right HeatMap filters to that company.
 
@@ -145,11 +157,153 @@ In the terminal, there are **two different** what-if surfaces — don't confuse 
 - **SSENARI** — value **after** your change.
 - **Δ%** — how many percent the indicator value itself shifted (BAZA → SSENARI), not "percent of something." Next to the indicator code, the **unit of measurement** is shown (e.g., `FP_WHEAT_PRICE_SIGNAL · USD/tonne`), so you can see what the line is counting in.
 
-**Why devaluation sometimes "changes nothing."** If you raise the exchange rate (AZN devaluation), and indicators don't move — for current data this is **correct**: AZSEKER companies in loaded figures are **fully domestic** (costs in manats, no imported FX component). FX shock will affect only when cost/purchases in foreign currency appear in the data (see section 9.2.5 on FX exposure). This is not a bug — the model honestly shows "there is no vulnerability in this data."
+**Why devaluation sometimes "changes nothing."** If you raise the exchange rate (AZN devaluation), and indicators don't move — for current data this is **correct**: AZSEKER companies in loaded figures are **fully domestic** (costs in manats, no imported FX component). FX shock will affect only when cost/purchases in foreign currency appear in the data (see section 3.5 on FX exposure). This is not a bug — the model honestly shows "there is no vulnerability in this data."
 
 **What does "quick calculation" mean.** This is the Quick preview mode from the table above — it works **only** for indicators tied to market feed. For driver scenarios (revenue / costs), use the Scenario Panel.
 
 > If the "What-if" hotkey opens the wrong page — this is a known fork of two surfaces; shortcuts and labels are separated, refer to the table above.
+
+---
+
+### 3.2 Risk Registry — qualitative risk flags
+
+**URL:** `/budgeting/admin/companies` → **"Company Settings"** section → expand company card
+
+![Company Settings + Risk Registry](guide/screenshots/15-risk-registry.webp)
+
+**This is the freshest feature (Phase 7.N, May 2026).** Qualitative financial-operational risks that HeatMap doesn't show quantitatively.
+
+#### Three canonical flags
+
+| Flag | Emoji | What it means | Composite penalty |
+|---|---|---|---|
+| `subsidy_dependency` | ⚠️ | Revenue or margin substantially depends on subsidies or regulated prices | **−5** |
+| `non_transparent_structure` | 🛡 | Related-party or unaudited cost-allocation pattern | **−8** |
+| `data_absence` | ⚪ | Key financial or operational data is missing | **−12** |
+
+#### How to set
+1. `/budgeting/admin/companies`
+2. **"Company Settings"** section (bottom of page)
+3. Expand company card (e.g., AZSEKER-EDEN)
+4. Find **"Risk Registry"** — sorted into 8 categories with severity dots `● ● ●` (emerald → amber → rose)
+5. Click on desired flag — it highlights, penalty applies after save
+
+#### Where these flags appear (4 channels, checked end-to-end)
+
+| Channel | Where you'll see |
+|---|---|
+| **Composite score badges** | Risk Terminal → Company Tree (chips `Sub` / `Opq` / `NoD` next to name) |
+| **Morning Brief narrative** | Risk Terminal → Today's Brief (phrases like *"exposure to government policy/subsidy regime"*) |
+| **Board Deck section** | Board Deck → **"Qualitative Risk Flags"** section with FLAGGED ENTITIES count |
+| **Variance Explainer** | Risk Terminal → click cell → Explain → recommendation #3 cites flag |
+
+#### Current DB state
+- **AZSEKER-AZSF** → `non_transparent_structure` + `data_absence` = **−20 to composite**
+- **AZSEKER-CPC** → `subsidy_dependency` + `non_transparent_structure` = **−13**
+- **AZSEKER-EDEN** → `subsidy_dependency` = **−5**
+
+#### Detailed Risk Registry per entity
+
+Besides the 3 canonical flags, each company may have a detailed risk registry (KRI list) — displayed in admin panel:
+**`/budgeting/admin/companies` → expand company card → "Risk Registry" section**.
+
+**Current state:**
+
+| Entity | KRIs | Source |
+|---|---|---|
+| **EDEN** | 15 | `Top risk - EDEN AGRO MMC.xlsx` (client file) |
+| **AZSF / CPC / MALT / HORIZON / PROMALT / FARM** | 0 | ⏳ Pending — expected from Nəcəf M (CARRYOVER L2) |
+
+Registries for other entities are **intentionally not filled** — we do NOT generate risks ourselves, waiting for real KRIs from holding's Risk Officer. There should be no fictional data here: financial CFO makes decisions based on these indicators.
+
+---
+
+### 3.3 Compliance & Legal — real indicators from audit reports and courts
+
+**Where:** Risk Terminal → HeatMap (3 new columns) + Board Deck → "Compliance" section
+
+Three new indicators, fed from client files (`Follow up - For GTC.xlsx` + `Açıq məhkəmə mübahisələri.xlsx`):
+
+| Code | What it measures | Green | Amber | Red |
+|---|---|---|---|---|
+| `AUDIT_CLOSED_PCT` | % closed audit findings (PBC) | ≥ 80% | 60–79% | < 60% |
+| `AUDIT_MAJOR_OPEN` | Open **Major** audit findings | ≤ 1 | 2–5 | > 5 |
+| `LEGAL_CASES_ACTIVE` | Active court cases | ≤ 2 | 3–9 | ≥ 10 |
+
+#### What's currently in DB (live)
+
+| Entity | AUDIT_CLOSED_PCT | AUDIT_MAJOR_OPEN | LEGAL_CASES_ACTIVE |
+|---|---|---|---|
+| **AZSEKER-AZSF** | 🔴 51% | 🔴 6 | 🔴 29 |
+| **AZSEKER-CPC** | 🔴 39% | 🟡 3 | 🟡 7 |
+| **AZSEKER-EDEN** | ⚪ no data | ⚪ no data | 🟡 4 |
+| MALT / FARM / HORIZON / PROMALT | ⚪ no data in client files | | |
+
+#### Source
+
+- **AUDIT_CLOSED_PCT** + **AUDIT_MAJOR_OPEN** — client's internal audit log: 218 findings (Major / Minor / Observation / OFI). AZSF = 159 findings (51% closed, 6 Major open). CPC = 59 findings (39% closed, 3 Major open). Full list available via `Company.settings.auditFindings` for drill-down.
+- **LEGAL_CASES_ACTIVE** — registry of open court cases: 54 cases. AZSF — defendant in 26 (29 open). CPC — defendant in 7 (8 open). EDEN — only plaintiff (4 open). Full registry in `Company.settings.courtDisputes`.
+
+#### What to check
+- 3 new columns appeared in HeatMap (AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN / LEGAL_CASES_ACTIVE)
+- Click on red cell AZSF/AUDIT_MAJOR_OPEN → Variance Explainer should cite open Major findings in narrative
+- Board Deck → "Critical alerts" section now contains compliance/legal warnings
+
+> **Money-at-risk per case (AZN):** removed from indicators 2026-05-27. Regex covered only 4 of 54 cases (7%) — misleading floor estimate. Will be re-implemented when full claim amounts registry comes from Legal Dept.
+
+---
+
+### 3.4 Concentration — who holds your revenue
+
+**Where:** Risk Terminal → HeatMap (3 columns) + Board Deck → top movers/alerts.
+
+Besides HHI (mathematically correct, but poorly communicates to CFO), we added **direct concentration indicators** that are immediately readable:
+
+| Code | What it measures | Green | Amber | Red |
+|---|---|---|---|---|
+| `CUSTOMER_HHI` | Herfindahl-Hirschman index (mathematical concentration) | ≤ 0.15 | 0.15–0.25 | > 0.25 |
+| `TOP_CUSTOMER_SHARE` | % revenue from **one** largest customer | ≤ 20% | 20–30% | > 30% |
+| `TOP3_CUSTOMER_SHARE` | % revenue from **top-3** largest customers | ≤ 50% | 50–75% | > 75% |
+
+#### Live data
+
+| Entity | TOP_CUSTOMER | TOP3_CUSTOMER | CUSTOMER_HHI | Who dominates |
+|---|---|---|---|---|
+| **HORIZON** | 🔴 80% | 🔴 100% | 🔴 0.68 | 2 customers total |
+| **EDEN** | 🔴 65% | 🔴 93% | 🔴 0.47 | likely AZSF (intercompany) |
+| **MALT** | 🔴 42% | 🔴 80% | 🔴 0.27 | Carlsberg single-buyer |
+| **AZSF** | 🔴 32% | 🟡 65% | 🟡 0.19 | Bakı Şirniyyat (confectionery) |
+| **CPC** | 🟡 28% | 🟡 64% | 🟡 0.18 | Hacı Şəkər Bakı |
+| **PROMALT** | ⚪ no data | ⚪ | ⚪ | (JV with Azersun) |
+
+#### Why both indicators
+- **TOP_CUSTOMER_SHARE** — "loss of one customer" (e.g., AZSF loses Bakı Şirniyyat → −32% revenue overnight)
+- **TOP3_CUSTOMER_SHARE** — "long-tail health" (MALT 80% means after top-3 almost nothing — can't replace if all 3 leave)
+- **CUSTOMER_HHI** — academically correct measure, for regulators / due diligence
+
+---
+
+### 3.5 FX risk — what portion of revenue is vulnerable to exchange rate
+
+**Where:** Risk Terminal → HeatMap column `REVENUE_FX_EXPOSURE`.
+
+Stored in `Company.settings.fxRevenueAzn/Usd/Eur/Rub` — % of revenue in each currency. Formula: **100 − fxRevenueAzn** = % non-AZN.
+
+**Current state:**
+
+| Entity | AZN | USD | EUR | FX Exposure | Source |
+|---|---|---|---|---|---|
+| **CPC** | 84% | 14% | 2% | 🟢 16% | `Farming strategy/Sales plan` — real volume splits 2027-2035 |
+| AZSF / MALT / EDEN / HORIZON / PROMALT | — | — | — | ⚪ Pending | Expected from N. Nəcəfzadə file "Customer Summary" (CARRYOVER L1) |
+
+Only CPC has real data (calculated from client forward plan). For the other 5 entities we do NOT fill split intentionally — `REVENUE_FX_EXPOSURE` shows `unknown` until verified per-customer FX breakdown arrives.
+
+**Thresholds:**
+- 🟢 ≤ 20% — domestic market dominates
+- 🟡 20–50% — mixed exposure
+- 🔴 > 50% — FX fluctuations dominate revenue
+
+**Link to `FX_IMPORTED_INPUT`** (cost-side): two indicators together will give **NET FX position** when everyone has revenue split. If cost ≈ revenue in one currency → natural hedge.
 
 ---
 
@@ -177,7 +331,7 @@ Here you can see:
 - **AZSEKER-AZSF** Azərşəkər Sugar — `Non-transparent structure` + `Data absence`
 - **AZSEKER-CPC** CPC — `Subsidy dependency` + `Non-transparent structure`
 
-These flags **automatically reduce the company's composite score** and appear in the morning briefing (see section 9).
+These flags **automatically reduce the company's composite score** and appear in the morning briefing (see section 3.2).
 
 ### Export buttons
 - `Export PPTX` — byte-for-byte identical PowerPoint presentation
@@ -243,7 +397,44 @@ Report builder for any data source (P&L / Sales / Balance Sheet / Cash Flow / bu
 
 ---
 
-## 6. Onboarding a new company
+## 6. Trade Tower — trade marketing budget control
+
+**Who it's for:** finance + trade marketing of a distributor. The module answers, every day:
+how much of the trade budget is spent, where the month is heading, and whether a decision is
+needed — without waiting for month-end closing.
+
+**Sections on the page (top to bottom):**
+
+1. **Daily pacing** — the "day-15 picture". Three bars: how much of the month has elapsed,
+   how much of the budget is spent, how much of the sales plan is achieved. The card on the
+   right is the month-end run-rate forecast with a risk chip (On pace / Watch / High /
+   Critical). All math is transparent — every snapshot stores its inputs for hand-checking.
+   Press **Recompute** after posting spend to refresh.
+2. **Alert inbox** — the system opens an alert when the forecast breaches the budget or spend
+   runs ahead of sales, and closes it automatically when the condition clears. **Acknowledge**
+   marks "seen", it does not close the alert.
+3. **Spend ledger** — Plan / Accrued / Actual as three separate figures, plus **Control** —
+   the figure pacing counts against the budget (accrued for on-invoice discounts and retro
+   bonuses, paid-only for promo payments and listing fees). Post entries manually until the
+   daily invoice feed is connected; negative amount = credit/correction; entries are voided,
+   never deleted.
+4. **Trade budget** — monthly pools derived from the sales plan (default 5%, editable per
+   month). Click a % or an amount to change it; a pencil mark means a manual override that
+   survives re-derivation.
+5. **Campaigns** — a campaign card holds the goal, dates, budget, expected uplift and scope
+   (channel/brand/outlets). A draft goes to finance approval; only approved campaigns count
+   as running.
+6. **Master data import** — upload outlet / SKU / sales-rep lists as .xlsx (Mikro/1C export).
+   Always preview first; nothing is written until Apply. Re-uploading the same file is a
+   no-op; a corrected file supersedes the previous batch.
+
+**Typical day:** open Trade Tower → check the risk chip and alerts → if spend runs ahead,
+open the ledger to see which spend type eats the budget → decide (pause a campaign, cut a
+discount) → recompute.
+
+---
+
+## 7. Onboarding a new company
 
 **URL:** `/budgeting/onboarding`
 
@@ -269,181 +460,6 @@ Report builder for any data source (P&L / Sales / Balance Sheet / Cash Flow / bu
 | AZSEKER-CPC | CPC | food_processing | 90% | ✅ VERIFIED |
 
 **What to check:** click on a card → detail expands showing which sections (P&L / BS / CF / KPI / Descriptions / Land / CAPEX) are filled and which need completion.
-
----
-
-## 7. Admin Tools — 16 tools in 4 groups
-
-**URL:** `/budgeting/admin`
-
-![Admin Tools landing](guide/screenshots/05-admin-landing.webp)
-
-**This is the "engineering panel"** — what to use **before client demo** and for daily support.
-
-### Four groups
-
-#### 🧪 Data Ingestion
-| Card | What it does |
-|---|---|
-| **Data Import** `Phase 7.M Tier 7` | Drag-drop any xlsx → AI determines type (P&L/BS/CF/KPI/Land/CAPEX/Descriptions/Forecast) and routes to the correct adapter. One screen instead of 5 different forms. |
-| **Data Entry** | Manual KPI and ESG disclosure entry for non-engineer admin. |
-| **Data Sources Catalog** | Client-facing list of external feeds: business value, sample value, dependencies. |
-| **Source Registry** | Drift-watchdog: list of allowed xlsx sources for ingest. |
-
-#### 🩺 Data Quality
-| Card | What it does |
-|---|---|
-| **Indicator Health** `Phase 7.M` | Per-indicator green/amber/red/unknown with remediation guidance. Use **before** client demo. |
-| **Drift Dashboard** | Recent drift events + reference-feed freshness + stalled onboarding cases. |
-| **Companies Readiness** | Per-entity 7-area scoring with tiers (complete/good/partial/thin/empty). CSV export. |
-| **Data Archive** | Self-service archive + restore: BudgetLine / BalanceSheetLine / CashFlowEntry / Counterparty. |
-| **Intel Health** | Status of external feed adapter + recent crawls + news pipeline diagnostics. |
-
-#### 🔒 Operations
-- **Period Locks** — closing closed periods from mutations
-- **Approvals** — workflow for change approvals
-- **AI Usage** — LLM expense monitoring with 30-day trend
-
-#### 👥 Access
-- **User Access** — user and role management
-- **API Keys** — machine keys for external integrations
-
-### 7.1 Indicator Health — must-check before demo
-
-**URL:** `/budgeting/admin/indicator-health`
-
-![Indicator Health](guide/screenshots/09-indicator-health.webp)
-
-**At the top:** counters
-- 🟢 GREEN: 258 (21.5%)
-- 🟡 AMBER: 193
-- 🔴 RED: 73
-- ⚪ UNKNOWN: 677 (43.6% computed out of 1201 total IVs)
-
-**Unknown breakdown by error code:**
-- `eval: 430` — formulas failed
-- `non_finite: 123` — division by zero / NaN
-- `no_budget_lines: 64` — no sources in P&L
-- `no_foreign_currency_lines: 35`
-- `rollup_no_children: 22`
-- `parse: 2`
-- `out_of_range: 1`
-
-**At the bottom:** list of specific indicators with problems + one-line remediation.
-
-**What to check before demo:**
-1. **AGRO_COMMODITY_VOL** → 75 cells, need to investigate
-2. **FP_INVENTORY_TURNS** → 49 cells, need `inventory` in BS
-3. **FP_YIELD_LOSS** → 49 cells, need `raw_input` in production KPI
-4. **AGRO_DROUGHT_RISK** → 37 cells, need `drought_index` per entity
-
-### 7.2 Companies Readiness — readiness grid
-
-**URL:** `/budgeting/admin/companies-readiness`
-
-![Companies Readiness](guide/screenshots/08-companies-readiness.webp)
-
-Per-entity scoring across 7 areas: P&L / BS / CF / KPI / Counterparty / FX tags / Strategic narrative.
-
-Columns:
-- **Score** — 0-100%
-- **Tier** — Complete / Good / Partial / Thin / Empty
-- **Top missing** — what to add to raise tier
-
-**On screen visible:**
-- HORIZON 15% Thin → need P&L (budget lines), balance sheet, counterparties
-- PROMALT 25% Thin → same
-- MALT 65% Good → need operational KPIs, strategic narrative, FX tags
-- AZSF 80% Good → strategic narrative, FX tags
-- EDEN 83% Good → counterparties, FX tags
-- CPC 88% Complete → strategic narrative, FX tags
-
-**Export CSV** button copies gap-list for email.
-
-### 7.3.6 Indicator Backlog — what's missing per company
-
-**URL:** `/budgeting/admin/indicator-backlog`
-
-**Purpose:** exactly one page where you see "what wasn't loaded per entity" — without useless checkboxes, with a specific action plan.
-
-**Structure:**
-- **5 summary cards:** Entities / Applicable indicators / With data / Missing / Overall readiness %
-- **By-owner aggregate** — clickable badges "Risk Officer owes 5 items", "Sales Director owes 12", "CFO owes 8"
-- **Filters:** Category / Owner / Hide entities with 0 missing
-- **Per-entity cards** with two columns: **"Has data"** (green chips with already filled indicators) and **"Needs data"** (pink rows with owner + action)
-
-**Chips and rows show readable name**, and the technical code (`AGRO_COMMODITY_VOL`, `FP_INVENTORY_TURNS`, etc.) is displayed in small monospaced text nearby or in tooltip on hover. This is done so financial personnel don't have to learn abbreviations — but when communicating with developer/AI import, the code remains at hand.
-
-**Per-row actions:**
-- 📧 **Email** — opens mailto: with pre-filled email body to owner with specific list of requested data
-- ⬆️ **Upload file** (entity-level) — deep-link to `/admin/ai-import?forEntity=AZSEKER-AZSF`
-- 📥 **CSV** (entity-level) — gap-list export to send to client
-- 📨 **Email all owners** (entity-level) — bulk mailto with grouping by owner
-
-**Integration with AI Auto Import:**
-After successful import in `/admin/ai-import`, a banner appears:
-> ✅ Closed 7 items from Indicator Backlog
-> - AZSEKER-AZSF → AUDIT_CLOSED_PCT
-> - AZSEKER-CPC → AUDIT_MAJOR_OPEN
-> - ...
-> [Open Indicator Backlog →]
-
-**Owner mapping** — who is responsible for what:
-
-| Data category | Owner role |
-|---|---|
-| Audit findings | Internal Audit / Legal Dept |
-| Court cases | Legal Dept |
-| Customers (counterparty) | Sales Director / Commercial Manager |
-| Suppliers | Procurement / Supply Dept |
-| P&L / BS / CF | CFO / Finance Manager |
-| Strategic narrative + Risk Registry + competitors + NPS | Risk Officer (Nəcəf M) |
-| Operational KPIs (harvest / yield / sugar content) | Farm Manager / QA / Production |
-| Commodity / weather / news | BudgetPro System (auto-populated) |
-
-**Per-org customization:** for each organization (FO Holding, in the future azmade / tabia), owner mapping can be overridden via `Organization.settings.dataOwners` JSON — add real names and emails. Without override, generic role label is used.
-
-### 7.3.5 Compliance Hub — single screen for audit findings + courts
-
-**URL:** `/budgeting/admin/compliance`
-
-**Purpose:** one page for compliance/legal officer — all 218 audit findings (Major/Minor/Observation/OFI) + 54 court cases across 6 entities, with filters and CSV export.
-
-**What's inside:**
-- **2 tabs** — Audit findings / Court cases
-- **5 summary cards at the top** for the active tab (Total / Open / Major / Minor / Observation for audit; Total / Open / Defendant / Plaintiff / Money claims for courts)
-- **Table with color-coded** severity chips: Major (rose), Minor (amber), Observation (slate), OFI (sky)
-- **Drill-down on click** — rows of both audit findings and **court cases** open a modal with details (for court: plaintiff → defendant, date, dispute type, court, status, open/closed badge). Previously court rows were "dead," unclickable — now they open with mouse and keyboard (Enter / Space).
-- **Filters:** Entity (one of 6) / Severity / Status (Open/Closed/All)
-- **Export CSV** of filtered slice with timestamp in filename
-
-**Data source:** already in DB from Phase 7.N (`Company.settings.auditFindings.items` + `courtDisputes.cases`). No new tables.
-
-**What to check:**
-- AZSF aud: 6 Major / 30 Minor / 42 Observation = 159 total → CSV should give 159 rows
-- CPC ct: 8 cases, all open, 7 as defendant
-- Filter `Status: Open only` + `Entity: AZSEKER-AZSF` + `Severity: Major` → should be 6 rows
-
-### 7.3 Data Archive — soft-delete with restore
-
-**URL:** `/budgeting/admin/data-archive`
-
-![Data Archive](guide/screenshots/10-data-archive.webp)
-
-**Why:** made a mistake with import → need to remove rows from calculation, **but not delete physically** for IFRS audit.
-
-**How it works:**
-- Archiving hides data from HeatMap, recompute, reports
-- Physically data is **not deleted** — restoration is possible within **90 days**
-- All actions are written to audit trail
-- After 90 days — daily cron `soft-delete-purge` physically deletes
-
-**Form:**
-- **Action:** Archive / Restore
-- **Type:** P&L / BS / CF / Counterparty
-- **Company + Year**
-- **Reason** (goes to audit log)
-- **Confirmation:** enter `ALL` to exclude typo
 
 ---
 
@@ -506,147 +522,180 @@ This allows **catching AI error BEFORE** data enters DB. If confidence is red or
 
 ---
 
-## 9. Risk Registry — qualitative risk flags
+## 9. Admin Tools — 16 tools in 4 groups
 
-**URL:** `/budgeting/admin/companies` → **"Company Settings"** section → expand company card
+**URL:** `/budgeting/admin`
 
-![Company Settings + Risk Registry](guide/screenshots/15-risk-registry.webp)
+![Admin Tools landing](guide/screenshots/05-admin-landing.webp)
 
-**This is the freshest feature (Phase 7.N, May 2026).** Qualitative financial-operational risks that HeatMap doesn't show quantitatively.
+**This is the "engineering panel"** — what to use **before client demo** and for daily support.
 
-### Three canonical flags
+### Four groups
 
-| Flag | Emoji | What it means | Composite penalty |
-|---|---|---|---|
-| `subsidy_dependency` | ⚠️ | Revenue or margin substantially depends on subsidies or regulated prices | **−5** |
-| `non_transparent_structure` | 🛡 | Related-party or unaudited cost-allocation pattern | **−8** |
-| `data_absence` | ⚪ | Key financial or operational data is missing | **−12** |
-
-### How to set
-1. `/budgeting/admin/companies`
-2. **"Company Settings"** section (bottom of page)
-3. Expand company card (e.g., AZSEKER-EDEN)
-4. Find **"Risk Registry"** — sorted into 8 categories with severity dots `● ● ●` (emerald → amber → rose)
-5. Click on desired flag — it highlights, penalty applies after save
-
-### Where these flags appear (4 channels, checked end-to-end)
-
-| Channel | Where you'll see |
+#### 🧪 Data Ingestion
+| Card | What it does |
 |---|---|
-| **Composite score badges** | Risk Terminal → Company Tree (chips `Sub` / `Opq` / `NoD` next to name) |
-| **Morning Brief narrative** | Risk Terminal → Today's Brief (phrases like *"exposure to government policy/subsidy regime"*) |
-| **Board Deck section** | Board Deck → **"Qualitative Risk Flags"** section with FLAGGED ENTITIES count |
-| **Variance Explainer** | Risk Terminal → click cell → Explain → recommendation #3 cites flag |
+| **Data Import** `Phase 7.M Tier 7` | Drag-drop any xlsx → AI determines type (P&L/BS/CF/KPI/Land/CAPEX/Descriptions/Forecast) and routes to the correct adapter. One screen instead of 5 different forms. |
+| **Data Entry** | Manual KPI and ESG disclosure entry for non-engineer admin. |
+| **Data Sources Catalog** | Client-facing list of external feeds: business value, sample value, dependencies. |
+| **Source Registry** | Drift-watchdog: list of allowed xlsx sources for ingest. |
 
-### Current DB state
-- **AZSEKER-AZSF** → `non_transparent_structure` + `data_absence` = **−20 to composite**
-- **AZSEKER-CPC** → `subsidy_dependency` + `non_transparent_structure` = **−13**
-- **AZSEKER-EDEN** → `subsidy_dependency` = **−5**
+#### 🩺 Data Quality
+| Card | What it does |
+|---|---|
+| **Indicator Health** `Phase 7.M` | Per-indicator green/amber/red/unknown with remediation guidance. Use **before** client demo. |
+| **Drift Dashboard** | Recent drift events + reference-feed freshness + stalled onboarding cases. |
+| **Companies Readiness** | Per-entity 7-area scoring with tiers (complete/good/partial/thin/empty). CSV export. |
+| **Data Archive** | Self-service archive + restore: BudgetLine / BalanceSheetLine / CashFlowEntry / Counterparty. |
+| **Intel Health** | Status of external feed adapter + recent crawls + news pipeline diagnostics. |
 
-### Detailed Risk Registry per entity
+#### 🔒 Operations
+- **Period Locks** — closing closed periods from mutations
+- **Approvals** — workflow for change approvals
+- **AI Usage** — LLM expense monitoring with 30-day trend
 
-Besides the 3 canonical flags, each company may have a detailed risk registry (KRI list) — displayed in admin panel:
-**`/budgeting/admin/companies` → expand company card → "Risk Registry" section**.
+#### 👥 Access
+- **User Access** — user and role management
+- **API Keys** — machine keys for external integrations
 
-**Current state:**
+### 9.1 Indicator Health — must-check before demo
 
-| Entity | KRIs | Source |
-|---|---|---|
-| **EDEN** | 15 | `Top risk - EDEN AGRO MMC.xlsx` (client file) |
-| **AZSF / CPC / MALT / HORIZON / PROMALT / FARM** | 0 | ⏳ Pending — expected from Nəcəf M (CARRYOVER L2) |
+**URL:** `/budgeting/admin/indicator-health`
 
-Registries for other entities are **intentionally not filled** — we do NOT generate risks ourselves, waiting for real KRIs from holding's Risk Officer. There should be no fictional data here: financial CFO makes decisions based on these indicators.
+![Indicator Health](guide/screenshots/09-indicator-health.webp)
 
----
+**At the top:** counters
+- 🟢 GREEN: 258 (21.5%)
+- 🟡 AMBER: 193
+- 🔴 RED: 73
+- ⚪ UNKNOWN: 677 (43.6% computed out of 1201 total IVs)
 
-## 9.1 Compliance & Legal — real indicators from audit reports and courts
+**Unknown breakdown by error code:**
+- `eval: 430` — formulas failed
+- `non_finite: 123` — division by zero / NaN
+- `no_budget_lines: 64` — no sources in P&L
+- `no_foreign_currency_lines: 35`
+- `rollup_no_children: 22`
+- `parse: 2`
+- `out_of_range: 1`
 
-**Where:** Risk Terminal → HeatMap (3 new columns) + Board Deck → "Compliance" section
+**At the bottom:** list of specific indicators with problems + one-line remediation.
 
-Three new indicators, fed from client files (`Follow up - For GTC.xlsx` + `Açıq məhkəmə mübahisələri.xlsx`):
+**What to check before demo:**
+1. **AGRO_COMMODITY_VOL** → 75 cells, need to investigate
+2. **FP_INVENTORY_TURNS** → 49 cells, need `inventory` in BS
+3. **FP_YIELD_LOSS** → 49 cells, need `raw_input` in production KPI
+4. **AGRO_DROUGHT_RISK** → 37 cells, need `drought_index` per entity
 
-| Code | What it measures | Green | Amber | Red |
-|---|---|---|---|---|
-| `AUDIT_CLOSED_PCT` | % closed audit findings (PBC) | ≥ 80% | 60–79% | < 60% |
-| `AUDIT_MAJOR_OPEN` | Open **Major** audit findings | ≤ 1 | 2–5 | > 5 |
-| `LEGAL_CASES_ACTIVE` | Active court cases | ≤ 2 | 3–9 | ≥ 10 |
+### 9.2 Companies Readiness — readiness grid
 
-### What's currently in DB (live)
+**URL:** `/budgeting/admin/companies-readiness`
 
-| Entity | AUDIT_CLOSED_PCT | AUDIT_MAJOR_OPEN | LEGAL_CASES_ACTIVE |
-|---|---|---|---|
-| **AZSEKER-AZSF** | 🔴 51% | 🔴 6 | 🔴 29 |
-| **AZSEKER-CPC** | 🔴 39% | 🟡 3 | 🟡 7 |
-| **AZSEKER-EDEN** | ⚪ no data | ⚪ no data | 🟡 4 |
-| MALT / FARM / HORIZON / PROMALT | ⚪ no data in client files | | |
+![Companies Readiness](guide/screenshots/08-companies-readiness.webp)
 
-### Source
+Per-entity scoring across 7 areas: P&L / BS / CF / KPI / Counterparty / FX tags / Strategic narrative.
 
-- **AUDIT_CLOSED_PCT** + **AUDIT_MAJOR_OPEN** — client's internal audit log: 218 findings (Major / Minor / Observation / OFI). AZSF = 159 findings (51% closed, 6 Major open). CPC = 59 findings (39% closed, 3 Major open). Full list available via `Company.settings.auditFindings` for drill-down.
-- **LEGAL_CASES_ACTIVE** — registry of open court cases: 54 cases. AZSF — defendant in 26 (29 open). CPC — defendant in 7 (8 open). EDEN — only plaintiff (4 open). Full registry in `Company.settings.courtDisputes`.
+Columns:
+- **Score** — 0-100%
+- **Tier** — Complete / Good / Partial / Thin / Empty
+- **Top missing** — what to add to raise tier
 
-### What to check
-- 3 new columns appeared in HeatMap (AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN / LEGAL_CASES_ACTIVE)
-- Click on red cell AZSF/AUDIT_MAJOR_OPEN → Variance Explainer should cite open Major findings in narrative
-- Board Deck → "Critical alerts" section now contains compliance/legal warnings
+**On screen visible:**
+- HORIZON 15% Thin → need P&L (budget lines), balance sheet, counterparties
+- PROMALT 25% Thin → same
+- MALT 65% Good → need operational KPIs, strategic narrative, FX tags
+- AZSF 80% Good → strategic narrative, FX tags
+- EDEN 83% Good → counterparties, FX tags
+- CPC 88% Complete → strategic narrative, FX tags
 
-> **Money-at-risk per case (AZN):** removed from indicators 2026-05-27. Regex covered only 4 of 54 cases (7%) — misleading floor estimate. Will be re-implemented when full claim amounts registry comes from Legal Dept.
+**Export CSV** button copies gap-list for email.
 
----
+### 9.3 Data Archive — soft-delete with restore
 
-## 9.2.5 FX risk — what portion of revenue is vulnerable to exchange rate
+**URL:** `/budgeting/admin/data-archive`
 
-**Where:** Risk Terminal → HeatMap column `REVENUE_FX_EXPOSURE`.
+![Data Archive](guide/screenshots/10-data-archive.webp)
 
-Stored in `Company.settings.fxRevenueAzn/Usd/Eur/Rub` — % of revenue in each currency. Formula: **100 − fxRevenueAzn** = % non-AZN.
+**Why:** made a mistake with import → need to remove rows from calculation, **but not delete physically** for IFRS audit.
 
-**Current state:**
+**How it works:**
+- Archiving hides data from HeatMap, recompute, reports
+- Physically data is **not deleted** — restoration is possible within **90 days**
+- All actions are written to audit trail
+- After 90 days — daily cron `soft-delete-purge` physically deletes
 
-| Entity | AZN | USD | EUR | FX Exposure | Source |
-|---|---|---|---|---|---|
-| **CPC** | 84% | 14% | 2% | 🟢 16% | `Farming strategy/Sales plan` — real volume splits 2027-2035 |
-| AZSF / MALT / EDEN / HORIZON / PROMALT | — | — | — | ⚪ Pending | Expected from N. Nəcəfzadə file "Customer Summary" (CARRYOVER L1) |
-
-Only CPC has real data (calculated from client forward plan). For the other 5 entities we do NOT fill split intentionally — `REVENUE_FX_EXPOSURE` shows `unknown` until verified per-customer FX breakdown arrives.
-
-**Thresholds:**
-- 🟢 ≤ 20% — domestic market dominates
-- 🟡 20–50% — mixed exposure
-- 🔴 > 50% — FX fluctuations dominate revenue
-
-**Link to `FX_IMPORTED_INPUT`** (cost-side): two indicators together will give **NET FX position** when everyone has revenue split. If cost ≈ revenue in one currency → natural hedge.
-
----
-
-## 9.2 Concentration — who holds your revenue
-
-**Where:** Risk Terminal → HeatMap (3 columns) + Board Deck → top movers/alerts.
-
-Besides HHI (mathematically correct, but poorly communicates to CFO), we added **direct concentration indicators** that are immediately readable:
-
-| Code | What it measures | Green | Amber | Red |
-|---|---|---|---|---|
-| `CUSTOMER_HHI` | Herfindahl-Hirschman index (mathematical concentration) | ≤ 0.15 | 0.15–0.25 | > 0.25 |
-| `TOP_CUSTOMER_SHARE` | % revenue from **one** largest customer | ≤ 20% | 20–30% | > 30% |
-| `TOP3_CUSTOMER_SHARE` | % revenue from **top-3** largest customers | ≤ 50% | 50–75% | > 75% |
-
-### Live data
-
-| Entity | TOP_CUSTOMER | TOP3_CUSTOMER | CUSTOMER_HHI | Who dominates |
-|---|---|---|---|---|
-| **HORIZON** | 🔴 80% | 🔴 100% | 🔴 0.68 | 2 customers total |
-| **EDEN** | 🔴 65% | 🔴 93% | 🔴 0.47 | likely AZSF (intercompany) |
-| **MALT** | 🔴 42% | 🔴 80% | 🔴 0.27 | Carlsberg single-buyer |
-| **AZSF** | 🔴 32% | 🟡 65% | 🟡 0.19 | Bakı Şirniyyat (confectionery) |
-| **CPC** | 🟡 28% | 🟡 64% | 🟡 0.18 | Hacı Şəkər Bakı |
-| **PROMALT** | ⚪ no data | ⚪ | ⚪ | (JV with Azersun) |
-
-### Why both indicators
-- **TOP_CUSTOMER_SHARE** — "loss of one customer" (e.g., AZSF loses Bakı Şirniyyat → −32% revenue overnight)
-- **TOP3_CUSTOMER_SHARE** — "long-tail health" (MALT 80% means after top-3 almost nothing — can't replace if all 3 leave)
-- **CUSTOMER_HHI** — academically correct measure, for regulators / due diligence
+**Form:**
+- **Action:** Archive / Restore
+- **Type:** P&L / BS / CF / Counterparty
+- **Company + Year**
+- **Reason** (goes to audit log)
+- **Confirmation:** enter `ALL` to exclude typo
 
 ---
+
+### 9.4 Compliance Hub — single screen for audit findings + courts
+
+**URL:** `/budgeting/admin/compliance`
+
+**Purpose:** one page for compliance/legal officer — all 218 audit findings (Major/Minor/Observation/OFI) + 54 court cases across 6 entities, with filters and CSV export.
+
+**What's inside:**
+- **2 tabs** — Audit findings / Court cases
+- **5 summary cards at the top** for the active tab (Total / Open / Major / Minor / Observation for audit; Total / Open / Defendant / Plaintiff / Money claims for courts)
+- **Table with color-coded** severity chips: Major (rose), Minor (amber), Observation (slate), OFI (sky)
+- **Drill-down on click** — rows of both audit findings and **court cases** open a modal with details (for court: plaintiff → defendant, date, dispute type, court, status, open/closed badge). Previously court rows were "dead," unclickable — now they open with mouse and keyboard (Enter / Space).
+- **Filters:** Entity (one of 6) / Severity / Status (Open/Closed/All)
+- **Export CSV** of filtered slice with timestamp in filename
+
+**Data source:** already in DB from Phase 7.N (`Company.settings.auditFindings.items` + `courtDisputes.cases`). No new tables.
+
+**What to check:**
+- AZSF aud: 6 Major / 30 Minor / 42 Observation = 159 total → CSV should give 159 rows
+- CPC ct: 8 cases, all open, 7 as defendant
+- Filter `Status: Open only` + `Entity: AZSEKER-AZSF` + `Severity: Major` → should be 6 rows
+
+### 9.5 Indicator Backlog — what's missing per company
+
+**URL:** `/budgeting/admin/indicator-backlog`
+
+**Purpose:** exactly one page where you see "what wasn't loaded per entity" — without useless checkboxes, with a specific action plan.
+
+**Structure:**
+- **5 summary cards:** Entities / Applicable indicators / With data / Missing / Overall readiness %
+- **By-owner aggregate** — clickable badges "Risk Officer owes 5 items", "Sales Director owes 12", "CFO owes 8"
+- **Filters:** Category / Owner / Hide entities with 0 missing
+- **Per-entity cards** with two columns: **"Has data"** (green chips with already filled indicators) and **"Needs data"** (pink rows with owner + action)
+
+**Chips and rows show readable name**, and the technical code (`AGRO_COMMODITY_VOL`, `FP_INVENTORY_TURNS`, etc.) is displayed in small monospaced text nearby or in tooltip on hover. This is done so financial personnel don't have to learn abbreviations — but when communicating with developer/AI import, the code remains at hand.
+
+**Per-row actions:**
+- 📧 **Email** — opens mailto: with pre-filled email body to owner with specific list of requested data
+- ⬆️ **Upload file** (entity-level) — deep-link to `/admin/ai-import?forEntity=AZSEKER-AZSF`
+- 📥 **CSV** (entity-level) — gap-list export to send to client
+- 📨 **Email all owners** (entity-level) — bulk mailto with grouping by owner
+
+**Integration with AI Auto Import:**
+After successful import in `/admin/ai-import`, a banner appears:
+> ✅ Closed 7 items from Indicator Backlog
+> - AZSEKER-AZSF → AUDIT_CLOSED_PCT
+> - AZSEKER-CPC → AUDIT_MAJOR_OPEN
+> - ...
+> [Open Indicator Backlog →]
+
+**Owner mapping** — who is responsible for what:
+
+| Data category | Owner role |
+|---|---|
+| Audit findings | Internal Audit / Legal Dept |
+| Court cases | Legal Dept |
+| Customers (counterparty) | Sales Director / Commercial Manager |
+| Suppliers | Procurement / Supply Dept |
+| P&L / BS / CF | CFO / Finance Manager |
+| Strategic narrative + Risk Registry + competitors + NPS | Risk Officer (Nəcəf M) |
+| Operational KPIs (harvest / yield / sugar content) | Farm Manager / QA / Production |
+| Commodity / weather / news | BudgetPro System (auto-populated) |
+
+**Per-org customization:** for each organization (FO Holding, in the future azmade / tabia), owner mapping can be overridden via `Organization.settings.dataOwners` JSON — add real names and emails. Without override, generic role label is used.
 
 ## 10. AI functions — what, where, how much it costs
 
@@ -818,43 +867,6 @@ Go through this list **now**, clicking in the live application. If something doe
 - [ ] `ai_morning_brief_run` exists for today
 - [ ] `ai_board_deck_narration_run` exists (generated when Board Deck opens)
 - [ ] `fromCache: true` for repeated requests with same parameters
-
----
-
-## 13. Trade Tower — trade marketing budget control
-
-**Who it's for:** finance + trade marketing of a distributor. The module answers, every day:
-how much of the trade budget is spent, where the month is heading, and whether a decision is
-needed — without waiting for month-end closing.
-
-**Sections on the page (top to bottom):**
-
-1. **Daily pacing** — the "day-15 picture". Three bars: how much of the month has elapsed,
-   how much of the budget is spent, how much of the sales plan is achieved. The card on the
-   right is the month-end run-rate forecast with a risk chip (On pace / Watch / High /
-   Critical). All math is transparent — every snapshot stores its inputs for hand-checking.
-   Press **Recompute** after posting spend to refresh.
-2. **Alert inbox** — the system opens an alert when the forecast breaches the budget or spend
-   runs ahead of sales, and closes it automatically when the condition clears. **Acknowledge**
-   marks "seen", it does not close the alert.
-3. **Spend ledger** — Plan / Accrued / Actual as three separate figures, plus **Control** —
-   the figure pacing counts against the budget (accrued for on-invoice discounts and retro
-   bonuses, paid-only for promo payments and listing fees). Post entries manually until the
-   daily invoice feed is connected; negative amount = credit/correction; entries are voided,
-   never deleted.
-4. **Trade budget** — monthly pools derived from the sales plan (default 5%, editable per
-   month). Click a % or an amount to change it; a pencil mark means a manual override that
-   survives re-derivation.
-5. **Campaigns** — a campaign card holds the goal, dates, budget, expected uplift and scope
-   (channel/brand/outlets). A draft goes to finance approval; only approved campaigns count
-   as running.
-6. **Master data import** — upload outlet / SKU / sales-rep lists as .xlsx (Mikro/1C export).
-   Always preview first; nothing is written until Apply. Re-uploading the same file is a
-   no-op; a corrected file supersedes the previous batch.
-
-**Typical day:** open Trade Tower → check the risk chip and alerts → if spend runs ahead,
-open the ledger to see which spend type eats the budget → decide (pause a campaign, cut a
-discount) → recompute.
 
 ---
 
