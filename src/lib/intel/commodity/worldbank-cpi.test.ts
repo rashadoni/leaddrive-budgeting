@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from "vitest"
-import { createWorldBankCPIAdapter, wbResponseToDataPoints, WB_CPI_SOURCE } from "./worldbank-cpi"
+import { createWorldBankCPIAdapter, wbResponseToDataPoints, WB_CPI_SOURCE,
+  WB_USER_AGENT,
+} from "./worldbank-cpi"
 
 describe("wbResponseToDataPoints — pure parser", () => {
   it("parses WB 2-element envelope into data points", () => {
@@ -117,5 +119,40 @@ describe("createWorldBankCPIAdapter — fetch loop", () => {
     expect(result.dataPoints).toEqual([])
     expect(result.errors.length).toBe(5)
     for (const e of result.errors) expect(e).toContain("no usable data points")
+  })
+})
+
+describe("createWorldBankCPIAdapter — the User-Agent is not optional", () => {
+  // 2026-08-04 — every scheduled run recorded five 403s, one per country,
+  // and the adapter had therefore never succeeded on the server. Measured
+  // against the live API from the production host: `User-Agent: node` (what
+  // Node's global fetch sends) is refused 403, while undici/empty/browser
+  // agents all return 200. So this header is load-bearing, not politeness,
+  // and a regression that drops it is silent — the run still "works", it
+  // just returns nothing for every country.
+  it("sends an identifying User-Agent on every request", async () => {
+    const seen: Array<Record<string, string> | undefined> = []
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      seen.push(init?.headers as Record<string, string> | undefined)
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [{ page: 1 }, []],
+      } as unknown as Response
+    })
+    const adapter = createWorldBankCPIAdapter({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    await adapter.fetch()
+
+    expect(seen).toHaveLength(5) // AZ, RU, TR, GE, IR
+    for (const headers of seen) {
+      expect(headers?.["User-Agent"]).toBe(WB_USER_AGENT)
+    }
+  })
+
+  it("does not identify as bare `node`, which the API rejects", () => {
+    expect(WB_USER_AGENT).not.toBe("node")
+    expect(WB_USER_AGENT).toContain("BudgetPro")
   })
 })

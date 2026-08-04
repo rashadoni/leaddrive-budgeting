@@ -13,7 +13,13 @@
  *   RB=F  → RBOB Gasoline futures, USD/gal. Same conversion.
  *
  * **Metrics emitted**:
- *   BALTIC_DRY_INDEX        — points (no currency unit)
+ *   BALTIC_DRY_INDEX        — USD/share, NOT index points. The name is
+ *                             historical; the value is the BDRY ETF (see
+ *                             the note on FUEL_BDI_SYMBOLS). Said plainly
+ *                             here because the plausibility band was
+ *                             written against index points and rejected
+ *                             every reading this adapter ever produced
+ *                             (fixed 2026-08-04).
  *   DIESEL_USD_LITRE        — USD per litre, derived from HO=F
  *   GASOLINE_USD_LITRE      — USD per litre, derived from RB=F
  *
