@@ -168,16 +168,24 @@ export function useHeatMapModel(period: string | undefined) {
   // rows). Falls back to matrix-derived `summary` if endpoint is missing.
   // Dependency on `data?.period` not `period` prop: prop may be empty
   // initially while matrix-derived period is the canonical "active" one.
-  const [dbSummary, setDbSummary] = useState<{ green: number; amber: number; red: number; unknown: number; total: number } | null>(null);
+  // 2026-08-04 audit — the tally is stamped with the period it describes.
+  // Resetting alone would close the window measured on production (120ms after
+  // clicking Q1 the header read "2025-Q1" over the ANNUAL counts 24/11/8/74)
+  // but not the race behind it: two period switches in flight can land out of
+  // order, and the loser would overwrite the winner with counts for a period
+  // the user already left. A stamp makes a late response identifiable and
+  // ignorable instead of merely unlikely.
+  const [dbSummary, setDbSummary] = useState<{ period: string; green: number; amber: number; red: number; unknown: number; total: number } | null>(null);
   const activePeriod = data?.period ?? selectedPeriod ?? period;
   useEffect(() => {
     if (!activePeriod) return;
     let cancelled = false;
-    fetch(`/api/indicators/status-summary?period=${encodeURIComponent(activePeriod)}`)
+    const requestedPeriod = activePeriod;
+    fetch(`/api/indicators/status-summary?period=${encodeURIComponent(requestedPeriod)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (cancelled || !j) return;
-        if (typeof j.total === 'number') setDbSummary(j);
+        if (typeof j.total === 'number') setDbSummary({ ...j, period: requestedPeriod });
       })
       .catch(() => { /* silent — fall back to matrix-derived summary */ });
     return () => { cancelled = true; };
@@ -670,7 +678,15 @@ export function useHeatMapModel(period: string | undefined) {
     activeScenarioLabel, clearScenarioDelta, lockedPeriods, setLockedPeriods,
     showAllIndicators, setShowAllIndicators, data,
     loading, error, refetchMatrix, companyTree, searchInputRef, mounted,
-    setMounted, dbSummary, setDbSummary, activePeriod, alertThresholds,
+    setMounted,
+    // Only ever hand out a tally that belongs to the period on screen. Keeping
+    // the filter here rather than at the call site means HeatMap keeps reading
+    // `dbSummary ?? summary` unchanged and cannot reintroduce the mismatch —
+    // and it keeps this fix out of a visual-gate file the Linux box cannot
+    // verify.
+    dbSummary:
+      dbSummary && dbSummary.period === activePeriod ? dbSummary : null,
+    setDbSummary, activePeriod, alertThresholds,
     setAlertThresholds, refetchTimerRef, cellMap, compositeByCompany,
     provisionalSummary,
     statementMismatchCount,
