@@ -19,7 +19,7 @@ import React, {
   useImperativeHandle,
   useState,
 } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useTerminalStore } from "../store/terminalStore";
 import { CompanySnapshot } from "./CompanySnapshot";
 import { localizeFactCheckFlag } from "../lib/localize-fact-check";
@@ -68,7 +68,21 @@ function VarianceExplainerPanel(_props, ref) {
   const ivId = useTerminalStore((s) => s.activeIndicatorValueId);
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
 
-  const [language, setLanguage] = useState<Language>("en");
+  /**
+   * 2026-08-04 — the picker used to start on "en" whatever the interface was
+   * set to, so an Azerbaijani reader got an English narrative and had to press
+   * AZ every single time. The panel already sits inside a localized app; the
+   * language it reads is not a fresh question.
+   *
+   * Still a picker, not a mirror: the owner reads all three, and switching to
+   * compare wordings is a real use. This only fixes where it STARTS.
+   */
+  const uiLocale = useLocale();
+  const [language, setLanguage] = useState<Language>(() =>
+    LANGUAGE_OPTIONS.some((option) => option.value === uiLocale)
+      ? (uiLocale as Language)
+      : "en",
+  );
   const [data, setData] = useState<ExplainResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -269,6 +283,8 @@ function VarianceExplainerPanel(_props, ref) {
                 <button
                   key={opt.value}
                   type="button"
+                  role="radio"
+                  aria-checked={active}
                   onClick={() => {
                     setLanguage(opt.value);
                     if (ivId) run(ivId, opt.value);
