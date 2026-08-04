@@ -54,6 +54,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # leaves the server ~1.2GB for postgres and the running container during the
 # build; going higher would trade a heap error for the OOM killer.
 ENV NODE_OPTIONS=--max-old-space-size=2560
+# Skip the type-check phase here only — see the long note in next.config.ts.
+# Compilation itself finishes in ~35s; it was the type-check that sat for ten
+# minutes and got SIGKILLed by the OOM killer on this 3.8GB box. Types are
+# already gated by the pre-commit hook and by CI's own `tsc --noEmit`, and
+# deploy/update-prod.sh only ships commits that are origin/main with CI green.
+ENV DOCKER_BUILD_SKIP_TYPECHECK=1
 RUN npm run build
 
 # ═════════════════════════════════════════════════════════════════════════════
