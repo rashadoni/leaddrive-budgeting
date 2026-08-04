@@ -48,10 +48,19 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'companyTree.trustStatus.partial': 'partial',
   'companyTree.trustStatus.suspicious': 'suspicious',
   'companyTree.trustStatus.pending': 'pending',
-  'companyTree.freshnessNow': 'now',
-  'companyTree.freshnessMinutes': '{count}m',
-  'companyTree.freshnessHours': '{count}h',
-  'companyTree.freshnessDays': '{count}d',
+  // 2026-08-04 — the shared `relativeAge` namespace (src/lib/format/
+  // relative-age.ts), which replaced five per-surface copies of "N minutes
+  // ago". This map is namespace-agnostic, so the keys are exactly what the
+  // helper passes to `t()`: `<variant>.<bucket>`. Values mirror messages/
+  // en.json so the string-matching chip tests keep asserting real wording.
+  'long.justNow': 'just now',
+  'long.minutes': '{n} min ago',
+  'long.hours': '{n} h ago',
+  'long.days': '{n} d ago',
+  'short.justNow': 'now',
+  'short.minutes': '{n}m',
+  'short.hours': '{n}h',
+  'short.days': '{n}d',
   'heatMap.filterRowsPlaceholder': 'filter rows…',
   'heatMap.findIndicatorPlaceholder': 'find indicator…',
   'heatMap.findIndicatorAria': 'Search indicators by name or code',

@@ -16,6 +16,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { RefreshCw, AlertTriangle, Clock, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RELATIVE_AGE_NAMESPACE, formatRelativeAge } from "@/lib/format/relative-age";
 
 interface DriftEvent {
   id: string;
@@ -63,17 +64,29 @@ const FRESH_COLOR: Record<SourceFreshness["status"], string> = {
   missing: "border-gray-500/40 bg-gray-500/5 text-gray-600",
 };
 
+/**
+ * 2026-08-04 — folded into the shared relative-age helper.
+ *
+ * The cadence argument is gone: it existed because this dashboard switched to
+ * days only past 48h, which is too late for a daily source and far too late
+ * for a monthly one, so `cadence === "monthly"` had to force days by hand. The
+ * shared buckets turn over at 24h, and a monthly source 30 days stale lands in
+ * days on its own — the special case was compensating for the threshold, not
+ * expressing anything about cadence.
+ *
+ * Also gone: the one decimal ("3.5 hours ago"). Rounding to whole units costs
+ * nothing on a panel whose question is "is this stale", and it is what the
+ * other four surfaces show.
+ */
 function useAgeLabel() {
   const t = useTranslations("adminDriftDashboard");
+  const tAge = useTranslations(RELATIVE_AGE_NAMESPACE);
   return React.useCallback(
-    (hours: number | null, cadence: "daily" | "monthly"): string => {
-      if (hours === null) return t("neverFetched");
-      if (cadence === "monthly" || hours > 48) {
-        return t("daysAgo", { n: (hours / 24).toFixed(1) });
-      }
-      return t("hoursAgo", { n: hours.toFixed(1) });
-    },
-    [t],
+    (hours: number | null): string =>
+      // "never fetched" stays local — it answers a different question than
+      // an age does, and this panel words it more specifically than "never".
+      hours === null ? t("neverFetched") : formatRelativeAge(hours * 60, tAge),
+    [t, tAge],
   );
 }
 
@@ -238,7 +251,7 @@ function FreshnessCard({
 }: {
   source: SourceFreshness;
   onRefreshed: () => void;
-  ageLabel: (hours: number | null, cadence: "daily" | "monthly") => string;
+  ageLabel: (hours: number | null) => string;
 }) {
   const t = useTranslations("adminDriftDashboard");
   const [busy, setBusy] = React.useState(false);
@@ -322,7 +335,7 @@ function FreshnessCard({
         {source.cadence === "daily" ? t("cadenceDaily") : t("cadenceMonthly")} ·{" "}
         {source.metricCount} {t("metrics")}
       </div>
-      <div className="text-sm">{ageLabel(source.ageHours, source.cadence)}</div>
+      <div className="text-sm">{ageLabel(source.ageHours)}</div>
       {source.lastFetchedAt && (
         <div className="text-[10px] opacity-70 mt-1">
           {new Date(source.lastFetchedAt).toLocaleString()}

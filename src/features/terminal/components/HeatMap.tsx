@@ -22,6 +22,10 @@ import {
 import { isPartialYear } from '@/lib/risk/periods';
 import { resolveIndicatorLabel } from '../lib/resolve-indicator-label';
 import { formatFreshness } from '../lib/relative-time';
+import {
+  RELATIVE_AGE_NAMESPACE,
+  formatRelativeAge,
+} from '@/lib/format/relative-age';
 import { inputToSourceCode } from '../hooks/use-drift-health';
 import { PeriodChips } from './PeriodChips';
 import { TimeMachineSlider } from './TimeMachineSlider';
@@ -820,12 +824,24 @@ function CompositeBadge({ score }: { score: CompositeScore | null }) {
   );
 }
 
-/** Translate a formula-engine error to user-friendly text per locale.
- *  Special-cases _VS_<YEAR> indicators (where missing baseline data
- *  is the typical NaN cause) with an actionable hint. Raw code+reason
- *  remain in the title attribute for technical debugging. */
+/**
+ * 2026-05-27 A4 — data-freshness chip for the HeatMap header. Reads
+ * `matrix.lastComputedAt` (MAX(computedAt) across all rendered cells, set
+ * server-side) and renders «updated 2h».
+ *
+ * Self-ticking: re-renders every 30s so a long-open Risk Terminal tab doesn't
+ * still say "1m" three hours later. No matrix re-fetch happens here — the SSE
+ * channel handles that. Tooltip carries the full timestamp.
+ *
+ * (This docblock sat on the last function in heat-map/HeatMapCellTd.tsx until
+ * 2026-08-04 — the component moved out and the comment didn't follow. Its
+ * "locale-agnostic, uses Intl.RelativeTimeFormat" line was doubly stale: the
+ * wording has come from message keys since, and Intl.RelativeTimeFormat is
+ * specifically not usable here. See src/lib/format/relative-age.ts.)
+ */
 function FreshnessLabel({ iso }: { iso: string }) {
   const t = useTranslations('terminal');
+  const tAge = useTranslations(RELATIVE_AGE_NAMESPACE);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 30_000);
@@ -835,16 +851,11 @@ function FreshnessLabel({ iso }: { iso: string }) {
   // chip). Stale-after-24h flips the dot teal→amber (trust-badge convention).
   const parts = formatFreshness(iso, now);
   if (!parts) return null;
-  const { short, isStale } = parts;
-  const match = /^(\d+)([mhd])$/.exec(short);
-  const age =
-    short === 'now'
-      ? t('heatMap.freshnessNow')
-      : match?.[2] === 'm'
-        ? t('heatMap.freshnessMinutes', { count: match[1] })
-        : match?.[2] === 'h'
-          ? t('heatMap.freshnessHours', { count: match[1] })
-          : t('heatMap.freshnessDays', { count: match?.[1] ?? '0' });
+  const { ageMinutes, isStale } = parts;
+  // Compact variant: this is 9px terminal chrome, and `updatedFreshness`
+  // already carries the "updated"/"yenilənib" sense, so "5m" reads the same
+  // as "5m ago" did in half the width.
+  const age = formatRelativeAge(ageMinutes, tAge, 'short');
   return (
     <span
       className="inline-flex items-center gap-1 shrink-0 text-gray-500 text-[9px] tabular-nums"

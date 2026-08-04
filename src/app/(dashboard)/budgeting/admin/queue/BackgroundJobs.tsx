@@ -7,22 +7,18 @@
  * last left a trace, and — the part that matters — which pieces nothing in
  * production is actually running.
  *
- * Relative ages go through message keys, not Intl.RelativeTimeFormat.
- * The first cut used the platform formatter on the theory that it already
- * knows how EN/RU/AZ pluralise. Measured in the owner's Chrome, it does not:
- *
- *     new Intl.RelativeTimeFormat('az', {numeric:'auto'}).format(-50,'minute')
- *     → "-50 min"          (Node with full ICU: "50 dəqiqə öncə")
- *
- * That Chrome's ICU carries no relative-time data for `az` and silently falls
- * back to the CLDR root pattern, while `supportedLocalesOf(['az'])` still
- * answers `['az']` — it reports that the locale is known, not that this
- * formatter has data for it. So the page showed "-50 min" to its only user.
- * Message keys make the rendering the app's own, the way the four other
- * relative-age surfaces in this codebase already do it.
+ * Relative ages go through `formatRelativeAge` — message keys, deliberately
+ * NOT Intl.RelativeTimeFormat, which was tried here and reverted the same day
+ * because the owner's Chrome has no relative-time ICU data for `az`. The full
+ * measurement is at the top of src/lib/format/relative-age.ts; read it before
+ * reaching for the platform formatter again.
  */
 import { useEffect, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
+import {
+  RELATIVE_AGE_NAMESPACE,
+  formatRelativeAge,
+} from "@/lib/format/relative-age"
 
 type JobStatus =
   | "ok"
@@ -62,17 +58,8 @@ const STATUS_CLASS: Record<JobStatus, string> = {
 
 export function BackgroundJobs() {
   const t = useTranslations("adminQueue.jobs")
+  const tAge = useTranslations(RELATIVE_AGE_NAMESPACE)
   const locale = useLocale()
-
-  /** Same thresholds and shape as the intel-health dashboard's `relative.*`
-   *  helper, so the two admin pages read alike. */
-  const relative = (minutes: number): string => {
-    if (minutes < 1) return t("ago.justNow")
-    if (minutes < 60) return t("ago.minutes", { n: minutes })
-    const hours = Math.round(minutes / 60)
-    if (hours < 24) return t("ago.hours", { n: hours })
-    return t("ago.days", { n: Math.round(minutes / (60 * 24)) })
-  }
   const [data, setData] = useState<Inventory | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
@@ -159,7 +146,7 @@ export function BackgroundJobs() {
                   <td className="p-2 whitespace-nowrap">
                     {j.lastRunAt && j.ageMinutes !== null ? (
                       <>
-                        <div>{relative(j.ageMinutes)}</div>
+                        <div>{formatRelativeAge(j.ageMinutes, tAge)}</div>
                         <div className="text-xs text-muted-foreground">
                           {new Date(j.lastRunAt).toLocaleString(locale)}
                         </div>
