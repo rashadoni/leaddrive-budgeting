@@ -83,48 +83,76 @@ const DC_DRIFT_FRESHNESS = '[data-testid="data-control-drift-freshness"]';
 const DC_INTEL = '[data-testid="data-control-intel-health"]';
 const DC_INTEL_SUMMARY = '[data-testid="data-control-intel-health-summary"]';
 
-// ── AI Import guide readiness ───────────────────────────────────────────
-// Strictly hover-only on the initial server-rendered page. It never selects a
-// file, changes a tab, opens cleanup, runs Analyze/Doctor, saves a template or
-// alias, previews a reset, or applies data. Initial render therefore stays on
-// the legacy single-file panel and cannot invoke a provider or mutation API.
-const AI_IMPORT_ROOT = '[data-testid="ai-import-guide-root"]';
-const AI_IMPORT_PIPELINE = '[data-testid="ai-import-guide-pipeline"]';
-const AI_IMPORT_SAFETY = '[data-testid="ai-import-guide-safety"]';
-const AI_IMPORT_CLEANUP = '[data-testid="ai-import-guide-cleanup"]';
-const AI_IMPORT_RESET = '[data-testid="ai-import-guide-reset"]';
-// The CTA itself, not the panel around it — clicking the wrapper hits empty space.
-const AI_IMPORT_RESET_CTA = '[data-testid="ai-import-guide-reset-cta"]';
-const AI_IMPORT_WORKFLOWS = '[data-testid="ai-import-guide-workflows"]';
-const AI_IMPORT_TABS = '[data-testid="ai-import-guide-tabs"]';
-const AI_IMPORT_SINGLE = '[data-testid="tab-single"]';
-const AI_IMPORT_MULTI = '[data-testid="tab-multi"]';
-const AI_IMPORT_UNIVERSAL = '[data-testid="tab-universal"]';
-const AI_IMPORT_MULTISHEET = '[data-testid="tab-multisheet"]';
-const AI_IMPORT_DROP = '[data-testid="ai-import-guide-drop-zone"]';
-const AI_IMPORT_ANALYZE = '[data-testid="ai-import-guide-analyze"]';
-// 2026-08-04 — the import guide became a REAL run (clear → import), so it needs
-// the controls the old hover-only version never touched. All harvested from the
-// components, not guessed: the delete flow is fully `data-testid`-covered.
-const AI_IMPORT_APPLY = '[data-testid="btn-apply"]';
+// ── AI Import (Data İmportu) — the real end-to-end workflow ─────────────
+// 2026-08-03 rewrite. The previous version of this scenario was hover-only and
+// narrated "this guide never presses the button" over nine static blocks — it
+// also still described the single-file tab as the landing tab, which stopped
+// being true on 2026-07-30 (AIImportTabs defaults to `multi`). A guide to an
+// import that never shows an import fails the bar in VIDEO-GUIDES-HANDOFF.md:
+// what you say is what you show.
+//
+// This version drives the real flow on the MULTI tab — pick year, drop a
+// workbook, Step 1 (AI analysis = preview, writes nothing), read the routing
+// grid and the Import Doctor, then Step 2 (Apply) and the receipt.
+//
+// Therefore it REQUIRES a mutating stand: a throwaway DB restored from a prod
+// dump, launched with ALLOW_MUTATIONS=1. Under READONLY the recorder's
+// interceptor aborts the POST behind Step 1 and fails the take by design — do
+// not "fix" that by pointing safeClick somewhere softer.
+const AI_ROOT = '[data-testid="ai-import-guide-root"]';
+const AI_TITLE = ["main h1", "h1", AI_ROOT];
+const AI_PIPELINE = '[data-testid="ai-import-guide-pipeline"]';
+const AI_SAFETY = '[data-testid="ai-import-guide-safety"]';
+const AI_CLEANUP = '[data-testid="ai-import-guide-cleanup"]';
+const AI_TABS = '[data-testid="ai-import-guide-tabs"]';
+const AI_TAB_MULTI = '[data-testid="tab-multi"]';
+const AI_TAB_SINGLE = '[data-testid="tab-single"]';
+const AI_TAB_UNIVERSAL = '[data-testid="tab-universal"]';
+const AI_TAB_MULTISHEET = '[data-testid="tab-multisheet"]';
+const AI_YEAR = '[data-testid="multi-year"]';
+// 2026-08-04 — the guarded delete flow, added so the guide SHOWS a clearing
+// instead of only saying one exists. Every id below is on the real control,
+// harvested from `src/features/admin/components/delete-data/`.
+const AI_RESET_CTA = '[data-testid="ai-import-guide-reset-cta"]';
 const DD_TASK_CHOOSER = '[data-testid="task-chooser"]';
 const DD_COMPANY_PICKER = '[data-testid="company-picker"]';
+const DD_WHAT_PICKER = '[data-testid="what-picker"]';
+const DD_YEAR_CHIPS = '[data-testid="year-chips"]';
 const DD_CHECK = '[data-testid="check-button"]';
 const DD_BLAST_RADIUS = '[data-testid="blast-radius"]';
+const DD_CONFIRM_STRIP = '[data-testid="confirm-strip"]';
 const DD_CONFIRM_SUBMIT = '[data-testid="confirm-submit"]';
 const DD_RUN_DONE = '[data-testid="run-result-done"]';
-const DD_MULTI_YEAR = '[data-testid="multi-year"]';
-const DD_PREVIEW_RESULT = '[data-testid="preview-result"]';
-const DD_REVIEW_TABS = '[data-testid="import-review-tabs"]';
-const DD_TAB_ROUTING = '[data-testid="review-tab-routing"]';
-const DD_ROUTING_GRID = '[data-testid="bu-routing-grid"]';
-const DD_DOCTOR_PANEL = '[data-testid="import-doctor-panel"]';
-const DD_DOCTOR_NEXT_STEP = '[data-testid="import-doctor-next-step"]';
-const DD_APPLY_RESULT = '[data-testid="apply-result"]';
-const DD_FILE_INPUT = '[data-testid="multi-file-input"]';
-// The client's own workbook, the one this guide is about. Resolved from the
-// repo root so the recorder finds it whatever directory it was launched from.
-const WORKBOOK_PATH = "data/budget azersheker/actual-budget-v1.xlsx";
+const AI_DROP = '[data-testid="multi-drop-zone"]';
+const AI_FILE_INPUT = '[data-testid="multi-file-input"]';
+const AI_FILE_ROW = ['[data-testid="file-row-0"]', AI_DROP];
+const AI_ANALYZE = '[data-testid="btn-analyze"]';
+const AI_TEMPLATE = '[data-testid="use-template-toggle"]';
+const AI_PREVIEW = '[data-testid="preview-result"]';
+const AI_ROUTING = ['[data-testid="bu-routing-grid"]', '[data-testid="preview-result"]'];
+const AI_DOCTOR = ['[data-testid="import-doctor-panel"]', '[data-testid="preview-result"]'];
+const AI_DOCTOR_STATUS = [
+  '[data-testid="import-doctor-status"]',
+  '[data-testid="import-doctor-panel"]',
+  '[data-testid="preview-result"]',
+];
+const AI_APPLY = '[data-testid="btn-apply"]';
+const AI_APPLY_RESULT = '[data-testid="apply-result"]';
+const AI_RECEIPT = [
+  '[data-testid="receipt-preview-self-check"]',
+  '[data-testid="step3-done"]',
+  '[data-testid="apply-result"]',
+];
+const AI_OPEN_PNL = ['[data-testid="receipt-open-pnl"]', '[data-testid="apply-result"]'];
+const AI_ALIASES = ['[data-testid="entity-aliases-panel"]', AI_ROOT];
+const AI_ALIASES_BTN = ['[data-testid="btn-toggle-aliases"]', '[data-testid="entity-aliases-panel"]'];
+
+// The workbook the guide actually imports. Override with GUIDE_IMPORT_XLSX to
+// record against the customer's own file — the narration deliberately never
+// names the file, so swapping it does not invalidate the voiceover.
+const importWorkbook = () =>
+  process.env.GUIDE_IMPORT_XLSX
+  || new URL("../../e2e/fixtures/test-budget.xlsx", import.meta.url).pathname;
 
 // ── Alert evaluation snapshot guide ────────────────────────────────────
 // Strictly hover-only. Opening the route and the feed's initial load issue
@@ -349,6 +377,34 @@ const selectCompany = async (p, h) => {
   }
   await h.sleep(400);
 };
+
+// ── Indicator backlog anchors ───────────────────────────────────────────
+// Every one of these is a read-only surface or a client-state control; the
+// page issues a single GET and nothing here can write. Verified live against
+// the stand before recording (handoff rule #2).
+const IB_TITLE = ["main h1", "h1", "main"];
+const IB_PERIOD = '[data-testid="data-control-backlog-period"]';
+const IB_KPI_ENTITIES = '[data-testid="backlog-kpi-entities"]';
+const IB_KPI_APPLICABLE = '[data-testid="backlog-kpi-applicable"]';
+const IB_KPI_PRESENT = '[data-testid="backlog-kpi-present"]';
+const IB_KPI_MISSING = '[data-testid="backlog-kpi-missing"]';
+const IB_KPI_READINESS = '[data-testid="backlog-kpi-readiness"]';
+const IB_PROGRESS = '[data-testid="backlog-progress"]';
+const IB_BY_OWNER = '[data-testid="backlog-by-owner"]';
+// The dashed amber chip: gaps with nobody assigned. Exactly one per page.
+const IB_OWNER_UNKNOWN = '[data-testid="backlog-owner-chip"][data-owner-unknown="1"]';
+const IB_FILTERS = '[data-testid="backlog-filters"]';
+const IB_HIDE_COMPLETE = '[data-testid="backlog-hide-complete"]';
+const IB_SHOWN_COUNT = '[data-testid="backlog-shown-count"]';
+const IB_ENTITY_CARD = ['[data-testid="backlog-entity-card"]', "main"];
+const IB_ENTITY_SUMMARY = ['[data-testid="backlog-entity-summary"]', '[data-testid="backlog-entity-card"]'];
+const IB_ENTITY_PRESENT = ['[data-testid="backlog-entity-present"]', '[data-testid="backlog-entity-card"]'];
+const IB_ENTITY_MISSING = ['[data-testid="backlog-entity-missing"]', '[data-testid="backlog-entity-card"]'];
+const IB_ENTITY_ACTIONS = ['[data-testid="backlog-entity-actions"]', '[data-testid="backlog-entity-card"]'];
+// Hover targets only — never clicked. See the scenario note.
+const IB_CSV = ['[data-testid="backlog-csv"]', '[data-testid="backlog-entity-actions"]'];
+const IB_EMAIL = ['[data-testid="backlog-email"]', '[data-testid="backlog-entity-actions"]'];
+const IB_UPLOAD = ['[data-testid="backlog-upload"]', '[data-testid="backlog-entity-actions"]'];
 
 export default {
   "workspace": {
@@ -1402,173 +1458,241 @@ export default {
   "ai-import": {
     route: "/budgeting/admin/ai-import",
     title: {
-      az: "Məlumat idxalı: silmədən yükləməyə qədər",
-      en: "Data import: from clearing to loaded",
-      ru: "Импорт данных: от очистки до загрузки",
+      az: "Məlumat idxalı — kitabdan hesabata qədər",
+      en: "Data Import — from workbook to reported figures",
+      ru: "Импорт данных — от книги до отчётных цифр",
     },
     scenes: [
-      // 1 — where you are, and the three different risks on this screen.
       {
         voice: {
-          az: "Bu ekran maliyyə kitablarını sistemə gətirir. Yuxarıdakı mavi lövhə üç fərqli riski ayırır, çünki onlar eyni şey deyil. Faylı seçmək brauzerdə qalır və heç nə göndərmir. «AI analizi» faylın məzmununu serverə göndərir və pullu təchizatçını çağırır. «Tətbiq et» isə bazaya yazır. Yalnız sonuncusu məlumatı dəyişir, ona görə ilk ikisini qorxmadan işlədə bilərsiniz.",
-          en: "This screen brings financial workbooks into the system. The blue panel at the top separates three different risks, because they are not the same thing. Choosing a file stays in your browser and sends nothing. AI analysis uploads the contents and calls a paid provider. Apply writes to the database. Only the last one changes your data, so the first two are safe to use freely.",
-          ru: "Этот экран заводит финансовые книги в систему. Синяя плашка сверху разделяет три разных риска, потому что это не одно и то же. Выбор файла остаётся в браузере и ничего не отправляет. «AI-анализ» отправляет содержимое на сервер и зовёт платного провайдера. «Применить» пишет в базу. Данные меняет только последнее, поэтому первыми двумя можно пользоваться спокойно.",
+          az: "Bu, Məlumat idxalı ekranıdır — bütün maliyyə kitablarının sistemə girdiyi vahid nöqtə. Yuxarıdakı sətir bütün yolu bir cümlədə deyir: açıq yükləmə, sonra saxlanmış şablon və ya süni intellekt klassifikatoru, sonra adapterin ilkin baxışı, insan yoxlaması və yalnız bundan sonra ayrıca tətbiq addımı. İndi həmin yolu əvvəldən sona qədər real fayl ilə keçirik.",
+          en: "This is the Data Import screen, the single point where every financial workbook enters the system. The line at the top states the whole path in one sentence: an explicit upload, then a saved template or the AI classifier, then the adapter's preview, human review, and only after that a separate apply step. We are now going to walk that path end to end with a real file.",
+          ru: "Это экран импорта данных — единая точка входа для всех финансовых книг. Строка вверху описывает весь путь одной фразой: явная загрузка, затем сохранённый шаблон или ИИ-классификатор, затем предварительный разбор адаптера, проверка человеком и только после этого отдельный шаг применения. Сейчас мы пройдём этот путь целиком на реальном файле.",
         },
         do: async (p, l, h) => {
-          await p.waitForSelector(AI_IMPORT_ROOT, { timeout: 20000 });
-          await h.hover(AI_IMPORT_SAFETY);
-          await h.holdUntil(0.55);
-          await h.moveTo(AI_IMPORT_PIPELINE);
-        },
-      },
-      // 2 — the question everyone asks first, answered before they ask it.
-      {
-        voice: {
-          az: "İkinci sual həmişə eyni olur: yükləmədən əvvəl köhnəni silmək lazımdırmı? Xeyr. Faylı yenidən yükləmək onun əhatə etdiyi illəri və şirkətləri əvəz edir — həmin illər üzrə köhnə sətirlər avtomatik arxivə keçir. Silmə tamam ayrı əməliyyatdır və o, yalnız məlumatın sistemdən büsbütün yox olmasını istədiyiniz halda lazımdır. Bu fərqi bilməmək bahalı səhvdir.",
-          en: "The second question is always the same: do I need to delete the old data first? No. Re-uploading a file replaces the years and companies it covers — the old rows for those years are archived automatically. Deleting is a separate operation, and it is only for when you want the data gone from the system entirely. Not knowing that difference is an expensive mistake.",
-          ru: "Второй вопрос всегда один и тот же: нужно ли сначала удалить старое? Нет. Повторная загрузка файла заменяет те годы и компании, которые в нём есть — старые строки за эти годы уходят в архив сами. Удаление — отдельная операция, и она нужна только если вы хотите, чтобы данные исчезли из системы совсем. Не знать эту разницу — дорогая ошибка.",
-        },
-        do: async (p, l, h) => {
-          await h.moveTo(AI_IMPORT_CLEANUP);
-          await h.holdUntil(0.5);
-          await h.hover(AI_IMPORT_RESET);
+          await p.waitForSelector(AI_ROOT, { timeout: 30000 });
+          await h.moveTo(AI_TITLE);
+          await h.holdUntil(0.4);
+          await h.hover(AI_PIPELINE);
           await h.holdUntil(0.9);
         },
       },
-      // 3 — the guarded flow. Deliberately shows the guards, not just the button.
       {
         voice: {
-          az: "İndi məhz silməni göstərəcəyik ki, onun necə qorunduğu görünsün. Ekran addım-addım gedir: əvvəlcə nə etmək istədiyinizi seçirsiniz, sonra şirkəti, sonra hansı məlumatı və hansı illəri. Heç bir addımı atlamaq olmur və heç nə susmaqla seçilmir. Bu, təsadüfən yanlış şeyi silməyi çətinləşdirmək üçün belə qurulub.",
-          en: "Now we will actually run a deletion, so you can see how it is guarded. The screen walks you through it: first what you want to do, then which company, then which data and which years. No step can be skipped and nothing is chosen for you by default. It is built this way to make deleting the wrong thing by accident hard.",
-          ru: "Сейчас мы действительно выполним удаление, чтобы было видно, как оно защищено. Экран ведёт по шагам: сначала что вы хотите сделать, потом компания, потом какие данные и какие годы. Ни один шаг нельзя пропустить, и ничего не выбирается за вас по умолчанию. Так сделано, чтобы случайно удалить не то было трудно.",
+          az: "Mavi qeyd üç fərqli riski ayırır. Səhifəyə baxmaq heç nə yazmır. Faylı seçmək brauzerdə lokal əməliyyatdır. Analiz faylın məzmununu serverə göndərir və pullu təchizatçını çağıra bilər. Tətbiq isə artıq bazaya yazır. Bunlar eyni çəkidə düymələr deyil, ona görə hər birinin qarşısında dayanıb düşünmək lazımdır.",
+          en: "The blue note separates three different risks. Looking at this page writes nothing. Choosing a file is a local browser operation. Analysis sends the file's contents to the server and may call a paid provider. Apply actually writes to the database. These are not buttons of equal weight, so each one deserves a deliberate pause.",
+          ru: "Синяя заметка разделяет три разных риска. Просмотр страницы не пишет ничего. Выбор файла — локальная операция в браузере. Анализ отправляет содержимое файла на сервер и может вызвать платного провайдера. Применение уже пишет в базу. Это кнопки разного веса, и перед каждой стоит осознанно остановиться.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AI_SAFETY);
+          await h.holdUntil(0.5);
+          await h.hover(AI_SAFETY);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "Növbəti sual həmişə verilir: idxaldan əvvəl köhnə məlumatı silmək lazımdırmı? Cavab — xeyr. Faylı yenidən yükləmək həmin faylın əhatə etdiyi illəri və şirkətləri əvəzləyir, köhnə sətirlər isə arxivə keçir. Məlumatların silinməsi tamamilə ayrı və dağıdıcı əməliyyatdır, onu heç bir kitab geri qaytarmır. Ona görə düzəliş lazım olanda əvvəlcə sadəcə yenidən idxal edin.",
+          en: "The next question always comes up: should you delete the old data first? No. Re-uploading a file replaces the years and companies that file covers, and the previous rows are archived. Deleting data is a completely separate, destructive operation that no workbook can undo. So when something needs correcting, re-import first.",
+          ru: "Следующий вопрос возникает всегда: нужно ли сначала удалить старые данные? Нет. Повторная загрузка файла заменяет годы и компании, которые этот файл покрывает, а прежние строки уходят в архив. Удаление данных — совершенно отдельная разрушительная операция, которую не отменит ни одна книга. Поэтому, когда нужно что-то исправить, сначала просто импортируйте заново.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AI_CLEANUP);
+          await h.holdUntil(0.55);
+          await h.hover(AI_CLEANUP);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "İndi silməni göstərək ki, onun necə qorunduğu görünsün. Ekran addım-addım gedir: nə etmək istədiyiniz, hansı şirkət, hansı məlumat və hansı illər. Heç bir addım atlanmır və heç nə susmaqla seçilmir. Bu, təsadüfən yanlış şeyi silməyi çətinləşdirmək üçün belə qurulub.",
+          en: "Now let us show a deletion, so you can see how it is guarded. The screen walks you through it: what you want to do, which company, which data and which years. No step is skipped and nothing is chosen for you by default. It is built this way to make deleting the wrong thing by accident hard.",
+          ru: "Теперь покажем удаление, чтобы было видно, как оно защищено. Экран ведёт по шагам: что вы хотите сделать, какая компания, какие данные и какие годы. Ни один шаг не пропускается, и ничего не выбирается за вас по умолчанию. Так сделано, чтобы случайно удалить не то было трудно.",
         },
         do: async (p, l, h) => {
           // A <Link> to /budgeting/admin/data-archive — a GET navigation, which
-          // is what `safeClick` exists for. `h.click` would degrade to a hover
-          // under READONLY and the page would never move.
-          await h.safeClick(AI_IMPORT_RESET_CTA);
-          await p.waitForSelector(DD_TASK_CHOOSER, { timeout: 20000 }).catch(() => {});
+          // is what safeClick is for. A plain click would hover under READONLY
+          // and the page would never move.
+          await h.safeClick(AI_RESET_CTA);
+          await p.waitForSelector(DD_TASK_CHOOSER, { timeout: 20000 });
           await h.holdUntil(0.4);
           await h.hover(DD_TASK_CHOOSER);
-          await h.holdUntil(0.72);
+          await h.holdUntil(0.65);
           await h.moveTo(DD_COMPANY_PICKER);
+          await h.holdUntil(0.85);
+          await h.moveTo(DD_WHAT_PICKER);
         },
       },
-      // 4 — the dry run. This is the feature worth the whole scene.
       {
         voice: {
-          az: "Ən vacib düymə buradadır — «Yoxla». O, heç nə silmir. O, sizə silinəcəyin dəqiq siyahısını verir: neçə sətir, hansı illər, hansı şirkət, nəyi geri qaytarmaq mümkün olacaq və nəyi yox. Bunu oxumadan təsdiq etməyin. Sistem sizə zərəri əvvəlcədən göstərir, çünki sonradan göstərmək gec olur.",
-          en: "The most important button is here — Check. It deletes nothing. It hands you the exact list of what would go: how many rows, which years, which company, what could be brought back and what could not. Do not confirm without reading it. The system shows you the damage in advance, because showing it afterwards is too late.",
-          ru: "Самая важная кнопка здесь — «Проверить». Она ничего не удаляет. Она отдаёт вам точный список того, что уйдёт: сколько строк, какие годы, какая компания, что можно будет вернуть, а что нет. Не подтверждайте, не прочитав. Система показывает ущерб заранее, потому что показывать его потом уже поздно.",
+          az: "Ən vacib düymə buradadır — «Yoxla». O, heç nə silmir. O, silinəcəyin dəqiq siyahısını verir: neçə sətir, hansı illər, hansı şirkət, nəyi geri qaytarmaq mümkün olacaq və nəyi yox. Bunu oxumadan təsdiq etməyin — sistem zərəri əvvəlcədən göstərir, çünki sonra göstərmək gecdir.",
+          en: "The most important button is here — Check. It deletes nothing. It hands you the exact list of what would go: how many rows, which years, which company, what could be brought back and what could not. Do not confirm without reading it — the system shows you the damage in advance, because showing it afterwards is too late.",
+          ru: "Самая важная кнопка здесь — «Проверить». Она ничего не удаляет. Она отдаёт точный список того, что уйдёт: сколько строк, какие годы, какая компания, что можно будет вернуть, а что нет. Не подтверждайте, не прочитав: система показывает ущерб заранее, потому что показывать его потом уже поздно.",
         },
         do: async (p, l, h) => {
-          await h.click(DD_CHECK);
-          await p.waitForSelector(DD_BLAST_RADIUS, { timeout: 25000 }).catch(() => {});
-          await h.holdUntil(0.55);
+          await h.moveTo(DD_YEAR_CHIPS);
+          await h.holdUntil(0.25);
+          await h.mutatingClick(DD_CHECK);
+          await p.waitForSelector(DD_BLAST_RADIUS, { timeout: 30000 });
+          await h.holdUntil(0.6);
           await h.hover(DD_BLAST_RADIUS);
           await h.holdUntil(0.9);
         },
       },
-      // 5 — the confirm, and then the empty screen as proof it happened.
       {
         voice: {
-          az: "Təsdiq ayrıca gəlir və o da avtomatik deyil. Təsdiqdən sonra nəticə göstərilir: nə silindi və neçə sətir. İndi terminal boşdur. Bu, gözəl mənzərə deyil, amma bilərəkdən göstəririk — çünki növbəti addımdan sonra rəqəmlərin həqiqətən fayldan gəldiyi şübhəsiz olacaq.",
-          en: "The confirmation is a separate step, and it is not automatic either. After it, the result is shown: what was deleted and how many rows. The terminal is empty now. It is not a pretty picture, and we are showing it on purpose — because after the next step there will be no doubt that the numbers really came from the file.",
-          ru: "Подтверждение — отдельный шаг, и оно тоже не автоматическое. После него показывается результат: что удалено и сколько строк. Сейчас терминал пуст. Зрелище так себе, и мы показываем его намеренно — потому что после следующего шага не останется сомнений, что цифры действительно пришли из файла.",
+          az: "Təsdiq ayrıca addımdır və o da avtomatik deyil: sistem sizdən niyyəti bir daha soruşur. Ondan sonra nəticə göstərilir — nə silindi, hansı əhatədə və neçə sətir, yəni hesabat qalır. İndi məlumat yoxdur və ekran boşdur. Bunu bilərəkdən göstəririk, çünki növbəti addımdan sonra rəqəmlərin həqiqətən fayldan gəldiyi şübhəsiz olacaq.",
+          en: "The confirmation is a separate step, and it is not automatic either. After it the result is shown: what was deleted and how many rows. The data is gone now — we show that on purpose, because after the next step there will be no doubt that the numbers really came from the file.",
+          ru: "Подтверждение — отдельный шаг, и оно тоже не автоматическое. После него показывается результат: что удалено и сколько строк. Сейчас данных нет — мы показываем это намеренно, потому что после следующего шага не останется сомнений, что цифры действительно пришли из файла.",
         },
         do: async (p, l, h) => {
-          await h.click(DD_CONFIRM_SUBMIT);
-          await p.waitForSelector(DD_RUN_DONE, { timeout: 30000 }).catch(() => {});
-          await h.holdUntil(0.6);
+          await h.hover(DD_CONFIRM_STRIP);
+          await h.holdUntil(0.3);
+          await h.mutatingClick(DD_CONFIRM_SUBMIT);
+          await p.waitForSelector(DD_RUN_DONE, { timeout: 60000 });
+          await h.holdUntil(0.7);
           await h.hover(DD_RUN_DONE);
+          await h.holdUntil(0.9);
+          // Back to the import screen for the rest of the guide.
+          await p.goto(new URL("/budgeting/admin/ai-import", p.url()).href, { waitUntil: "domcontentloaded" });
+          await p.waitForSelector(AI_TABS, { timeout: 20000 });
         },
       },
-      // 6 — the upload itself, and the one rule people get wrong.
       {
         voice: {
-          az: "Geri qayıdırıq və faylı olduğu kimi atırıq — doldurulacaq şablon yoxdur, kitabınız necə varsa elə də qəbul edilir. Bir qayda var və ona əməl etmək lazımdır: bir keçiddə bir il. İl seçicisi məhz bunun üçündür. Period kilidi, köhnə qalıqların yoxlanması və backlog müqayisəsi yalnız birinci ili oxuyur, ona görə iki ili birlikdə göndərsəniz, bu üç yoxlamanın heç biri ikinci ili görməyəcək.",
-          en: "We go back and drop the file in as it is — there is no template to fill, your workbook is taken as it comes. There is one rule and it matters: one year per run. That is what the year selector is for. The period lock, the stale-leftover check and the backlog comparison all read only the first year, so if you send two years together, none of those three checks sees the second one.",
-          ru: "Возвращаемся и кладём файл как есть — шаблона заполнять не надо, книга принимается в том виде, в каком она у вас. Есть одно правило, и его надо соблюдать: один год за прогон. Для этого и нужен переключатель года. Период-лок, проверка устаревших остатков и сравнение с бэклогом читают только первый год, поэтому если отправить два года разом, ни одна из трёх проверок второй год не увидит.",
+          az: "Aşağıda dörd rejim var. Bir neçə fayl əsas iş rejimidir və ekran məhz onunla açılır: bir neçə kitabı tək qrup kimi qəbul edir, aralarındakı ziddiyyətləri göstərir və hamısını birlikdə tətbiq edir. Bir fayl rejimi yalnız təsnifat verir — diqqət edin, analizdən sonra o bazaya yazmır, bu bilərəkdən söndürülüb. İstənilən fayl və çox vərəqli rejimlər sütun uyğunlaşdırması əlavə edir. İşi isə əsas rejimdə görürük.",
+          en: "There are four modes below. Multiple files is the working mode and the screen opens on it: it takes several workbooks as one group, shows the conflicts between them and applies them together. The single-file mode gives classification only — note that after analysis it does not write to the database, which is disabled on purpose. Any file and multi-sheet add column mapping. The actual work happens in the main mode.",
+          ru: "Ниже четыре режима. «Несколько файлов» — основной рабочий режим, и экран открывается именно на нём: он принимает несколько книг как одну группу, показывает противоречия между ними и применяет их вместе. Режим одного файла даёт только классификацию — обратите внимание, после анализа он не пишет в базу, это отключено намеренно. «Любой файл» и «многолистовой» добавляют сопоставление колонок. Работу же делаем в основном режиме.",
         },
         do: async (p, l, h) => {
-          await p.goto(`${p.url().split("/budgeting")[0]}/budgeting/admin/ai-import`, { waitUntil: "domcontentloaded" }).catch(() => {});
-          await p.waitForSelector(AI_IMPORT_DROP, { timeout: 20000 }).catch(() => {});
-          await h.hover(AI_IMPORT_DROP);
-          await h.holdUntil(0.35);
-          // The narration says we drop the workbook in, so the recording has to
-          // actually do it — the file input is hidden behind the drop zone, and
-          // `setInputFiles` is the only way to reach it from a script.
-          await p.setInputFiles(DD_FILE_INPUT, WORKBOOK_PATH).catch(() => {});
-          await h.holdUntil(0.6);
-          await h.moveTo(DD_MULTI_YEAR);
-          await h.holdUntil(0.85);
-        },
-      },
-      // 7 — analysis running; nothing is written yet. Covers the machine wait.
-      {
-        voice: {
-          az: "«AI analizi» başlayır. Bu bir dəqiqəyə qədər çəkə bilər, çünki hər vərəq oxunur və nə olduğu müəyyən edilir: mənfəət-zərər, balans, satış, kimin vərəqi olduğu. Bu müddətdə bazaya heç nə yazılmır — nəticə yalnız baxış üçündür. Şirkət aliasları burada işə düşür: fayldakı qısaltma sistemdəki şirkətlə uyğunlaşdırılır, məsələn EDEN tam koda çevrilir.",
-          en: "AI analysis starts. It can take up to a minute, because every sheet is read and identified: profit and loss, balance sheet, sales, and which company it belongs to. Nothing is written to the database during this — the result is a preview only. Company aliases do their work here: an abbreviation in the file is matched to a company in the system, so EDEN becomes the full code.",
-          ru: "Запускается «AI-анализ». Это может занять до минуты, потому что читается каждый лист и определяется, что это: прибыли и убытки, баланс, продажи, чей это лист. За это время в базу не пишется ничего — результат только для просмотра. Здесь же работают алиасы компаний: сокращение из файла сопоставляется с компанией в системе, например EDEN разворачивается в полный код.",
-        },
-        do: async (p, l, h) => {
-          await h.click(AI_IMPORT_ANALYZE);
-          await h.holdUntil(0.35);
-          await p.waitForSelector(DD_PREVIEW_RESULT, { timeout: 180000 }).catch(() => {});
-          await h.holdUntil(0.72);
-          await h.hover(DD_REVIEW_TABS);
-        },
-      },
-      // 8 — routing grid: the eliminations block is the interesting part.
-      {
-        voice: {
-          az: "Yönləndirmə cədvəli göstərir ki, hansı vərəq hansı şirkətə gedir. Burada bir xüsusi sətir var: qrupdaxili eliminasiya bloku. O, heç bir şirkətə aid deyil, çünki şirkətlər arasındakı hesablaşmaları söndürür — ona görə şirkət sütununda tire durur və nişanı ayrıdır. Onsuz qrup üzrə cəmi bir-birinə satılanı iki dəfə sayır.",
-          en: "The routing grid shows which sheet goes to which company. One row is special: the intragroup eliminations block. It belongs to no company, because it cancels balances between the companies — hence the dash in the company column and its own badge. Without it the group total counts what they sold each other twice.",
-          ru: "Таблица маршрутизации показывает, какой лист в какую компанию. Одна строка особая: блок внутригрупповых элиминаций. Он не принадлежит ни одной компании, потому что гасит расчёты между ними — отсюда прочерк в колонке компании и отдельный бейдж. Без него итог по группе считает проданное друг другу дважды.",
-        },
-        do: async (p, l, h) => {
-          // Local tab state only — no request, no write. Guarded on presence:
-          // the routing tab exists only once a preview has produced BU splits,
-          // which is also the honest case for a workbook with no per-company
-          // blocks. `safeClick` throws on a missing target by design, so the
-          // check belongs here rather than in the helper.
-          if (await p.locator(DD_TAB_ROUTING).count()) {
-            await h.safeClick(DD_TAB_ROUTING);
-          }
-          await p.waitForSelector(DD_ROUTING_GRID, { timeout: 15000 }).catch(() => {});
-          await h.holdUntil(0.5);
-          await h.hover(DD_ROUTING_GRID);
-          await h.holdUntil(0.88);
-        },
-      },
-      // 9 — the doctor: advisory, never blocking. The distinction matters.
-      {
-        voice: {
-          az: "İdxal diaqnostikası panelidir. O, məsləhət verir və idxalı dayandırmır — bunu qarışdırmaq asandır. Panel sizin dilinizdə cavab verir və problemi konkret adlandırır: hansı şirkət, hansı hesab, hansı ay, faylda nə yazılıb və bazada nə var. Yaşıl sətir isə birbaşa deyir ki, davam etmək olar; ona etibar edin, siyahının uzunluğuna yox.",
-          en: "This is the Import Doctor panel. It advises and it does not stop the import — that is easy to confuse. The panel answers in your language and names the problem concretely: which company, which account, which month, what the file says and what the database holds. A green line says outright that you can continue; trust that, not the length of the list.",
-          ru: "Это панель диагностики импорта. Она советует и не останавливает импорт — это легко перепутать. Панель отвечает на вашем языке и называет проблему конкретно: какая компания, какой счёт, какой месяц, что написано в файле и что лежит в базе. А зелёная строка прямо говорит, что можно продолжать; верьте ей, а не длине списка.",
-        },
-        do: async (p, l, h) => {
-          await p.waitForSelector(DD_DOCTOR_PANEL, { timeout: 15000 }).catch(() => {});
-          await h.hover(DD_DOCTOR_PANEL);
+          await h.moveTo(AI_TABS);
+          await h.holdUntil(0.3);
+          await h.safeClick(AI_TAB_SINGLE);
           await h.holdUntil(0.55);
-          await h.moveTo(DD_DOCTOR_NEXT_STEP);
+          await h.moveTo(AI_TAB_UNIVERSAL);
+          await h.hover(AI_TAB_MULTISHEET);
+          await h.holdUntil(0.8);
+          await h.safeClick(AI_TAB_MULTI);
+          await p.waitForSelector(AI_DROP, { timeout: 15000 });
+        },
+      },
+      {
+        voice: {
+          az: "İş həmişə ildən başlayır. İdxal ili açıq şəkildə seçilir və kitabın əhatə etdiyi illə üst-üstə düşməlidir; yanındakı qeyd bunu xatırladır. Yanlış il seçilsə, adapterlər bütün vərəqləri sükutla ataraq boş nəticə verə bilər. Kitabda bir neçə il varsa, hər il üçün ayrıca keçid edin: təhlükəsizlik yoxlamalarının bir hissəsi yalnız birinci ili görür.",
+          en: "The work always starts with the year. The import year is chosen explicitly and has to match the year the workbook covers; the hint beside it says exactly that. If the wrong year is selected, the adapters can silently drop every sheet and commit nothing. When a workbook spans several years, run one pass per year: some of the safety checks only ever look at the first year.",
+          ru: "Работа всегда начинается с года. Год импорта выбирается явно и должен совпадать с годом, который покрывает книга; подсказка рядом говорит ровно об этом. Если выбрать не тот год, адаптеры могут молча отбросить все листы и записать пустоту. Если книга охватывает несколько лет, делайте отдельный прогон на каждый год: часть проверок безопасности видит только первый год.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AI_YEAR);
+          await h.holdUntil(0.45);
+          await h.hover(AI_YEAR);
           await h.holdUntil(0.9);
         },
       },
-      // 10 — apply, receipt, and the data back on screen.
       {
         voice: {
-          az: "«Tətbiq et» — yeganə addım ki, bazaya yazır. Sonda təhlükəsizlik qəbzi verilir: neçə sətir yazıldı, hansı əhatədə köhnə sətirlər arxivə keçdi, göstəricilər yenidən hesablandımı. Əgər yoxlamalardan biri işə düşsəydi, heç nə yazılmayacaqdı — ya hamısı, ya heç nə. Rəqəmlər yerindədir və onların fayldan gəldiyi indi şübhəsizdir.",
-          en: "Apply is the only step that writes to the database. At the end you get a safety receipt: how many rows were written, in what scope the old rows were archived, and whether the indicators were recomputed. If one of the gates had fired, nothing would have been written — all or nothing. The numbers are back, and there is now no doubt they came from the file.",
-          ru: "«Применить» — единственный шаг, который пишет в базу. В конце выдаётся чек безопасности: сколько строк записано, в какой области старые строки ушли в архив, пересчитались ли показатели. Если бы сработал один из предохранителей, не записалось бы ничего — либо всё, либо ничего. Цифры на месте, и теперь нет сомнений, что они пришли из файла.",
+          az: "İndi kitabı yükləmə sahəsinə veririk. Fayl siyahıda adı və ölçüsü ilə görünür; on fayla qədər seçmək və hər birini ayrıca silmək olar. Bu anda kitab hələ brauzerdən çıxmayıb: heç nə göndərilməyib, heç nə yazılmayıb. Yükləmə sahəsi faylı sadəcə yaddaşda saxlayır və analiz düyməsini aktivləşdirir.",
+          en: "Now we hand the workbook to the drop zone. The file appears in the list with its name and size; up to ten files can be selected and each one removed individually. At this moment the workbook still has not left the browser: nothing has been sent and nothing written. The drop zone simply holds the file in memory and enables the analysis button.",
+          ru: "Теперь отдаём книгу в зону загрузки. Файл появляется в списке с именем и размером; можно выбрать до десяти файлов и удалить каждый по отдельности. В этот момент книга ещё не покинула браузер: ничего не отправлено и ничего не записано. Зона загрузки просто держит файл в памяти и включает кнопку анализа.",
         },
         do: async (p, l, h) => {
-          await h.click(AI_IMPORT_APPLY);
+          await h.moveTo(AI_DROP);
           await h.holdUntil(0.3);
-          await p.waitForSelector(DD_APPLY_RESULT, { timeout: 240000 }).catch(() => {});
-          await h.holdUntil(0.68);
-          await h.hover(DD_APPLY_RESULT);
+          await p.setInputFiles(AI_FILE_INPUT, importWorkbook());
+          await p.waitForSelector('[data-testid="file-row-0"]', { timeout: 15000 });
+          await h.holdUntil(0.6);
+          await h.moveTo(AI_FILE_ROW);
+          await h.hover(AI_FILE_ROW);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "Yanındakı seçim pullu klassifikatoru keçməyə imkan verir: eyni quruluşlu kitab üçün əvvəl təsdiqlənmiş şablon varsa, uyğunlaşdırma yenidən istifadə olunur. İndi birinci addımı başladıram. Bu, hələ idxal deyil — ilkin baxışdır: sistem vərəqləri tanıyır, şirkətləri və hesabları uyğunlaşdırır, nəticəni ekranda göstərir və bazaya heç nə yazmır.",
+          en: "The option beside it lets you skip the paid classifier: when an approved template exists for a workbook of the same shape, the mapping is reused. Now I start step one. This is not the import yet, it is a preview: the system recognizes the sheets, matches companies and accounts, shows the result on screen, and writes nothing to the database.",
+          ru: "Опция рядом позволяет обойтись без платного классификатора: если для книги той же структуры есть утверждённый шаблон, сопоставление переиспользуется. Теперь запускаю первый шаг. Это ещё не импорт, а предварительный разбор: система распознаёт листы, сопоставляет компании и счета, показывает результат на экране и ничего не пишет в базу.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AI_TEMPLATE);
+          await h.hover(AI_TEMPLATE);
+          await h.holdUntil(0.5);
+          await h.mutatingClick(AI_ANALYZE);
+          await p.waitForSelector(
+            '[data-testid="preview-result"], [data-testid="error-banner"]',
+            { timeout: 240000 },
+          );
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "İlkin baxış hər vərəq üçün nəyi tanıdığını və nə qədər əmin olduğunu göstərir. Yaşıl işarə yüksək etibarlılıq, kəhrəba orta, qırmızı isə aşağı deməkdir. Aşağı etibarlılıq gördükdə klassifikatora inanmayın: vərəqin adını aydınlaşdırın və ya sətirləri özünüz yoxlayın. Nəticə bəyəndiyiniz kimidirsə, onu şablon kimi saxlaya bilərsiniz — növbəti dəfə eyni kitab pullu təsnifat olmadan keçəcək.",
+          en: "The preview shows what it recognized in each sheet and how confident it is. Green means high confidence, amber medium, red low. When you see low confidence, do not trust the classifier: clarify the sheet name or check the rows yourself. If the result is what you expect, you can save it as a template, and next time the same workbook passes without paid classification.",
+          ru: "Предварительный разбор показывает, что распознано в каждом листе и насколько система уверена. Зелёный — высокая уверенность, янтарный — средняя, красный — низкая. Если видите низкую уверенность, не доверяйте классификатору: уточните имя листа или проверьте строки сами. Если результат такой, как вы ожидали, его можно сохранить шаблоном — и в следующий раз та же книга пройдёт без платной классификации.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AI_PREVIEW);
+          await h.holdUntil(0.5);
+          await h.hover(AI_PREVIEW);
+          await h.holdUntil(0.85);
+          await h.moveTo(AI_ROUTING);
+        },
+      },
+      {
+        voice: {
+          az: "Aşağıda idxal diaqnostikası var. O, ilkin baxışı sizin əvəzinizə oxuyur və iki şeyi ayırır: nəyin sadəcə diqqət tələb etdiyini və nəyin tətbiqi bloklandığını. Nişanlarda hansı yoxlamanın işlədiyi və nəticənin bloklayıcı olub-olmadığı yazılır. Bir şey bloklayırsa, düzəlişi burada aparın — diaqnostika problemi gizlətmir, onu adlandırır və növbəti addımı təklif edir.",
+          en: "Below sits the import diagnostics. It reads the preview for you and separates two things: what merely deserves attention and what actually blocks the apply. The badges name which check ran and whether its verdict is blocking. If something blocks, fix it here — the diagnostics never hide a problem, they name it and propose the next step.",
+          ru: "Ниже находится диагностика импорта. Она читает предварительный разбор за вас и разделяет две вещи: что просто требует внимания, а что блокирует применение. На бейджах написано, какая проверка отработала и является ли её вердикт блокирующим. Если что-то блокирует, исправляйте здесь — диагностика не прячет проблему, а называет её и предлагает следующий шаг.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AI_DOCTOR);
+          await h.holdUntil(0.5);
+          await h.hover(AI_DOCTOR_STATUS);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "Ayrıca şirkət aliasları paneli var. Bu, modelin öyrədilməsi deyil — sadəcə uyğunluq cədvəlidir: faylınızdakı qısaltmanı sistemdəki şirkətə bağlayır. Tam kod və son defisdən sonrakı hissə onsuz da tanınır; alias yalnız fayl başqa şey yazanda lazım olur — tam ad, kiril yazılışı və ya səhv yazılmış qısaltma. Bir dəfə yazırsınız, sonrakı bütün idxallar onu bilir.",
+          en: "There is a separate company aliases panel. This is not model training, it is simply a lookup table: it binds the abbreviation used in your file to the company in the system. The full code and the part after the last hyphen are recognized anyway; an alias is only needed when the file says something else — a full name, a Cyrillic spelling, or a misspelled abbreviation. You write it once and every later import knows it.",
+          ru: "Отдельно есть панель алиасов компаний. Это не обучение модели, а просто таблица соответствий: она связывает сокращение из вашего файла с компанией в системе. Полный код и часть после последнего дефиса распознаются и так; алиас нужен только когда в файле написано что-то иное — полное название, кириллическое написание или сокращение с опечаткой. Записываете один раз, и все следующие импорты его знают.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AI_ALIASES);
+          await h.holdUntil(0.5);
+          await h.hover(AI_ALIASES_BTN);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "İndi ikinci addım — qrupların tətbiqi. Məhz bu düymə bazaya yazır və yalnız ilkin baxış hazır olanda görünür. İdxal atomikdir: ya bütün qrup keçir, ya da heç nə yazılmır, buna görə yarımçıq nəticə qalmır. Yazıdan sonra sətirlər bazadan geri oxunur və fayl ilə tutuşdurulur — hər uyğunsuzluq hər şeyi geri qaytarır.",
+          en: "Now step two, applying the groups. This is the button that writes to the database, and it appears only once a preview exists. The import is atomic: either the whole group goes through or nothing is written, so you are never left with a half-finished result. After the write the rows are read back from the database and compared with the file, and any mismatch rolls everything back.",
+          ru: "Теперь второй шаг — применение групп. Именно эта кнопка пишет в базу, и она появляется только когда готов предварительный разбор. Импорт атомарен: либо проходит вся группа, либо не записывается ничего, поэтому недоделанного результата не остаётся. После записи строки читаются обратно из базы и сверяются с файлом — любое расхождение откатывает всё.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AI_APPLY);
+          await h.holdUntil(0.4);
+          await h.mutatingClick(AI_APPLY);
+          await p.waitForSelector(
+            '[data-testid="apply-result"], [data-testid="error-banner"]',
+            { timeout: 300000 },
+          );
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Sonda qəbz gəlir. O, ümumi «uğurlu» sözü deyil: neçə sətrin hansı şirkət və il üzrə yazıldığını, geri oxuma yoxlamasının nəticəsini və mənfəət-zərər hesabatına keçidi göstərir. Ekran bir neçə saniyədən sonra sizi oraya özü aparır, istəsəniz qalmaq da olar. Hər idxaldan sonra rəqəmləri kitabla tutuşdurun. Nəyisə səhv gedibsə, silməyə tələsməyin — düzəldilmiş faylı eyni il üçün yenidən yükləmək kifayətdir.",
+          en: "At the end comes the receipt. It is not a generic success message: it shows how many rows were written for which company and year, the result of the read-back check, and a link into the profit and loss report. The screen takes you there itself after a few seconds, and you can choose to stay instead. After every import, compare the figures with the workbook. If something went wrong, do not rush to delete — re-uploading the corrected file for the same year is enough.",
+          ru: "В конце приходит квитанция. Это не общее слово «успешно»: она показывает, сколько строк записано, по какой компании и году, результат обратной сверки и переход в отчёт о прибылях и убытках. Экран сам открывает его через несколько секунд, при желании можно остаться. После каждого импорта сверяйте цифры с книгой. Если что-то пошло не так, не спешите удалять — достаточно загрузить исправленный файл за тот же год заново.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AI_RECEIPT);
+          await h.holdUntil(0.45);
+          await h.hover(AI_RECEIPT);
+          await h.holdUntil(0.75);
+          await h.moveTo(AI_OPEN_PNL);
           await h.holdUntil(0.92);
         },
       },
@@ -1838,6 +1962,160 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(BANNER);
+        },
+      },
+    ],
+  },
+  // ── Indicator backlog (İndikator məlumat boşluqları) ──────────────────────
+  // READONLY-safe by construction: every control on this page is client state.
+  // The owner chips and the hide-complete toggle only re-filter an already
+  // rendered list; the page itself issues a single GET. The three buttons on an
+  // entity card are deliberately NEVER clicked — CSV builds a local blob (a
+  // silent download, nothing to see), "write to owners" opens a mailto: in a new
+  // tab and would wreck the take, and "upload file" navigates away to AI Import.
+  // The narration explains all three instead.
+  "indicator-backlog": {
+    route: "/budgeting/admin/indicator-backlog",
+    title: {
+      az: "İndikator məlumat boşluqları",
+      en: "Indicator data gaps",
+      ru: "Пробелы в данных по индикаторам",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "Bu ekran bir suala cavab verir: holdinqin risk mənzərəsini qurmaq üçün hansı məlumat çatışmır və onu kim verməlidir. Yuxarıdakı qeyd sərhədi dəqiq göstərir: burada yalnız saxlanmış dəyərlərin əhatəsi var. Bu, məlumatın təzə, üzləşdirilmiş və ya keyfiyyətli olduğunu təsdiqləmir — sadəcə deyir ki, dəyər var, yoxsa yoxdur.",
+          en: "This screen answers one question: which data is missing before the holding's risk picture can be built, and who is supposed to supply it. The note at the top states the boundary precisely — what you see here is the coverage of stored values only. It is not a claim that the data is fresh, reconciled or good quality; it only says a value exists, or it does not.",
+          ru: "Этот экран отвечает на один вопрос: каких данных не хватает, чтобы собрать картину рисков холдинга, и кто должен их предоставить. Заметка вверху точно очерчивает границу: здесь показан только охват сохранённых значений. Это не подтверждение того, что данные свежие, сверенные или качественные, — лишь факт, что значение есть или его нет.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(IB_PERIOD, { timeout: 30000 });
+          await h.moveTo(IB_TITLE);
+          await h.holdUntil(0.45);
+          await h.hover(IB_PERIOD);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "Beş rəqəm bütün mənzərəni verir. Neçə aktiv törəmə şirkət nəzərə alınır, onlara cəmi neçə indikator tətbiq olunur, neçəsinin saxlanmış dəyəri var, neçəsi mənbə məlumatını gözləyir və nəticədə holdinqin hazırlığı faizlə. Altdakı zolaq həmin nisbəti göz üçün çəkir: qırmızı hissə hələ bağlanmamış boşluqdur.",
+          en: "Five numbers give the whole picture: how many active subsidiaries are counted, how many indicators apply to them in total, how many already have a stored value, how many are still waiting for source data, and the resulting holding readiness as a percentage. The bar underneath draws that same ratio, so the red part is simply the gap that is still open.",
+          ru: "Пять чисел дают всю картину: сколько активных дочерних компаний учтено, сколько индикаторов к ним применимо, у скольких уже есть сохранённое значение, сколько ждут данных от источника и какая в итоге готовность холдинга в процентах. Полоса под ними рисует то же соотношение: красная часть — это ещё не закрытый пробел.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_KPI_ENTITIES);
+          await h.holdUntil(0.25);
+          await h.hover(IB_KPI_APPLICABLE);
+          await h.holdUntil(0.45);
+          await h.hover(IB_KPI_PRESENT);
+          await h.holdUntil(0.6);
+          await h.hover(IB_KPI_MISSING);
+          await h.holdUntil(0.78);
+          await h.moveTo(IB_KPI_READINESS);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "İkinci rəqəmə diqqət edin: bu, sistemdəki bütün indikatorların kataloqu deyil. Burada yalnız həmin şirkətlərə bu gün tətbiq olunanlar sayılır — sahəyə, fəaliyyət növünə və şirkətin konfiqurasiyasına görə. Ona görə şirkət əlavə ediləndə və ya sahə dəyişəndə məxrəc də dəyişir, və faizi müxtəlif dövrlər arasında kor-koranə müqayisə etmək olmaz.",
+          en: "Look closely at the second number: it is not a catalogue of every indicator in the system. It counts only those that apply to these companies today, by industry, activity and each company's configuration. So the denominator moves when a company is added or an industry changes, which means the percentage cannot be compared blindly across different periods.",
+          ru: "Присмотритесь ко второму числу: это не каталог всех индикаторов системы. Здесь считаются только те, что применимы к этим компаниям сегодня — по отрасли, виду деятельности и настройке самой компании. Поэтому знаменатель меняется, когда добавляют компанию или меняют отрасль, и процент нельзя вслепую сравнивать между разными периодами.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_KPI_APPLICABLE);
+          await h.holdUntil(0.5);
+          await h.hover(IB_KPI_APPLICABLE);
+          await h.holdUntil(0.85);
+          await h.moveTo(IB_PROGRESS);
+        },
+      },
+      {
+        voice: {
+          az: "Aşağıda boşluqlar məlumat sahibinə görə qruplaşdırılır — yəni siyahı dərhal tapşırıq növbəsinə çevrilir. Kəsik sarı haşiyəli nişana diqqət edin: orada məsul şəxsi ümumiyyətlə təyin edilməmiş boşluqlar sayılır. Bu, birinci işdir: sahibi olmayan boşluq heç kimin gündəliyində deyil və öz-özünə bağlanmayacaq. İndi həmin nişana basıram.",
+          en: "Below, the gaps are grouped by data owner, which turns the list straight into a work queue. Notice the chip with the dashed amber outline: it counts the gaps with no responsible person assigned at all. That is job number one — a gap with no owner is on nobody's agenda and will not close by itself. I am clicking that chip now.",
+          ru: "Ниже пробелы сгруппированы по владельцу данных — и список сразу превращается в очередь задач. Обратите внимание на чип с пунктирной янтарной рамкой: в нём считаются пробелы, у которых вообще не назначен ответственный. Это задача номер один: пробел без владельца не стоит ни у кого в плане и сам не закроется. Нажимаю на этот чип.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_BY_OWNER);
+          await h.holdUntil(0.4);
+          await h.hover(IB_OWNER_UNKNOWN);
+          await h.holdUntil(0.62);
+          await h.safeClick(IB_OWNER_UNKNOWN);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "Sağdakı sayğac filtrdən sonra neçə şirkətin qaldığını göstərir. Diqqət edin: burada rəqəm dəyişmir, dördü də yerində qalır. Bu, filtrin işləmədiyi demək deyil — əksinə, cavabdır: sahibi təyin olunmamış boşluqlar hər dörd şirkətdə var. Tam hazır şirkətləri gizlədəndə də siyahı azalmır, çünki hələ heç biri yüz faizə çatmayıb.",
+          en: "The counter on the right shows how many companies are left after filtering. Watch it closely: the number does not move, all four stay. That is not a broken filter — it is the answer. Gaps with no assigned owner exist in every one of the four companies. Hiding the fully ready ones changes nothing either, because not a single company has reached a hundred percent yet.",
+          ru: "Счётчик справа показывает, сколько компаний осталось после фильтра. Присмотритесь: число не меняется, все четыре на месте. Это не сломанный фильтр, а ответ: пробелы без назначенного владельца есть у всех четырёх компаний. Скрытие полностью готовых тоже ничего не убирает — ни одна компания пока не дошла до ста процентов.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_FILTERS);
+          await h.holdUntil(0.35);
+          await h.hover(IB_SHOWN_COUNT);
+          await h.holdUntil(0.55);
+          await h.safeClick(IB_HIDE_COMPLETE);
+          await h.holdUntil(0.78);
+          await h.safeClick(IB_HIDE_COMPLETE);
+          await h.safeClick(IB_OWNER_UNKNOWN);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Filtrlərdən sonra iş vahidi şirkət kartıdır. Başlıqda kodu, adı və sahə nişanı var, yanında isə üç rəqəm: neçə indikator saxlanılıb, neçəsi çatışmır və əhatə faizi. Altdakı zolaq eyni nisbəti təkrarlayır. Beləcə hansı şirkətin ən çox geridə qaldığını siyahını oxumadan, bir baxışla görmək olur.",
+          en: "Once filtered, the unit of work is the company card. Its header carries the code, the name and an industry badge, and beside them three numbers: how many indicators are stored, how many are missing and the resulting coverage. The bar underneath repeats that ratio, so you can see at a glance which company is furthest behind without reading a single row.",
+          ru: "После фильтров единица работы — карточка компании. В её шапке код, название и отраслевой бейдж, а рядом три числа: сколько индикаторов сохранено, сколько отсутствует и какой в итоге охват. Полоса под ними повторяет то же соотношение, поэтому видно с первого взгляда, какая компания отстаёт сильнее всех, не читая ни одной строки.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_ENTITY_CARD);
+          await h.holdUntil(0.45);
+          await h.hover(IB_ENTITY_SUMMARY);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "Kartın içi iki sütuna bölünür. Solda artıq dəyəri olan indikatorlar var — bu, artıq bağlanmış hissədir. Sağda isə çatışmayanlar, və bu sütun daha vacibdir: hər sətir yanında hansı məlumatın tələb olunduğunu və kimin cavabdeh olduğunu yazır. Yəni sual «nə yoxdur» deyil, «kimdən nəyi istəmək lazımdır» şəklində qoyulur.",
+          en: "Inside, the card splits into two columns. On the left are the indicators that already have a value — the part that is closed. On the right are the missing ones, and that column matters more: each row names the input that is required and who is accountable for it. The question stops being what is missing and becomes what to ask, and from whom.",
+          ru: "Внутри карточка делится на две колонки. Слева индикаторы, у которых значение уже есть, — это закрытая часть. Справа отсутствующие, и эта колонка важнее: в каждой строке указано, какие данные требуются и кто за них отвечает. Вопрос перестаёт быть «чего нет» и становится «что и у кого запросить».",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_ENTITY_PRESENT);
+          await h.holdUntil(0.4);
+          await h.hover(IB_ENTITY_MISSING);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "Kartın sağ küncündə üç düymə var və hər biri fərqli iş görür. CSV çatışmayanların siyahısını fayl kimi endirir — sorğunu məktuba əlavə etmək üçün. İkincisi hazır məktub şablonlarını açır, hər məlumat sahibinə ayrıca. Üçüncüsü isə həmin şirkət seçilmiş halda AI avtomatik idxala aparır. Bu təlimdə heç birinə basmıram: ikincisi poçt proqramını açır, üçüncüsü isə səhifədən çıxarır.",
+          en: "Three buttons sit in the card's corner and each does something different. CSV downloads the list of missing items as a file, so the request can be attached to a message. The second opens prepared e-mail drafts, one per data owner. The third takes you into AI Auto Import with that company already selected. This guide presses none of them: the second opens your mail client and the third leaves the page.",
+          ru: "В углу карточки три кнопки, и каждая делает своё. CSV выгружает список отсутствующего файлом, чтобы приложить запрос к письму. Вторая открывает готовые черновики писем — по одному на каждого владельца данных. Третья ведёт в AI автоматический импорт с уже выбранной компанией. В этом гайде я не нажимаю ни одну: вторая откроет почтовую программу, а третья уведёт со страницы.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_ENTITY_ACTIONS);
+          await h.holdUntil(0.35);
+          await h.hover(IB_CSV);
+          await h.holdUntil(0.58);
+          await h.hover(IB_EMAIL);
+          await h.holdUntil(0.8);
+          await h.moveTo(IB_UPLOAD);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Ardıcıllıq belədir: əvvəl dövrü yoxlayın, sonra sahibi naməlum boşluqları götürün, filtrlə diqqəti daraldın, ən aşağı əhatəli şirkəti seçin və məlumatı ya məktubla istəyin, ya da faylı idxal edin. Uğurlu idxal uyğun boşluqları avtomatik bağlayır və faiz özü qalxır. Və sonda sərhədi unutmayın: bu rəqəm əhatəni ölçür, məlumatın keyfiyyətini yox.",
+          en: "The working order is this: check the period first, then take the gaps with an unknown owner, narrow the view with filters, pick the company with the lowest coverage, and either request the data by e-mail or import the file. A successful import closes the matching gaps automatically and the percentage rises on its own. And remember the boundary at the end: this number measures coverage, not the quality of the data.",
+          ru: "Рабочий порядок такой: сначала проверьте период, затем возьмите пробелы с неизвестным владельцем, сузьте фильтрами, выберите компанию с наименьшим охватом и либо запросите данные письмом, либо импортируйте файл. Успешный импорт закрывает соответствующие пробелы сам, и процент поднимается без ручной правки. И помните про границу: это число измеряет охват, а не качество данных.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(IB_KPI_READINESS);
+          await h.holdUntil(0.5);
+          await h.hover(IB_PROGRESS);
+          await h.holdUntil(0.92);
         },
       },
     ],

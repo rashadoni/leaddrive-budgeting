@@ -121,16 +121,19 @@ export function IndicatorBacklogView({ companies, summary, period }: Props) {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
           <SummaryCell
             label={t("summary.entities")}
+            testId="backlog-kpi-entities"
             value={summary.totalEntities}
             sub={t("summary.activeEntities")}
           />
           <SummaryCell
             label={t("summary.totalIndicators")}
+            testId="backlog-kpi-applicable"
             value={summary.totalApplicable}
             sub={t("summary.industryApplicable")}
           />
           <SummaryCell
             label={t("summary.withData")}
+            testId="backlog-kpi-present"
             value={summary.totalPresent}
             sub={t("summary.haveValues")}
             tone="emerald"
@@ -138,6 +141,7 @@ export function IndicatorBacklogView({ companies, summary, period }: Props) {
           />
           <SummaryCell
             label={t("summary.missing")}
+            testId="backlog-kpi-missing"
             value={summary.totalMissing}
             sub={t("summary.awaitingData")}
             tone="rose"
@@ -145,6 +149,7 @@ export function IndicatorBacklogView({ companies, summary, period }: Props) {
           />
           <SummaryCell
             label={t("summary.holdingReadiness")}
+            testId="backlog-kpi-readiness"
             value={`${summary.overallReadinessPct}%`}
             sub={t("summary.ratio", {
               present: summary.totalPresent,
@@ -153,16 +158,18 @@ export function IndicatorBacklogView({ companies, summary, period }: Props) {
             tone={readinessTone(summary.overallReadinessPct)}
           />
         </div>
-        <ProgressBar
-          present={summary.totalPresent}
-          total={summary.totalApplicable}
-          height="h-2.5"
-        />
+        <div data-testid="backlog-progress">
+          <ProgressBar
+            present={summary.totalPresent}
+            total={summary.totalApplicable}
+            height="h-2.5"
+          />
+        </div>
       </div>
 
       {/* ─── By-owner aggregate ─── */}
       {summary.byOwnerRole.length > 0 && (
-        <div className="rounded-lg border border-border/60 bg-card p-4">
+        <div className="rounded-lg border border-border/60 bg-card p-4" data-testid="backlog-by-owner">
           <div className="flex items-center gap-2 mb-3">
             <Users className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-medium text-foreground">
@@ -181,6 +188,8 @@ export function IndicatorBacklogView({ companies, summary, period }: Props) {
                 <button
                   key={r.role}
                   type="button"
+                  data-testid="backlog-owner-chip"
+                  data-owner-unknown={isUnknown ? "1" : "0"}
                   onClick={() =>
                     setOwnerFilter(isActive ? "all" : r.role)
                   }
@@ -212,7 +221,7 @@ export function IndicatorBacklogView({ companies, summary, period }: Props) {
       )}
 
       {/* ─── Filter bar ─── */}
-      <div className="flex flex-wrap items-center gap-3 text-xs">
+      <div className="flex flex-wrap items-center gap-3 text-xs" data-testid="backlog-filters">
         <div className="inline-flex items-center gap-1.5 text-muted-foreground">
           <Filter className="h-3.5 w-3.5" />
           <span>{t("filterLabel")}:</span>
@@ -241,7 +250,10 @@ export function IndicatorBacklogView({ companies, summary, period }: Props) {
             })),
           ]}
         />
-        <label className="inline-flex items-center gap-1.5 text-muted-foreground cursor-pointer">
+        <label
+          className="inline-flex items-center gap-1.5 text-muted-foreground cursor-pointer"
+          data-testid="backlog-hide-complete"
+        >
           <input
             type="checkbox"
             checked={hideComplete}
@@ -264,7 +276,7 @@ export function IndicatorBacklogView({ companies, summary, period }: Props) {
             {t("clearFilters")}
           </button>
         )}
-        <span className="ml-auto text-muted-foreground">
+        <span className="ml-auto text-muted-foreground" data-testid="backlog-shown-count">
           {t("entitiesShown", { n: filteredCompanies.length })}
         </span>
       </div>
@@ -290,12 +302,15 @@ function SummaryCell({
   sub,
   tone,
   icon: Icon,
+  testId,
 }: {
   label: string;
   value: number | string;
   sub: string;
   tone?: "emerald" | "amber" | "rose" | "neutral";
   icon?: typeof CheckCircle2;
+  /** Stable anchor for the guide recorder (video/scenarios/overrides.mjs). */
+  testId?: string;
 }) {
   const valueClass = {
     emerald: "text-emerald-600 dark:text-emerald-400",
@@ -304,7 +319,7 @@ function SummaryCell({
     neutral: "text-foreground",
   }[tone ?? "neutral"];
   return (
-    <div>
+    <div data-testid={testId}>
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
         {Icon && <Icon className="h-3 w-3" />}
         {label}
@@ -481,7 +496,11 @@ function EntityCard({
       : "border-rose-300 dark:border-rose-700/60";
 
   return (
-    <div className={`rounded-xl border ${accentClass} bg-card overflow-hidden`}>
+    <div
+      className={`rounded-xl border ${accentClass} bg-card overflow-hidden`}
+      data-testid="backlog-entity-card"
+      data-company-code={company.companyCode}
+    >
       {/* ─── Card header ─── */}
       <div className="px-5 py-4 border-b border-border/40 bg-gradient-to-r from-card to-muted/20">
         <div className="flex items-center gap-4">
@@ -500,6 +519,7 @@ function EntityCard({
               )}
             </div>
             <div
+              data-testid="backlog-entity-summary"
               className={`text-xs ${
                 company.readinessPct >= 80
                   ? "text-emerald-700 dark:text-emerald-300"
@@ -516,9 +536,10 @@ function EntityCard({
             </div>
           </div>
           {!isComplete && (
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0" data-testid="backlog-entity-actions">
               <button
                 type="button"
+                data-testid="backlog-csv"
                 onClick={handleCsv}
                 className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-foreground/90 hover:bg-accent transition-colors"
                 title={t("csvTitle")}
@@ -528,6 +549,7 @@ function EntityCard({
               </button>
               <button
                 type="button"
+                data-testid="backlog-email"
                 onClick={handleEmailAll}
                 className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-foreground/90 hover:bg-accent transition-colors"
                 title={t("emailOwnersTitle")}
@@ -536,6 +558,7 @@ function EntityCard({
                 {t("emailOwners")}
               </button>
               <a
+                data-testid="backlog-upload"
                 href={`/budgeting/admin/ai-import?forEntity=${company.companyCode}`}
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 transition-colors shadow-sm"
               >
@@ -557,7 +580,7 @@ function EntityCard({
       {/* ─── Two-column body: Active | Missing ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] divide-y lg:divide-y-0 lg:divide-x divide-border/40">
         {/* LEFT: Present indicators */}
-        <div className="p-4">
+        <div className="p-4" data-testid="backlog-entity-present">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -605,7 +628,7 @@ function EntityCard({
         </div>
 
         {/* RIGHT: Missing indicators */}
-        <div className="p-4">
+        <div className="p-4" data-testid="backlog-entity-missing">
           <div className="flex items-center gap-2 mb-3">
             <AlertCircle className="h-4 w-4 text-rose-500" />
             <h4 className="text-sm font-medium text-foreground">

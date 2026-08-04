@@ -51,8 +51,19 @@ function storageKey(entry: HelpVideoEntry, locale: string) {
 function modeFromStorage(key: string | null): VideoMode {
   if (!key || typeof window === "undefined") return "hidden"
 
-  const stored = readStoredState(key)
-  if (stored.thumbnailDismissed) return "hidden"
+  // 2026-08-04 — the card no longer hides itself, on the owner's call.
+  //
+  // It used to carry an X that set `thumbnailDismissed` in localStorage, and
+  // the dismissal was permanent and per-section. One accidental click and the
+  // guide was gone with no visible trace — which is exactly what happened: the
+  // owner reported "the video disappeared after the update" when the video was
+  // fine and their browser had simply remembered the dismissal.
+  //
+  // `thumbnailDismissed` is deliberately still READ nowhere rather than
+  // deleted from the type: browsers already carry it from before this change,
+  // and ignoring it is what brings those cards back without asking anyone to
+  // clear storage by hand.
+  readStoredState(key)
   return "thumbnail"
 }
 
@@ -126,20 +137,10 @@ export function HelpVideoLauncher() {
     }
   }
 
-  // The card is in-flow (not a floating overlay), so closing it no longer needs
-  // a "hide forever?" confirmation — the X just dismisses this section's card. It
-  // stays dismissed per section (localStorage) and can be reopened from the Help
-  // button; `minimize` collapses the expanded modal back to the card.
-  function close() {
-    if (currentStorageKey) {
-      writeStoredState(currentStorageKey, {
-        ...readStoredState(currentStorageKey),
-        expandedSeen: true,
-        thumbnailDismissed: true,
-      })
-      setSessionMode({ key: currentStorageKey, mode: "hidden" })
-    }
-  }
+  // 2026-08-04 — `close()` is gone. It set `thumbnailDismissed` and hid the
+  // card permanently for that section; both the card's X and the modal's X ran
+  // it, so watching the video once could remove its own entry point. The
+  // modal's X now calls `minimize`, which returns to the card.
 
   function markPosterFailed() {
     if (currentStorageKey) setPosterFailedKey(currentStorageKey)
@@ -212,21 +213,10 @@ export function HelpVideoLauncher() {
                   <Play className="h-3.5 w-3.5 fill-current" />
                   {t("play")}
                 </Button>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={close}
-                      aria-label={t("close")}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t("close")}</TooltipContent>
-                </Tooltip>
+                {/* 2026-08-04 — no dismiss control here on purpose. The card is
+                    in-flow and small; the X made it disappear permanently for
+                    that section, which read as the guide breaking. The modal
+                    still closes with its own X. */}
               </div>
             </div>
           </div>
@@ -283,7 +273,7 @@ export function HelpVideoLauncher() {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={close}
+                    onClick={minimize}
                     aria-label={t("close")}
                   >
                     <X className="h-4 w-4" />

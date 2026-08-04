@@ -193,14 +193,66 @@ describe('Cash Flow help-video scenario', () => {
       'FC_EXPENSE',
       'TERM_COMPANY',
       'TERM_CELL',
-      // 2026-08-04 — the AI-import guide became a real clear-then-load run.
-      // Only these two of its clicks bypass READONLY, and both are safe by
-      // inspection: a GET navigation to the deletion screen, and a local tab
-      // toggle. Every mutating control in that scenario uses `h.click`, which
-      // degrades to a hover unless ALLOW_MUTATIONS is set explicitly.
-      'AI_IMPORT_RESET_CTA',
-      'DD_TAB_ROUTING',
+      // ai-import: tab switches only. Both flip local React state in
+      // AIImportTabs and issue no request — the writes in that scenario go
+      // through mutatingClick below, never through this list.
+      // Navigation to the deletion screen — a GET, not a write.
+      'AI_RESET_CTA',
+      'AI_TAB_SINGLE',
+      'AI_TAB_MULTI',
       'RUN_BTN',
+      // indicator-backlog: an owner chip and the hide-complete toggle, each
+      // clicked on and then off again. Both only re-filter an already rendered
+      // list — the page issues one GET and has no control that writes.
+      'IB_OWNER_UNKNOWN',
+      'IB_HIDE_COMPLETE',
+      'IB_HIDE_COMPLETE',
+      'IB_OWNER_UNKNOWN',
     ]);
+  });
+
+  it('pins every MUTATING click and keeps it off prod', async () => {
+    // A guide to the importer that never imports teaches nothing, so the
+    // ai-import scenario really does press Analyze and Apply. Those are writes
+    // and must never appear in the READONLY-safe list above, or that tripwire
+    // stops meaning anything. They get their own pinned list, and the helper
+    // refuses to run unless the target is a throwaway stand.
+    const url = pathToFileURL(
+      resolve(process.cwd(), 'video/scenarios/overrides.mjs'),
+    ).href;
+    const module = (await import(url)) as {
+      default: Record<string, GuideScenario>;
+    };
+    const actions = Object.values(module.default)
+      .flatMap((scenario) => scenario.scenes)
+      .map((scene) => scene.do.toString())
+      .join('\n');
+    const mutatingTargets = Array.from(
+      actions.matchAll(/h\.mutatingClick\(([^)]+)\)/g),
+    ).map((match) => match[1]);
+
+    // 2026-08-04 — the import guide now SHOWS a clearing before it loads, so
+    // two more writes join the list. Both go through the guarded delete flow:
+    // DD_CHECK computes the blast radius and deletes nothing, DD_CONFIRM_SUBMIT
+    // is the deletion itself and can only follow it.
+    expect(mutatingTargets).toEqual([
+      'DD_CHECK',
+      'DD_CONFIRM_SUBMIT',
+      'AI_ANALYZE',
+      'AI_APPLY',
+    ]);
+
+    const producer = readFileSync(
+      resolve(process.cwd(), 'scripts/produce-guides.mjs'),
+      'utf8',
+    );
+    const helper = producer.slice(producer.indexOf('async mutatingClick(sel)'));
+    // Fails closed: refuses before touching the page when READONLY is on.
+    expect(helper).toContain('if (READONLY) {');
+    expect(helper.indexOf('if (READONLY) {')).toBeLessThan(helper.indexOf('page.locator(sel)'));
+    // Same single-visible-target discipline as safeClick.
+    expect(helper).toContain('typeof sel !== "string"');
+    expect(helper).toContain('count !== 1');
+    expect(helper).toContain('loc.isVisible()');
   });
 });

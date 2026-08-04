@@ -46,85 +46,76 @@ describe("AI Import help-video scenario", () => {
     expect(enMessages.adminAiImport.page.safetyBody).toContain("destructive workflow")
   })
 
-  it("provides a substantial ten-scene trilingual walkthrough", () => {
+  it("provides a substantial fifteen-scene trilingual walkthrough", () => {
     expect(aiImport.route).toBe("/budgeting/admin/ai-import")
-    expect(aiImport.scenes).toHaveLength(10)
+    expect(aiImport.scenes).toHaveLength(15)
     for (const language of ["az", "en", "ru"] as const) {
       const wordCounts = aiImport.scenes.map(
         (scene) => scene.voice[language].trim().split(/\s+/).length,
       )
       expect(Math.min(...wordCounts)).toBeGreaterThanOrEqual(35)
-      expect(wordCounts.reduce((sum, count) => sum + count, 0)).toBeGreaterThanOrEqual(380)
+      expect(wordCounts.reduce((sum, count) => sum + count, 0)).toBeGreaterThanOrEqual(500)
     }
   })
 
-  /**
-   * 2026-08-04 — this guide stopped being hover-only, on the owner's decision.
-   *
-   * The previous test forbade every click, and it was right for a narrated
-   * tour: this is the screen where a wrong click destroys a year of financial
-   * data. But a tour of an import that never imports leaves the viewer to
-   * guess whether it works, so the guide now performs a real clear-then-load
-   * run against a real stand.
-   *
-   * The blanket ban is replaced by a targeted one rather than deleted. A click
-   * is allowed only on a named control of the import or the GUARDED delete
-   * flow; anything else — another route, a raw HTTP verb — still fails here.
-   */
-  /** Mutating controls. `h.click` degrades to a hover when READONLY is on. */
-  const ALLOWED_CLICK_TARGETS = [
-    "AI_IMPORT_ANALYZE",
-    "AI_IMPORT_APPLY",
-    "DD_CHECK",
-    "DD_CONFIRM_SUBMIT",
-  ]
+  // 2026-08-04 — this scenario stopped being hover-only ON PURPOSE, and the old
+  // assertion ("strictly hover-only and never activates an import workflow")
+  // was replaced rather than deleted.
+  //
+  // The previous version narrated "this guide never presses the button" over
+  // nine static blocks. For a screen whose entire subject is importing a
+  // workbook, that teaches nothing: the viewer never sees a preview, a routing
+  // decision, the Import Doctor or a receipt. It also told the viewer the page
+  // opens on the single-file tab, which stopped being true on 2026-07-30.
+  //
+  // What replaces "touch nothing" is a narrower, checkable promise: the two
+  // writes are named explicitly, they go through the helper that REFUSES to run
+  // under READONLY (so this scenario can only ever be recorded against a
+  // throwaway stand, never prod), and nothing destructive is reachable.
+  it("drives the real import, and only through explicitly named writes", () => {
+    const actions = aiImport.scenes.map((scene) => scene.do.toString()).join("\n")
 
-  /**
-   * `safeClick` clicks for real even under READONLY, so its targets are pinned
-   * here — the helper's own contract says scenario tests must do exactly that.
-   * Only GET navigations and local view toggles belong on this list; a mutating
-   * control here would silently defeat the recorder's main safety switch.
-   */
-  const ALLOWED_SAFECLICK_TARGETS = ["AI_IMPORT_RESET_CTA", "DD_TAB_ROUTING"]
+    expect(actions.match(/h\.mutatingClick\(/g)).toHaveLength(4)
+    expect(actions).toContain("h.mutatingClick(DD_CHECK)")
+    expect(actions).toContain("h.mutatingClick(DD_CONFIRM_SUBMIT)")
+    expect(actions).toContain("h.mutatingClick(AI_ANALYZE)")
+    expect(actions).toContain("h.mutatingClick(AI_APPLY)")
 
-  it("clicks only named controls of the import and guarded-delete flows", () => {
+    // Local view state, plus one GET navigation to the deletion screen.
+    expect(actions.match(/h\.safeClick\(/g)).toHaveLength(3)
+    expect(actions).toContain("h.safeClick(AI_RESET_CTA)")
+    expect(actions).toContain("h.safeClick(AI_TAB_SINGLE)")
+    expect(actions).toContain("h.safeClick(AI_TAB_MULTI)")
+
+    // One file selection, into the multi-file input, and nothing else typed.
+    expect(actions.match(/setInputFiles\(/g)).toHaveLength(1)
+    expect(actions).not.toContain("h.fill")
+
+    // 2026-08-04 — this list used to forbid the delete-data route outright, and
+    // that was right while the guide only talked about clearing. The owner
+    // asked it to SHOW one, so the ban is narrowed rather than dropped, and it
+    // separates three things the old list ran together:
+    //
+    //   `force-override`  bypasses a BLOCKED apply. Still absolutely forbidden:
+    //                     a guide must never demonstrate overriding a safety
+    //                     gate, whatever stand it runs on.
+    //   `btn-reset`       clears the form (`resetAll`), not any data. Harmless
+    //                     but pointless on camera, so it stays out.
+    //   the delete flow   now allowed — but only through the guarded route,
+    //                     which the ordering test below pins: the dry check
+    //                     runs first and the confirmation cannot precede it.
+    for (const forbidden of ["force-override", "btn-reset"]) {
+      expect(actions).not.toContain(forbidden)
+    }
+    // The unguarded one-shot entry points stay unreachable.
+    expect(actions).not.toContain("h.mutatingClick(AI_RESET_CTA)")
+
+    // Paced on narration length, not fixed sleeps — az runs ~2x longer than
+    // en/ru, so fixed pauses would freeze the short takes.
+    expect(actions).toContain("h.holdUntil(")
     for (const scene of aiImport.scenes) {
-      const action = scene.do.toString()
-      for (const call of action.match(/h\.click\(([^)]*)\)/g) ?? []) {
-        const target = call.replace(/h\.click\(|\)/g, "").trim()
-        expect(ALLOWED_CLICK_TARGETS, `unexpected click target: ${target}`).toContain(target)
-      }
-      for (const call of action.match(/h\.safeClick\(([^)]*)\)/g) ?? []) {
-        const target = call.replace(/h\.safeClick\(|\)/g, "").trim()
-        expect(
-          ALLOWED_SAFECLICK_TARGETS,
-          `safeClick bypasses READONLY — ${target} must be a GET or a view toggle`,
-        ).toContain(target)
-      }
-      // No scenario may reach past the UI into the API directly.
-      expect(action).not.toMatch(/\.(?:post|put|patch|delete)\s*\(/i)
-      expect(action).not.toContain("evaluate(")
+      expect(scene.do.toString()).toMatch(/h\.(?:hover|moveTo|holdUntil)\(/)
     }
-  })
-
-  it("never confirms a deletion without running the dry check first", () => {
-    // The invariant worth protecting now that clicking is allowed. `check`
-    // computes the blast radius and deletes nothing; confirming without it is
-    // exactly the habit this guide must not teach.
-    const flat = aiImport.scenes.map((s) => s.do.toString()).join("\n")
-    const checkAt = flat.indexOf("h.click(DD_CHECK)")
-    const confirmAt = flat.indexOf("h.click(DD_CONFIRM_SUBMIT)")
-    expect(checkAt, "the dry check is never clicked").toBeGreaterThan(-1)
-    expect(confirmAt, "the deletion is never confirmed").toBeGreaterThan(-1)
-    expect(checkAt).toBeLessThan(confirmAt)
-  })
-
-  it("actually attaches the workbook it narrates", () => {
-    // The narration says the file is dropped in. A tour that says so and does
-    // not do it is the failure this rewrite exists to remove.
-    const flat = aiImport.scenes.map((s) => s.do.toString()).join("\n")
-    expect(flat).toContain("setInputFiles")
-    expect(flat).toContain("WORKBOOK_PATH")
   })
 
   it("pins stable anchors across the page, tabs, cleanup warning, and default form", () => {
@@ -182,5 +173,31 @@ describe("AI Import help-video scenario", () => {
     expect(single).toContain('form.append("year", String(initialYear ?? new Date().getFullYear()))')
     expect(single).not.toContain('form.append("year", "2026")')
     expect(single).not.toContain("handleConfirmImport")
+  })
+
+  /**
+   * 2026-08-04 — the one ordering that must never slip.
+   *
+   * `DD_CHECK` computes the blast radius and deletes nothing; `DD_CONFIRM_SUBMIT`
+   * is the deletion. A guide that confirmed first would be teaching the habit
+   * this screen was built to prevent.
+   */
+  it("never confirms a deletion before the dry check has run", () => {
+    const flat = aiImport.scenes.map((scene) => scene.do.toString()).join("\n")
+    const checkAt = flat.indexOf("h.mutatingClick(DD_CHECK)")
+    const confirmAt = flat.indexOf("h.mutatingClick(DD_CONFIRM_SUBMIT)")
+    expect(checkAt, "the dry check is never clicked").toBeGreaterThan(-1)
+    expect(confirmAt, "the deletion is never confirmed").toBeGreaterThan(-1)
+    expect(checkAt).toBeLessThan(confirmAt)
+  })
+
+  it("clears before it loads, not after", () => {
+    // The arc only makes sense in this order: empty the year, then show the
+    // file filling it back in. Reversed, the video would end on an empty
+    // screen.
+    const flat = aiImport.scenes.map((scene) => scene.do.toString()).join("\n")
+    expect(flat.indexOf("h.mutatingClick(DD_CONFIRM_SUBMIT)")).toBeLessThan(
+      flat.indexOf("h.mutatingClick(AI_ANALYZE)"),
+    )
   })
 })

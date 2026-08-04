@@ -42,7 +42,7 @@ export function ImportDataResetPanel() {
         {/* 2026-08-04 — the CTA had no test id of its own; only the <section>
             wrapper carried one, so anything targeting `ai-import-guide-reset`
             clicked the panel's empty centre and never navigated. Found while
-            recording the import guide: the click reported success and the URL
+            extending the import guide: the click reported success and the URL
             never changed. */}
         <Link
           data-testid="ai-import-guide-reset-cta"

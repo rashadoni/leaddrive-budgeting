@@ -126,6 +126,11 @@ const viewport = { ...videoSize };
 const GUIDE_CSS = [
   "[data-help-video-widget],aside[class*='fixed'][class*='bottom-'],[class*='fixed'][class*='bottom-'][class*='right-']{display:none!important}",
   '[class~="z-[10000]"],.z-\\[10000\\]{display:none!important}', // product-tour overlay (spotlight + card)
+  // Next's dev-mode indicator. The recording stand runs `next dev` (a production
+  // build cannot complete on the Linux box — its cgroup caps tasks at 512 and
+  // `next build` spawns 7 workers), and the badge would otherwise sit in the
+  // corner of every frame. Harmless in prod builds, where the element is absent.
+  "nextjs-portal{display:none!important}",
   "#ld-pilot-cursor{position:fixed;z-index:2147483647;width:28px;height:28px;left:0;top:0;pointer-events:none;transform:translate(-100px,-100px);transition:transform .12s linear;filter:drop-shadow(0 10px 14px rgba(15,23,42,.25));}",
   "#ld-pilot-cursor:before{content:'';position:absolute;left:7px;top:1px;width:0;height:0;border-right:18px solid transparent;border-bottom:25px solid #fff;transform:rotate(-24deg);}",
   "#ld-pilot-cursor:after{content:'';position:absolute;left:8px;top:3px;width:0;height:0;border-right:13px solid transparent;border-bottom:19px solid #111827;transform:rotate(-24deg);}",
@@ -386,12 +391,8 @@ async function recordSection(context, slug, lang, audio, out, poster) {
     posterSaved = true;
 
     await injectCursor(page);
-    // 2026-08-04 — `sceneRef` is re-pointed at every scene below so `h.holdUntil()`
-    // can place beats as FRACTIONS of the narration instead of fixed sleeps. The
-    // az voice runs roughly twice as long as en/ru, so a scenario tuned with
-    // `sleep()` under az freezes the screen on the short languages and leaves
-    // tail silence. Ported from the reference recorder, which has had it since
-    // the pipeline was written.
+    // Re-pointed at each scene below so h.holdUntil() knows which narration it
+    // is pacing against.
     const sceneRef = { t0, startMs: 0, durMs: 0 };
     const helpers = makeHelpers(page, sceneRef); // cursor move/click/hover/fill for `do` scenes
 
@@ -824,6 +825,11 @@ async function pulse(page, x, y) {
 // Cursor-driven helpers passed to hand-authored `do` scenes: they move the
 // VISIBLE cursor to a real element, then hover / click / type — so the recording
 // shows the cursor purposefully using the section's real controls (not wandering).
+// `scene` is a live ref the recorder re-points at every scene: { t0, startMs,
+// durMs }. It is what makes h.holdUntil(fraction) possible — a scenario can
+// place its beats as fractions of the narration instead of fixed sleeps, so the
+// same scenario stays in sync across languages (az narration runs ~2× longer
+// than en/ru, and fixed pauses would freeze the screen on the short ones).
 function makeHelpers(page, scene) {
   const point = async (sel) => {
     const loc = await firstLocator(page, sel);
@@ -837,12 +843,10 @@ function makeHelpers(page, scene) {
   return {
     firstLocator: (sel) => firstLocator(page, sel),
     sleep,
-    /**
-     * Hold until `fraction` of THIS scene's narration has played (0…1, clamped
-     * to 0.98 so a beat can never outlive its own scene). Returns immediately
-     * if that moment already passed, so a slow action eats its own beat instead
-     * of pushing the rest of the scene out of sync.
-     */
+    // Hold until `fraction` of THIS scene's narration has played (0…1, clamped
+    // to 0.98 so a beat can never outlive its own scene). Returns immediately if
+    // that moment already passed, so a slow action just eats its own beat
+    // instead of pushing the rest of the scene out of sync.
     async holdUntil(fraction) {
       if (!scene?.durMs) return;
       const target = scene.startMs + Math.min(Math.max(fraction, 0), 0.98) * scene.durMs;
@@ -901,6 +905,45 @@ function makeHelpers(page, scene) {
       await loc?.click({ timeout: 6000 }).catch(() => {});
       await loc?.selectText().catch(() => {});
       await loc?.pressSequentially(String(text), { delay: 26, timeout: 20000 }).catch(() => {});
+    },
+    // The deliberate opposite of safeClick: a control that WRITES. Some guides
+    // are worthless without it — a tour of the importer that never imports
+    // teaches nothing — but a write must never be smuggled into the
+    // "READONLY-safe" allowlist, or that tripwire stops meaning anything.
+    //
+    // So mutating targets get their own helper, their own pinned list in
+    // `cash-flow-guide-scenario.test.ts`, and a hard refusal under READONLY:
+    // a scenario that writes can only ever run against a throwaway stand
+    // launched with ALLOW_MUTATIONS=1, never against prod. The same
+    // single-visible-target checks as safeClick still apply.
+    async mutatingClick(sel) {
+      if (READONLY) {
+        throw new Error(
+          `mutatingClick(${sel}) needs a mutating stand — refusing under READONLY. `
+          + "Record this scenario against a throwaway tenant with ALLOW_MUTATIONS=1.",
+        );
+      }
+      if (typeof sel !== "string") {
+        throw new Error("mutatingClick requires one exact selector string");
+      }
+      const loc = page.locator(sel);
+      const count = await loc.count();
+      if (count !== 1) {
+        throw new Error(`mutatingClick expected exactly one ${sel}, found ${count}`);
+      }
+      if (!(await loc.isVisible())) {
+        throw new Error(`mutatingClick target is not visible: ${sel}`);
+      }
+      await loc.scrollIntoViewIfNeeded({ timeout: 8000 });
+      const box = await loc.boundingBox();
+      if (!box) throw new Error(`mutatingClick has no bounding box: ${sel}`);
+      const x = box.x + box.width / 2;
+      const y = box.y + Math.min(box.height / 2, 40);
+      await page.mouse.move(x, y, { steps: 18 });
+      await page.waitForTimeout(250);
+      await loc.click({ timeout: 8000 });
+      await pulse(page, x, y);
+      await page.waitForTimeout(400);
     },
   };
 }

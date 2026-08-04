@@ -121,6 +121,12 @@ describe('buildIntelPrompt (Phase D.2)', () => {
 });
 
 // Phase 7.G Turn LXXXXIII (D.5c) — language-aware system prompt
+/** Recency is enforced at ingest, so fixtures date themselves relative to the
+ *  run. Absolute dates here aged past the cap and broke the happy path. */
+function daysAgoIso(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 describe('buildSystemPrompt (D.5c — language pipe-through)', () => {
   it('default (no arg) → English instruction', () => {
     const p = buildSystemPrompt();
@@ -131,6 +137,24 @@ describe('buildSystemPrompt (D.5c — language pipe-through)', () => {
 
   it('language="en" → English instruction', () => {
     expect(buildSystemPrompt('en')).toContain('IN ENGLISH');
+  });
+
+  // 2026-08-04 — companyTags used to appear only in the schema block, with no
+  // rule for when to fill it. Production showed the result: 8 of 12 items with
+  // no company tag and the rest tagged with the holding code, so most of the
+  // feed could not move any risk score. These assertions pin the intent, not
+  // the wording of any one sentence.
+  it('tells the model how to fill companyTags, in every language', () => {
+    for (const lang of ['en', 'ru', 'az'] as const) {
+      const p = buildSystemPrompt(lang);
+      // Only real codes, exactly as supplied.
+      expect(p).toContain('Active company codes');
+      expect(p).toMatch(/Never invent a code/i);
+      // Specificity beats the parent.
+      expect(p).toMatch(/MOST SPECIFIC/i);
+      // An empty array is a valid, correct answer.
+      expect(p).toMatch(/Leave the array EMPTY/i);
+    }
   });
 
   it('language="ru" → Russian instruction (preserves company names)', () => {
@@ -145,6 +169,18 @@ describe('buildSystemPrompt (D.5c — language pipe-through)', () => {
     expect(p).toContain('IN AZERBAIJANI');
     expect(p).toContain('preserve company names');
     expect(p).not.toContain('IN ENGLISH');
+  });
+
+  // 2026-08-04 — the prompt has asked for "last 7 days" since v1; production
+  // returned articles published across four months. Recency is now stated as a
+  // hard filter AND enforced at ingest, because a stale item is read as a
+  // current signal by the rolling sentiment window.
+  it('states recency as a hard filter, in every language', () => {
+    for (const lang of ['en', 'ru', 'az'] as const) {
+      const p = buildSystemPrompt(lang);
+      expect(p).toMatch(/RECENCY IS A HARD FILTER/i);
+      expect(p).toMatch(/last 7 days/i);
+    }
   });
 
   it('common scaffolding (web_search, ≤200 chars, JSON-only) shared across all languages', () => {
@@ -284,7 +320,7 @@ describe('runIntelCrawl — happy path', () => {
           summary: 'Ghana export cuts squeeze global cocoa supply.',
           url: 'https://reuters.com/cocoa-supply-2026',
           sourceLabel: 'Reuters',
-          publishedAt: '2026-05-04T12:00:00Z',
+          publishedAt: daysAgoIso(3),
           relevanceScore: 0.85,
           industryTags: ['agro'],
           companyTags: [],
@@ -304,7 +340,7 @@ describe('runIntelCrawl — happy path', () => {
           summary: 'Industrial corridor exempted; AAC listed beneficiary.',
           url: 'https://bloomberg.com/steel-tariff-2026',
           sourceLabel: 'Bloomberg',
-          publishedAt: '2026-05-06T08:00:00Z',
+          publishedAt: daysAgoIso(1),
           relevanceScore: 0.93,
           industryTags: ['industrial'],
           companyTags: ['AAC'],
@@ -747,5 +783,70 @@ describe('runIntelCrawl — Phase 7.H Feature B sentiment scoring', () => {
     });
     expect(result.itemsCreated).toBe(1);
     expect(result.errors[0]).toMatch(/Sentiment batch failed.*rate-limited/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recency backstop at ingest (2026-08-04)
+// ---------------------------------------------------------------------------
+
+describe('runIntelCrawl — recency backstop', () => {
+  it('drops items published past the cap and reports how many', async () => {
+    const llmJson = JSON.stringify({
+      items: [
+        {
+          title: 'Fresh sugar policy move',
+          summary: 'Recent.',
+          url: 'https://example.com/fresh',
+          sourceLabel: 'Outlet',
+          publishedAt: daysAgoIso(2),
+          relevanceScore: 0.9,
+          industryTags: ['agro'],
+          companyTags: [],
+        },
+        {
+          title: 'Spring article resurfaced by search',
+          summary: 'Months old.',
+          url: 'https://example.com/stale',
+          sourceLabel: 'Outlet',
+          publishedAt: daysAgoIso(120),
+          relevanceScore: 0.95,
+          industryTags: ['agro'],
+          companyTags: [],
+        },
+      ],
+    });
+    const res = await runIntelCrawl(BASE_INPUT, {
+      client: makeClient(fakeResponse(llmJson)),
+      prisma: makePrisma(),
+    });
+
+    // Two items in, one survives, and the drop is counted rather than silent.
+    expect(res.itemsFetched).toBe(1);
+    expect(res.itemsStale).toBe(1);
+  });
+
+  it('keeps items whose source exposed no publish date', async () => {
+    const llmJson = JSON.stringify({
+      items: [
+        {
+          title: 'No date available',
+          summary: 'Source did not expose one.',
+          url: 'https://example.com/undated',
+          sourceLabel: 'Outlet',
+          publishedAt: null,
+          relevanceScore: 0.8,
+          industryTags: ['agro'],
+          companyTags: [],
+        },
+      ],
+    });
+    const res = await runIntelCrawl(BASE_INPUT, {
+      client: makeClient(fakeResponse(llmJson)),
+      prisma: makePrisma(),
+    });
+
+    expect(res.itemsFetched).toBe(1);
+    expect(res.itemsStale).toBe(0);
   });
 });

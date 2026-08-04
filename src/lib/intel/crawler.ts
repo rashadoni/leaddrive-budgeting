@@ -41,12 +41,37 @@ import {
  *  v1 = initial Phase D.2 ship.
  *  v2 = Phase 7.G Turn LXXXXIII (D.5c) — language parameter added.
  *  v3 = Phase 7.K Phase 4 — sector-specific tag list + search heuristics
- *       for all 14 holding sectors (was AzerSheker-only). */
-export const INTEL_PROMPT_VERSION = 'v3';
+ *       for all 14 holding sectors (was AzerSheker-only).
+ *  v4 = 2026-08-04 — explicit companyTags rules. Until now the field appeared
+ *       only in the schema block with no instruction on when to fill it, and
+ *       the model behaved accordingly: on production 8 of 12 items carried no
+ *       company tag at all and the other 4 were tagged with the holding code
+ *       rather than an operating company. Since companyTags is what decides
+ *       whose risk score an item can move, that made most of the feed inert.
+ *       The rules ask for the most specific supported code and explicitly bless
+ *       an empty array, because a wrong tag moves the wrong company's score. */
+export const INTEL_PROMPT_VERSION = 'v4';
 
 /** Per-crawl item cap. The model is instructed to return ≤10; this is
  *  a safety belt against runaway responses. */
 const MAX_ITEMS_PER_CRAWL = 10;
+
+/** Backstop for the recency instruction above.
+ *
+ *  2026-08-04: the prompt has asked for "the last 7 days" since v1, and
+ *  production told a different story — every item fetched on 4 August, with
+ *  publication dates spread from 23 March to 15 July. The rolling sentiment
+ *  window then read four-month-old articles as current signal.
+ *
+ *  So recency is enforced here too, generously: the model is asked for 7 days,
+ *  and anything older than this cap is dropped at ingest. The gap between the
+ *  two numbers is deliberate — a source that publishes with a lagging date
+ *  should not be silently discarded, but a spring article has no business in an
+ *  August sentiment score. Items with NO parseable date are kept: the source
+ *  simply did not expose one, and dropping them would lose real news over a
+ *  formatting detail. Their age is handled downstream, where the sentiment
+ *  weight falls back to `fetchedAt`. */
+const MAX_ITEM_AGE_DAYS = 45;
 
 /** Anthropic web_search uses count — 5 calls is enough for a multi-
  *  industry sweep without driving cost up. (At $10/1K searches × 5 ×
@@ -111,10 +136,17 @@ What counts as relevant:
 
 Hard constraints:
   - You MUST call web_search at least once before producing the feed. Do not return items without searching.
+  - RECENCY IS A HARD FILTER, not a preference. Only include an article published within the last 7 days. If you cannot establish a publication date within that window, DROP the item rather than guessing. A short feed of genuinely recent news is correct; padding it with months-old articles is not — this feed drives a rolling sentiment score, so a stale item is read as a current signal.
   - Return at most 10 items, ordered by relevance descending.
   - Each item's \`url\` MUST be a real, parseable URL from the search results — never invented.
   - Each item's \`summary\` MUST be ≤200 characters.
   - \`relevanceScore\` is honest: 1.0 = directly names a listed company; 0.7 = sector + region match; 0.4 = sector only; below 0.3 = drop the item.
+  - \`companyTags\` decides which company's risk score this item can move, so tag deliberately:
+    * Use codes from the "Active company codes" list EXACTLY as written. Never invent a code, never abbreviate one.
+    * Prefer the MOST SPECIFIC code the article supports. If it names a subsidiary, its plant, its brand or its management, tag that subsidiary — not the parent.
+    * Tag the parent/holding code only for news that genuinely concerns the group as a whole, or when the article names the group without identifying a subsidiary.
+    * Multiple codes are fine when the article really covers several of them.
+    * Leave the array EMPTY when the item is only sector or country news. An empty array is the correct answer here — a wrong tag moves the wrong company's risk score, which is worse than no tag at all.
   - Output is JSON-only. No markdown fences, no commentary, no apology.
 ${LANGUAGE_OUTPUT_INSTRUCTIONS[language]}
   - Schema (use EXACTLY these field names):
@@ -239,7 +271,7 @@ function validateItem(raw: unknown): ValidatedItem | null {
 /** Parse the LLM response into a validated item list. Throws on
  *  top-level shape violation (no `items` array) so the caller can
  *  surface it as `errors[]` entry. */
-function parseAndValidate(rawJson: unknown): ValidatedItem[] {
+function parseAndValidate(rawJson: unknown): { items: ValidatedItem[]; staleDropped: number } {
   if (rawJson == null || typeof rawJson !== 'object') {
     throw new Error("response is not a JSON object");
   }
@@ -248,11 +280,21 @@ function parseAndValidate(rawJson: unknown): ValidatedItem[] {
     throw new Error("response missing 'items' array");
   }
   const out: ValidatedItem[] = [];
+  const staleCutoff = Date.now() - MAX_ITEM_AGE_DAYS * 24 * 60 * 60 * 1000;
+  let stale = 0;
   for (const item of obj.items.slice(0, MAX_ITEMS_PER_CRAWL)) {
     const v = validateItem(item);
-    if (v) out.push(v);
+    if (!v) continue;
+    // publishedAt === null → keep (see MAX_ITEM_AGE_DAYS).
+    if (v.publishedAt && v.publishedAt.getTime() < staleCutoff) {
+      stale += 1;
+      continue;
+    }
+    out.push(v);
   }
-  return out;
+  // Kept pure: the count travels back to the caller, which owns the result
+  // object and the logging, rather than this validator growing a side effect.
+  return { items: out, staleDropped: stale };
 }
 
 /** Subset of PrismaClient surface area we use — explicit so unit tests
@@ -411,8 +453,11 @@ export async function runIntelCrawl(
   }
 
   let validated: ValidatedItem[];
+  let staleDropped = 0;
   try {
-    validated = parseAndValidate(parsed);
+    const parseResult = parseAndValidate(parsed);
+    validated = parseResult.items;
+    staleDropped = parseResult.staleDropped;
   } catch (err) {
     return {
       itemsFetched: 0,
@@ -561,6 +606,7 @@ export async function runIntelCrawl(
 
   return {
     itemsFetched: validated.length,
+    itemsStale: staleDropped,
     itemsCreated,
     itemsSkipped,
     errors,
