@@ -30,6 +30,12 @@
  * deliberately left off — `/api/cron/refresh-feeds` already owns those, and
  * doing them twice would double the write load for nothing.
  *
+ * The RECOMPUTE, however, belongs here. An earlier version of this file left it
+ * out on the same "refresh-feeds owns it" reasoning, and that was wrong:
+ * refresh-feeds recomputes for the feeds IT ingested, so a crawl's items never
+ * reached a score. Production showed it plainly — fresh items in the table, and
+ * IND_NEWS_SENTIMENT_30D still `unknown` from the day before.
+ *
  * Auth: `Authorization: Bearer $CRON_SECRET`. Fails closed — without the env
  * set the route refuses to run, so a stray public hit cannot spend money.
  *
@@ -50,6 +56,8 @@ import { enumerateActiveOrgs } from "@/lib/intel/scheduler-bootstrap"
 import { runScheduledIntelCrawl } from "@/lib/intel/scheduler"
 import { hasAnthropicKey } from "@/lib/ai/client"
 import { bearerMatches } from "@/lib/cron-auth"
+import { filterOperationalCompanies } from "@/lib/risk/targets"
+import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -57,11 +65,15 @@ export const maxDuration = 300
 
 const log = getLogger("cron:intel-crawl")
 
+type RecomputeSummary = { ok: number; unknown: number; failed: number }
+
 type OrgOutcome = {
   orgId: string
   status: "ok" | "skipped" | "failed"
   detail?: string
   itemsCreated?: number
+  /** Null when the crawl created nothing, so nothing needed propagating. */
+  recompute?: RecomputeSummary | null
 }
 
 /**
@@ -118,10 +130,48 @@ export async function GET(req: NextRequest) {
         runBreachScan: false,
       })
       if ("ok" in result && result.ok) {
+        // A crawl that writes items but never recomputes changes nothing a user
+        // can see. Verified on production 2026-08-04: fresh items landed, and
+        // IND_NEWS_SENTIMENT_30D still read `unknown` with a computedAt from
+        // the previous day, because the only job that recomputes is
+        // /api/cron/refresh-feeds and its recompute is scoped to the feeds IT
+        // ingested. Nothing connected a crawl to the score it feeds.
+        //
+        // So the crawl owns the recompute for what it wrote. Only when items
+        // were actually created — a `too-recent` skip or an empty feed has
+        // nothing to propagate and should not spend the work.
+        let recompute: RecomputeSummary | null = null
+        if (result.result.itemsCreated > 0) {
+          try {
+            const companies = await prisma.company.findMany({
+              where: { organizationId: org.id },
+              select: {
+                id: true, code: true, industry: true, level: true,
+                isActive: true, role: true, baseCurrencyCode: true,
+              },
+            })
+            const operational = filterOperationalCompanies(companies)
+            if (operational.length > 0) {
+              const year = new Date().getUTCFullYear()
+              const r = await runRecomputeForCompanies(
+                prisma,
+                org.id,
+                operational.map((c) => ({ companyId: c.id, year })),
+              )
+              recompute = { ok: r.ok, unknown: r.unknown, failed: r.failed }
+            }
+          } catch (err) {
+            // The crawl itself succeeded; a recompute failure must not turn the
+            // whole org's run red, but it must not vanish either.
+            const detail = err instanceof Error ? err.message : String(err)
+            log.error("recompute after intel crawl failed", { orgId: org.id, err: detail })
+          }
+        }
         outcomes.push({
           orgId: org.id,
           status: "ok",
           itemsCreated: result.result.itemsCreated,
+          recompute,
         })
       } else if ("skipped" in result) {
         outcomes.push({ orgId: org.id, status: "skipped", detail: result.skipped })
