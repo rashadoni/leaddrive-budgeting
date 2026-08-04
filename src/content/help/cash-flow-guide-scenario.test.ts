@@ -198,6 +198,11 @@ describe('Cash Flow help-video scenario', () => {
       // through mutatingClick below, never through this list.
       // Navigation to the deletion screen — a GET, not a write.
       'AI_RESET_CTA',
+      // Мастер удаления пошаговый: задача → компания → год. Все три меняют
+      // только клиентское состояние; сама очистка идёт через mutatingClick.
+      'DD_TASK_CLEAR_YEAR',
+      'DD_COMPANY_OPTION',
+      'DD_YEAR_CHIP',
       'AI_TAB_SINGLE',
       'AI_TAB_MULTI',
       'RUN_BTN',

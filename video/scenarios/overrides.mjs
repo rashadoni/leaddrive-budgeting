@@ -130,6 +130,16 @@ const DD_COMPANY_PICKER = '[data-testid="company-picker"]';
 const DD_WHAT_PICKER = '[data-testid="what-picker"]';
 const DD_YEAR_CHIPS = '[data-testid="year-chips"]';
 const DD_CHECK = '[data-testid="check-button"]';
+// 2026-08-04 — мастер удаления пошаговый: задача → компания → год, и только
+// после этого появляется «Проверить». Сценарий раньше лишь наводился на эти
+// блоки, ничего не выбирая, поэтому запись падала на check-button (найдено 0).
+// Задача и компания получили собственные якоря (их не было); год цепляется по
+// числу — оно одинаково на всех трёх языках.
+const DD_TASK_CLEAR_YEAR = '[data-testid="task-clearYears"]';
+const DD_COMPANY_OPTION = '[data-testid="company-option-AZSEKER-AZSF"]';
+/** 2025, а не 2026: год очищается по-настоящему, а на 2026 держатся все
+ *  остальные записи стенда. Озвучка год не называет, так что рассказ честен. */
+const DD_YEAR_CHIP = '[data-testid="year-chips"] button:has-text("2025")';
 const DD_BLAST_RADIUS = '[data-testid="blast-radius"]';
 const DD_CONFIRM_STRIP = '[data-testid="confirm-strip"]';
 const DD_CONFIRM_SUBMIT = '[data-testid="confirm-submit"]';
@@ -1763,12 +1773,17 @@ export default {
           // and the page would never move.
           await h.safeClick(AI_RESET_CTA);
           await p.waitForSelector(DD_TASK_CHOOSER, { timeout: 20000 });
-          await h.holdUntil(0.4);
+          await h.holdUntil(0.3);
           await h.hover(DD_TASK_CHOOSER);
-          await h.holdUntil(0.65);
-          await h.moveTo(DD_COMPANY_PICKER);
-          await h.holdUntil(0.85);
-          await h.moveTo(DD_WHAT_PICKER);
+          await h.holdUntil(0.5);
+          // Шаг за шагом, как о том и говорит озвучка: сначала задача…
+          await h.safeClick(DD_TASK_CLEAR_YEAR);
+          await p.waitForSelector(DD_COMPANY_PICKER, { timeout: 20000 });
+          await h.holdUntil(0.72);
+          // …затем компания. Выбор раскрывает следующий шаг с годами.
+          await h.safeClick(DD_COMPANY_OPTION);
+          await p.waitForSelector(DD_YEAR_CHIPS, { timeout: 20000 });
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -1779,7 +1794,10 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(DD_YEAR_CHIPS);
-          await h.holdUntil(0.25);
+          await h.holdUntil(0.2);
+          await h.safeClick(DD_YEAR_CHIP);
+          await p.waitForSelector(DD_CHECK, { timeout: 20000 });
+          await h.holdUntil(0.4);
           await h.mutatingClick(DD_CHECK);
           await p.waitForSelector(DD_BLAST_RADIUS, { timeout: 30000 });
           await h.holdUntil(0.6);

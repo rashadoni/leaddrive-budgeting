@@ -81,9 +81,14 @@ describe("AI Import help-video scenario", () => {
     expect(actions).toContain("h.mutatingClick(AI_ANALYZE)")
     expect(actions).toContain("h.mutatingClick(AI_APPLY)")
 
-    // Local view state, plus one GET navigation to the deletion screen.
-    expect(actions.match(/h\.safeClick\(/g)).toHaveLength(3)
+    // Local view state, one GET navigation to the deletion screen, and the
+    // three stepwise choices the deletion wizard requires before it will even
+    // render its Check button: task, company, year. None of them writes.
+    expect(actions.match(/h\.safeClick\(/g)).toHaveLength(6)
     expect(actions).toContain("h.safeClick(AI_RESET_CTA)")
+    expect(actions).toContain("h.safeClick(DD_TASK_CLEAR_YEAR)")
+    expect(actions).toContain("h.safeClick(DD_COMPANY_OPTION)")
+    expect(actions).toContain("h.safeClick(DD_YEAR_CHIP)")
     expect(actions).toContain("h.safeClick(AI_TAB_SINGLE)")
     expect(actions).toContain("h.safeClick(AI_TAB_MULTI)")
 

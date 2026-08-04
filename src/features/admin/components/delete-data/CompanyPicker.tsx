@@ -90,6 +90,7 @@ export function CompanyPicker({
           return (
             <label
               key={c.code}
+              data-testid={`company-option-${c.code}`}
               className={`flex cursor-pointer items-baseline gap-2 rounded px-1 py-1 text-sm hover:bg-muted/50 ${
                 yearsByCompany && years.length === 0 ? "opacity-60" : ""
               }`}
