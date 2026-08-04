@@ -8,7 +8,17 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // TS errors now fail the build. Previously we had ~40 pre-existing errors
   // silently skipped here; they were fixed in Phase 1.3 so we can enable strict mode.
-  typescript: { ignoreBuildErrors: false },
+  //
+  // The ONE exception is the production image build, which runs on the 3.8GB
+  // prod server. There, `next build` compiled fine in 34s and then spent 10
+  // minutes in the type-check phase before the kernel's OOM killer took it
+  // (SIGKILL, not a heap error). That check is the third run of the identical
+  // check on the identical commit: the pre-commit hook runs `tsc --noEmit`, CI
+  // runs it as its own step, and deploy/update-prod.sh refuses to ship anything
+  // that is not already origin/main with CI green. Skipping it inside the image
+  // build removes duplicated work, not a gate — and only the Dockerfile sets
+  // this variable, so local and CI builds still type-check.
+  typescript: { ignoreBuildErrors: process.env.DOCKER_BUILD_SKIP_TYPECHECK === "1" },
   serverExternalPackages: ["@prisma/client", ".prisma/client"],
   experimental: {
     // Large xlsx imports — enterprise reporting packs reach 26MB+ (mostly
