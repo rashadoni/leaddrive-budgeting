@@ -133,6 +133,24 @@ describe('buildSystemPrompt (D.5c — language pipe-through)', () => {
     expect(buildSystemPrompt('en')).toContain('IN ENGLISH');
   });
 
+  // 2026-08-04 — companyTags used to appear only in the schema block, with no
+  // rule for when to fill it. Production showed the result: 8 of 12 items with
+  // no company tag and the rest tagged with the holding code, so most of the
+  // feed could not move any risk score. These assertions pin the intent, not
+  // the wording of any one sentence.
+  it('tells the model how to fill companyTags, in every language', () => {
+    for (const lang of ['en', 'ru', 'az'] as const) {
+      const p = buildSystemPrompt(lang);
+      // Only real codes, exactly as supplied.
+      expect(p).toContain('Active company codes');
+      expect(p).toMatch(/Never invent a code/i);
+      // Specificity beats the parent.
+      expect(p).toMatch(/MOST SPECIFIC/i);
+      // An empty array is a valid, correct answer.
+      expect(p).toMatch(/Leave the array EMPTY/i);
+    }
+  });
+
   it('language="ru" → Russian instruction (preserves company names)', () => {
     const p = buildSystemPrompt('ru');
     expect(p).toContain('IN RUSSIAN');

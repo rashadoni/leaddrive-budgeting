@@ -41,8 +41,16 @@ import {
  *  v1 = initial Phase D.2 ship.
  *  v2 = Phase 7.G Turn LXXXXIII (D.5c) — language parameter added.
  *  v3 = Phase 7.K Phase 4 — sector-specific tag list + search heuristics
- *       for all 14 holding sectors (was AzerSheker-only). */
-export const INTEL_PROMPT_VERSION = 'v3';
+ *       for all 14 holding sectors (was AzerSheker-only).
+ *  v4 = 2026-08-04 — explicit companyTags rules. Until now the field appeared
+ *       only in the schema block with no instruction on when to fill it, and
+ *       the model behaved accordingly: on production 8 of 12 items carried no
+ *       company tag at all and the other 4 were tagged with the holding code
+ *       rather than an operating company. Since companyTags is what decides
+ *       whose risk score an item can move, that made most of the feed inert.
+ *       The rules ask for the most specific supported code and explicitly bless
+ *       an empty array, because a wrong tag moves the wrong company's score. */
+export const INTEL_PROMPT_VERSION = 'v4';
 
 /** Per-crawl item cap. The model is instructed to return ≤10; this is
  *  a safety belt against runaway responses. */
@@ -115,6 +123,12 @@ Hard constraints:
   - Each item's \`url\` MUST be a real, parseable URL from the search results — never invented.
   - Each item's \`summary\` MUST be ≤200 characters.
   - \`relevanceScore\` is honest: 1.0 = directly names a listed company; 0.7 = sector + region match; 0.4 = sector only; below 0.3 = drop the item.
+  - \`companyTags\` decides which company's risk score this item can move, so tag deliberately:
+    * Use codes from the "Active company codes" list EXACTLY as written. Never invent a code, never abbreviate one.
+    * Prefer the MOST SPECIFIC code the article supports. If it names a subsidiary, its plant, its brand or its management, tag that subsidiary — not the parent.
+    * Tag the parent/holding code only for news that genuinely concerns the group as a whole, or when the article names the group without identifying a subsidiary.
+    * Multiple codes are fine when the article really covers several of them.
+    * Leave the array EMPTY when the item is only sector or country news. An empty array is the correct answer here — a wrong tag moves the wrong company's risk score, which is worse than no tag at all.
   - Output is JSON-only. No markdown fences, no commentary, no apology.
 ${LANGUAGE_OUTPUT_INSTRUCTIONS[language]}
   - Schema (use EXACTLY these field names):
