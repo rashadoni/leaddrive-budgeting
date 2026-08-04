@@ -216,6 +216,60 @@ describe('Cash Flow help-video scenario', () => {
     ]);
   });
 
+  /**
+   * 2026-08-04 — `h.goto` moves a page load under the OUTGOING narration so a
+   * multi-screen scenario stops collecting a dead pause per screen. It is a
+   * plain GET and cannot write, but it is still a way for a scenario to reach a
+   * screen nobody reviewed, so the destinations are pinned like the clicks are.
+   */
+  it('pins every in-scene navigation to a reviewed read-only screen', async () => {
+    const url = pathToFileURL(
+      resolve(process.cwd(), 'video/scenarios/overrides.mjs'),
+    ).href;
+    const module = (await import(url)) as {
+      default: Record<string, GuideScenario>;
+    };
+    const actions = Object.values(module.default)
+      .flatMap((scenario) => scenario.scenes)
+      .map((scene) => scene.do.toString())
+      .join('\n');
+    const routes = Array.from(
+      actions.matchAll(/h\.goto\(["']([^"']+)["']\)/g),
+    ).map((match) => match[1]);
+
+    // data-control walks eight admin screens in one take; each hop is performed
+    // by the scene that is still speaking, in the order the narration names them.
+    expect(routes).toEqual([
+      '/budgeting/admin/indicator-backlog',
+      '/budgeting/admin/indicator-health',
+      '/budgeting/admin/statement-controls',
+      '/budgeting/admin/ifrs-conformance',
+      '/budgeting/admin/compliance',
+      '/budgeting/admin/drift',
+      '/budgeting/admin/intel-health',
+      '/budgeting/admin/companies-readiness',
+    ]);
+
+    // Every destination is a GET-only admin report. Nothing here may reach the
+    // importer, the deletion screen, or anything outside the app.
+    for (const route of routes) {
+      expect(route.startsWith('/budgeting/admin/')).toBe(true);
+      expect(route).not.toMatch(/ai-import|delete-data|api\//);
+    }
+
+    // And the helper itself refuses anything that is not an in-app path, so a
+    // scenario can never navigate the recorder off to an external host.
+    const producer = readFileSync(
+      resolve(process.cwd(), 'scripts/produce-guides.mjs'),
+      'utf8',
+    );
+    const helper = producer.slice(
+      producer.indexOf('async goto(route)'),
+      producer.indexOf('async moveTo(sel)'),
+    );
+    expect(helper).toContain('route.startsWith("/")');
+  });
+
   it('pins every MUTATING click and keeps it off prod', async () => {
     // A guide to the importer that never imports teaches nothing, so the
     // ai-import scenario really does press Analyze and Apply. Those are writes
