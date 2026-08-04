@@ -3591,6 +3591,7 @@
       "selectLeft": "Soldan ssenari seç",
       "noneAvailable": "Əlçatan ssenari yoxdur",
       "codePeriod": "{code} · dövr: {period}",
+      "noComputedValues": "{period} üçün hesablanmış dəyər yoxdur — əvvəlcə bu dövr üçün yenidən hesablama aparın.",
       "activeParams": "Aktiv:",
       "crisisSlowHint": "Hesablanır… (yüksək yük — adətən olduğundan uzun çəkə bilər)",
       "crisisTimeout": "Simulyasiya vaxt aşımına uğradı — çox güman yüksək yük. Yenidən cəhd edin.",

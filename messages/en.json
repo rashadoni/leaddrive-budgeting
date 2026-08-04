@@ -3591,6 +3591,7 @@
       "selectLeft": "Pick a scenario on the left",
       "noneAvailable": "No scenarios available",
       "codePeriod": "{code} · period: {period}",
+      "noComputedValues": "No computed values for {period} — run a recompute for this period first.",
       "activeParams": "Active:",
       "crisisSlowHint": "Still computing… (high load — this can take longer than usual)",
       "crisisTimeout": "The simulation timed out — likely high load. Please try again.",
