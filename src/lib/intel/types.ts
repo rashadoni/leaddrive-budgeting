@@ -37,6 +37,11 @@ export interface IntelCrawlResult {
   /** Dedup hits — URL hash matched an existing IntelItem within the
    *  7-day window. */
   itemsSkipped: number;
+  /** Items the model returned that were dropped at ingest for being older
+   *  than the recency cap. Not an error — the model over-reached and the
+   *  backstop caught it — but silent filtering is how a feed quietly becomes
+   *  empty, so the count is reported. */
+  itemsStale?: number;
   /** Per-stage error messages (LLM failure, parse failure, write
    *  failure). Empty array on a clean run. */
   errors: string[];

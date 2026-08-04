@@ -547,29 +547,103 @@ export function createPrismaDataSource(
       // human-readable code (e.g. "AAC"), not the cuid id.
       const co = await prisma.company.findFirst({
         where: { id: companyId, organizationId },
-        select: { code: true },
+        select: { code: true, parentCompanyId: true },
       });
       if (!co?.code) return null;
 
-      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      // PostgreSQL array-contains via `has` (Prisma operator); partial
-      // index `intel_items_sentiment_lookup_idx` (WHERE sentimentScore IS
-      // NOT NULL) speeds the date-bound scan.
+      // 2026-08-04 — a holding-level tag now counts for its subsidiaries.
+      //
+      // The crawler tags portfolio news with the code it recognises, which for
+      // this holding is the parent ("AZSEKER"). The indicator, meanwhile, is
+      // defined on the operating companies ("AZSEKER-AZSF", "-CPC", …). With an
+      // exact-code lookup the two never met: on production every one of the six
+      // subsidiaries carried IND_NEWS_SENTIMENT_30D as `unknown` — 204 values,
+      // all zero — while a perfectly good feed sat one table away.
+      //
+      // Walked over the real `parentCompanyId` chain rather than by string
+      // prefix. The codes happen to share one today; that is a naming habit,
+      // not a guarantee, and a rename would silently switch the feature off
+      // again. The visited-set and the hop cap keep a cyclic or corrupted chain
+      // from spinning here.
+      //
+      // Deliberate consequence: news tagged only at holding level yields the
+      // SAME sentiment for every subsidiary, so this indicator will not
+      // differentiate between them until the crawler tags entities directly.
+      // That is still strictly better than every company reading `unknown`.
+      const MAX_ANCESTOR_HOPS = 10;
+      const codes = [co.code];
+      const visited = new Set<string>([companyId]);
+      let parentId = co.parentCompanyId;
+      for (let hop = 0; parentId && hop < MAX_ANCESTOR_HOPS; hop += 1) {
+        if (visited.has(parentId)) break;
+        visited.add(parentId);
+        const parent: { code: string; parentCompanyId: string | null } | null =
+          await prisma.company.findFirst({
+            where: { id: parentId, organizationId },
+            select: { code: true, parentCompanyId: true },
+          });
+        if (!parent?.code) break;
+        codes.push(parent.code);
+        parentId = parent.parentCompanyId;
+      }
+
+      const now = Date.now();
+      const cutoff = new Date(now - 30 * 24 * 60 * 60 * 1000);
+      // PostgreSQL array-overlap via `hasSome`; partial index
+      // `intel_items_sentiment_lookup_idx` (WHERE sentimentScore IS NOT NULL)
+      // still speeds the date-bound scan.
       const rows = await prisma.intelItem.findMany({
         where: {
           organizationId,
-          companyTags: { has: co.code },
+          companyTags: { hasSome: codes },
           fetchedAt: { gte: cutoff },
           sentimentScore: { not: null },
         },
-        select: { sentimentScore: true },
+        select: { sentimentScore: true, relevanceScore: true, publishedAt: true, fetchedAt: true },
       });
       if (rows.length === 0) return null;
-      const sum = rows.reduce(
-        (acc, r) => acc + (r.sentimentScore ?? 0),
-        0,
-      );
-      return sum / rows.length;
+
+      // 2026-08-04 — weighted, decaying mean. Was a flat average, which had two
+      // problems visible on production data:
+      //
+      //   • `relevanceScore` did not enter the number at all. It is the most
+      //     prominent figure in the Intel feed UI, and an item scored 1.00
+      //     ("directly names a listed company") counted exactly as much as one
+      //     scored 0.50 ("sector only").
+      //   • No decay. An item weighed the same on day 29 as on day 1 and then
+      //     dropped out entirely on day 30, so the indicator moved in steps
+      //     that had nothing to do with events.
+      //
+      // Two clocks, deliberately. The QUERY window stays on `fetchedAt` — it
+      // bounds the scan and answers "what is in our information environment".
+      // The DECAY runs on `publishedAt` (falling back to `fetchedAt` when the
+      // source had no parseable date), because the age that matters for
+      // sentiment is when the thing happened, not when we noticed it. On
+      // production this is not academic: every item was fetched the same day
+      // but published across four months, so decaying on `fetchedAt` would
+      // have called a March article fresh.
+      const HALF_LIFE_DAYS = 14;
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      // Below this the sample is stale or irrelevant enough that reporting a
+      // number would dress up nothing as a signal — say `unknown` instead.
+      const MIN_TOTAL_WEIGHT = 0.05;
+
+      let weighted = 0;
+      let totalWeight = 0;
+      for (const r of rows) {
+        const asOf = r.publishedAt ?? r.fetchedAt;
+        const ageDays = Math.max(0, (now - new Date(asOf).getTime()) / DAY_MS);
+        // relevanceScore is 0..1 and honest by construction (the crawler is
+        // told to drop anything below 0.3), so it is used as the weight
+        // directly rather than rescaled.
+        const relevance = Number.isFinite(r.relevanceScore) ? r.relevanceScore : 0;
+        const weight = relevance * Math.pow(0.5, ageDays / HALF_LIFE_DAYS);
+        if (!(weight > 0)) continue;
+        weighted += (r.sentimentScore ?? 0) * weight;
+        totalWeight += weight;
+      }
+      if (totalWeight < MIN_TOTAL_WEIGHT) return null;
+      return weighted / totalWeight;
     },
 
     async getIndicatorDisclosure({
