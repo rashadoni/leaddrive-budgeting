@@ -26,12 +26,13 @@ export interface HelpVideoEntry {
 }
 
 const HELP_VIDEO_BASE_PATH = process.env.NEXT_PUBLIC_HELP_VIDEO_BASE_URL ?? "/api/help-videos"
-const HELP_VIDEO_ASSET_VERSION = "20260804-ai-import"
+const HELP_VIDEO_ASSET_VERSION = "20260804-indicator-backlog"
 const HELP_VIDEO_BLOCKED_LOCAL_TTS_SLUGS = new Set<string>()
 
 const HELP_VIDEO_ENTRIES_RAW = [
   { slug: "statement-controls", routes: ["/budgeting/admin/statement-controls"] },
   { slug: "ai-import", routes: ["/budgeting/admin/ai-import"] },
+  { slug: "indicator-backlog", routes: ["/budgeting/admin/indicator-backlog"] },
 ] as const satisfies readonly HelpVideoEntry[]
 
 export const HELP_VIDEO_ENTRIES: readonly HelpVideoEntry[] = HELP_VIDEO_ENTRIES_RAW
@@ -48,6 +49,9 @@ const HELP_VIDEO_TITLE_OVERRIDES: Record<string, string> = {
   // Without an override this renders "Ai Import"; the page itself is titled
   // Data İmportu / Data Import / Импорт данных.
   "ai-import": "Data Import",
+  // Without an override this renders "Indicator Backlog" — which is the English
+  // page title anyway, but pin it so the card never drifts from the page.
+  "indicator-backlog": "Indicator Backlog",
 }
 
 function versionHelpVideoAsset(src: string) {

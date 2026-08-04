@@ -199,6 +199,13 @@ describe('Cash Flow help-video scenario', () => {
       'AI_TAB_SINGLE',
       'AI_TAB_MULTI',
       'RUN_BTN',
+      // indicator-backlog: an owner chip and the hide-complete toggle, each
+      // clicked on and then off again. Both only re-filter an already rendered
+      // list — the page issues one GET and has no control that writes.
+      'IB_OWNER_UNKNOWN',
+      'IB_HIDE_COMPLETE',
+      'IB_HIDE_COMPLETE',
+      'IB_OWNER_UNKNOWN',
     ]);
   });
 
