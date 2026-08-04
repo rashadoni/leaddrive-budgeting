@@ -39,7 +39,13 @@ export function ImportDataResetPanel() {
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t("body")}</p>
         </div>
+        {/* 2026-08-04 — the CTA had no test id of its own; only the <section>
+            wrapper carried one, so anything targeting `ai-import-guide-reset`
+            clicked the panel's empty centre and never navigated. Found while
+            extending the import guide: the click reported success and the URL
+            never changed. */}
         <Link
+          data-testid="ai-import-guide-reset-cta"
           href="/budgeting/admin/data-archive"
           className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded border border-border bg-background px-3 text-xs font-medium hover:bg-muted"
         >

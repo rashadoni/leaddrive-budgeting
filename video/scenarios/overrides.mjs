@@ -110,6 +110,19 @@ const AI_TAB_SINGLE = '[data-testid="tab-single"]';
 const AI_TAB_UNIVERSAL = '[data-testid="tab-universal"]';
 const AI_TAB_MULTISHEET = '[data-testid="tab-multisheet"]';
 const AI_YEAR = '[data-testid="multi-year"]';
+// 2026-08-04 — the guarded delete flow, added so the guide SHOWS a clearing
+// instead of only saying one exists. Every id below is on the real control,
+// harvested from `src/features/admin/components/delete-data/`.
+const AI_RESET_CTA = '[data-testid="ai-import-guide-reset-cta"]';
+const DD_TASK_CHOOSER = '[data-testid="task-chooser"]';
+const DD_COMPANY_PICKER = '[data-testid="company-picker"]';
+const DD_WHAT_PICKER = '[data-testid="what-picker"]';
+const DD_YEAR_CHIPS = '[data-testid="year-chips"]';
+const DD_CHECK = '[data-testid="check-button"]';
+const DD_BLAST_RADIUS = '[data-testid="blast-radius"]';
+const DD_CONFIRM_STRIP = '[data-testid="confirm-strip"]';
+const DD_CONFIRM_SUBMIT = '[data-testid="confirm-submit"]';
+const DD_RUN_DONE = '[data-testid="run-result-done"]';
 const AI_DROP = '[data-testid="multi-drop-zone"]';
 const AI_FILE_INPUT = '[data-testid="multi-file-input"]';
 const AI_FILE_ROW = ['[data-testid="file-row-0"]', AI_DROP];
@@ -1488,6 +1501,61 @@ export default {
           await h.holdUntil(0.55);
           await h.hover(AI_CLEANUP);
           await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "İndi silməni göstərək ki, onun necə qorunduğu görünsün. Ekran addım-addım gedir: nə etmək istədiyiniz, hansı şirkət, hansı məlumat və hansı illər. Heç bir addım atlanmır və heç nə susmaqla seçilmir. Bu, təsadüfən yanlış şeyi silməyi çətinləşdirmək üçün belə qurulub.",
+          en: "Now let us show a deletion, so you can see how it is guarded. The screen walks you through it: what you want to do, which company, which data and which years. No step is skipped and nothing is chosen for you by default. It is built this way to make deleting the wrong thing by accident hard.",
+          ru: "Теперь покажем удаление, чтобы было видно, как оно защищено. Экран ведёт по шагам: что вы хотите сделать, какая компания, какие данные и какие годы. Ни один шаг не пропускается, и ничего не выбирается за вас по умолчанию. Так сделано, чтобы случайно удалить не то было трудно.",
+        },
+        do: async (p, l, h) => {
+          // A <Link> to /budgeting/admin/data-archive — a GET navigation, which
+          // is what safeClick is for. A plain click would hover under READONLY
+          // and the page would never move.
+          await h.safeClick(AI_RESET_CTA);
+          await p.waitForSelector(DD_TASK_CHOOSER, { timeout: 20000 });
+          await h.holdUntil(0.4);
+          await h.hover(DD_TASK_CHOOSER);
+          await h.holdUntil(0.65);
+          await h.moveTo(DD_COMPANY_PICKER);
+          await h.holdUntil(0.85);
+          await h.moveTo(DD_WHAT_PICKER);
+        },
+      },
+      {
+        voice: {
+          az: "Ən vacib düymə buradadır — «Yoxla». O, heç nə silmir. O, silinəcəyin dəqiq siyahısını verir: neçə sətir, hansı illər, hansı şirkət, nəyi geri qaytarmaq mümkün olacaq və nəyi yox. Bunu oxumadan təsdiq etməyin — sistem zərəri əvvəlcədən göstərir, çünki sonra göstərmək gecdir.",
+          en: "The most important button is here — Check. It deletes nothing. It hands you the exact list of what would go: how many rows, which years, which company, what could be brought back and what could not. Do not confirm without reading it — the system shows you the damage in advance, because showing it afterwards is too late.",
+          ru: "Самая важная кнопка здесь — «Проверить». Она ничего не удаляет. Она отдаёт точный список того, что уйдёт: сколько строк, какие годы, какая компания, что можно будет вернуть, а что нет. Не подтверждайте, не прочитав: система показывает ущерб заранее, потому что показывать его потом уже поздно.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(DD_YEAR_CHIPS);
+          await h.holdUntil(0.25);
+          await h.mutatingClick(DD_CHECK);
+          await p.waitForSelector(DD_BLAST_RADIUS, { timeout: 30000 });
+          await h.holdUntil(0.6);
+          await h.hover(DD_BLAST_RADIUS);
+          await h.holdUntil(0.9);
+        },
+      },
+      {
+        voice: {
+          az: "Təsdiq ayrıca addımdır və o da avtomatik deyil: sistem sizdən niyyəti bir daha soruşur. Ondan sonra nəticə göstərilir — nə silindi, hansı əhatədə və neçə sətir, yəni hesabat qalır. İndi məlumat yoxdur və ekran boşdur. Bunu bilərəkdən göstəririk, çünki növbəti addımdan sonra rəqəmlərin həqiqətən fayldan gəldiyi şübhəsiz olacaq.",
+          en: "The confirmation is a separate step, and it is not automatic either. After it the result is shown: what was deleted and how many rows. The data is gone now — we show that on purpose, because after the next step there will be no doubt that the numbers really came from the file.",
+          ru: "Подтверждение — отдельный шаг, и оно тоже не автоматическое. После него показывается результат: что удалено и сколько строк. Сейчас данных нет — мы показываем это намеренно, потому что после следующего шага не останется сомнений, что цифры действительно пришли из файла.",
+        },
+        do: async (p, l, h) => {
+          await h.hover(DD_CONFIRM_STRIP);
+          await h.holdUntil(0.3);
+          await h.mutatingClick(DD_CONFIRM_SUBMIT);
+          await p.waitForSelector(DD_RUN_DONE, { timeout: 60000 });
+          await h.holdUntil(0.7);
+          await h.hover(DD_RUN_DONE);
+          await h.holdUntil(0.9);
+          // Back to the import screen for the rest of the guide.
+          await p.goto(new URL("/budgeting/admin/ai-import", p.url()).href, { waitUntil: "domcontentloaded" });
+          await p.waitForSelector(AI_TABS, { timeout: 20000 });
         },
       },
       {
