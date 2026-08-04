@@ -293,6 +293,25 @@ Disable without deleting the unit files:
 sudo systemctl disable --now budgetpro-refresh-feeds.timer
 ```
 
+**State on this host (2026-08-04).** The units were not installed at all until
+today, so the 06:00 UTC refresh had never run here. They are now installed and
+the timer is enabled — but note the canary gate could not pass and was
+bypassed: the run reports `degraded` (9 of 12 sources; `eia-energy` and
+`usda-nass` skipped for `api_key_missing`, `google-trends-az` disabled as
+paid), and the route answers 502 on a degraded run. It still writes ~200 points
+and recomputes cleanly, which is why enabling it was judged better than leaving
+the feeds frozen.
+
+Two consequences until an EIA/USDA key lands:
+- the page under **Admin → Tapşırıq növbəsi** shows this job with
+  `runStatus=degraded` and its error count — that is the intended surface for
+  it, not something to silence;
+- because the service exits non-zero, `Restart=on-failure` (RestartSec 15min,
+  StartLimitBurst 3) will retry, so expect ~3 ingest+recompute passes per day
+  rather than one. Adding a key, or deciding that a partially-configured run is
+  not a failure, both fix that; disabling the retry alone would also hide real
+  transient failures.
+
 ### Soft-delete purge timer (2026-08-04)
 
 Phase 1.4 shipped the 30-day physical purge as a BullMQ job and the ROADMAP
