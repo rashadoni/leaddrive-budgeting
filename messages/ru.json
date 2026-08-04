@@ -4455,6 +4455,8 @@
     "refresh": "обновить",
     "loading": "Загрузка…",
     "emptyState": "Нет задач в статусе <strong>{stateName}</strong>.",
+    "inprocessNotice": "Бэкенд BullMQ выключен (QUEUE_BACKEND=inprocess) — пересчёты и импорты выполняются внутри процесса приложения, а не через очередь. Здесь нечего показывать, пока BullMQ не включён и не развёрнуты Redis и воркер-процесс.",
+    "unavailable": "Бэкенд очереди недоступен — BullMQ включён, но Redis не отвечает.",
     "state": {
       "active": "активные",
       "waiting": "ожидание",
