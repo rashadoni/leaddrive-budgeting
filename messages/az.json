@@ -2446,6 +2446,7 @@
       "loading": "Snapshot yüklənir…",
       "error": "Snapshot xətası",
       "companyNotInMatrix": "Şirkət cari matrisdə yoxdur:",
+      "holdingScopesMatrix": "holdinq şirkətidir — matrisdə onun {count} əməliyyat şirkəti göstərilir. Açmaq üçün istənilən xanaya klikləyin.",
       "scoreLabel": "Bal",
       "noPlIndicators": "P&L margin göstəriciləri əlçatan deyil:",
       "indicators": "göstərici",
