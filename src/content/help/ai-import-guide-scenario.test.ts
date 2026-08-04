@@ -75,9 +75,16 @@ describe("AI Import help-video scenario", () => {
   it("drives the real import, and only through explicitly named writes", () => {
     const actions = aiImport.scenes.map((scene) => scene.do.toString()).join("\n")
 
-    expect(actions.match(/h\.mutatingClick\(/g)).toHaveLength(4)
+    // 2026-08-04 — the guide reaches the deletion's dry check and stops there.
+    // Confirming would mean filming a step-by-step walkthrough of the most
+    // destructive operation in the product: the button unlocks only after a
+    // typed reason, a hand-copied confirmation code, a per-line acknowledgement
+    // of everything irreversible, and an arming countdown. Showing that the
+    // guard exists is useful; walking a viewer through it is a different genre.
+    // Owner's decision.
+    expect(actions.match(/h\.mutatingClick\(/g)).toHaveLength(3)
     expect(actions).toContain("h.mutatingClick(DD_CHECK)")
-    expect(actions).toContain("h.mutatingClick(DD_CONFIRM_SUBMIT)")
+    expect(actions).not.toContain("DD_CONFIRM_SUBMIT")
     expect(actions).toContain("h.mutatingClick(AI_ANALYZE)")
     expect(actions).toContain("h.mutatingClick(AI_APPLY)")
 
@@ -187,13 +194,19 @@ describe("AI Import help-video scenario", () => {
    * is the deletion. A guide that confirmed first would be teaching the habit
    * this screen was built to prevent.
    */
-  it("never confirms a deletion before the dry check has run", () => {
+  // 2026-08-04 — this used to assert an ORDER: dry check before confirmation.
+  // The guide no longer confirms at all, so the invariant is now stronger and
+  // simpler to state: the dry check runs, and the deletion is never performed.
+  // Confirming would have meant filming the reason field, the hand-copied
+  // confirmation code, the per-line acknowledgements and the arming countdown —
+  // a complete walkthrough of the most destructive operation in the product.
+  // Owner chose to show the guard rather than pass through it.
+  it("runs the dry check and never confirms the deletion", () => {
     const flat = aiImport.scenes.map((scene) => scene.do.toString()).join("\n")
-    const checkAt = flat.indexOf("h.mutatingClick(DD_CHECK)")
-    const confirmAt = flat.indexOf("h.mutatingClick(DD_CONFIRM_SUBMIT)")
-    expect(checkAt, "the dry check is never clicked").toBeGreaterThan(-1)
-    expect(confirmAt, "the deletion is never confirmed").toBeGreaterThan(-1)
-    expect(checkAt).toBeLessThan(confirmAt)
+    expect(flat.indexOf("h.mutatingClick(DD_CHECK)"), "the dry check is never clicked").toBeGreaterThan(-1)
+    expect(flat).not.toContain("DD_CONFIRM_SUBMIT")
+    // And nothing else may quietly take its place.
+    expect(flat).not.toMatch(/confirm-submit/i)
   })
 
   it("clears before it loads, not after", () => {

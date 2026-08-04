@@ -241,8 +241,10 @@ describe('Cash Flow help-video scenario', () => {
     // DD_CHECK computes the blast radius and deletes nothing, DD_CONFIRM_SUBMIT
     // is the deletion itself and can only follow it.
     expect(mutatingTargets).toEqual([
+      // The deletion's dry check computes the blast radius and deletes nothing.
+      // The confirmation itself is deliberately NOT in this list — see the note
+      // in ai-import-guide-scenario.test.ts.
       'DD_CHECK',
-      'DD_CONFIRM_SUBMIT',
       'AI_ANALYZE',
       'AI_APPLY',
     ]);

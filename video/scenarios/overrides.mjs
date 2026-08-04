@@ -1807,21 +1807,24 @@ export default {
       },
       {
         voice: {
-          az: "Təsdiq ayrıca addımdır və o da avtomatik deyil: sistem sizdən niyyəti bir daha soruşur. Ondan sonra nəticə göstərilir — nə silindi, hansı əhatədə və neçə sətir, yəni hesabat qalır. İndi məlumat yoxdur və ekran boşdur. Bunu bilərəkdən göstəririk, çünki növbəti addımdan sonra rəqəmlərin həqiqətən fayldan gəldiyi şübhəsiz olacaq.",
-          en: "The confirmation is a separate step, and it is not automatic either. After it the result is shown: what was deleted and how many rows. The data is gone now — we show that on purpose, because after the next step there will be no doubt that the numbers really came from the file.",
-          ru: "Подтверждение — отдельный шаг, и оно тоже не автоматическое. После него показывается результат: что удалено и сколько строк. Сейчас данных нет — мы показываем это намеренно, потому что после следующего шага не останется сомнений, что цифры действительно пришли из файла.",
+          az: "Təsdiq ayrıca addımdır və qəsdən çətindir: səbəb yazmalı, ekrandakı təsdiq kodunu əl ilə köçürməli, geri qaytarılmayan hər sətri ayrıca qəbul etməli və hazırlıq sayğacını gözləməlisiniz. Dördü də tamamlanmayana qədər düymə işləmir. Bu təlim burada dayanır və təsdiqi basmır: məqsəd qoruyucunun necə göründüyünü göstərmək, onu keçməyi öyrətmək deyil.",
+          en: "Confirmation is a separate step and deliberately awkward: you type a reason, copy the confirmation code shown on screen by hand, acknowledge every irreversible line on its own, and wait out an arming countdown. Until all four are done the button stays dead. This guide stops here and does not press it: the point is to show you what the guard looks like, not to teach you through it.",
+          ru: "Подтверждение — отдельный шаг, и он намеренно неудобный: нужно написать причину, вручную переписать код подтверждения с экрана, отдельно принять каждую безвозвратную строку и дождаться отсчёта готовности. Пока не выполнены все четыре условия, кнопка не работает. Этот гайд здесь останавливается и не нажимает её: задача — показать, как выглядит защита, а не провести через неё.",
         },
         do: async (p, l, h) => {
+          // 2026-08-04 — сознательно НЕ подтверждаем. Кнопка заблокирована до
+          // тех пор, пока не введены причина и точный код подтверждения, не
+          // отмечены безвозвратные строки и не истёк отсчёт. Пройти этот
+          // заслон на камеру технически можно, но тогда получится пошаговое
+          // руководство по самой разрушительной операции продукта. Показываем,
+          // что защита есть и из чего состоит; проходить её зритель будет сам,
+          // осознанно. Решение владельца, 2026-08-04.
           await h.hover(DD_CONFIRM_STRIP);
-          await h.holdUntil(0.3);
-          await h.mutatingClick(DD_CONFIRM_SUBMIT);
-          await p.waitForSelector(DD_RUN_DONE, { timeout: 60000 });
-          await h.holdUntil(0.7);
-          await h.hover(DD_RUN_DONE);
-          // 2026-08-04 — возврат на экран импорта стоит ДО последнего holdUntil.
-          // Навигация занимает секунды; если она идёт после того, как фраза почти
-          // закончилась, сцена переваливает за свою озвучку и между сценами
-          // повисает тишина. Здесь загрузка перекрывается хвостом фразы.
+          await h.holdUntil(0.45);
+          await h.moveTo(DD_BLAST_RADIUS);
+          // Возврат на экран импорта идёт ДО последнего holdUntil: навигация
+          // занимает секунды, и после почти закончившейся фразы она оставила бы
+          // между сценами тишину.
           await h.holdUntil(0.72);
           await p.goto(new URL("/budgeting/admin/ai-import", p.url()).href, { waitUntil: "domcontentloaded" });
           await p.waitForSelector(AI_TABS, { timeout: 20000 });
