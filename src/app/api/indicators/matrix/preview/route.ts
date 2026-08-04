@@ -376,7 +376,12 @@ export async function POST(request: NextRequest) {
           scenarioOverrides: overrides,
         })
         const baseline = baselineByKey.get(`${co.id}:${ind.id}`) ?? null
-        const baselineValue = baseline?.value ?? null
+        // 2026-08-04 audit — the line below guards `scenarioValue` on exactly
+        // this condition; the baseline did not, so a shock appeared to move an
+        // indicator from a measured 0 to its new level, inventing a delta out
+        // of an absence of data.
+        const baselineValue =
+          baseline && baseline.status !== 'unknown' ? baseline.value ?? null : null
         const scenarioValue = r.status === 'unknown' ? null : r.value
         let deltaPct: number | null = null
         if (

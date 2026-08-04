@@ -397,7 +397,7 @@ export function ScenarioPanel() {
     setSimState({ kind: "loading" });
     try {
       const res = await fetch(
-        `/api/scenarios/${selectedScenario.id}/simulate?period=${period}`,
+        `/api/scenarios/${selectedScenario.id}/simulate?period=${period}&narrative=1`,
       );
       if (res.status === 422) {
         setSimState({ kind: "unsupported" });

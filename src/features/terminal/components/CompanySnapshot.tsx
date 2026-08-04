@@ -53,7 +53,7 @@ import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 // composite-score.ts + MatrixCompanyRow/MatrixIndicatorCol from the
 // hook). Local `'missing'` literal was a UI fiction — endpoint emits
 // only 4 IndicatorStatus values (green/amber/red/unknown).
-import { isAggregateRollup, statusShape, type HeatMapCell } from "@/lib/risk/heatmap-matrix";
+import { isAggregateRollup, statusShape, type HeatMapCell, hasEvidencedValue } from "@/lib/risk/heatmap-matrix";
 import type {
   MatrixCompanyRow as MatrixCompany,
   MatrixIndicatorCol as MatrixIndicator,
@@ -539,7 +539,12 @@ function SnapshotCard({
           {statusShape(status)}
         </span>
         <span className={`tabular-nums font-semibold text-sm ${statusColor}`}>
-          {cell ? formatValue(cell.value, indicator.unit) : "—"}
+          {/* 2026-08-04 audit — `cell` existing is not the same as the cell
+              carrying a figure. An unscored row exists and stores 0, so the
+              old check printed a fabricated 0 on a margin card. */}
+          {hasEvidencedValue(status, cell?.value)
+            ? formatValue(cell!.value, indicator.unit)
+            : "—"}
         </span>
       </div>
       {/* L133 closure (sub-36 architect 💡 from Round-32) — Sparkline now

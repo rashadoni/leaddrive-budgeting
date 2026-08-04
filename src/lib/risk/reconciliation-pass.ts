@@ -23,6 +23,7 @@
  * unchecked and say so.
  */
 
+import { hasEvidencedValue } from "./heatmap-matrix"
 import {
   reconcileAgainstStatement,
   reconcilableIndicatorCodes,
@@ -94,6 +95,7 @@ export interface ReconciliationDb {
         indicatorId: true
         period: true
         value: true
+        status: true
         reconStatus: true
         reconAcceptedDelta: true
       }
@@ -104,6 +106,7 @@ export interface ReconciliationDb {
         indicatorId: string
         period: string
         value: number
+        status?: string | null
         reconStatus?: string | null
         reconAcceptedDelta?: number | null
       }>
@@ -196,6 +199,8 @@ export async function reconcileImportedIndicators(
       indicatorId: true,
       period: true,
       value: true,
+      // 2026-08-04 audit — needed to tell a measurement from a stored 0.
+      status: true,
       // 13.7 — an acceptance is for a SPECIFIC gap; re-checking has to know
       // which one, or a moved number would keep somebody's old signature.
       reconStatus: true,
@@ -213,6 +218,24 @@ export async function reconcileImportedIndicators(
     const code = codeById.get(row.indicatorId)
     const stated = byCompany.get(row.companyId)
     if (!code || !stated) continue
+    // 2026-08-04 audit — an unscored row still stores a value, almost always
+    // 0. Reconciling it produced two opposite errors. A false alarm: a figure
+    // the classifier refused to score is compared against the workbook and
+    // written as `mismatched`, lighting a ≠ on a cell the HeatMap draws as
+    // "—". And worse, a false certification: a fabricated 0 whose statement
+    // figure is also 0 lands inside tolerance, is written `matched`, and
+    // stamps `lastReconciledAt` — the field the decision-grade gate reads as
+    // "checked against its source". A cell with no measurement is NOT
+    // CHECKED, which is exactly what the note below already says about a
+    // statement that cannot form the figure. Skipping here leaves the pair
+    // counted in `notChecked`, where it belongs.
+    // Only an EXPLICITLY unmeasured row is skipped. A row whose status the
+    // caller did not select is left to the old path on purpose: a guard that
+    // fired on absent metadata would silently turn this whole pass into a
+    // no-op, which is the same certification-by-silence in reverse.
+    if (row.status != null && !hasEvidencedValue(row.status as never, Number(row.value))) {
+      continue
+    }
     const [verdict]: IndicatorReconResult[] = reconcileAgainstStatement(
       [{ code, value: row.value }],
       stated,

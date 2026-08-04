@@ -87,7 +87,7 @@ describe('GET simulate ?mode=drivers', () => {
     })
     runCrisisBrief.mockResolvedValue({ narrative: '⚠ 45→31', mitigations: ['hedge'], confidence: 0.7, modelName: 'sonnet', promptVersion: 'v1' })
 
-    const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers&period=2026'), { params: Promise.resolve({ id: 's1' }) } as never)
+    const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers&period=2026&narrative=1'), { params: Promise.resolve({ id: 's1' }) } as never)
     const body = await res.json()
     expect(res.status).toBe(200)
     expect(body.holdingScenarioScore).toBe(31)
@@ -108,12 +108,36 @@ describe('GET simulate ?mode=drivers', () => {
     simulateByDrivers.mockResolvedValue({ scenarioCode: 'X', period: '2026', deltas: [], byCompany: [], holdingBaselineScore: 45, holdingScenarioScore: 31, changed: 0, worsened: 0, improved: 0, driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null } })
     runCrisisBrief.mockRejectedValue(new Error('LLM down'))
 
-    const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers'), { params: Promise.resolve({ id: 's1' }) } as never)
+    const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers&narrative=1'), { params: Promise.resolve({ id: 's1' }) } as never)
     const body = await res.json()
     expect(res.status).toBe(200)
     expect(body.holdingScenarioScore).toBe(31)
     expect(body.narrative).toBeNull()
     expect(body.narrativeError).toBeTruthy()
+  })
+
+  it('a GET with no narrative param spends nothing', async () => {
+    // 2026-08-04 audit. The gate read `!== '0'`, so ANY GET on this route —
+    // including one typed into a browser, replayed from a log, or hit by a
+    // crawler — fired a paid Anthropic call. Auth is requireAuth with no role
+    // floor and there was no rate limit, so a viewer could bill the org in a
+    // loop. The terminal states the opposite contract on screen: "LLM calls
+    // are user-triggered — never auto-fired." Opt-in is now the default, and
+    // ScenarioPanel asks for it explicitly.
+    findFirst.mockResolvedValue({ id: 's1', code: 'INPUT_COST_30', nameEn: 'x', overrides: { shock: { inputCostShock: 0.3 } } })
+    companyFindMany.mockResolvedValue([operationalCompany()])
+    indicatorFindMany.mockResolvedValue([{ id: 'i1', code: 'X', formula: 'x', thresholds: {}, requiredInputs: [], weight: 1 }])
+    ivFindMany.mockResolvedValue([{ companyId: 'c1', indicatorId: 'i1', value: 1, status: 'green', inputs: { resolved: { revenue: 1 } } }])
+    simulateByDrivers.mockResolvedValue({ scenarioCode: 'X', period: '2026', deltas: [], byCompany: [], holdingBaselineScore: 45, holdingScenarioScore: 31, changed: 0, worsened: 0, improved: 0, driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null } })
+    runCrisisBrief.mockResolvedValue({ narrative: 'should never be requested', mitigations: [], confidence: 0.5, modelName: 'x', promptVersion: 'v1' })
+
+    const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers&period=2026'), { params: Promise.resolve({ id: 's1' }) } as never)
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    // The simulation still runs — only the billed part is withheld.
+    expect(body.holdingScenarioScore).toBe(31)
+    expect(runCrisisBrief).not.toHaveBeenCalled()
+    expect(body.narrative).toBeNull()
   })
 
   it('?narrative=0 skips the AI call (fast cascade) + still returns worstHit', async () => {
@@ -138,7 +162,7 @@ describe('GET simulate ?mode=drivers', () => {
 
   it('422 when ?mode=drivers but scenario has no shock', async () => {
     findFirst.mockResolvedValue({ id: 's1', code: 'X', nameEn: 'x', overrides: { adjustments: [] } })
-    const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers'), { params: Promise.resolve({ id: 's1' }) } as never)
+    const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers&narrative=1'), { params: Promise.resolve({ id: 's1' }) } as never)
     expect(res.status).toBe(422)
   })
 
