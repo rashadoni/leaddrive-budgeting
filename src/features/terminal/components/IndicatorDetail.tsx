@@ -569,13 +569,19 @@ export function IndicatorDetail({
           three lines into this panel has already decided how to feel about the
           number; if it disagrees with their own paperwork, that has to arrive
           before the interpretation does. */}
+      {/* 2026-08-04 audit — the strip subtracts `value` from the statement
+          figure and prints "Platform 0.00 · Your statement 34.20 · Difference
+          −34.20" under a heading saying the two disagree. With no evidence
+          behind the cell there is nothing to disagree WITH, and the headline
+          two lines above now honestly reads "—", so the strip was contradicting
+          its own panel. Reconciliation of an unmeasured cell is "not checked". */}
       <StatementCheckStrip
-        reconStatus={detail.reconStatus}
+        reconStatus={evidenced ? detail.reconStatus : null}
         reconExpected={detail.reconExpected}
         reconCheckedAt={detail.reconCheckedAt}
         reconAcceptedBy={detail.reconAcceptedBy}
         reconAcceptedReason={detail.reconAcceptedReason}
-        value={detail.value}
+        value={evidenced ? detail.value : Number.NaN}
         unit={detail.indicator.unit ?? ''}
         t={t}
       />

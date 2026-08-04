@@ -16,6 +16,7 @@
  * for the canonical pattern).
  */
 
+import { hasEvidencedValue } from "@/lib/risk/heatmap-matrix";
 import {
   Document,
   Page,
@@ -453,7 +454,14 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
                         { color: STATUS_HEX[cell.status], fontWeight: "bold" },
                       ]}
                     >
-                      {formatVal(cell.value, ind.unit)}
+                      {/* 2026-08-04 audit — an unscored cell stores a value,
+                          almost always 0. This PDF goes to a board and outlives
+                          the session, and it was printing "0.0" where the live
+                          HeatMap prints "—". For a concentration or leverage
+                          indicator 0.0 is the best possible reading. */}
+                      {hasEvidencedValue(cell.status, cell.value)
+                        ? formatVal(cell.value, ind.unit)
+                        : "—"}
                     </Text>
                   );
                 })}
@@ -507,7 +515,11 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
                     <Text style={styles.perCoTableCellLabel}>
                       {DIRECTION_GLYPH[ind.direction]} {ind.code}
                     </Text>
-                    <Text style={styles.perCoTableCellValue}>{formatVal(cell.value, ind.unit)}</Text>
+                    <Text style={styles.perCoTableCellValue}>
+                      {hasEvidencedValue(cell.status, cell.value)
+                        ? formatVal(cell.value, ind.unit)
+                        : "—"}
+                    </Text>
                     {/* Was `cell.status.toUpperCase()` — printed GREEN /
                         AMBER / RED in every language while the legend page
                         of the same PDF said Sağlam / Diqqət / Kritik. */}

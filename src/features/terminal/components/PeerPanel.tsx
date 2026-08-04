@@ -17,6 +17,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
+import { hasEvidencedValue } from "@/lib/risk/heatmap-matrix";
 import { useTranslations, useLocale } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
@@ -84,8 +85,15 @@ export function PeerPanel() {
     const rows = matrix.indicators
       .map((ind) => {
         const cells = selectedCos.map((co) => cellByPair.get(`${co.id}_${ind.id}`));
+        // 2026-08-04 audit — the guard was Number.isFinite, and an unscored
+        // row's stored 0 IS finite. On a lower_better indicator (HHI, DSO,
+        // opex ratio) that 0 is the minimum, so the company with no data won
+        // the best-in-cohort slot in bold emerald with a ▲, and a company that
+        // had actually reported a figure was pushed into the ▼ worst slot.
+        // The inversion landed on the one screen whose entire purpose is
+        // ranking.
         const numericValues = cells
-          .map((c) => (c && Number.isFinite(c.value) ? c.value : null))
+          .map((c) => (hasEvidencedValue(c?.status, c?.value) ? c!.value : null))
           .filter((v): v is number => v !== null);
         if (numericValues.length === 0) return null;
         // Best/worst by direction
@@ -95,7 +103,7 @@ export function PeerPanel() {
           let bestV = ind.direction === "higher_better" ? -Infinity : Infinity;
           let worstV = ind.direction === "higher_better" ? Infinity : -Infinity;
           cells.forEach((c, i) => {
-            if (!c || !Number.isFinite(c.value)) return;
+            if (!c || !hasEvidencedValue(c.status, c.value)) return;
             if (ind.direction === "higher_better") {
               if (c.value > bestV) { bestV = c.value; bestIdx = i; }
               if (c.value < worstV) { worstV = c.value; worstIdx = i; }
@@ -173,7 +181,7 @@ export function PeerPanel() {
                         </span>
                       </td>
                       {row.cells.map((cell, i) => {
-                        if (!cell || !Number.isFinite(cell.value)) {
+                        if (!cell || !hasEvidencedValue(cell.status, cell.value)) {
                           return <td key={i} className="px-2 py-1 text-right text-muted-foreground/50">—</td>;
                         }
                         const isBest = i === row.bestIdx;

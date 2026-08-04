@@ -24,7 +24,7 @@ import { useMemo } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
 import { useTerminalStore } from "../store/terminalStore";
-import { statusShape } from "@/lib/risk/heatmap-matrix";
+import { statusShape, hasEvidencedValue } from "@/lib/risk/heatmap-matrix";
 import { NewsSummarySection } from "./NewsSummarySection";
 import { MorningBriefIntro } from "./MorningBriefIntro";
 import { MoversSection } from "./MoversSection";
@@ -153,10 +153,20 @@ export function detectBroadcastIndicators(
   const indCodeById = new Map(indicators.map((i) => [i.id, i.code]))
   const freq = new Map<string, Map<string, number>>()
   for (const cell of cells) {
-    if (cell.value == null || !Number.isFinite(cell.value)) continue
+    // 2026-08-04 audit — unscored rows all store the same 0, so they formed a
+    // fat "everyone reports this value" bucket. The detector treats such a
+    // bucket as a broadcast constant and suppresses it, taking genuine
+    // breaches that happen to share the bucket down with it.
+    if (cell.value == null || !Number.isFinite(Number(cell.value))) continue
+    // Skip only an EXPLICITLY unmeasured cell. Firing on an absent status
+    // would make the detector a no-op for every caller that does not pass one
+    // — silently disabling the suppression instead of correcting it.
+    if (cell.status != null && !hasEvidencedValue(cell.status as never, Number(cell.value))) {
+      continue
+    }
     const code = indCodeById.get(cell.indicatorId)
     if (!code) continue
-    const bucketKey = cell.value.toPrecision(6)
+    const bucketKey = Number(cell.value).toPrecision(6)
     if (!freq.has(code)) freq.set(code, new Map())
     const m = freq.get(code)!
     m.set(bucketKey, (m.get(bucketKey) ?? 0) + 1)

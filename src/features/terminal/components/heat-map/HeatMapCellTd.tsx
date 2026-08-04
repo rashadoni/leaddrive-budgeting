@@ -242,7 +242,9 @@ export function HeatMapCellTd({
   // hunted for.
   const statementMismatch = hasStatementMismatch(cell ?? {});
   const mismatchTitle =
-    statementMismatch && cell
+    // 2026-08-04 audit — this quoted `actual` and a delta for a cell this same
+    // component renders as "—" twelve lines further down.
+    statementMismatch && cell && hasEvidencedValue(status, cell.value)
       ? t('heatMap.statementMismatchTitle', {
           actual: formatValue(cell.value, ind.unit),
           expected: formatValue(cell.reconExpected ?? 0, ind.unit),
