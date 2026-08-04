@@ -44,6 +44,13 @@ const BANNER_DETAIL = ['[data-testid="statement-controls-shadow-banner"] p', BAN
 const COMPANY_SELECT_SEL = '[data-testid="statement-controls-company-select"]';
 const COMPANY_SELECT = [COMPANY_SELECT_SEL, "main select"];
 const RUN_BTN = '[data-testid="statement-controls-run"]';
+// 2026-08-04 — период обязателен для осмысленной записи. Он опционален в UI, но
+// без него контроли не находят отчётность и экран показывает пустое состояние
+// «əvvəlcə fayl idxal edin» — восемь сцен подряд под озвучку про карточки
+// баланса. Поймано просмотром кадров, silencedetect такое не видит.
+const PERIOD_INPUT = '[data-testid="statement-controls-period-input"]';
+/** Месяц, за который на стенде есть отчётность AZSEKER-AZSF. */
+const DEMO_PERIOD = process.env.GUIDE_SC_PERIOD || "2026-05";
 const RESULT = '[data-testid="statement-controls-result"]';
 const CARD_BS = ['[data-testid="statement-control-balance_sheet"]', "main"];
 const SIGN_CONV = ['[data-testid="statement-controls-sign-convention"]', "main"];
@@ -392,7 +399,12 @@ const selectCompany = async (p, h) => {
   const value = await p
     .$eval(COMPANY_SELECT_SEL, (el) => {
       const opts = [...el.options].filter((o) => o.value);
-      const hit = opts.find((o) => /azseker|azsf/i.test(o.textContent || "")) || opts[0];
+      // Именно операционная компания: у родительского «AZSEKER» отчётности нет,
+      // и раньше выбор падал на него первым — экран выходил пустым.
+      const hit =
+        opts.find((o) => /azsf/i.test(o.textContent || "")) ||
+        opts.find((o) => /azseker/i.test(o.textContent || "")) ||
+        opts[0];
       return hit ? hit.value : "";
     })
     .catch(() => "");
@@ -1788,10 +1800,14 @@ export default {
           await p.waitForSelector(DD_RUN_DONE, { timeout: 60000 });
           await h.holdUntil(0.7);
           await h.hover(DD_RUN_DONE);
-          await h.holdUntil(0.9);
-          // Back to the import screen for the rest of the guide.
+          // 2026-08-04 — возврат на экран импорта стоит ДО последнего holdUntil.
+          // Навигация занимает секунды; если она идёт после того, как фраза почти
+          // закончилась, сцена переваливает за свою озвучку и между сценами
+          // повисает тишина. Здесь загрузка перекрывается хвостом фразы.
+          await h.holdUntil(0.72);
           await p.goto(new URL("/budgeting/admin/ai-import", p.url()).href, { waitUntil: "domcontentloaded" });
           await p.waitForSelector(AI_TABS, { timeout: 20000 });
+          await h.holdUntil(0.92);
         },
       },
       {
@@ -2143,9 +2159,12 @@ export default {
           ru: "Запустим на практике. В выборе компании я беру AZSEKER — код A-Z-S-F. Контроли всегда работают с собственными импортированными отчётами одной компании, поэтому все цифры, которые вы сейчас увидите, — это реальные данные этой организации, ничего смоделированного.",
         },
         do: async (p, l, h) => {
-          await h.holdUntil(0.3);
+          await h.holdUntil(0.28);
           await selectCompany(p, h);
-          await h.holdUntil(0.75);
+          await h.holdUntil(0.6);
+          await h.moveTo(PERIOD_INPUT);
+          await p.fill(PERIOD_INPUT, DEMO_PERIOD).catch(() => {});
+          await h.holdUntil(0.85);
           await h.moveTo(RUN_BTN);
           await h.holdUntil(0.92);
         },
@@ -2159,10 +2178,17 @@ export default {
         },
         do: async (p, l, h) => {
           await h.moveTo(RUN_BTN);
-          await h.holdUntil(0.4);
+          // Клик у самого начала фразы: расчёт контролей занимает ~16 с, и всё
+          // это время должно идти ПОД озвучку. При клике на 40% фразы её
+          // остатка не хватало и между сценами оставалась пауза 4.4 с.
+          await h.holdUntil(0.12);
           await h.safeClick(RUN_BTN);
-          await h.holdUntil(0.92);
+          // Ожидание идёт СРАЗУ за кликом: расчёт занимает больше времени, чем
+          // остаток фразы, и если ждать после holdUntil(0.92), сцена
+          // переваливает за свою озвучку и между сценами возникает тишина.
+          // Поймано проверкой silencedetect: пауза 13.9 с на 87-й секунде.
           await p.waitForSelector(RESULT, { timeout: 15000 }).catch(() => {});
+          await h.holdUntil(0.92);
         },
       },
       // 5 — The balance-sheet card: delta, tolerance, source rows.
