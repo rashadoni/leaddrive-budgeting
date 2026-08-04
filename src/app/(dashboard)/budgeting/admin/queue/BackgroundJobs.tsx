@@ -7,10 +7,21 @@
  * last left a trace, and — the part that matters — which pieces nothing in
  * production is actually running.
  *
- * Relative ages go through Intl.RelativeTimeFormat rather than message
- * keys: EN/RU/AZ pluralise differently and the platform already knows how.
+ * Relative ages go through message keys, not Intl.RelativeTimeFormat.
+ * The first cut used the platform formatter on the theory that it already
+ * knows how EN/RU/AZ pluralise. Measured in the owner's Chrome, it does not:
+ *
+ *     new Intl.RelativeTimeFormat('az', {numeric:'auto'}).format(-50,'minute')
+ *     → "-50 min"          (Node with full ICU: "50 dəqiqə öncə")
+ *
+ * That Chrome's ICU carries no relative-time data for `az` and silently falls
+ * back to the CLDR root pattern, while `supportedLocalesOf(['az'])` still
+ * answers `['az']` — it reports that the locale is known, not that this
+ * formatter has data for it. So the page showed "-50 min" to its only user.
+ * Message keys make the rendering the app's own, the way the four other
+ * relative-age surfaces in this codebase already do it.
  */
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
 
 type JobStatus =
@@ -49,22 +60,19 @@ const STATUS_CLASS: Record<JobStatus, string> = {
   onDemand: "border-border bg-muted text-muted-foreground",
 }
 
-function useRelativeAge(locale: string) {
-  return useCallback(
-    (minutes: number): string => {
-      const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" })
-      if (minutes < 60) return rtf.format(-minutes, "minute")
-      if (minutes < 60 * 24) return rtf.format(-Math.round(minutes / 60), "hour")
-      return rtf.format(-Math.round(minutes / (60 * 24)), "day")
-    },
-    [locale],
-  )
-}
-
 export function BackgroundJobs() {
   const t = useTranslations("adminQueue.jobs")
   const locale = useLocale()
-  const relative = useRelativeAge(locale)
+
+  /** Same thresholds and shape as the intel-health dashboard's `relative.*`
+   *  helper, so the two admin pages read alike. */
+  const relative = (minutes: number): string => {
+    if (minutes < 1) return t("ago.justNow")
+    if (minutes < 60) return t("ago.minutes", { n: minutes })
+    const hours = Math.round(minutes / 60)
+    if (hours < 24) return t("ago.hours", { n: hours })
+    return t("ago.days", { n: Math.round(minutes / (60 * 24)) })
+  }
   const [data, setData] = useState<Inventory | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)

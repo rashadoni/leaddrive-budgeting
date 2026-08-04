@@ -4480,6 +4480,12 @@
       "refresh": "yenilə",
       "loading": "Yüklənir…",
       "noTrace": "iz yoxdur",
+      "ago": {
+        "justNow": "indicə",
+        "minutes": "{n} dəq əvvəl",
+        "hours": "{n} saat əvvəl",
+        "days": "{n} gün əvvəl"
+      },
       "col": {
         "job": "İş",
         "trigger": "Kim başladır",

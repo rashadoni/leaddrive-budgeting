@@ -4480,6 +4480,12 @@
       "refresh": "refresh",
       "loading": "Loading…",
       "noTrace": "no trace",
+      "ago": {
+        "justNow": "just now",
+        "minutes": "{n} min ago",
+        "hours": "{n} h ago",
+        "days": "{n} d ago"
+      },
       "col": {
         "job": "Job",
         "trigger": "Started by",
