@@ -231,6 +231,41 @@ describe("CompanySnapshot (Phase B7)", () => {
     });
   });
 
+  it("does not claim a holding is absent once the grid shows its subsidiaries", async () => {
+    // 2026-08-04 audit follow-up, caught by verifying the deploy rather than
+    // by a test. Fixing the HeatMap made selecting the holding row scope the
+    // matrix to its four subsidiaries — and this panel went on saying
+    // "Company not in current matrix: AZSEKER" beside a populated grid. The
+    // sentence became false the moment the grid was fixed.
+    __resetMatrixCacheForTests();
+    __resetCompaniesCacheForTests();
+    global.fetch = vi.fn(async (url: string) => {
+      const body = String(url).includes("/api/companies")
+        ? [
+            {
+              id: "h1",
+              code: "AZSEKER",
+              name: "AzerSheker",
+              level: 1,
+              children: [
+                { id: "co_aac", code: "AAC-MAIN", name: "AAC Main", parentCompanyId: "h1" },
+              ],
+            },
+          ]
+        : FULL_FIXTURE;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as never;
+
+    render(<CompanySnapshot companyCode="AZSEKER" />);
+    await waitFor(() => {
+      expect(screen.queryByText(/holding/i)).toBeTruthy();
+    });
+    expect(screen.queryByText(/not in current matrix/i)).toBeNull();
+  });
+
   it("Renders error state on fetch failure", async () => {
     __resetMatrixCacheForTests();
     global.fetch = vi.fn(async () =>

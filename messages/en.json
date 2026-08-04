@@ -2446,6 +2446,7 @@
       "loading": "Loading snapshot…",
       "error": "Snapshot error",
       "companyNotInMatrix": "Company not in current matrix:",
+      "holdingScopesMatrix": "is a holding company — the matrix shows its {count} operating companies. Pick any cell to drill in.",
       "noPlIndicators": "No P&L margin indicators available for",
       "indicators": "indicators",
       "scoreLabel": "Score",

@@ -27,6 +27,7 @@
  */
 
 import React, { useMemo } from "react";
+import { companyScopeCodes } from "../lib/company-scope";
 import { useTranslations, useLocale } from "next-intl";
 import {
   localizeAlertMessageParams,
@@ -112,6 +113,9 @@ export function CompanySnapshot({ companyCode }: Props) {
 
   // computed before early returns so React hook order stays stable
   const company = data?.companies.find((c) => c.code === companyCode);
+  // Same scope rule the HeatMap applies, so the two panels cannot disagree
+  // about what the current selection covers.
+  const scopeCodes = companyScopeCodes(companyCode, companyTree);
   const compositeByCo = useMemo(() => {
     if (!data) return new Map();
     // Phase 7.N — per-company riskTag penalty (subsidy_dependency -5,
@@ -176,6 +180,23 @@ export function CompanySnapshot({ companyCode }: Props) {
   }
 
   if (!company) {
+    // 2026-08-04 audit follow-up — selecting the holding row now scopes the
+    // matrix to its subsidiaries (companyScopeCodes), so the grid beside this
+    // panel is populated while this panel still claimed the company "is not in
+    // the current matrix". That sentence became false the moment the grid was
+    // fixed. A holding has no snapshot of its own — its figures live in the
+    // children — so say that, and say how many are on screen.
+    const scoped = data
+      ? data.companies.filter((c) => scopeCodes.has(c.code)).length
+      : 0;
+    if (scoped > 0) {
+      return (
+        <div className="text-muted-foreground font-mono text-xs h-full w-full leading-relaxed">
+          <code>{companyCode}</code>{" "}
+          {t("snapshot.holdingScopesMatrix", { count: scoped })}
+        </div>
+      );
+    }
     return (
       <div className="text-gray-700 font-mono text-xs h-full w-full">
         {t("snapshot.companyNotInMatrix")} <code>{companyCode}</code>.
