@@ -53,7 +53,7 @@ Verify: `docker --version && docker compose version`.
 # Clone repo
 cd /opt
 sudo git clone <git-url> budgetpro
-sudo chown -R $USER:$USER budgetpro
+sudo chown -R $USER:$USER budgetpro   # ⚠️ see the warning below
 cd budgetpro
 
 # Configure environment
@@ -72,6 +72,15 @@ docker compose --env-file .env.production up -d --build
 # Watch logs until you see "Ready in XXXms" from the app container
 docker compose logs -f app
 ```
+
+> ⚠️ **Keep `/opt/budgetpro` owned by root.** That `chown -R $USER:$USER` is
+> fine when `$USER` exists on the VM and the directory stays traversable, and a
+> trap otherwise. On this host it left the directory `drwx------` owned by UID
+> 501 — a macOS id with no local user — which an interactive root shell walks
+> into via `CAP_DAC_OVERRIDE`, but the hardened cron units cannot, because they
+> drop every capability. Both timers failed at exec with status 126 for months
+> without anyone noticing, since every manual run used an interactive shell.
+> See §"Soft-delete purge timer" / the free-feed timer notes for the full story.
 
 **Expected at first startup:**
 - `db` container healthy in ~20s
@@ -295,14 +304,58 @@ sudo systemctl disable --now budgetpro-refresh-feeds.timer
 
 **State on this host (2026-08-04).** The units were not installed at all until
 today, so the 06:00 UTC refresh had never run here. They are now installed and
-the timer is enabled — but note the canary gate could not pass and was
-bypassed: the run reports `degraded` (9 of 12 sources; `eia-energy` and
-`usda-nass` skipped for `api_key_missing`, `google-trends-az` disabled as
-paid), and the route answers 502 on a degraded run. It still writes ~200 points
-and recomputes cleanly, which is why enabling it was judged better than leaving
-the feeds frozen.
+enabled.
 
-Two consequences until an EIA/USDA key lands:
+> ### ⚠️ The hardened units could not execute the runner at all
+>
+> Installing the timer was not enough, and the reason would have silently
+> killed the intel-crawl timer too. `/opt/budgetpro` was `drwx------` owned by
+> **UID 501** — no such user exists on this VM; it is the macOS first-user id,
+> baked in by §2's `sudo chown -R $USER:$USER budgetpro` being run from a Mac
+> shell. An interactive root shell walks into that directory anyway, using
+> `CAP_DAC_OVERRIDE`. Both service units deliberately drop every capability
+> (`CapabilityBoundingSet=`, `AmbientCapabilities=`, `NoNewPrivileges=true`),
+> so their root process does not have that bypass and could not traverse the
+> directory:
+>
+> ```
+> bash: /opt/budgetpro/deploy/run-refresh-feeds.sh: Permission denied
+> status=126/n/a   # 56ms, before a single HTTP request
+> ```
+>
+> It had never been noticed because neither timer had ever actually fired —
+> every manual run went through an interactive root shell, where the bypass
+> applies. Fixed with the narrowest possible change, mode left at 0700:
+>
+> ```bash
+> sudo chown root:root /opt/budgetpro
+> ```
+>
+> Verified by running the unit itself, not the script: it now reaches the
+> endpoint, writes ~200 points, persists the heartbeat and recomputes 60 ok /
+> 0 failed. **On a new VM, do not `chown` the deployment directory to a
+> non-root user** — the hardened units need root to own the path they execute
+> from.
+
+The canary gate still could not pass and was bypassed: the run reports
+`degraded`, and the route answers 502 on a degraded run by design ("a degraded
+run must also fail the scheduler invocation"). Enabling it anyway was judged
+better than leaving the feeds frozen — the work it does is real.
+
+The 24 errors behind that `degraded`, all pre-existing and all named by the
+run's own heartbeat (`feedRefreshLastRunErrors`):
+
+| Source | Problem |
+|---|---|
+| `eia-energy`, `usda-nass` | skipped — `api_key_missing` (external accounts) |
+| `google-trends-az` | skipped — deliberately disabled paid source |
+| `worldbank-cpi` | **HTTP 403** for all five countries (AZ/RU/TR/GE/IR) |
+| `yahoo-fuel-bdi` | values ~7–12 **rejected** by the sanity band (BDI is 300–11000) — the ticker is returning something that is not the index |
+
+The last two are data-source defects, not configuration: the sanity band doing
+its job is the only reason the BDI numbers did not land in the model.
+
+Two consequences until those are resolved:
 - the page under **Admin → Tapşırıq növbəsi** shows this job with
   `runStatus=degraded` and its error count — that is the intended surface for
   it, not something to silence;
