@@ -293,6 +293,42 @@ Disable without deleting the unit files:
 sudo systemctl disable --now budgetpro-refresh-feeds.timer
 ```
 
+### Soft-delete purge timer (2026-08-04)
+
+Phase 1.4 shipped the 30-day physical purge as a BullMQ job and the ROADMAP
+marked it done. It never ran here: its only scheduler is `scheduleCleanupCron()`
+inside the worker process, and that process is in no compose service, Dockerfile
+stage, unit file or crontab entry on this host. The work is now reachable at
+`/api/cron/cleanup-soft-deleted` and scheduled the same way as the feed jobs.
+
+Unlike the feed timers this one calls no provider and costs nothing — it only
+deletes rows already soft-deleted more than 30 days ago, and re-running it is a
+no-op. So there is no canary gate; install and enable in one step:
+
+```bash
+cd /opt/budgetpro
+sudo BUDGETPRO_UNIT_BASE=budgetpro-cleanup-soft-deleted \
+     BUDGETPRO_CRON_LABEL=cleanup-soft-deleted \
+     bash deploy/install-refresh-feeds-timer.sh
+sudo systemctl enable --now budgetpro-cleanup-soft-deleted.timer
+systemctl list-timers budgetpro-cleanup-soft-deleted.timer --no-pager
+```
+
+(The installer's `--enable` path insists on a recent canary marker, which this
+job has no reason to produce — hence the plain `systemctl enable --now`.)
+
+Verify from the outside afterwards: **Admin → Tapşırıq növbəsi** lists the purge
+under background work and reads its last run from the `soft_delete_purge` audit
+event. It stays on `never` until the timer has actually fired once.
+
+To run it by hand right now instead of waiting for 03:00 UTC:
+
+```bash
+sudo BUDGETPRO_CRON_PATH=/api/cron/cleanup-soft-deleted \
+     BUDGETPRO_CRON_LABEL=cleanup-soft-deleted \
+     /opt/budgetpro/deploy/run-refresh-feeds.sh
+```
+
 The runner parses only `CRON_SECRET` from the root-owned environment file; it
 does not execute the dotenv or export database/NextAuth/Anthropic credentials
 to curl. The bearer passes through a mode-0600 temporary header file, never a

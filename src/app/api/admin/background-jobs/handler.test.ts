@@ -71,7 +71,9 @@ describe("GET /api/admin/background-jobs", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.backend).toBe("inprocess")
-    expect(body.overall).toBe("noRunner")
+    // Never "ok": the trade digest records nothing, and with no purge event
+    // yet the worst row is a scheduled job that has never run.
+    expect(body.overall).toBe("never")
     expect(body.jobs.map((j: { key: string }) => j.key)).toEqual([
       "recompute",
       "import",

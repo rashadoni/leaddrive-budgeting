@@ -4500,7 +4500,7 @@
         "intelCrawl": "Daily news and market crawl that feeds the Intel panels.",
         "feedRefresh": "Pulls the free commodity and macro feeds into data points.",
         "tradeDigest": "Daily trade-alert summary. It writes no heartbeat, so its runs cannot be confirmed from here.",
-        "softDeletePurge": "Physically removes rows soft-deleted more than 30 days ago. Scheduled only inside the BullMQ worker."
+        "softDeletePurge": "Physically removes rows soft-deleted more than 30 days ago. Runs from a daily systemd timer; `never` here means the timer is not installed or has not fired yet."
       },
       "trigger": {
         "request": "a user's request",
@@ -4513,7 +4513,6 @@
         "stale": "late",
         "never": "never ran",
         "onDemand": "on demand",
-        "noRunner": "nothing runs it",
         "untracked": "not tracked"
       },
       "detail": {

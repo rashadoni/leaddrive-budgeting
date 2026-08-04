@@ -4500,7 +4500,7 @@
         "intelCrawl": "Intel panellərini qidalandıran gündəlik xəbər və bazar toplanması.",
         "feedRefresh": "Pulsuz əmtəə və makro lentləri data nöqtələrinə çəkir.",
         "tradeDigest": "Ticarət siqnallarının gündəlik icmalı. Heartbeat yazmır, ona görə buradan icrasını təsdiqləmək mümkün deyil.",
-        "softDeletePurge": "30 gündən çox əvvəl yumşaq silinmiş sətirləri fiziki olaraq silir. Yalnız BullMQ işçisinin daxilində planlaşdırılır."
+        "softDeletePurge": "30 gündən çox əvvəl yumşaq silinmiş sətirləri fiziki olaraq silir. Gündəlik systemd taymeri ilə işə düşür; «heç vaxt icra olunmayıb» statusu taymerin quraşdırılmadığını və ya hələ işə düşmədiyini bildirir."
       },
       "trigger": {
         "request": "istifadəçi sorğusu",
@@ -4513,7 +4513,6 @@
         "stale": "gecikir",
         "never": "heç vaxt icra olunmayıb",
         "onDemand": "tələb üzrə",
-        "noRunner": "icra edən yoxdur",
         "untracked": "uçot yoxdur"
       },
       "detail": {

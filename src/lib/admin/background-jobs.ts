@@ -36,8 +36,6 @@ export type JobStatus =
   | "never"
   /** Only a user can start it; recency is information, not a verdict. */
   | "onDemand"
-  /** Its only scheduler lives in the BullMQ worker, which is not running. */
-  | "noRunner"
   /** Runs, but records nothing we can read back. Not a pass. */
   | "untracked"
 
@@ -57,7 +55,6 @@ export interface BackgroundJob {
 }
 
 export interface BackgroundJobsInput {
-  backend: "bullmq" | "inprocess"
   /** max(indicator_values.computedAt) */
   lastRecomputeAt: Date | null
   /** count(indicator_values) computed in the last 24h */
@@ -190,18 +187,17 @@ export function buildBackgroundJobs(
   })
 
   // ── Soft-delete physical purge ────────────────────────────────────────
-  // `scheduleCleanupCron()` is called from worker-factory.ts, which only
-  // runs inside scripts/run-worker.ts — and that process is deployed
-  // nowhere (it appears in no Dockerfile, compose service or unit file).
-  // With the backend in-process the 30-day purge therefore has no runner
-  // at all, which is exactly the kind of silence a monitor exists to break.
+  // This is the job the monitor was built to catch. Until 2026-08-04 its
+  // only scheduler was `scheduleCleanupCron()` inside the BullMQ worker —
+  // a process deployed nowhere — so the 30-day purge had no runner at all
+  // while the ROADMAP marked it done. It now runs from a systemd timer
+  // hitting /api/cron/cleanup-soft-deleted, like the two feed jobs, and is
+  // judged the same way: by whether its audit event is recent enough.
+  // `never` here means the timer is not installed or has not fired.
   jobs.push({
     key: "softDeletePurge",
-    trigger: "worker",
-    status:
-      input.backend === "bullmq"
-        ? scheduledStatus(input.lastPurgeAt, now, DAILY_STALE_AFTER_MINUTES)
-        : "noRunner",
+    trigger: "timer",
+    status: scheduledStatus(input.lastPurgeAt, now, DAILY_STALE_AFTER_MINUTES),
     lastRunAt: iso(input.lastPurgeAt),
     ageMinutes: age(input.lastPurgeAt, now),
     evidence: "audit_events(action=soft_delete_purge).createdAt",
@@ -211,16 +207,9 @@ export function buildBackgroundJobs(
   return jobs
 }
 
-/** Worst status present, for the page's summary pill. Order matters: a
- *  job with no runner is a bigger problem than one merely running late. */
-const SEVERITY: JobStatus[] = [
-  "noRunner",
-  "never",
-  "stale",
-  "untracked",
-  "onDemand",
-  "ok",
-]
+/** Worst status present, for the page's summary pill. Order matters: work
+ *  that has never run at all is a bigger problem than work running late. */
+const SEVERITY: JobStatus[] = ["never", "stale", "untracked", "onDemand", "ok"]
 
 export function worstStatus(jobs: BackgroundJob[]): JobStatus {
   for (const s of SEVERITY) {

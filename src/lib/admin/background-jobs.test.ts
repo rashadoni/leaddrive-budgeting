@@ -5,8 +5,9 @@
  * distinctions carry that weight and are each pinned below:
  *   • on-demand work (recompute, import) never gets a staleness verdict —
  *     "no import for a week" is a fact about the business, not a fault;
- *   • the soft-delete purge reports `noRunner` while BullMQ is off, because
- *     its only scheduler lives in a worker process production never starts;
+ *   • the soft-delete purge is judged only by its own audit heartbeat — never
+ *     by the presence of a scheduler in code, which is exactly the assumption
+ *     that let it sit unrun for months while the ROADMAP called it done;
  *   • the trade digest reports `untracked`, not `ok` — it is in the crontab
  *     but records nothing, so "did it run?" has no honest answer yet.
  */
@@ -23,7 +24,6 @@ const HOURS_AGO = (h: number) =>
 
 function input(over: Partial<BackgroundJobsInput> = {}): BackgroundJobsInput {
   return {
-    backend: "inprocess",
     lastRecomputeAt: HOURS_AGO(4),
     recomputedLast24h: 120,
     lastImportAt: HOURS_AGO(25),
@@ -107,38 +107,24 @@ describe("buildBackgroundJobs — on-demand work", () => {
   })
 })
 
-describe("buildBackgroundJobs — the purge has no runner", () => {
-  it("reports noRunner while the backend is in-process", () => {
-    const jobs = buildBackgroundJobs(input({ backend: "inprocess" }), NOW)
-    expect(byKey(jobs, "softDeletePurge").status).toBe("noRunner")
+describe("buildBackgroundJobs — the purge is judged by its heartbeat", () => {
+  // Until 2026-08-04 this row was derived from the queue backend flag, which
+  // meant it could only ever say "BullMQ is off" — never "the purge has not
+  // run". Those are different claims, and the second is the useful one.
+  it("reports never when no purge has ever been recorded", () => {
+    const jobs = buildBackgroundJobs(input({ lastPurgeAt: null }), NOW)
+    expect(byKey(jobs, "softDeletePurge").status).toBe("never")
+    expect(byKey(jobs, "softDeletePurge").trigger).toBe("timer")
   })
 
-  it("stays noRunner even if an old purge event exists", () => {
-    // A purge that ran once on a dev box must not read as "healthy" on a
-    // deployment where nothing schedules it any more.
-    const jobs = buildBackgroundJobs(
-      input({ backend: "inprocess", lastPurgeAt: HOURS_AGO(2) }),
-      NOW,
-    )
-    expect(byKey(jobs, "softDeletePurge").status).toBe("noRunner")
+  it("passes a purge that ran inside its daily window", () => {
+    const jobs = buildBackgroundJobs(input({ lastPurgeAt: HOURS_AGO(2) }), NOW)
+    expect(byKey(jobs, "softDeletePurge").status).toBe("ok")
   })
 
-  it("judges it normally once BullMQ is actually the backend", () => {
-    const fresh = buildBackgroundJobs(
-      input({ backend: "bullmq", lastPurgeAt: HOURS_AGO(2) }),
-      NOW,
-    )
-    expect(byKey(fresh, "softDeletePurge").status).toBe("ok")
-    const old = buildBackgroundJobs(
-      input({ backend: "bullmq", lastPurgeAt: HOURS_AGO(72) }),
-      NOW,
-    )
-    expect(byKey(old, "softDeletePurge").status).toBe("stale")
-    const none = buildBackgroundJobs(
-      input({ backend: "bullmq", lastPurgeAt: null }),
-      NOW,
-    )
-    expect(byKey(none, "softDeletePurge").status).toBe("never")
+  it("flags a purge that has missed two windows", () => {
+    const jobs = buildBackgroundJobs(input({ lastPurgeAt: HOURS_AGO(72) }), NOW)
+    expect(byKey(jobs, "softDeletePurge").status).toBe("stale")
   })
 })
 
@@ -161,20 +147,11 @@ describe("buildBackgroundJobs — every row names its evidence", () => {
 })
 
 describe("worstStatus", () => {
-  it("ranks a missing runner above merely running late", () => {
-    const jobs = buildBackgroundJobs(
-      input({ backend: "inprocess", intelLastRunAt: HOURS_AGO(200) }),
-      NOW,
-    )
-    expect(worstStatus(jobs)).toBe("noRunner")
-  })
-
-  it("ranks never-run above late, and late above untracked", () => {
+  it("ranks never-run above merely running late", () => {
     expect(
       worstStatus(
         buildBackgroundJobs(
           input({
-            backend: "bullmq",
             lastPurgeAt: HOURS_AGO(1),
             intelLastRunAt: null,
             feedRefreshLastRunAt: HOURS_AGO(200),
@@ -183,21 +160,23 @@ describe("worstStatus", () => {
         ),
       ),
     ).toBe("never")
+  })
+
+  it("ranks late above untracked", () => {
     expect(
       worstStatus(
         buildBackgroundJobs(
-          input({ backend: "bullmq", lastPurgeAt: HOURS_AGO(1), feedRefreshLastRunAt: HOURS_AGO(200) }),
+          input({ lastPurgeAt: HOURS_AGO(1), feedRefreshLastRunAt: HOURS_AGO(200) }),
           NOW,
         ),
       ),
     ).toBe("stale")
   })
 
-  it("falls through to untracked when everything else is fine", () => {
-    const jobs = buildBackgroundJobs(
-      input({ backend: "bullmq", lastPurgeAt: HOURS_AGO(1) }),
-      NOW,
-    )
+  it("falls through to untracked when everything scheduled is fine", () => {
+    // Never "ok": the trade digest records nothing, so a clean bill of health
+    // for the whole page would be a claim the data does not support.
+    const jobs = buildBackgroundJobs(input({ lastPurgeAt: HOURS_AGO(1) }), NOW)
     expect(worstStatus(jobs)).toBe("untracked")
   })
 })

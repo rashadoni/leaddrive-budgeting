@@ -90,7 +90,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const settings = (data.org?.settings ?? {}) as Record<string, unknown>
     const jobs = buildBackgroundJobs(
       {
-        backend: getQueueBackend(),
         lastRecomputeAt: data.lastIv?.computedAt ?? null,
         recomputedLast24h: data.recomputedLast24h,
         lastImportAt: data.lastReport?.createdAt ?? null,
