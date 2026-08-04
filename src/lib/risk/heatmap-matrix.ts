@@ -421,3 +421,34 @@ export function statusShape(status: IndicatorStatus | 'missing'): string {
       return '·';
   }
 }
+
+/**
+ * Is there a real measurement behind this cell?
+ *
+ * 2026-08-04 audit. `status === 'unknown'` means the classifier had nothing to
+ * score — but the row still carries a stored `value`, and for most indicators
+ * that stored value is 0. The HeatMap already knew this and printed "—"
+ * (HeatMapCellTd had the rule inline, with a comment saying a figure there
+ * "could read as a real measurement"). Panel 3 did not, so opening a cell the
+ * matrix drew as "No data" showed `0.00 index` as its 24px headline — and then
+ * ran that fabricated zero through the indicator's own hint template:
+ * "Customer HHI is 0.00. Above 0.25 = one buyer holds enough share to threaten
+ * cash flow." For a concentration measure 0.00 is the BEST possible score, so
+ * the panel reported perfect diversification for a company it knows nothing
+ * about. 16 such cells were live in production when this was found.
+ *
+ * The rule now lives in one place so the two surfaces cannot drift apart
+ * again. An evidenced zero — a real, measured 0 — is NOT affected: it carries a
+ * scored status and passes.
+ */
+export function hasEvidencedValue(
+  status: IndicatorStatus | 'missing' | 'na' | null | undefined,
+  value: number | null | undefined,
+): boolean {
+  // 'na' (the pair does not apply to this company's activity profile) and
+  // 'missing' (no row at all) are as unmeasured as 'unknown'.
+  if (status == null || status === 'unknown' || status === 'missing' || status === 'na') {
+    return false
+  }
+  return typeof value === 'number' && Number.isFinite(value)
+}

@@ -17,6 +17,7 @@ import {
   statusShape,
   statusColor,
   hasStatementMismatch,
+  hasEvidencedValue,
   type HeatMapCell,
 } from "@/lib/risk/heatmap-matrix";
 import {
@@ -620,9 +621,9 @@ export function HeatMapCellTd({
                   mixBlendMode: status === 'unknown' ? 'normal' : 'difference',
                   textShadow: status === 'unknown' ? '0 0 2px rgba(0,0,0,0.7)' : undefined,
                 }}
-                title={status === 'unknown' ? '—' : formatValueCompact(cell.value, ind.unit)}
+                title={hasEvidencedValue(status, cell.value) ? formatValueCompact(cell.value, ind.unit) : '—'}
               >
-                {status === 'unknown' ? '—' : formatValueTiny(cell.value, ind.unit)}
+                {hasEvidencedValue(status, cell.value) ? formatValueTiny(cell.value, ind.unit) : '—'}
               </span>
             ) : null}
             {/* CLI Bloomberg-sweep: inline sparkline + value in normal mode.
@@ -655,7 +656,7 @@ export function HeatMapCellTd({
                   {/* Phase A.3 — `unknown` status hides the numeric value
                       (which could read as a real measurement). Show "—"
                       so the empty-state is unambiguous. */}
-                  {status === 'unknown' ? '—' : formatValueCompact(cell.value, ind.unit)}
+                  {hasEvidencedValue(status, cell.value) ? formatValueCompact(cell.value, ind.unit) : '—'}
                 </span>
               </div>
             ) : null}

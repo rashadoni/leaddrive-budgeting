@@ -18,7 +18,7 @@ import { ExternalLink, RefreshCw } from "lucide-react";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { TodayBrief } from "./TodayBrief";
 import { useTerminalStore } from "../store/terminalStore";
-import { statusShape } from "@/lib/risk/heatmap-matrix";
+import { hasEvidencedValue, statusShape } from "@/lib/risk/heatmap-matrix";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 import { localizeFormulaError } from "../lib/localize-formula-error";
 import { PeerBenchmarkModal } from "./PeerBenchmarkModal";
@@ -350,7 +350,12 @@ export function IndicatorDetail({
       return status.toUpperCase();
     }
   })();
-  const hint = hintTemplate
+  // 2026-08-04 audit — the hint templates are written as assertions about a
+  // number ("Customer HHI is {value}. Above 0.25 = ..."). With no evidence
+  // behind the cell there is no number to assert, and filling {value} with the
+  // stored 0 turned "we know nothing" into "concentration is perfect".
+  const evidenced = hasEvidencedValue(status as never, value);
+  const hint = hintTemplate && evidenced
     ? hintTemplate
         .replace("{value}", formatValue(value))
         .replace("{status}", localizedStatusWord)
@@ -410,7 +415,7 @@ export function IndicatorDetail({
             style={{ color: statusColor }}
             title={Number.isFinite(value) ? value.toLocaleString("ru-RU") : undefined}
           >
-            {formatHeadlineValue(value, ind.unit)}
+            {evidenced ? formatHeadlineValue(value, ind.unit) : "—"}
           </div>
           <div
             className="text-[10px] uppercase tracking-wider"
@@ -586,7 +591,7 @@ export function IndicatorDetail({
       <BenchmarkBand
         thresholds={ind.thresholds as never}
         direction={ind.direction}
-        value={value}
+        value={evidenced ? value : Number.NaN}
         unit={ind.unit}
       />
 
