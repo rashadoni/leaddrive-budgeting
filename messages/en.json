@@ -4455,6 +4455,8 @@
     "refresh": "refresh",
     "loading": "Loading…",
     "emptyState": "No jobs in <strong>{stateName}</strong> state.",
+    "inprocessNotice": "The BullMQ backend is switched off (QUEUE_BACKEND=inprocess), so recomputes and imports run inside the app process instead of a queue. There is nothing to inspect here until BullMQ is enabled and a Redis instance plus a worker process are deployed.",
+    "unavailable": "The queue backend is unreachable — BullMQ is on but Redis is not answering.",
     "state": {
       "active": "active",
       "waiting": "waiting",

@@ -35,6 +35,7 @@ export function QueueAdmin() {
   const t = useTranslations("adminQueue")
   const [state, setState] = useState<QueueState>("active")
   const [jobs, setJobs] = useState<JobRow[]>([])
+  const [backend, setBackend] = useState<"bullmq" | "inprocess" | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -43,8 +44,25 @@ export function QueueAdmin() {
     setErr(null)
     try {
       const res = await fetch(`/api/admin/queue?state=${s}&limit=100`)
+      // 503 = BullMQ is on but Redis is unreachable. The route sends the
+      // reason in the body; showing "HTTP 503" alone sends the operator to
+      // the container logs for something we already know.
+      if (res.status === 503) {
+        const body = (await res.json().catch(() => null)) as {
+          detail?: string
+        } | null
+        setBackend("bullmq")
+        setJobs([])
+        throw new Error(
+          body?.detail ? `${t("unavailable")} — ${body.detail}` : t("unavailable"),
+        )
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = (await res.json()) as { jobs: JobRow[] }
+      const data = (await res.json()) as {
+        jobs: JobRow[]
+        backend?: "bullmq" | "inprocess"
+      }
+      setBackend(data.backend ?? null)
       setJobs(data.jobs)
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
@@ -92,7 +110,15 @@ export function QueueAdmin() {
       {loading && (
         <div className="text-sm text-muted-foreground">{t("loading")}</div>
       )}
-      {!loading && jobs.length === 0 && (
+      {!loading && backend === "inprocess" && (
+        <div
+          className="text-sm border border-amber-300 bg-amber-50 text-amber-900 rounded p-4"
+          data-testid="queue-backend-inprocess"
+        >
+          {t("inprocessNotice")}
+        </div>
+      )}
+      {!loading && backend !== "inprocess" && jobs.length === 0 && (
         <div className="text-sm text-muted-foreground border border-border rounded p-4 text-center">
           {t.rich("emptyState", {
             stateName: t(`state.${state}`),

@@ -4455,6 +4455,8 @@
     "refresh": "yenilə",
     "loading": "Yüklənir…",
     "emptyState": "<strong>{stateName}</strong> statusunda iş yoxdur.",
+    "inprocessNotice": "BullMQ backend-i söndürülüb (QUEUE_BACKEND=inprocess) — yenidənhesablama və idxal növbə vasitəsilə deyil, tətbiqin prosesi daxilində icra olunur. BullMQ aktivləşdirilənə və Redis ilə işçi prosesi quraşdırılana qədər burada göstəriləcək iş yoxdur.",
+    "unavailable": "Növbə backend-i əlçatmazdır — BullMQ aktivdir, lakin Redis cavab vermir.",
     "state": {
       "active": "aktiv",
       "waiting": "gözləyir",

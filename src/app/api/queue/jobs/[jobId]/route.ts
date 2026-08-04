@@ -12,6 +12,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { getSession } from "@/lib/api-auth"
+import { isBullMqEnabled } from "@/lib/queue/feature-flag"
 import { getQueues } from "@/lib/queue/queues"
 
 export async function GET(
@@ -25,6 +26,12 @@ export async function GET(
   const { jobId } = await ctx.params
   if (!jobId) {
     return NextResponse.json({ error: "jobId required" }, { status: 400 })
+  }
+  // BullMQ off (prod default) → no Redis, so no job by this id exists.
+  // Answering 404 here keeps a stray poll from opening a connection to a
+  // Redis that isn't deployed; see the note in /api/admin/queue/route.ts.
+  if (!isBullMqEnabled()) {
+    return NextResponse.json({ error: "Job not found" }, { status: 404 })
   }
   const queues = getQueues()
   // The same jobId might live on either recompute-pair or recompute-batch
