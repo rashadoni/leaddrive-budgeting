@@ -19,6 +19,7 @@ import {
   hasStatementMismatch,
   hasEvidencedValue,
   type HeatMapCell,
+  cellFaceColor,
 } from "@/lib/risk/heatmap-matrix";
 import {
   Tooltip,
@@ -158,8 +159,11 @@ export function HeatMapCellTd({
   // yet". Both `na` and `unknown` are now visually neutral, the
   // distinction (industry-not-applicable vs no-data) is conveyed via
   // tooltip text. `missing` is also kept neutral.
-  const baseColor = statusColor(status === 'na' || status === 'unknown' ? 'missing' : status);
-  const color = status === 'na' ? '#111827' : status === 'unknown' ? '#0A0E27' : baseColor;
+  // 2026-08-04 audit — this pair of lines WAS the real tile-colour rule, living
+  // in one component while the legend asked `statusColor` and therefore taught
+  // a grey that no cell draws. Moved to `cellFaceColor` so both read the same
+  // source; the values are unchanged.
+  const color = cellFaceColor(status);
   // Phase 7.N — scenario overlay: if scenarioStatus set, use it as the effective color.
   // M7 gate: scenarioShape companion ensures color-blind safe glyph is rendered in the
   // scenario badge span below (aria-hidden=true, bottom-left corner of cell).
