@@ -56,6 +56,23 @@ export const INTEL_PROMPT_VERSION = 'v4';
  *  a safety belt against runaway responses. */
 const MAX_ITEMS_PER_CRAWL = 10;
 
+/** Backstop for the recency instruction above.
+ *
+ *  2026-08-04: the prompt has asked for "the last 7 days" since v1, and
+ *  production told a different story — every item fetched on 4 August, with
+ *  publication dates spread from 23 March to 15 July. The rolling sentiment
+ *  window then read four-month-old articles as current signal.
+ *
+ *  So recency is enforced here too, generously: the model is asked for 7 days,
+ *  and anything older than this cap is dropped at ingest. The gap between the
+ *  two numbers is deliberate — a source that publishes with a lagging date
+ *  should not be silently discarded, but a spring article has no business in an
+ *  August sentiment score. Items with NO parseable date are kept: the source
+ *  simply did not expose one, and dropping them would lose real news over a
+ *  formatting detail. Their age is handled downstream, where the sentiment
+ *  weight falls back to `fetchedAt`. */
+const MAX_ITEM_AGE_DAYS = 45;
+
 /** Anthropic web_search uses count — 5 calls is enough for a multi-
  *  industry sweep without driving cost up. (At $10/1K searches × 5 ×
  *  60 orgs/day ≈ $0.03/day org-wide.) */
@@ -119,6 +136,7 @@ What counts as relevant:
 
 Hard constraints:
   - You MUST call web_search at least once before producing the feed. Do not return items without searching.
+  - RECENCY IS A HARD FILTER, not a preference. Only include an article published within the last 7 days. If you cannot establish a publication date within that window, DROP the item rather than guessing. A short feed of genuinely recent news is correct; padding it with months-old articles is not — this feed drives a rolling sentiment score, so a stale item is read as a current signal.
   - Return at most 10 items, ordered by relevance descending.
   - Each item's \`url\` MUST be a real, parseable URL from the search results — never invented.
   - Each item's \`summary\` MUST be ≤200 characters.
@@ -253,7 +271,7 @@ function validateItem(raw: unknown): ValidatedItem | null {
 /** Parse the LLM response into a validated item list. Throws on
  *  top-level shape violation (no `items` array) so the caller can
  *  surface it as `errors[]` entry. */
-function parseAndValidate(rawJson: unknown): ValidatedItem[] {
+function parseAndValidate(rawJson: unknown): { items: ValidatedItem[]; staleDropped: number } {
   if (rawJson == null || typeof rawJson !== 'object') {
     throw new Error("response is not a JSON object");
   }
@@ -262,11 +280,21 @@ function parseAndValidate(rawJson: unknown): ValidatedItem[] {
     throw new Error("response missing 'items' array");
   }
   const out: ValidatedItem[] = [];
+  const staleCutoff = Date.now() - MAX_ITEM_AGE_DAYS * 24 * 60 * 60 * 1000;
+  let stale = 0;
   for (const item of obj.items.slice(0, MAX_ITEMS_PER_CRAWL)) {
     const v = validateItem(item);
-    if (v) out.push(v);
+    if (!v) continue;
+    // publishedAt === null → keep (see MAX_ITEM_AGE_DAYS).
+    if (v.publishedAt && v.publishedAt.getTime() < staleCutoff) {
+      stale += 1;
+      continue;
+    }
+    out.push(v);
   }
-  return out;
+  // Kept pure: the count travels back to the caller, which owns the result
+  // object and the logging, rather than this validator growing a side effect.
+  return { items: out, staleDropped: stale };
 }
 
 /** Subset of PrismaClient surface area we use — explicit so unit tests
@@ -425,8 +453,11 @@ export async function runIntelCrawl(
   }
 
   let validated: ValidatedItem[];
+  let staleDropped = 0;
   try {
-    validated = parseAndValidate(parsed);
+    const parseResult = parseAndValidate(parsed);
+    validated = parseResult.items;
+    staleDropped = parseResult.staleDropped;
   } catch (err) {
     return {
       itemsFetched: 0,
@@ -575,6 +606,7 @@ export async function runIntelCrawl(
 
   return {
     itemsFetched: validated.length,
+    itemsStale: staleDropped,
     itemsCreated,
     itemsSkipped,
     errors,
