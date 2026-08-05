@@ -2257,7 +2257,8 @@
     "computedFields": {
       "variance": "Variance (Plan − Actual)",
       "execution_pct": "Execution %",
-      "margin_pct": "Margin %"
+      "margin_pct": "Margin %",
+      "net_amount": "Net (signed)"
     },
     "chartTypes": {
       "table": "Table",

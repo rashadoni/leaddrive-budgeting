@@ -101,6 +101,48 @@ export interface EntityConfig {
   actualsFromMatchingPlan?: boolean
   /** Set when the entity has no year/month of its own — see `DerivedPeriod`. */
   derivedPeriod?: DerivedPeriod
+  /** How to derive a row's direction — see `SignConvention`. */
+  sign?: SignConvention
+}
+
+/**
+ * How to read a row's direction, so amounts stored unsigned can be netted.
+ *
+ * Two separate problems, one mechanism:
+ *
+ *  - `CashFlowEntry.amount` is stored `Math.abs` with the direction in
+ *    `entryType` (`dynamic-cf-adapter.ts:10`), so summing it reports gross
+ *    turnover where the reader expects net cash. The rest of the product
+ *    already nets it exactly this way — `statement-controls-adapter.ts:339`
+ *    does `entryType === "inflow" ? amount : -amount`.
+ *  - `BudgetLine.plannedAmount` is stored positive for both revenue and cost,
+ *    with the direction in `lineType`, so an unfiltered P&L total adds
+ *    1 000 000 of revenue to 500 000 of cost.
+ *
+ * This is NOT a new business rule — it mirrors the convention the product
+ * already applies on every other surface. What it does not do is silently
+ * change `plannedAmount`: the raw column stays exactly as stored, and the
+ * signed figure arrives as its own `netAmount` column.
+ */
+interface SignConvention {
+  /** Column whose value says which direction the row points. */
+  field: string
+  /** Values that count positive; everything else counts negative. */
+  positive: string[]
+  /** Amount column the sign applies to. */
+  amountField: string
+}
+
+/**
+ * +1 when a higher actual is favourable (revenue), −1 otherwise.
+ *
+ * Deliberately identical to `favorableSign` in `variance-helpers.ts`,
+ * including its defensive default: an unknown type is treated as a cost,
+ * because misclassifying a cost as revenue paints an overrun green — the
+ * more dangerous error of the two.
+ */
+export function favourableDirection(lineType: unknown): 1 | -1 {
+  return lineType === "revenue" ? 1 : -1
 }
 
 const ENTITY_CONFIGS: Record<string, EntityConfig> = {
@@ -112,6 +154,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     hasYearMonth: true,
     measures: { planned: "plannedAmount", actual: "actualAmount" },
     actualsFromMatchingPlan: true,
+    sign: { field: "lineType", positive: ["revenue"], amountField: "plannedAmount" },
     derivedPeriod: { monthField: "monthIndex", monthBase: 0, yearRelation: "plan", yearField: "year" },
     fields: [
       { name: "department", label: "Department", type: "string" },
@@ -155,6 +198,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     // Fact-only source: there is no plan to compare against on the row, so
     // variance / execution have no second operand and evaluate to null.
     measures: { actual: "plannedAmount" },
+    sign: { field: "lineType", positive: ["revenue"], amountField: "plannedAmount" },
     fields: [
       { name: "lineType", label: "Line Type", type: "string" },
       { name: "department", label: "Department", type: "string" },
@@ -190,6 +234,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     hasPlanId: true,
     hasYearMonth: false,
     measures: { actual: "actualAmount" },
+    sign: { field: "lineType", positive: ["revenue"], amountField: "actualAmount" },
     fields: [
       { name: "category", label: "Category", type: "string" },
       { name: "department", label: "Department", type: "string" },
@@ -277,6 +322,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     model: "cashFlowEntry",
     hasPlanId: false,
     hasYearMonth: true,
+    sign: { field: "entryType", positive: ["inflow"], amountField: "amount" },
     fields: [
       { name: "year", label: "Year", type: "number" },
       { name: "month", label: "Month", type: "number" },
@@ -360,7 +406,7 @@ export interface BudgetReportConfig {
 }
 
 /** Computed fields the engine knows how to produce. */
-export const COMPUTED_FIELDS = ["variance", "execution_pct", "margin_pct"] as const
+export const COMPUTED_FIELDS = ["variance", "execution_pct", "margin_pct", "net_amount"] as const
 export type ComputedField = (typeof COMPUTED_FIELDS)[number]
 
 interface ReportResultMeta {
@@ -505,6 +551,7 @@ export function getEntityComputedFields(entityType: string): ComputedField[] {
   const out: ComputedField[] = []
   if (hasPlanVsFact) out.push("variance", "execution_pct")
   if (m.revenue && m.cost) out.push("margin_pct")
+  if (config.sign) out.push("net_amount")
   return out
 }
 
@@ -722,6 +769,7 @@ export function applyComputedFields(
   rows: ReportRow[],
   computedFields: string[],
   measures?: MeasureMap,
+  sign?: SignConvention,
 ): ReportRow[] {
   const legacy = measures === undefined
   const m: MeasureMap = measures ?? {
@@ -754,7 +802,33 @@ export function applyComputedFields(
             planned === undefined || actual === undefined
               ? legacy ? (planned ?? 0) - (actual ?? 0) : null
               : planned - actual
+          // Direction, alongside the magnitude. `variance` itself keeps the
+          // plan-minus-actual meaning its own label states, but that sign
+          // says nothing about whether the news is good: +50 000 is a
+          // revenue shortfall and a cost saving depending on the row. This
+          // carries the answer, computed exactly as `variance-helpers.ts`
+          // does it — (actual − plan) × favourable direction — so the
+          // export's red/green stops painting an under-collection green.
+          // Not a user-selectable column; it rides along for the renderer.
+          if (sign && planned !== undefined && actual !== undefined) {
+            row.variance_favourable =
+              (actual - planned) * favourableDirection(row[sign.field])
+          }
           break
+        case "net_amount": {
+          // The stored amount is unsigned, with the direction in another
+          // column. Nets it without touching the raw column.
+          if (!sign) {
+            row.net_amount = null
+            break
+          }
+          const raw = row[sign.amountField]
+          row.net_amount =
+            typeof raw === "number" && Number.isFinite(raw)
+              ? raw * (sign.positive.includes(String(row[sign.field])) ? 1 : -1)
+              : null
+          break
+        }
         case "execution_pct":
           if (planned === undefined || actual === undefined) {
             row.execution_pct = legacy ? 0 : null
@@ -839,11 +913,29 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
   // → its matching-year actuals (Y4); an actuals plan → itself. (No-op for the
   // other entities.)
   let resolvedPlanId = config.planId
-  if (config.entityType === "budgetActuals" && config.planId) {
-    resolvedPlanId = (await resolveActualsPlanId(orgId, config.planId)) ?? config.planId
+  let actualsPlanIdsInScope: string[] | null = null
+  if (config.entityType === "budgetActuals") {
+    if (config.planId) {
+      resolvedPlanId = (await resolveActualsPlanId(orgId, config.planId)) ?? config.planId
+    } else {
+      // No plan selected ("All plans"). The resolution above is what makes
+      // this source mean "realized figures" at all, and skipping it returned
+      // BUDGET lines under the "Actual Amount" label — the default state of
+      // the screen, reading as fact. Restrict to actuals-kind plans instead.
+      // What the default SHOULD be is still open (Phase 15.5); this only
+      // stops the source from contradicting its own name.
+      const actualPlans = (await prisma.budgetPlan.findMany({
+        where: { organizationId: orgId, kind: "actual", deletedAt: null },
+        select: { id: true },
+      })) as Array<{ id: string }>
+      actualsPlanIdsInScope = actualPlans.map((p) => p.id)
+    }
   }
 
   const where = buildWhere(orgId, resolvedPlanId, entityConfig, config.filters)
+  if (actualsPlanIdsInScope) {
+    where.planId = { in: actualsPlanIdsInScope }
+  }
   // Soft-delete tables (2026-05-31): exclude archived rows or re-imported
   // data double-counts in custom reports. Measured on live data: budgetLine
   // ×6.27, balanceSheetLine ×1.92, cashFlowEntry ×1.98. Applied here (after
@@ -873,6 +965,7 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
   if (DEDUPES_ACCOUNT_CODES.has(config.entityType)) {
     const scopeWhere: Record<string, unknown> = { organizationId: orgId, deletedAt: null }
     if (resolvedPlanId) scopeWhere.planId = resolvedPlanId
+    else if (actualsPlanIdsInScope) scopeWhere.planId = { in: actualsPlanIdsInScope }
 
     const distinctCodes = await modelDispatch.budgetLine.findMany({
       where: scopeWhere,
@@ -1023,10 +1116,25 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
     const numericFields = entityConfig.fields
       .filter(f => f.type === "number" && !["year", "month"].includes(f.name) && !NON_ADDITIVE.has(f.name))
       .map(f => f.name)
+
+    // The signed figure has to be derived per row and summed, not derived
+    // from the bucket: a month holding 5 000 in and 3 000 out nets to 2 000,
+    // and there is no row-level `entryType` left once they are added together.
+    const wantsNet = Boolean(entityConfig.sign) && (config.computedFields ?? []).includes("net_amount")
+    if (wantsNet) {
+      applyComputedFields(allRows, ["net_amount"], entityConfig.measures ?? {}, entityConfig.sign)
+      numericFields.push("net_amount")
+    }
+
     let grouped: ReportRow[] = periodGroupData(allRows, config.periodGroupBy, numericFields)
 
     if (config.computedFields?.length) {
-      grouped = applyComputedFields(grouped, config.computedFields, entityConfig.measures ?? {})
+      // `net_amount` is already summed into each bucket above; re-deriving it
+      // here would read the bucket's own (absent) direction column and null it.
+      const rest = config.computedFields.filter(cf => cf !== "net_amount")
+      if (rest.length) {
+        grouped = applyComputedFields(grouped, rest, entityConfig.measures ?? {}, entityConfig.sign)
+      }
     }
 
     return {
@@ -1059,13 +1167,24 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
       sumFields[nf.name] = true
     }
 
+    // Netting a group needs the direction column inside the aggregate: the
+    // sign lives per row, and it is gone once rows are added together. So
+    // when `net_amount` is asked for, group by (key, direction) and fold the
+    // sub-buckets afterwards. Requested only then — the default path keeps
+    // its single-field groupBy.
+    const netSign = entityConfig.sign
+    const wantsNet = Boolean(netSign) && (config.computedFields ?? []).includes("net_amount")
+    const by = wantsNet && netSign && netSign.field !== config.groupBy
+      ? [config.groupBy, netSign.field]
+      : [config.groupBy]
+
     // Prisma 6: groupBy doesn't support orderBy _count or take with non-by fields
     // Fetch all groups, then sort/limit in JS.
     // `_count: true` replaces the separate unbounded findMany that used to run
     // purely to count rows in JS — on live budget_lines that pulled 44 000 rows
     // into Node on every debounced preview.
     const result = await modelDispatch[entityConfig.model].groupBy({
-      by: [config.groupBy],
+      by,
       where,
       _count: true,
       ...(Object.keys(sumFields).length > 0 ? { _sum: sumFields } : {}),
@@ -1073,7 +1192,7 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
 
     // Flatten _sum fields so chart & KPI can read them directly
     type GroupByRow = ReportRow & { _sum?: Record<string, number | null>; _count?: number | Record<string, number> }
-    const flatResult: ReportRow[] = (result as GroupByRow[]).map((row) => {
+    let flatResult: ReportRow[] = (result as GroupByRow[]).map((row) => {
       const flat: ReportRow = { ...row }
       flat.count = typeof row._count === "number" ? row._count : (row._count?._all ?? 0)
       if (row._sum) {
@@ -1085,6 +1204,33 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
       delete flat._count
       return flat
     })
+
+    // Fold the (key, direction) sub-buckets back into one row per key,
+    // netting the signed amount as they merge. Every other sum stays gross —
+    // `plannedAmount` is still what the column says it is.
+    if (by.length === 2 && netSign) {
+      const folded = new Map<string, ReportRow>()
+      for (const row of flatResult) {
+        const key = String(row[config.groupBy] ?? "")
+        const direction = netSign.positive.includes(String(row[netSign.field])) ? 1 : -1
+        const amount = typeof row[netSign.amountField] === "number" ? (row[netSign.amountField] as number) : 0
+
+        const existing = folded.get(key)
+        if (!existing) {
+          const seed: ReportRow = { ...row }
+          delete seed[netSign.field] // not a property of the merged group
+          seed.net_amount = amount * direction
+          folded.set(key, seed)
+          continue
+        }
+        existing.count = ((existing.count as number) ?? 0) + ((row.count as number) ?? 0)
+        for (const f of Object.keys(sumFields)) {
+          existing[f] = ((existing[f] as number) ?? 0) + ((row[f] as number) ?? 0)
+        }
+        existing.net_amount = ((existing.net_amount as number) ?? 0) + amount * direction
+      }
+      flatResult = [...folded.values()]
+    }
 
     // Sort by requested field or by count desc, then limit
     if (config.sortBy && config.sortBy !== "_count") {
@@ -1109,7 +1255,13 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
     if (config.computedFields?.length) {
       const byCode = config.groupBy === "department" ? await loadActualsByCode() : null
       attachActuals(limitedResult, byCode, config.groupBy)
-      applyComputedFields(limitedResult, config.computedFields, entityConfig.measures ?? {})
+      // `net_amount` was netted during the fold above, where the direction
+      // column still existed; re-deriving it here would read a merged row
+      // that no longer has one.
+      const rest = config.computedFields.filter(cf => !(by.length === 2 && cf === "net_amount"))
+      if (rest.length) {
+        applyComputedFields(limitedResult, rest, entityConfig.measures ?? {}, entityConfig.sign)
+      }
     }
 
     // Grouping by a foreign key returns cuids as the group key. Resolve them
@@ -1144,19 +1296,42 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
   const hasSelect = Object.keys(select).length > 0
   const hasInclude = Object.keys(include).length > 0
 
-  // The join key has to come back even when the user did not pick it as a
-  // column, or the realized figures have nothing to pair against.
+  // Columns a computed field needs but the user did not select. They are
+  // fetched anyway and stripped from the rows afterwards, so the report shows
+  // exactly what was asked for while the derivation still has its operands.
+  //
+  // Getting this wrong is quiet rather than loud: without `lineType`,
+  // `favourableDirection` falls to its defensive "treat as cost" default and
+  // a revenue shortfall comes back labelled favourable.
   const joinKey = "department"
-  const needsJoinKey =
+  const internalFields = new Set<string>()
+  const wantsPlanVsFact = requestedComputed.some((cf) => cf === "variance" || cf === "execution_pct")
+  if (hasSelect && entityConfig.actualsFromMatchingPlan && wantsPlanVsFact && !select[joinKey]) {
+    internalFields.add(joinKey)
+  }
+  if (
     hasSelect &&
-    Boolean(entityConfig.actualsFromMatchingPlan) &&
-    requestedComputed.some((cf) => cf === "variance" || cf === "execution_pct") &&
-    !select[joinKey]
+    entityConfig.sign &&
+    (requestedComputed.includes("net_amount") || wantsPlanVsFact) &&
+    !select[entityConfig.sign.field]
+  ) {
+    internalFields.add(entityConfig.sign.field)
+  }
+  if (hasSelect && entityConfig.sign && requestedComputed.includes("net_amount") && !select[entityConfig.sign.amountField]) {
+    internalFields.add(entityConfig.sign.amountField)
+  }
 
   const result = await modelDispatch[entityConfig.model].findMany({
     where,
     ...(hasSelect
-      ? { select: { ...select, id: true, ...(needsJoinKey ? { [joinKey]: true } : {}), ...(hasInclude ? include : {}) } }
+      ? {
+          select: {
+            ...select,
+            id: true,
+            ...Object.fromEntries([...internalFields].map((f) => [f, true])),
+            ...(hasInclude ? include : {}),
+          },
+        }
       : {}),
     ...(hasInclude && !hasSelect ? { include } : {}),
     orderBy: buildOrderBy(config.entityType, entityConfig, config.sortBy, config.sortOrder),
@@ -1166,8 +1341,10 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
   let data: ReportRow[] = result as ReportRow[]
   if (config.computedFields?.length) {
     attachActuals(data, await loadActualsByCode(), joinKey)
-    data = applyComputedFields(data, config.computedFields, entityConfig.measures ?? {})
-    if (needsJoinKey) for (const row of data) delete row[joinKey]
+    data = applyComputedFields(data, config.computedFields, entityConfig.measures ?? {}, entityConfig.sign)
+    for (const field of internalFields) {
+      for (const row of data) delete row[field]
+    }
   }
 
   // Compute aggregates for numeric columns

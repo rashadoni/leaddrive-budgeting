@@ -115,6 +115,7 @@ export async function POST(req: NextRequest) {
       variance: "Variance",
       execution_pct: "Execution %",
       margin_pct: "Margin %",
+      net_amount: "Net Amount",
     }
     const computedKeys = (config.computedFields ?? []).filter(cf => cf in COMPUTED_LABELS)
     const fields = getEntityFields(entityType)
@@ -158,9 +159,11 @@ export async function POST(req: NextRequest) {
 
     // Identify field types for formatting
     const numericFieldNames = new Set(fields.filter(f => f.type === "number").map(f => f.name))
-    // `variance` is computed, so it is not in the entity's field list — but it
-    // is money and belongs in the number format and the TOTAL row.
+    // `variance` and `net_amount` are computed, so they are not in the
+    // entity's field list — but they are money and belong in the number
+    // format and the TOTAL row.
     if (computedKeys.includes("variance")) numericFieldNames.add("variance")
+    if (computedKeys.includes("net_amount")) numericFieldNames.add("net_amount")
     const percentFields = new Set(["execution_pct", "margin_pct", "variancePct"])
     const varianceFields = new Set(["variance"])
 
@@ -170,11 +173,20 @@ export async function POST(req: NextRequest) {
       const values = fieldKeys.map(k => flat[k] ?? "")
       const dataRow = sheet.addRow(values)
 
-      // Conditional formatting for variance columns (green positive, red negative)
+      // Conditional formatting for variance columns.
+      //
+      // Colour follows FAVOURABILITY, not the raw sign. `variance` means
+      // plan − actual, so +50 000 is a cost saving on an expense row and a
+      // revenue shortfall on a revenue row — colouring both green (which is
+      // what `val >= 0` did) painted every under-collection as good news.
+      // The engine attaches `variance_favourable` alongside, computed the
+      // same way `variance-helpers.ts` does it. Falls back to the raw sign
+      // only when the entity has no direction column to read.
       fieldKeys.forEach((k, idx) => {
         if (varianceFields.has(k) || k === "variance") {
           const cell = dataRow.getCell(idx + 1)
-          const val = Number(cell.value) || 0
+          const favourable = flat.variance_favourable
+          const val = typeof favourable === "number" ? favourable : Number(cell.value) || 0
           cell.font = { color: { argb: val >= 0 ? "FF10B981" : "FFEF4444" } }
         }
       })

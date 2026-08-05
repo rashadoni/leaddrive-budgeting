@@ -20,7 +20,12 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { createFakePrisma, type FakePrismaStore } from "@/test/fake-prisma-report"
-import { applyComputedFields, ReportConfigError, getEntityComputedFields } from "./report-engine"
+import {
+  applyComputedFields,
+  ReportConfigError,
+  getEntityComputedFields,
+  favourableDirection,
+} from "./report-engine"
 
 const { db } = vi.hoisted(() => ({
   db: { current: null as unknown as Record<string, unknown> },
@@ -222,13 +227,19 @@ describe("BUG-03 [MONEY] FIXED — margin % is offered only where both operands 
     }
   })
 
-  it("budgetLines offers variance and execution, and nothing else", () => {
-    expect(getEntityComputedFields("budgetLines")).toEqual(["variance", "execution_pct"])
+  it("budgetLines offers variance, execution and the signed net — not margin", () => {
+    expect(getEntityComputedFields("budgetLines")).toEqual([
+      "variance", "execution_pct", "net_amount",
+    ])
   })
 
-  it("a fact-only source offers neither — there is no plan to compare against", () => {
-    expect(getEntityComputedFields("budgetActuals")).toEqual([])
-    expect(getEntityComputedFields("actualsLedger")).toEqual([])
+  it("a fact-only source offers no plan-vs-fact field — there is no plan to compare against", () => {
+    for (const entity of ["budgetActuals", "actualsLedger"]) {
+      const available = getEntityComputedFields(entity)
+      expect(available).not.toContain("variance")
+      expect(available).not.toContain("execution_pct")
+      expect(available).not.toContain("margin_pct")
+    }
   })
 
   it("asking anyway yields null values and a stated reason, not 100 %", async () => {
@@ -657,15 +668,16 @@ describe("New — the accounting ledger is reachable as its own source", () => {
 // STILL OPEN — pinned at the wrong behaviour on purpose.
 // ═════════════════════════════════════════════════════════════
 
-describe("BUG-11 [MONEY] OPEN — cash flow sums inflows and outflows into one 'Amount'", () => {
+describe("BUG-11 [MONEY] FIXED — cash flow can be read net, not gross", () => {
   /**
    * CashFlowEntry stores `Math.abs(amount)` with the direction in `entryType`
-   * (`dynamic-cf-adapter.ts:10`, `statement-controls-adapter.ts:339`). A
-   * period roll-up therefore reports gross turnover where the reader expects
-   * net cash. Fixing it means a signed measure on the entity, which is the
-   * same decision as BUG-13 and belongs with it.
+   * (`dynamic-cf-adapter.ts:10`), so summing it reported gross turnover where
+   * the reader expects net cash. The entity now declares a `SignConvention`
+   * mirroring what the rest of the product already does —
+   * `statement-controls-adapter.ts:339` nets it exactly this way. The raw
+   * `amount` column is untouched; the signed figure is its own column.
    */
-  it("January nets +2 000; the report still says 8 000", async () => {
+  it("the raw Amount column still reports gross, as stored", async () => {
     const res = await executeBudgetReport(ORG, {
       entityType: "cashFlow",
       columns: [{ field: "year" }, { field: "month" }, { field: "amount" }],
@@ -673,29 +685,148 @@ describe("BUG-11 [MONEY] OPEN — cash flow sums inflows and outflows into one '
     })
     expect(res.data[0].amount).toBe(8_000)
   })
-})
 
-describe("BUG-13 [MONEY] OPEN — revenue and expense are added with no sign convention", () => {
-  /**
-   * `lineType` distinguishes them and nothing applies a sign, so an
-   * unfiltered P&L total is revenue + costs. Needs a product decision: which
-   * way is favourable for a cost line, and whether the builder should net by
-   * `lineType` or refuse to total across it.
-   */
-  it("an unfiltered P&L total adds 1 000 000 of revenue to 500 000 of cost", async () => {
-    const res = await executeBudgetReport(ORG, planVsFact({
-      columns: [{ field: "lineType" }, { field: "plannedAmount" }],
-    }))
-    expect(sum(res.data, "plannedAmount")).toBe(1_500_000) // the net result is +500 000
+  it("net_amount nets January to +2 000", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "cashFlow",
+      columns: [{ field: "year" }, { field: "month" }, { field: "amount" }],
+      filters: [], periodGroupBy: "month", computedFields: ["net_amount"],
+    })
+    expect(res.data[0].net_amount).toBe(2_000) // 5 000 in − 3 000 out
+  })
+
+  it("per row, an outflow carries a negative net", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "cashFlow",
+      columns: [{ field: "entryType" }, { field: "amount" }],
+      filters: [{ field: "entryType", op: "eq", value: "outflow" }],
+      computedFields: ["net_amount"],
+    })
+    expect(res.data[0].amount).toBe(3_000)
+    expect(res.data[0].net_amount).toBe(-3_000)
   })
 })
 
-describe("BUG-17 [MONEY] OPEN — 'All plans' sums every plan of every year", () => {
+describe("BUG-13 [MONEY] FIXED — revenue and expense can be netted", () => {
   /**
-   * `planId` defaults to "" in the picker and nothing narrows by plan kind or
-   * year, so the opening state of the screen adds budget to fact. Needs a
-   * product decision: default to the latest plan, or refuse to report until
-   * one is chosen.
+   * `lineType` distinguishes them and nothing applied a sign, so an
+   * unfiltered P&L total was revenue + costs. Same mechanism as BUG-11, and
+   * the same restraint: `plannedAmount` still reports what is stored.
+   */
+  it("the raw column still adds revenue to cost, as stored", async () => {
+    const res = await executeBudgetReport(ORG, planVsFact({
+      columns: [{ field: "lineType" }, { field: "plannedAmount" }],
+    }))
+    expect(sum(res.data, "plannedAmount")).toBe(1_500_000)
+  })
+
+  it("net_amount gives the bottom line: 1 000 000 revenue − 500 000 cost", async () => {
+    const res = await executeBudgetReport(ORG, planVsFact({
+      columns: [{ field: "lineType" }, { field: "plannedAmount" }],
+      computedFields: ["net_amount"],
+    }))
+    expect(sum(res.data, "net_amount")).toBe(500_000)
+  })
+
+  it("grouping nets within each group while the gross column stays gross", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET,
+      columns: [{ field: "plannedAmount", aggregate: "sum" }], filters: [],
+      groupBy: "lineType", computedFields: ["net_amount"],
+    })
+    const revenue = res.data.find((r) => r.lineType === "revenue")!
+    const expense = res.data.find((r) => r.lineType === "expense")!
+    expect(revenue.plannedAmount).toBe(1_000_000)
+    expect(revenue.net_amount).toBe(1_000_000)
+    expect(expense.plannedAmount).toBe(500_000)
+    expect(expense.net_amount).toBe(-500_000)
+  })
+
+  it("an entity with no direction column does not offer the field", () => {
+    expect(getEntityComputedFields("salesBudget")).not.toContain("net_amount")
+    expect(getEntityComputedFields("budgetLines")).toContain("net_amount")
+    expect(getEntityComputedFields("cashFlow")).toEqual(["net_amount"])
+  })
+})
+
+describe("BUG-13b [MONEY] FIXED — variance colour follows favourability, not raw sign", () => {
+  /**
+   * `variance` means plan − actual, so +50 000 is a cost saving on an expense
+   * row and a revenue SHORTFALL on a revenue row. The xlsx export coloured
+   * both green (`val >= 0`), painting every under-collection as good news.
+   * The engine now attaches `variance_favourable`, computed the way
+   * `variance-helpers.ts` does it: (actual − plan) × favourable direction.
+   */
+  it("a revenue shortfall is unfavourable even though variance is positive", async () => {
+    const res = await executeBudgetReport(ORG, planVsFact({
+      filters: [{ field: "department", op: "eq", value: "601-01" }],
+      computedFields: ["variance"],
+    }))
+    expect(res.data[0].variance).toBe(50_000) // plan 600k − actual 550k
+    expect(res.data[0].variance_favourable).toBe(-50_000) // collected less than planned
+  })
+
+  it("matches the repo's own helper, including its defensive default", () => {
+    expect(favourableDirection("revenue")).toBe(1)
+    expect(favourableDirection("expense")).toBe(-1)
+    expect(favourableDirection("cogs")).toBe(-1)
+    // An unknown type is treated as a cost — misclassifying a cost as revenue
+    // paints an overrun green, the more dangerous of the two errors.
+    expect(favourableDirection(undefined)).toBe(-1)
+    expect(favourableDirection("something-new")).toBe(-1)
+  })
+})
+
+describe("BUG-17a [MONEY] FIXED — the Fakt source no longer returns budget lines", () => {
+  /**
+   * With no plan selected the actuals-plan resolution was skipped entirely
+   * (it was guarded on `config.planId`), so "Fakt məlumatlar" served BUDGET
+   * lines under the "Actual Amount" label — in the screen's default state.
+   * Whatever the default should BE is still open below; this only stops the
+   * source from contradicting its own name.
+   */
+  it("returns only actuals-plan rows when no plan is selected", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetActuals",
+      columns: [{ field: "department" }, { field: "plannedAmount" }],
+      filters: [{ field: "department", op: "eq", value: "601-01" }],
+    })
+    expect(res.data.map((r) => r.plannedAmount)).toEqual([550_000]) // was [550 000, 600 000]
+  })
+
+  it("an org with no actuals plan gets nothing, not the budget", async () => {
+    const store = seed()
+    store.budgetPlan = (store.budgetPlan as Array<Record<string, unknown>>).filter(
+      (p) => p.kind !== "actual",
+    )
+    db.current = createFakePrisma(store) as unknown as Record<string, unknown>
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetActuals",
+      columns: [{ field: "department" }, { field: "plannedAmount" }],
+      filters: [],
+    })
+    expect(res.data).toEqual([])
+  })
+
+  it("parent codes are still de-duplicated across the multi-plan scope", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetActuals",
+      columns: [{ field: "department" }, { field: "plannedAmount" }],
+      filters: [{ field: "lineType", op: "eq", value: "revenue" }],
+    })
+    expect(res.data.map((r) => r.department).sort()).toEqual(["601-01", "601-02"])
+    expect(sum(res.data, "plannedAmount")).toBe(900_000)
+  })
+})
+
+describe("BUG-17b [MONEY] OPEN — 'All plans' still sums every plan of every year", () => {
+  /**
+   * `planId` defaults to "" in the picker and nothing narrows `budgetLines`
+   * by plan kind or year, so the opening state of the screen adds budget to
+   * fact. Unlike 17a this is not a contradiction the engine can settle on its
+   * own: it needs a product decision — default to the latest plan of the
+   * right kind, or refuse to report until one is picked. Both change what
+   * the screen does on open.
    */
   it("budgetLines with no plan adds the budget plan and the actuals plan together", async () => {
     const res = await executeBudgetReport(ORG, {
@@ -704,15 +835,5 @@ describe("BUG-17 [MONEY] OPEN — 'All plans' sums every plan of every year", ()
       filters: [{ field: "lineType", op: "eq", value: "revenue" }],
     })
     expect(sum(res.data, "plannedAmount")).toBe(1_900_000)
-  })
-
-  it("Fakt with no plan still returns budget lines labelled as actuals", async () => {
-    const res = await executeBudgetReport(ORG, {
-      entityType: "budgetActuals",
-      columns: [{ field: "department" }, { field: "plannedAmount" }],
-      filters: [{ field: "department", op: "eq", value: "601-01" }],
-    })
-    const amounts = res.data.map((r) => r.plannedAmount).sort((a, b) => Number(a) - Number(b))
-    expect(amounts).toEqual([550_000, 600_000])
   })
 })

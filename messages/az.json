@@ -2257,7 +2257,8 @@
     "computedFields": {
       "variance": "Fərq (Plan − Fakt)",
       "execution_pct": "İcra %",
-      "margin_pct": "Marja %"
+      "margin_pct": "Marja %",
+      "net_amount": "Xalis (işarəli)"
     },
     "chartTypes": {
       "table": "Cədvəl",
