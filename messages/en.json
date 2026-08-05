@@ -4528,7 +4528,8 @@
         "recomputedLast24h": "values recomputed in 24h",
         "verdict": "verdict",
         "runStatus": "run status",
-        "errors": "errors"
+        "errors": "errors",
+        "unpublished": "not published yet"
       }
     }
   },

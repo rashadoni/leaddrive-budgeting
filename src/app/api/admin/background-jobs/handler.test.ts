@@ -103,6 +103,7 @@ describe("GET /api/admin/background-jobs", () => {
             feedRefreshLastRunAt: "2026-08-04T07:05:00.000Z",
             feedRefreshLastRunStatus: "ok",
             feedRefreshLastRunErrorCount: 2,
+            feedRefreshLastRunUnpublishedCount: 3,
           },
         },
       }),
@@ -112,6 +113,7 @@ describe("GET /api/admin/background-jobs", () => {
     expect(job(body, "feedRefresh").detail).toEqual([
       { key: "runStatus", value: "ok" },
       { key: "errors", value: "2" },
+      { key: "unpublished", value: "3" },
     ])
   })
 

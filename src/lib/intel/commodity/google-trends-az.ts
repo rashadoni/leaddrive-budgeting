@@ -222,6 +222,8 @@ export function createGoogleTrendsAzAdapter(
       }
       const allPoints: CommodityDataPoint[] = []
       const errors: string[] = []
+      /** Upstream reached, nothing publishable yet — reported, not a failure. */
+      const unpublished: string[] = []
       let anyFetched = false
       for (const cat of TRENDS_CATEGORIES) {
         const url = buildTrendsUrl(cat, apiKey, proxyUrl)
@@ -250,7 +252,7 @@ export function createGoogleTrendsAzAdapter(
         }
         const point = trendsResponseToDataPoint(parsed, cat)
         if (!point) {
-          errors.push(`${cat.metric}: no usable timeline rows`)
+          unpublished.push(`${cat.metric}: no usable timeline rows`)
           continue
         }
         allPoints.push(point)
@@ -259,6 +261,7 @@ export function createGoogleTrendsAzAdapter(
         source: TRENDS_SOURCE,
         dataPoints: allPoints,
         errors,
+        unpublished,
         fetched: anyFetched,
       }
     },

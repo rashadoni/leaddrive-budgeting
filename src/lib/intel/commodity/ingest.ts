@@ -86,8 +86,11 @@ export interface IngestResult {
   perSource: CommodityFetchResult[]
   /** Total points written across all sources (counts in-memory + Prisma identically). */
   pointsWritten: number
-  /** Per-adapter / per-write errors aggregated. */
+  /** Per-adapter / per-write errors aggregated — these fail the run. */
   errors: string[]
+  /** Sources that were reached but have nothing publishable yet. Reported,
+   *  never a failure — see `CommodityFetchResult.unpublished`. */
+  unpublished: string[]
 }
 
 /**
@@ -106,6 +109,7 @@ export async function ingestCommodityData(
   const prisma = opts.prisma ?? prismaAdmin
   const perSource: CommodityFetchResult[] = []
   const errors: string[] = []
+  const unpublished: string[] = []
   let pointsWritten = 0
 
   for (const adapter of adapters) {
@@ -120,6 +124,9 @@ export async function ingestCommodityData(
     }
     perSource.push(result)
     errors.push(...result.errors.map((e) => `${adapter.source}: ${e}`))
+    unpublished.push(
+      ...(result.unpublished ?? []).map((e) => `${adapter.source}: ${e}`),
+    )
 
     for (const point of result.dataPoints) {
       // Skip non-finite values defensively (adapters should pre-filter)
@@ -199,5 +206,5 @@ export async function ingestCommodityData(
     }
   }
 
-  return { perSource, pointsWritten, errors }
+  return { perSource, pointsWritten, errors, unpublished }
 }

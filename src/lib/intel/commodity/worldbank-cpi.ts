@@ -104,6 +104,8 @@ export function createWorldBankCPIAdapter(
     async fetch(): Promise<CommodityFetchResult> {
       const allPoints: CommodityDataPoint[] = []
       const errors: string[] = []
+      /** Upstream reached, nothing publishable yet — reported, not a failure. */
+      const unpublished: string[] = []
       let anyFetched = false
 
       for (const country of WB_COUNTRIES) {
@@ -135,7 +137,7 @@ export function createWorldBankCPIAdapter(
         }
         const points = wbResponseToDataPoints(parsed, country)
         if (points.length === 0) {
-          errors.push(`${country}: no usable data points returned`)
+          unpublished.push(`${country}: no usable data points returned`)
         }
         allPoints.push(...points)
       }
@@ -144,6 +146,7 @@ export function createWorldBankCPIAdapter(
         source: WB_SOURCE,
         dataPoints: allPoints,
         errors,
+        unpublished,
         fetched: anyFetched,
       }
     },

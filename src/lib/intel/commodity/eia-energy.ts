@@ -141,6 +141,8 @@ export function createEIAEnergyAdapter(opts: EiaAdapterOptions = {}): CommodityA
       }
       const dataPoints: CommodityDataPoint[] = []
       const errors: string[] = []
+      /** Upstream reached, nothing publishable yet — reported, not a failure. */
+      const unpublished: string[] = []
       for (const series of EIA_SERIES) {
         const url = buildEiaUrl(series, apiKey)
         let response: Response
@@ -165,7 +167,7 @@ export function createEIAEnergyAdapter(opts: EiaAdapterOptions = {}): CommodityA
         if (point) {
           dataPoints.push(point)
         } else {
-          errors.push(`${series.metric}: no valid row in response`)
+          unpublished.push(`${series.metric}: no valid row in response`)
         }
       }
       return { source: EIA_SOURCE, dataPoints, errors, fetched: true }
