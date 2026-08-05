@@ -376,6 +376,32 @@ export function summarizeMatrix(
   return counts;
 }
 
+/**
+ * The colour a matrix TILE is actually painted.
+ *
+ * 2026-08-04 audit. `statusColor` is the theme accent — the colour of text,
+ * chips and glyphs — and for `unknown` it returns #6B7280, a legible slate
+ * grey. A tile is not painted that: HeatMapCellTd overrode it inline with
+ * #0A0E27 for unknown and #111827 for na, deliberately, so that an unscored
+ * cell reads as absent rather than as a measured neutral. The override lived
+ * in one component while everything else — the legend above all — asked
+ * `statusColor`, which is why the legend taught a grey swatch no cell draws
+ * and had no entry for `na` at all (the accent map has no such case, so
+ * `statusColor('na')` does not even typecheck).
+ *
+ * One function now answers "what colour is this tile", so a legend built from
+ * it cannot describe a paint job the grid does not use.
+ */
+export function cellFaceColor(
+  state: IndicatorStatus | 'missing' | 'na',
+): string {
+  // Both unmeasured states are the page background, not a shade of grey: they
+  // are meant to read as "nothing here", and #6B7280 reads as a value.
+  if (state === 'na') return '#111827';
+  if (state === 'unknown') return '#0A0E27';
+  return statusColor(state);
+}
+
 /** Map a status to the hex accent used in the terminal theme. */
 export function statusColor(status: IndicatorStatus | 'missing'): string {
   switch (status) {

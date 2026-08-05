@@ -17,6 +17,8 @@ import { resolveScenarioLabel } from "../lib/resolve-scenario-label";
 import { Beaker, X, TrendingDown, TrendingUp, Minus, Plus, Pencil, Trash2, Flame, Zap } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { currentBakuYear } from "@/lib/risk/periods";
+import { getMatrixSync } from "../hooks/use-matrix";
+import { planDisplayedPeriod } from "../lib/displayed-period";
 import { orderCascade } from "../lib/cascade-order";
 import { CRISIS_CATALOG, type CrisisCategory } from "@/lib/risk/crisis-catalog";
 import { ScenarioFormModal, type ScenarioFormValues } from "./ScenarioFormModal";
@@ -295,7 +297,25 @@ export function ScenarioPanel() {
     assumptionNote: string | null;
   } | null>(null);
 
-  const period = useMemo(() => currentBakuYear(), []);
+  // ── Displayed period (defect C) ─────────────────────────────────────────────
+  // Was `useMemo(() => currentBakuYear(), [])`: the panel simulated the current
+  // year no matter what the grid was showing, and then repainted the grid with
+  // that other year's colours. `selectedPeriod` is the SAME store value
+  // `useMatrix(selectedPeriod)` keys the grid's fetch on
+  // (use-heat-map-model.ts:150), and the peek below reads THAT key — never the
+  // bare `getMatrixSync()`, which would read `__default__` and answer about the
+  // wrong period the moment a chip is picked.
+  //
+  // A peek, not a subscription: `TerminalOverlayHost` mounts this panel
+  // unconditionally, and `TerminalOverlayHost.runtime.test.tsx:105` asserts
+  // ZERO /api/indicators/matrix calls at mount. `useMatrix()` here fires one and
+  // breaks that mobile-cost guarantee (measured). `getMatrixSync` never fetches.
+  const selectedPeriod = useTerminalStore((s) => s.selectedPeriod);
+  const peekedMatrix = getMatrixSync(selectedPeriod);
+  const { period, blockedReason } = useMemo(
+    () => planDisplayedPeriod(selectedPeriod, peekedMatrix, currentBakuYear()),
+    [selectedPeriod, peekedMatrix],
+  );
 
   // Open/close on global event
   useEffect(() => {
@@ -394,10 +414,21 @@ export function ScenarioPanel() {
   // ── Run simulation ──────────────────────────────────────────────────────────
   const handleSimulate = useCallback(async () => {
     if (!selectedScenario || simState.kind === "loading") return;
+    // Re-read at click time, through the same rule the label rendered. The peek
+    // is synchronous and unsubscribed, so a payload that landed after the last
+    // render would otherwise be invisible here; this closes that sliver at zero
+    // request cost. `plan.blockedReason` is null whenever we hold no payload —
+    // an unknown must never block the action.
+    const plan = planDisplayedPeriod(
+      selectedPeriod,
+      getMatrixSync(selectedPeriod),
+      currentBakuYear(),
+    );
+    if (plan.blockedReason !== null) return;
     setSimState({ kind: "loading" });
     try {
       const res = await fetch(
-        `/api/scenarios/${selectedScenario.id}/simulate?period=${period}&narrative=1`,
+        `/api/scenarios/${selectedScenario.id}/simulate?period=${plan.period}&narrative=1`,
       );
       if (res.status === 422) {
         setSimState({ kind: "unsupported" });
@@ -415,7 +446,7 @@ export function ScenarioPanel() {
         message: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [selectedScenario, simState.kind, period]);
+  }, [selectedScenario, simState.kind, selectedPeriod]);
 
   // ── Apply delta to HeatMap ──────────────────────────────────────────────────
   const handleApplyToHeatMap = useCallback(() => {
@@ -470,6 +501,12 @@ export function ScenarioPanel() {
   const runDrivers = useCallback(async () => {
     if (!selectedScenario || briefState.kind === "loading") return;
     const scenarioId = selectedScenario.id;
+    const plan = planDisplayedPeriod(
+      selectedPeriod,
+      getMatrixSync(selectedPeriod),
+      currentBakuYear(),
+    );
+    if (plan.blockedReason !== null) return;
     setBriefState({ kind: "loading" });
     setCascadePhase("none");
     setNarrativeState("idle");
@@ -483,7 +520,7 @@ export function ScenarioPanel() {
     try {
       // FAST path: `narrative=0` skips the slow AI call so the cascade fires now.
       const res = await fetch(
-        `/api/scenarios/${scenarioId}/simulate?mode=drivers&period=${period}&narrative=0`,
+        `/api/scenarios/${scenarioId}/simulate?mode=drivers&period=${plan.period}&narrative=0`,
         { signal: controller.signal },
       );
       clearTimeout(slowTimer);
@@ -539,7 +576,7 @@ export function ScenarioPanel() {
         message: aborted ? t("scenarioPanel.crisisTimeout") : e instanceof Error ? e.message : String(e),
       });
     }
-  }, [selectedScenario, briefState.kind, period, aiLang, clearScenarioDelta, setScenarioBrief, postNarrative, t]);
+  }, [selectedScenario, briefState.kind, selectedPeriod, aiLang, clearScenarioDelta, setScenarioBrief, postNarrative, t]);
 
   // Staggered worst-first cascade — reveal the overlay deltaMap incrementally so
   // the HeatMap visibly "reacts". One run per cascadeNonce; cleans up its timer.
@@ -858,7 +895,8 @@ export function ScenarioPanel() {
                     <button
                       type="button"
                       onClick={() => void runDrivers()}
-                      disabled={briefState.kind === "loading"}
+                      disabled={briefState.kind === "loading" || blockedReason !== null}
+                      title={blockedReason !== null ? t("scenarioPanel.noComputedValues", { period }) : undefined}
                       className="inline-flex items-center gap-1.5 rounded-md bg-[#FF4757] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-[#FF4757]/25 transition-all hover:bg-[#ff5b69] hover:shadow-[#FF4757]/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
                       data-testid="scenario-run-crisis"
                     >
@@ -903,13 +941,23 @@ export function ScenarioPanel() {
                   <button
                     type="button"
                     onClick={handleSimulate}
-                    disabled={simState.kind === "loading"}
+                    disabled={simState.kind === "loading" || blockedReason !== null}
+                    title={blockedReason !== null ? t("scenarioPanel.noComputedValues", { period }) : undefined}
                     className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.03] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/25 hover:bg-white/[0.08] hover:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     data-testid="scenario-simulate-button"
                   >
                     <Zap size={13} aria-hidden="true" className="text-[#FFB800]" />
                     {simState.kind === "loading" ? t("scenarioPanel.simulating") : t("scenarioPanel.quickCalc")}
                   </button>
+
+                  {blockedReason !== null && (
+                    <p
+                      className="w-full text-xs text-amber-500"
+                      data-testid="scenario-blocked-reason"
+                    >
+                      {t("scenarioPanel.noComputedValues", { period })}
+                    </p>
+                  )}
 
                   {simState.kind === "done" && (
                     <button

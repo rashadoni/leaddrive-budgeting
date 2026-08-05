@@ -34,12 +34,17 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { ScenarioPanel } from "./ScenarioPanel";
+import { ensureMatrix, __resetMatrixCacheForTests } from "../hooks/use-matrix";
 
 // ─── Store mock ───────────────────────────────────────────────────────────────
 // Phase 7.N: mock includes setScenarioDelta + clearScenarioDelta + activeScenarioLabel
 
 let mockActiveScenarioCode: string | null = null;
 let mockActiveScenarioLabel: string | null = null;
+// Defect C — the panel now follows the terminal-wide selected period instead of
+// hardcoding currentBakuYear(). Default `undefined` = "no chip picked", which is
+// the state every pre-existing test in this file runs in.
+let mockSelectedPeriod: string | undefined = undefined;
 const mockSetScenarioDelta = vi.fn();
 const mockClearScenarioDelta = vi.fn();
 
@@ -48,6 +53,7 @@ vi.mock("../store/terminalStore", () => ({
     selector: (s: {
       activeScenarioCode: string | null;
       activeScenarioLabel: string | null;
+      selectedPeriod: string | undefined;
       setScenarioDelta: typeof mockSetScenarioDelta;
       clearScenarioDelta: typeof mockClearScenarioDelta;
     }) => T,
@@ -55,6 +61,7 @@ vi.mock("../store/terminalStore", () => ({
     selector({
       activeScenarioCode: mockActiveScenarioCode,
       activeScenarioLabel: mockActiveScenarioLabel,
+      selectedPeriod: mockSelectedPeriod,
       setScenarioDelta: mockSetScenarioDelta,
       clearScenarioDelta: mockClearScenarioDelta,
     }),
@@ -150,6 +157,10 @@ function makeFetch(opts: {
 beforeEach(() => {
   mockActiveScenarioCode = null;
   mockActiveScenarioLabel = null;
+  mockSelectedPeriod = undefined;
+  // Convention documented at use-matrix.ts:344 — the module-level matrix cache
+  // outlives a test file, and one test below primes it deliberately.
+  __resetMatrixCacheForTests();
   mockSetScenarioDelta.mockClear();
   mockClearScenarioDelta.mockClear();
   makeFetch();
@@ -390,5 +401,116 @@ describe("ScenarioPanel (Phase C4 v1)", () => {
     // Manual selection (OIL_DROP_30) preserved.
     expect(screen.getByTestId("scenario-row-OIL_DROP_30").className).toContain("FFB800");
     expect(screen.getByTestId("scenario-row-AZN_DEVAL_20").className).not.toContain("FFB800");
+  });
+});
+
+// ─── Defect C — simulate the DISPLAYED period ─────────────────────────────────
+// Was: `useMemo(() => currentBakuYear(), [])`. Scenarios simulated the current
+// year whatever the grid showed, then repainted the grid with that other year's
+// colours. The rule now lives in `../lib/displayed-period` and is unit-tested
+// there; these lock the wiring.
+
+describe("ScenarioPanel — displayed period (defect C)", () => {
+  function matrixAwareFetch(matrixBody: unknown) {
+    return vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes("/api/indicators/matrix")) {
+        return new Response(JSON.stringify(matrixBody), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (u.includes("/simulate")) {
+        return new Response(JSON.stringify(SAMPLE_SIM_RESULT), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (u.includes("/api/scenarios")) {
+        return new Response(JSON.stringify(SAMPLE_SCENARIOS), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    }) as never;
+  }
+
+  async function simulateAndReadUrl(): Promise<string> {
+    render(<ScenarioPanel />);
+    fireOpen();
+    const row = await screen.findByTestId("scenario-row-AZN_DEVAL_20");
+    fireEvent.click(row);
+    fireEvent.click(screen.getByTestId("scenario-simulate-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("scenario-apply-heatmap")).toBeTruthy();
+    });
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock
+      .calls as unknown[][];
+    return String(calls.find((c) => String(c[0]).includes("/simulate"))?.[0]);
+  }
+
+  it("sends the period the user picked, not the current Baku year", async () => {
+    mockSelectedPeriod = "2026-Q1";
+    expect(await simulateAndReadUrl()).toContain("period=2026-Q1");
+  });
+
+  it("with no chip picked, sends the period the matrix payload reports", async () => {
+    // Production reality: with no `?period=`, the matrix endpoint resolves a
+    // DATA-AWARE default — the latest complete year WITH values
+    // (matrix/route.ts:69-110) — which is NOT the current Baku year. That gap is
+    // defect C's every-page-load case.
+    global.fetch = matrixAwareFetch({
+      period: "2025",
+      companies: [],
+      indicators: [],
+      cells: [{ companyId: "co_1", indicatorId: "i_1", status: "red", value: 42 }],
+    });
+    await ensureMatrix();
+    const url = await simulateAndReadUrl();
+    expect(url).toContain("period=2025");
+    expect(url).not.toContain(String(new Date().getUTCFullYear()));
+  });
+
+  it("does NOT disable Simulate when no matrix payload is cached", async () => {
+    // THE regression tripwire. The previous attempt disabled the button on
+    // `matrix === null`; this file never mocks the matrix endpoint, so every
+    // simulate test hung for 30s x 3 retries and a 1.2s file became ~450s.
+    // Absent metadata must widen the action, never block it.
+    render(<ScenarioPanel />);
+    fireOpen();
+    const row = await screen.findByTestId("scenario-row-AZN_DEVAL_20");
+    fireEvent.click(row);
+    const btn = screen.getByTestId("scenario-simulate-button") as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    expect(screen.queryByTestId("scenario-blocked-reason")).toBeNull();
+  });
+
+  it("blocks with a stated reason when THIS period has no computed values", async () => {
+    // Defect D's shape: the period resolves, the payload arrives, and every cell
+    // in it is an unevidenced placeholder. Simulating would 404
+    // ("No IndicatorValues found for period", simulate/route.ts:545), so the
+    // control says why instead of firing a request that cannot succeed.
+    global.fetch = matrixAwareFetch({
+      period: "2026-Q1",
+      companies: [],
+      indicators: [],
+      cells: [{ companyId: "co_1", indicatorId: "i_1", status: "unknown", value: 0 }],
+    });
+    mockSelectedPeriod = "2026-Q1";
+    await ensureMatrix("2026-Q1");
+    render(<ScenarioPanel />);
+    fireOpen();
+    const row = await screen.findByTestId("scenario-row-AZN_DEVAL_20");
+    fireEvent.click(row);
+    const btn = screen.getByTestId("scenario-simulate-button") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(screen.getByTestId("scenario-blocked-reason").textContent).toContain(
+      "2026-Q1",
+    );
+    fireEvent.click(btn);
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock
+      .calls as unknown[][];
+    expect(calls.some((c) => String(c[0]).includes("/simulate"))).toBe(false);
   });
 });

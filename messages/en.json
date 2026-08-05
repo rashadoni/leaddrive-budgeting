@@ -2725,6 +2725,7 @@
       "errNonFinite": "Couldn't compute (division by zero or NaN). Check input data completeness.",
       "errParse": "Indicator formula has a syntax error — contact admin.",
       "errEval": "Formula eval error — one of the inputs is missing.",
+      "errRollupNoChildValues": "Nothing to sum — the child companies have no value for this period. This is not a zero.",
       "sparklineTrendAriaLabel": "{indCode} 12-month trend for {coCode}",
       "sparklineTrendAriaLabelSelf": "{indCode} 12-month trend",
       "scenarioBanner": "⚡ SCENARIO: {label}",
@@ -3591,6 +3592,7 @@
       "selectLeft": "Pick a scenario on the left",
       "noneAvailable": "No scenarios available",
       "codePeriod": "{code} · period: {period}",
+      "noComputedValues": "No computed values for {period} — run a recompute for this period first.",
       "activeParams": "Active:",
       "crisisSlowHint": "Still computing… (high load — this can take longer than usual)",
       "crisisTimeout": "The simulation timed out — likely high load. Please try again.",
@@ -5243,6 +5245,7 @@
       "no_budget_lines": "No budget data",
       "no_foreign_currency_lines": "No FX data",
       "rollup_no_children": "No child companies",
+      "rollup_no_child_values": "Children have no data this period",
       "out_of_range": "Out of range"
     },
     "action": {

@@ -137,6 +137,10 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'auditTicker.noEvents': 'no events yet',
   'auditTicker.title': 'Click for full audit log',
   'auditTicker.ariaLabel': 'Recent audit events — click to open full audit log',
+  // Defect C — the blocked-simulate reason must NAME the period it is about;
+  // mirrors messages/en.json terminal.scenarioPanel.noComputedValues.
+  'scenarioPanel.noComputedValues':
+    'No computed values for {period} — run a recompute for this period first.',
   'scenario.title': 'Scenario Runner',
   'scenario.apply': 'Apply',
   'scenario.applying': 'Applying…',

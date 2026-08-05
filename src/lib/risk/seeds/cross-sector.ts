@@ -350,10 +350,18 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     unit: "AZN",
     direction: "higher_better",
     // Cross-company sum across direct children's IND_REVENUE_TOTAL.
-    // Empty-children case returns 0 (rollup contract), which falls in
-    // the amber band — useful UX signal at parent-co level ("no children
-    // contributing yet"). Threshold values are demo-level placeholders;
-    // real holdings would tune via the C6 alert-thresholds-config layer.
+    // The empty cases no longer reach these bands, and the note that used to
+    // sit here — "empty returns 0, which lands amber, a useful UX signal" —
+    // was the bug, not the design. `amber: >= 0` scores an empty sum exactly
+    // like a measured one, and a scored status passes `hasEvidencedValue`, so
+    // PeerPanel ranked it and the board deck printed it. The pipeline now
+    // demotes both empty shapes to `unknown` before classification:
+    // `rollup_no_children` (no children at all) and `rollup_no_child_values`
+    // (children present, none with a value this period) — see
+    // `src/lib/risk/rollup-evidence.ts`. These bands therefore only ever score
+    // a sum with at least one real child value behind it.
+    // Threshold values are demo-level placeholders; real holdings would tune
+    // via the C6 alert-thresholds-config layer.
     formula: 'rollup("IND_REVENUE_TOTAL")',
     thresholds: {
       green: { op: ">=", value: 1000000 },

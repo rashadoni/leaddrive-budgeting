@@ -2725,6 +2725,7 @@
       "errNonFinite": "Hesablamaq mümkün olmadı (sıfıra bölmə və ya NaN). Daxil olan məlumatları yoxlayın.",
       "errParse": "Göstərici formulasında sintaksis xətası — admin ilə əlaqə saxlayın.",
       "errEval": "Formula hesablama xətası — daxil olan dəyişənlərdən biri əksikdir.",
+      "errRollupNoChildValues": "Cəmlənəcək heç nə yoxdur — törəmə şirkətlərin bu dövr üzrə dəyəri yoxdur. Bu sıfır deyil.",
       "sparklineTrendAriaLabel": "{indCode} {coCode} üçün 12 aylıq trend",
       "sparklineTrendAriaLabelSelf": "{indCode} 12 aylıq trend",
       "scenarioBanner": "⚡ SSENARİ: {label}",
@@ -3591,6 +3592,7 @@
       "selectLeft": "Soldan ssenari seç",
       "noneAvailable": "Əlçatan ssenari yoxdur",
       "codePeriod": "{code} · dövr: {period}",
+      "noComputedValues": "{period} üçün hesablanmış dəyər yoxdur — əvvəlcə bu dövr üçün yenidən hesablama aparın.",
       "activeParams": "Aktiv:",
       "crisisSlowHint": "Hesablanır… (yüksək yük — adətən olduğundan uzun çəkə bilər)",
       "crisisTimeout": "Simulyasiya vaxt aşımına uğradı — çox güman yüksək yük. Yenidən cəhd edin.",
@@ -5243,6 +5245,7 @@
       "no_budget_lines": "Büdcə məlumatı yoxdur",
       "no_foreign_currency_lines": "Valyuta məlumatı yoxdur",
       "rollup_no_children": "Törəmə şirkət yoxdur",
+      "rollup_no_child_values": "Törəmə şirkətlərin bu dövr üzrə məlumatı yoxdur",
       "out_of_range": "Diapazondan kənar"
     },
     "action": {
