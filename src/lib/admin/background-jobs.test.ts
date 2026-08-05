@@ -32,6 +32,7 @@ function input(over: Partial<BackgroundJobsInput> = {}): BackgroundJobsInput {
     feedRefreshLastRunAt: HOURS_AGO(10),
     feedRefreshStatus: "ok",
     feedRefreshErrorCount: 0,
+    feedRefreshUnpublishedCount: 0,
     lastPurgeAt: null,
     ...over,
   }
@@ -178,5 +179,39 @@ describe("worstStatus", () => {
     // for the whole page would be a claim the data does not support.
     const jobs = buildBackgroundJobs(input({ lastPurgeAt: HOURS_AGO(1) }), NOW)
     expect(worstStatus(jobs)).toBe("untracked")
+  })
+})
+
+describe("buildBackgroundJobs — sources that are silent, not broken", () => {
+  // 2026-08-05 — the run splits "could not do its job" from "upstream has
+  // nothing to publish yet". The split only pays off if the second one stays
+  // visible here; otherwise it is hiding, not classifying.
+  it("shows the unpublished count as its own line, beside errors", () => {
+    const jobs = buildBackgroundJobs(
+      input({ feedRefreshErrorCount: 0, feedRefreshUnpublishedCount: 3 }),
+      NOW,
+    )
+    expect(byKey(jobs, "feedRefresh").detail).toEqual([
+      { key: "runStatus", value: "ok" },
+      { key: "errors", value: "0" },
+      { key: "unpublished", value: "3" },
+    ])
+  })
+
+  it("does not turn a silent upstream into a stale or failing job", () => {
+    const jobs = buildBackgroundJobs(
+      input({ feedRefreshUnpublishedCount: 12 }),
+      NOW,
+    )
+    expect(byKey(jobs, "feedRefresh").status).toBe("ok")
+  })
+
+  it("omits the line entirely when there is nothing unpublished", () => {
+    const jobs = buildBackgroundJobs(
+      input({ feedRefreshUnpublishedCount: 0 }),
+      NOW,
+    )
+    const keys = byKey(jobs, "feedRefresh").detail.map((d) => d.key)
+    expect(keys).not.toContain("unpublished")
   })
 })

@@ -101,6 +101,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           settings,
           "feedRefreshLastRunErrorCount",
         ),
+        feedRefreshUnpublishedCount: settingsNumber(
+          settings,
+          "feedRefreshLastRunUnpublishedCount",
+        ),
         lastPurgeAt: data.lastPurge?.createdAt ?? null,
       },
       now,

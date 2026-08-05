@@ -108,7 +108,9 @@ describe("createWorldBankCPIAdapter — fetch loop", () => {
     expect(result.fetched).toBe(false)
   })
 
-  it("reports per-country empty-data warning", async () => {
+  it("reports an empty response as unpublished, not as a failed run", async () => {
+    // 2026-08-05 — "the API answered, it just has no rows for this country"
+    // is a fact about the upstream, not a fault in the run.
     const fetchImpl = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -117,8 +119,20 @@ describe("createWorldBankCPIAdapter — fetch loop", () => {
     const adapter = createWorldBankCPIAdapter({ fetchImpl })
     const result = await adapter.fetch()
     expect(result.dataPoints).toEqual([])
+    expect(result.errors).toEqual([])
+    expect(result.unpublished?.length).toBe(5)
+    for (const e of result.unpublished ?? [])
+      expect(e).toContain("no usable data points")
+  })
+
+  it("still fails the run on an HTTP error", async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: false,
+      status: 403,
+    })) as unknown as typeof fetch
+    const result = await createWorldBankCPIAdapter({ fetchImpl }).fetch()
     expect(result.errors.length).toBe(5)
-    for (const e of result.errors) expect(e).toContain("no usable data points")
+    expect(result.unpublished ?? []).toEqual([])
   })
 })
 

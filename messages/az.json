@@ -4525,7 +4525,8 @@
         "recomputedLast24h": "24 saatda yenidən hesablanan dəyər",
         "verdict": "hökm",
         "runStatus": "icra statusu",
-        "errors": "xəta"
+        "errors": "xəta",
+        "unpublished": "hələ dərc olunmayıb"
       }
     }
   },

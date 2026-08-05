@@ -287,15 +287,18 @@ export function createUnComtradeAzAdapter(
       const parsed: ComtradeResponse = { data: rows }
       const { dataPoints, skipped } = comtradeResponseToDataPoints(parsed)
       const errors: string[] = [...fetchErrors]
-      for (const s of skipped) {
-        errors.push(`skipped ${s.year}: ${s.reason}`)
-      }
+      // A year Comtrade has only partially published is not a failed run —
+      // it is the adapter's plausibility guard doing its job on data that is
+      // simply not final yet. Reported, not counted against the run.
+      const unpublished: string[] = skipped.map(
+        (s) => `skipped ${s.year}: ${s.reason}`,
+      )
       if (dataPoints.length === 0) {
-        errors.push(
+        unpublished.push(
           "Comtrade returned no year passing plausibility checks (publishing lag is normal — re-check next month)",
         )
       }
-      return { source: COMTRADE_SOURCE, dataPoints, errors, fetched: true }
+      return { source: COMTRADE_SOURCE, dataPoints, errors, unpublished, fetched: true }
     },
   }
 }

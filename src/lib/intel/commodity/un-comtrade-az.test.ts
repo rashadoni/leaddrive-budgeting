@@ -241,7 +241,12 @@ describe("createUnComtradeAzAdapter", () => {
     expect(result.errors[0]).toContain("HTTP 404")
   })
 
-  it("returns informative error when no plausible year exists", async () => {
+  it("reports a partial year as unpublished, not as a failed run", async () => {
+    // 2026-08-05 — these two lines used to land in `errors`, which made the
+    // whole scheduled run degraded over Comtrade publishing late. Nobody here
+    // can act on that, and every systemd retry reached the same verdict while
+    // re-running ingest and recompute for every other source. The facts stay
+    // visible; only the verdict changed.
     const fetchImpl = vi.fn(
       async () =>
         new Response(
@@ -257,7 +262,21 @@ describe("createUnComtradeAzAdapter", () => {
     const adapter = createUnComtradeAzAdapter({ fetchImpl: fetchImpl as never })
     const result = await adapter.fetch()
     expect(result.dataPoints).toEqual([])
-    expect(result.errors.join(" ")).toContain("skipped 2025")
-    expect(result.errors.join(" ")).toContain("plausibility")
+    expect(result.errors).toEqual([])
+    expect((result.unpublished ?? []).join(" ")).toContain("skipped 2025")
+    expect((result.unpublished ?? []).join(" ")).toContain("plausibility")
+  })
+
+  it("still fails the run when the fetch itself breaks", async () => {
+    // The other half of the split: a transport failure is exactly what should
+    // keep going into `errors` and keep the run degraded.
+    const fetchImpl = vi.fn(async () => ({ ok: false, status: 500 }) as unknown as Response)
+    const adapter = createUnComtradeAzAdapter({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      sleep: async () => {},
+    })
+    const result = await adapter.fetch(new Date("2026-05-17"))
+    expect(result.errors.length).toBeGreaterThan(0)
+    expect(result.errors.join(" ")).toContain("HTTP 500")
   })
 })

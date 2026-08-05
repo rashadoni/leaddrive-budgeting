@@ -71,6 +71,9 @@ export interface BackgroundJobsInput {
   feedRefreshStatus: string | null
   /** Organization.settings.feedRefreshLastRunErrorCount */
   feedRefreshErrorCount: number | null
+  /** Organization.settings.feedRefreshLastRunUnpublishedCount — sources that
+   *  answered but have nothing publishable yet. Shown, never a fault. */
+  feedRefreshUnpublishedCount: number | null
   /** max(audit_events.createdAt) where action = soft_delete_purge */
   lastPurgeAt: Date | null
 }
@@ -157,6 +160,14 @@ export function buildBackgroundJobs(
   }
   if (input.feedRefreshErrorCount !== null) {
     feedDetail.push({ key: "errors", value: String(input.feedRefreshErrorCount) })
+  }
+  // Deliberately a separate line from `errors`: the split only pays off if a
+  // reader can still see that a source is silent, without it reading as broken.
+  if (input.feedRefreshUnpublishedCount) {
+    feedDetail.push({
+      key: "unpublished",
+      value: String(input.feedRefreshUnpublishedCount),
+    })
   }
   jobs.push({
     key: "feedRefresh",

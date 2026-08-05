@@ -50,8 +50,35 @@ export interface CommodityFetchResult {
   source: string
   /** Successfully parsed data points — pre-dedup, pre-write. */
   dataPoints: CommodityDataPoint[]
-  /** Per-step errors (network, JSON parse, schema mismatch). Empty on clean run. */
+  /**
+   * The run could not do its job: network failure, HTTP error, JSON parse,
+   * schema mismatch — or data that arrived and was *wrong* (a value refused by
+   * the plausibility band, a non-finite number). Non-empty means the scheduled
+   * run is degraded and systemd should retry. Someone can act on all of these.
+   */
   errors: string[]
+  /**
+   * The run worked; the upstream simply has nothing publishable yet — an
+   * annual dataset still lagging, a year that is only a partial report, an
+   * empty timeline.
+   *
+   * 2026-08-05 — split out of `errors`, because conflating the two kept the
+   * nightly job permanently red over a condition nobody here can act on. UN
+   * Comtrade publishes AZ annual totals months late; its partial years are
+   * correctly refused by this adapter's own plausibility guard; and every
+   * systemd retry was guaranteed to reach the same verdict while re-running
+   * ingest and recompute for all the *other* sources too.
+   *
+   * Reported and visible, never a failure. The alarm for a source that has
+   * gone quiet for good is heartbeat age, not the verdict of one run — an
+   * age-based rule is the right shape for "this has been silent for months",
+   * and a per-run rule is not.
+   *
+   * Note what deliberately stays in `errors`: a value the plausibility band
+   * rejects. That is the upstream sending something wrong, not sending
+   * nothing, and it is exactly the signal that caught yahoo-fuel-bdi.
+   */
+  unpublished?: string[]
   /** Did the adapter run hit the upstream API or short-circuit (no-op)? */
   fetched: boolean
 }

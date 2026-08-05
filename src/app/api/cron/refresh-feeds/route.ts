@@ -63,6 +63,8 @@ type OrgRunSummary = {
   }>
   pointsWritten: number
   feedErrors: number
+  /** Sources reached but with nothing publishable yet. Never fails the run. */
+  unpublished: number
   heartbeatPersisted: boolean
   recompute: RecomputeSummary | null
 }
@@ -112,6 +114,11 @@ export async function GET(req: NextRequest) {
       let successfulSources = 0
       let hardFailure = false
       const feedErrors: string[] = []
+      // 2026-08-05 — kept apart from feedErrors on purpose. "The upstream has
+      // not published this yet" is not something anyone here can fix, and
+      // treating it as a failure kept the nightly unit permanently red while
+      // systemd retried a verdict that could not change.
+      const unpublished: string[] = []
 
       // Every organization owns its provider credentials. The unattended
       // scheduler uses a narrower factory than manual refresh: paid proxy
@@ -125,6 +132,8 @@ export async function GET(req: NextRequest) {
         const ingest = await ingestCommodityData(org.id, adapterSet.adapters)
         pointsWritten = ingest.pointsWritten
         feedErrors.push(...ingest.errors)
+        // Optional on the envelope, so tolerate an aggregator that predates it.
+        unpublished.push(...(ingest.unpublished ?? []))
         successfulSources = ingest.perSource.filter(
           (result) =>
             result.errors.length === 0 &&
@@ -203,6 +212,8 @@ export async function GET(req: NextRequest) {
               feedRefreshLastRunPointsWritten: pointsWritten,
               feedRefreshLastRunErrorCount: feedErrors.length,
               feedRefreshLastRunErrors: feedErrors.slice(0, 20),
+              feedRefreshLastRunUnpublishedCount: unpublished.length,
+              feedRefreshLastRunUnpublished: unpublished.slice(0, 20),
               feedRefreshLastRunSkippedSources: adapterSet.skipped,
             } as unknown as Prisma.InputJsonValue,
           },
@@ -233,6 +244,7 @@ export async function GET(req: NextRequest) {
         skippedSources: adapterSet.skipped.length,
         pointsWritten,
         feedErrors: feedErrors.length,
+        unpublished: unpublished.length,
         heartbeatPersisted,
         recompute,
       })
@@ -244,6 +256,7 @@ export async function GET(req: NextRequest) {
         skippedSources: adapterSet.skipped,
         pointsWritten,
         feedErrors: feedErrors.length,
+        unpublished: unpublished.length,
         heartbeatPersisted,
         recompute,
       })
