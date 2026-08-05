@@ -55,6 +55,12 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ["CMT", "GO"], descKey: "shortcuts.cmdCmt" },
       { keys: ["CHT", "GO"], descKey: "shortcuts.cmdCht" },
       { keys: ["SUB", "GO"], descKey: "shortcuts.cmdSub" },
+      // 2026-08-05 — `HELP GO` was the ONLY documented way to reach the cell
+      // legend, and it was documented nowhere: not here, and not in the
+      // toolbar, where the HELP button is deliberately collapsed into the ⌘K
+      // palette (HotkeyToolbar.test.tsx pins that). A user who wants to know
+      // what a glyph means presses `?` — so `?` has to lead somewhere.
+      { keys: ["HELP", "GO"], descKey: "shortcuts.cmdHelp" },
     ],
   },
 ];
@@ -83,6 +89,19 @@ export function KeyboardShortcutsModal() {
             target.tagName === "TEXTAREA" ||
             target.isContentEditable);
         if (isTyping) return;
+        // 2026-08-05 — never stack behind another modal. This cheatsheet and
+        // HelpModal both keep window-level keydown listeners, so a pair of
+        // open dialogs means one Escape closes BOTH and the reader loses the
+        // one they were actually in. Fires only on a dialog that is really in
+        // the DOM; nothing there means nothing to defer to, and the normal
+        // toggle runs. The `openRef` check keeps `?`-to-close working — our
+        // own dialog is one of the nodes this query would match.
+        if (
+          !openRef.current &&
+          document.querySelector('[role="dialog"][aria-modal="true"]')
+        ) {
+          return;
+        }
         e.preventDefault();
         setOpen((v) => !v);
       } else if (e.key === "Escape" && openRef.current) {
@@ -101,6 +120,25 @@ export function KeyboardShortcutsModal() {
     window.addEventListener("terminal:open-shortcuts", onOpen);
     return () => window.removeEventListener("terminal:open-shortcuts", onOpen);
   }, []);
+
+  /**
+   * Hand the reader over to the cell legend.
+   *
+   * A HAND-OFF, not a stack: this dialog closes first and the legend opens
+   * second, so exactly one modal is ever mounted. Opening the legend on top
+   * would leave two window-level Escape handlers armed and one keypress would
+   * dismiss both.
+   *
+   * `focus: 'legend'` tells HelpModal where to land — the legend is the last
+   * block of a scrolling command reference, and a reader who arrived asking
+   * "what is this ≠" should not have to hunt for it.
+   */
+  const handOffToLegend = () => {
+    setOpen(false);
+    window.dispatchEvent(
+      new CustomEvent("terminal:open-help", { detail: { focus: "legend" } }),
+    );
+  };
 
   if (!open) return null;
 
@@ -170,8 +208,18 @@ export function KeyboardShortcutsModal() {
             </section>
           ))}
         </div>
-        <footer className="sticky bottom-0 px-6 py-2 border-t border-border bg-background/95 backdrop-blur text-[10px] text-muted-foreground">
-          {t("shortcuts.footer")}
+        <footer className="sticky bottom-0 flex flex-wrap items-center justify-between gap-2 px-6 py-2 border-t border-border bg-background/95 backdrop-blur text-[10px] text-muted-foreground">
+          <span>{t("shortcuts.footer")}</span>
+          <button
+            type="button"
+            onClick={handOffToLegend}
+            data-testid="shortcuts-open-legend"
+            title={t("shortcuts.legendCtaTitle")}
+            aria-label={t("shortcuts.legendCtaTitle")}
+            className="shrink-0 rounded border border-input px-2 py-1 text-[10px] font-semibold text-foreground hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            {t("shortcuts.legendCta")} →
+          </button>
         </footer>
       </div>
     </div>
