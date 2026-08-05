@@ -386,6 +386,20 @@
     "viewAll": "View all",
     "retry": "Retry"
   },
+  "relativeAge": {
+    "long": {
+      "justNow": "just now",
+      "minutes": "{n} min ago",
+      "hours": "{n} h ago",
+      "days": "{n} d ago"
+    },
+    "short": {
+      "justNow": "now",
+      "minutes": "{n}m",
+      "hours": "{n}h",
+      "days": "{n}d"
+    }
+  },
   "budgeting": {
     "title": "Budgeting",
     "subtitle": "Budget planning, forecasting and control",
@@ -2619,11 +2633,7 @@
       "starAria": "Add {code} to starred companies",
       "starredTitle": "Starred",
       "starTitle": "Star this company",
-      "lastRecompute": "Last recompute: {date}",
-      "freshnessNow": "now",
-      "freshnessMinutes": "{count}m",
-      "freshnessHours": "{count}h",
-      "freshnessDays": "{count}d"
+      "lastRecompute": "Last recompute: {date}"
     },
     "peer": {
       "title": "Peer Comparison ({count} companies)",
@@ -2700,10 +2710,6 @@
       },
       "lastRecompute": "Last recompute: {date}",
       "updatedFreshness": "updated {age}",
-      "freshnessNow": "just now",
-      "freshnessMinutes": "{count}m ago",
-      "freshnessHours": "{count}h ago",
-      "freshnessDays": "{count}d ago",
       "partialYearTitle": "{period} is a partial year (year-to-date).",
       "partialYearBody": "Figures cover only the months booked so far, so margins and green/red bands are provisional — not a full-cycle result. The default view is the last complete year.",
       "noCompaniesYet": "No companies or indicators yet. Import via /budgeting/onboarding and seed indicators (scripts/seed-indicators.ts).",
@@ -4505,12 +4511,6 @@
       "refresh": "refresh",
       "loading": "Loading…",
       "noTrace": "no trace",
-      "ago": {
-        "justNow": "just now",
-        "minutes": "{n} min ago",
-        "hours": "{n} h ago",
-        "days": "{n} d ago"
-      },
       "col": {
         "job": "Job",
         "trigger": "Started by",
@@ -4826,11 +4826,6 @@
       "freeTier": "free key",
       "paid": "paid"
     },
-    "age": {
-      "minutes": "{n} min ago",
-      "hours": "{n} h ago",
-      "days": "{n} d ago"
-    },
     "section": {
       "whatItIs": "What it is",
       "businessValue": "Why the holding cares",
@@ -4897,11 +4892,7 @@
       "itemsLast30d": "Items (last 30d)"
     },
     "relative": {
-      "never": "never",
-      "justNow": "just now",
-      "minutes": "{n}m ago",
-      "hours": "{n}h ago",
-      "days": "{n}d ago"
+      "never": "never"
     },
     "languageDefault": "English (default)",
     "avgRelevance": "avg relevance",
@@ -5494,8 +5485,6 @@
     "cadenceDaily": "daily cadence",
     "cadenceMonthly": "monthly cadence",
     "metrics": "metrics",
-    "hoursAgo": "{n} hours ago",
-    "daysAgo": "{n} days ago",
     "fetching": "Fetching…",
     "refreshNow": "Refresh now",
     "fetchTitle": "Fetch {code} now",

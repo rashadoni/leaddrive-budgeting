@@ -386,6 +386,20 @@
     "viewAll": "Hamısına bax",
     "retry": "Yenidən cəhd et"
   },
+  "relativeAge": {
+    "long": {
+      "justNow": "indicə",
+      "minutes": "{n} dəq əvvəl",
+      "hours": "{n} saat əvvəl",
+      "days": "{n} gün əvvəl"
+    },
+    "short": {
+      "justNow": "indi",
+      "minutes": "{n}d",
+      "hours": "{n}s",
+      "days": "{n}g"
+    }
+  },
   "budgeting": {
     "title": "Büdcələşdirmə",
     "subtitle": "Büdcə planlaşdırma, proqnoz və nəzarət",
@@ -2619,11 +2633,7 @@
       "starAria": "{code} şirkətini seçilmişlərə əlavə et",
       "starredTitle": "Seçilmiş",
       "starTitle": "Şirkəti seçilmişlərə əlavə et",
-      "lastRecompute": "Son yenidən hesablama: {date}",
-      "freshnessNow": "indi",
-      "freshnessMinutes": "{count}d",
-      "freshnessHours": "{count}s",
-      "freshnessDays": "{count}g"
+      "lastRecompute": "Son yenidən hesablama: {date}"
     },
     "peer": {
       "title": "Peer müqayisəsi ({count} şirkət)",
@@ -2700,10 +2710,6 @@
       },
       "lastRecompute": "Son yenidən hesablama: {date}",
       "updatedFreshness": "{age} yenilənib",
-      "freshnessNow": "indicə",
-      "freshnessMinutes": "{count} dəq əvvəl",
-      "freshnessHours": "{count} saat əvvəl",
-      "freshnessDays": "{count} gün əvvəl",
       "partialYearTitle": "{period} natamam ildir (ilin əvvəlindən).",
       "partialYearBody": "Yalnız uçota alınmış aylar göstərilir; buna görə marjalar və rəng diapazonları ilkin xarakter daşıyır və tam dövrü əks etdirmir. Standart görünüş son tamamlanmış ildir.",
       "noCompaniesYet": "Şirkət və ya göstərici hələ yoxdur. /budgeting/onboarding ilə idxal et və göstərici seed-i işə sal (scripts/seed-indicators.ts).",
@@ -4505,12 +4511,6 @@
       "refresh": "yenilə",
       "loading": "Yüklənir…",
       "noTrace": "iz yoxdur",
-      "ago": {
-        "justNow": "indicə",
-        "minutes": "{n} dəq əvvəl",
-        "hours": "{n} saat əvvəl",
-        "days": "{n} gün əvvəl"
-      },
       "col": {
         "job": "İş",
         "trigger": "Kim başladır",
@@ -4826,11 +4826,6 @@
       "freeTier": "pulsuz açar",
       "paid": "pullu"
     },
-    "age": {
-      "minutes": "{n} dəq əvvəl",
-      "hours": "{n} s əvvəl",
-      "days": "{n} gün əvvəl"
-    },
     "section": {
       "whatItIs": "Bu nədir",
       "businessValue": "Holdinqə nə üçün",
@@ -4897,11 +4892,7 @@
       "itemsLast30d": "Elementlər (son 30 gün)"
     },
     "relative": {
-      "never": "heç vaxt",
-      "justNow": "indi",
-      "minutes": "{n} dəq əvvəl",
-      "hours": "{n} saat əvvəl",
-      "days": "{n} gün əvvəl"
+      "never": "heç vaxt"
     },
     "languageDefault": "İngiliscə (defolt)",
     "avgRelevance": "orta relevantlıq",
@@ -5494,8 +5485,6 @@
     "cadenceDaily": "gündəlik cadence",
     "cadenceMonthly": "aylıq cadence",
     "metrics": "metrika",
-    "hoursAgo": "{n} saat əvvəl",
-    "daysAgo": "{n} gün əvvəl",
     "fetching": "Yüklənir…",
     "refreshNow": "İndi yenilə",
     "fetchTitle": "{code} indi yüklə",

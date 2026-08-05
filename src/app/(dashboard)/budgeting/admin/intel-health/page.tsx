@@ -26,26 +26,33 @@ import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { computeIntelHealthStats } from "@/lib/intel/health-stats"
+import {
+  RELATIVE_AGE_NAMESPACE,
+  formatRelativeAge,
+  minutesSince,
+  type RelativeAgeTranslator,
+} from "@/lib/format/relative-age"
 
 export const metadata = {
   title: "Intel Health · BudgetPro",
 }
 
-/** Format an ISO date string as a localized "3h ago", "2d ago" string. */
+/**
+ * Localized "3 h ago" / "2 d ago" for the last crawl.
+ *
+ * 2026-08-04 — the bucket logic moved to `formatRelativeAge`, shared with the
+ * terminal chips and the three other admin surfaces. "never" stays here: it
+ * is the scheduler's never-run state, not an age.
+ */
 function relativeTime(
   iso: string | null,
   t: (k: string, vars?: Record<string, string | number>) => string,
+  tAge: RelativeAgeTranslator,
   now: Date = new Date(),
 ): string {
-  if (!iso) return t("relative.never")
-  const ms = now.getTime() - new Date(iso).getTime()
-  const min = Math.floor(ms / 60_000)
-  if (min < 1) return t("relative.justNow")
-  if (min < 60) return t("relative.minutes", { n: min })
-  const hr = Math.floor(min / 60)
-  if (hr < 24) return t("relative.hours", { n: hr })
-  const day = Math.floor(hr / 24)
-  return t("relative.days", { n: day })
+  const minutes = minutesSince(iso, now.getTime())
+  if (minutes === null) return t("relative.never")
+  return formatRelativeAge(minutes, tAge)
 }
 
 const LANGUAGE_LABEL: Record<string, string> = {
@@ -56,6 +63,7 @@ const LANGUAGE_LABEL: Record<string, string> = {
 
 export default async function IntelHealthPage() {
   const t = await getTranslations("adminIntelHealth")
+  const tAge = await getTranslations(RELATIVE_AGE_NAMESPACE)
   const session = await auth()
   const role = session?.user?.role
   if (!hasRole(role, "manager")) {
@@ -135,7 +143,7 @@ export default async function IntelHealthPage() {
         </Card>
         <Card>
           <Label>{t("labels.lastRun")}</Label>
-          <Value>{relativeTime(stats.intelLastRunAt, t)}</Value>
+          <Value>{relativeTime(stats.intelLastRunAt, t, tAge)}</Value>
           {stats.intelLastRunAt && (
             <SubText>{new Date(stats.intelLastRunAt).toLocaleString()}</SubText>
           )}

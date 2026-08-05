@@ -17,6 +17,10 @@ import { statusShape } from "@/lib/risk/heatmap-matrix";
 import { MIN_SCORING_CELLS, type CompositeScore } from "@/lib/risk/composite-score";
 import { TRUST_COLOR, type TrustStatus } from "@/lib/risk/trust-status";
 import { formatFreshness } from "../../lib/relative-time";
+import {
+  RELATIVE_AGE_NAMESPACE,
+  formatRelativeAge,
+} from "@/lib/format/relative-age";
 
 /**
  * Phase B4 — watchlist tab strip. 5 tabs: ALL / STARRED / ALERTED /
@@ -493,6 +497,7 @@ export function StarToggle(props: {
  */
 export function RowFreshness({ iso }: { iso: string | null }) {
   const t = useTranslations('terminal');
+  const tAge = useTranslations(RELATIVE_AGE_NAMESPACE);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 30_000);
@@ -500,15 +505,7 @@ export function RowFreshness({ iso }: { iso: string | null }) {
   }, []);
   const parts = formatFreshness(iso, now);
   if (!iso || !parts) return null;
-  const match = /^(\d+)([mhd])$/.exec(parts.short);
-  const age =
-    parts.short === 'now'
-      ? t('companyTree.freshnessNow')
-      : match?.[2] === 'm'
-        ? t('companyTree.freshnessMinutes', { count: match[1] })
-        : match?.[2] === 'h'
-          ? t('companyTree.freshnessHours', { count: match[1] })
-          : t('companyTree.freshnessDays', { count: match?.[1] ?? '0' });
+  const age = formatRelativeAge(parts.ageMinutes, tAge, 'short');
   return (
     <span
       className="inline-flex items-center gap-0.5 shrink-0 w-9 justify-end text-[9px] tabular-nums text-gray-500"

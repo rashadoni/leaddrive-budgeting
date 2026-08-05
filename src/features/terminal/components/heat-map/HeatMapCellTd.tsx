@@ -794,16 +794,3 @@ export function HeatMapCellTd({
     </td>
   );
 }
-
-/**
- * 2026-05-27 A4 — relative-time data-freshness chip for the HeatMap
- * header. Reads matrix.lastComputedAt (max(computedAt) across all
- * rendered cells, set server-side) and renders «Updated 2h ago».
- *
- * Self-ticking: re-renders every 30s so a long-open Risk Terminal
- * tab doesn't show stale "1 min ago" text three hours later. No
- * matrix re-fetch happens here — the SSE channel handles that.
- *
- * Locale-agnostic (uses Intl.RelativeTimeFormat). Tooltip carries
- * the full ISO timestamp for power users.
- */

@@ -20,6 +20,11 @@ import {
 } from "@/lib/intel/sources-catalog"
 import { localizedSource } from "@/lib/intel/sources-catalog-i18n"
 import { RecentCrossingsWidget } from "./RecentCrossingsWidget"
+import {
+  RELATIVE_AGE_NAMESPACE,
+  formatRelativeAge,
+  type RelativeAgeTranslator,
+} from "@/lib/format/relative-age"
 import { useLocale, useTranslations } from "next-intl"
 import {
   CheckCircle2,
@@ -116,14 +121,10 @@ function CostBadge({ cost }: { cost: DataSourceEntry["cost"] }) {
   )
 }
 
-function formatAge(
-  hours: number | null,
-  t: (k: string, vars?: Record<string, string | number>) => string,
-): string {
+/** `—` when the source has never been fetched; otherwise the shared wording. */
+function formatAge(hours: number | null, t: RelativeAgeTranslator): string {
   if (hours == null) return "—"
-  if (hours < 1) return t("age.minutes", { n: Math.round(hours * 60) })
-  if (hours < 24) return t("age.hours", { n: Math.round(hours) })
-  return t("age.days", { n: Math.round(hours / 24) })
+  return formatRelativeAge(hours * 60, t)
 }
 
 function SourceCard({
@@ -136,6 +137,7 @@ function SourceCard({
   live: { value: number; unit: string | null; datetime: string } | undefined
 }) {
   const t = useTranslations("adminDataSources")
+  const tAge = useTranslations(RELATIVE_AGE_NAMESPACE)
   const locale = useLocale()
   const L = localizedSource(source, locale)
   const status = freshness?.status ?? "unknown"
@@ -168,7 +170,7 @@ function SourceCard({
         <div className="flex flex-col items-end gap-1 shrink-0">
           <StatusBadge status={status} />
           <span className="text-[10px] text-gray-500">
-            {formatAge(freshness?.ageHours ?? null, t)}
+            {formatAge(freshness?.ageHours ?? null, tAge)}
           </span>
         </div>
       </header>

@@ -386,6 +386,20 @@
     "viewAll": "Смотреть все",
     "retry": "Повторить"
   },
+  "relativeAge": {
+    "long": {
+      "justNow": "только что",
+      "minutes": "{n} мин назад",
+      "hours": "{n} ч назад",
+      "days": "{n} дн назад"
+    },
+    "short": {
+      "justNow": "сейчас",
+      "minutes": "{n}м",
+      "hours": "{n}ч",
+      "days": "{n}д"
+    }
+  },
   "budgeting": {
     "title": "Бюджетирование",
     "subtitle": "Планирование, прогноз и контроль бюджета",
@@ -2619,11 +2633,7 @@
       "starAria": "Добавить {code} в избранные компании",
       "starredTitle": "В избранном",
       "starTitle": "Добавить компанию в избранное",
-      "lastRecompute": "Последний пересчёт: {date}",
-      "freshnessNow": "сейчас",
-      "freshnessMinutes": "{count}м",
-      "freshnessHours": "{count}ч",
-      "freshnessDays": "{count}д"
+      "lastRecompute": "Последний пересчёт: {date}"
     },
     "peer": {
       "title": "Сравнение peer ({count} компаний)",
@@ -2700,10 +2710,6 @@
       },
       "lastRecompute": "Последний пересчёт: {date}",
       "updatedFreshness": "обновлено {age}",
-      "freshnessNow": "только что",
-      "freshnessMinutes": "{count} мин назад",
-      "freshnessHours": "{count} ч назад",
-      "freshnessDays": "{count} дн назад",
       "partialYearTitle": "{period} — неполный год (с начала года).",
       "partialYearBody": "Показаны только уже проведённые месяцы, поэтому маржа и цветовые диапазоны предварительные и не отражают полный цикл. По умолчанию открыт последний завершённый год.",
       "noCompaniesYet": "Компаний или индикаторов ещё нет. Импортируйте через /budgeting/onboarding и запустите seed индикаторов (scripts/seed-indicators.ts).",
@@ -4505,12 +4511,6 @@
       "refresh": "обновить",
       "loading": "Загрузка…",
       "noTrace": "следов нет",
-      "ago": {
-        "justNow": "только что",
-        "minutes": "{n} мин назад",
-        "hours": "{n} ч назад",
-        "days": "{n} дн назад"
-      },
       "col": {
         "job": "Задача",
         "trigger": "Кто запускает",
@@ -4826,11 +4826,6 @@
       "freeTier": "бесплатный ключ",
       "paid": "платный"
     },
-    "age": {
-      "minutes": "{n} мин назад",
-      "hours": "{n} ч назад",
-      "days": "{n} дн назад"
-    },
     "section": {
       "whatItIs": "Что это",
       "businessValue": "Зачем холдингу",
@@ -4897,11 +4892,7 @@
       "itemsLast30d": "Записей (30 дн)"
     },
     "relative": {
-      "never": "никогда",
-      "justNow": "только что",
-      "minutes": "{n} мин назад",
-      "hours": "{n} ч назад",
-      "days": "{n} дн назад"
+      "never": "никогда"
     },
     "languageDefault": "Английский (по умолчанию)",
     "avgRelevance": "ср. релевантность",
@@ -5494,8 +5485,6 @@
     "cadenceDaily": "ежедневная cadence",
     "cadenceMonthly": "ежемесячная cadence",
     "metrics": "метрик",
-    "hoursAgo": "{n} ч. назад",
-    "daysAgo": "{n} дн. назад",
     "fetching": "Загружаю…",
     "refreshNow": "Обновить сейчас",
     "fetchTitle": "Загрузить {code} сейчас",
