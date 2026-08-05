@@ -2263,8 +2263,37 @@
       "balanceSheet": "Balance Sheet",
       "cashFlow": "Cash Flow",
       "forecasts": "Forecasts",
-      "assumptions": "Assumptions"
-    }
+      "assumptions": "Assumptions",
+      "actualsLedger": "Actuals ledger"
+    },
+    "computedUnavailable": "This data source has no plan-vs-fact or revenue-and-cost pair, so no computed field can be produced from it.",
+    "truncatedNotice": "Showing the first {limit} rows. The totals above describe those rows only — export to get the full set.",
+    "computedFields": {
+      "variance": "Variance (Actual − Plan)",
+      "execution_pct": "Execution %",
+      "margin_pct": "Margin %",
+      "net_amount": "Net (signed)"
+    },
+    "chartTypes": {
+      "table": "Table",
+      "bar": "Bar",
+      "stacked_bar": "Stacked",
+      "line": "Line",
+      "pie": "Pie",
+      "area": "Area"
+    },
+    "periodOptions": {
+      "none": "None",
+      "month": "Monthly",
+      "quarter": "Quarterly",
+      "year": "Yearly"
+    },
+    "filterField": "Field",
+    "filterValue": "Value",
+    "sortAsc": "A→Z",
+    "sortDesc": "Z→A",
+    "deleteConfirm": "Delete the report \"{name}\"? This cannot be undone.",
+    "noPeriodNotice": "{count} rows have no month recorded. They are grouped under \"unknown\" so the totals still add up."
   },
   "terminal": {
     "v2": {

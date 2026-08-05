@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
-import { getOrgId } from "@/lib/api-auth"
+import { getOrgId, requireRole, isAuthError } from "@/lib/api-auth"
 import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const updateReportSchema = z.object({
@@ -47,8 +47,10 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function PUT(req: NextRequest, { params }: RouteParams) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // Same boundary as POST /api/budgeting/reports — see the note there.
+  const session = await requireRole(req, "editor")
+  if (isAuthError(session)) return session
+  const orgId = session.orgId
 
   const { id } = await params
 
@@ -97,8 +99,12 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // A saved report is org-wide and this delete is physical, not soft — no
+  // `deletedAt`, no restore. Held one rung above create/update for that
+  // reason, and it had no gate at all before.
+  const session = await requireRole(req, "manager")
+  if (isAuthError(session)) return session
+  const orgId = session.orgId
 
   const { id } = await params
   // Defense-in-depth: scope the DELETE itself by `(id, organizationId)` so

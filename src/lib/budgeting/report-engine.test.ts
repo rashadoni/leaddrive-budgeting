@@ -80,10 +80,14 @@ describe("periodGroupData", () => {
 })
 
 describe("applyComputedFields", () => {
-  it("computes variance = plannedAmount - actualAmount", () => {
+  it("computes variance = actualAmount - plannedAmount", () => {
+    // 2026-08-05 owner decision: flipped from plan − actual to match
+    // `variance-helpers.ts` and every other surface in the product. Two
+    // conventions in one product made a report reconciled against the P&L
+    // disagree on sign.
     const rows = [{ plannedAmount: 100, actualAmount: 80 }]
     const out = applyComputedFields(rows, ["variance"])
-    expect(out[0].variance).toBe(20)
+    expect(out[0].variance).toBe(-20)
   })
 
   it("computes execution_pct = (actual / planned) * 100", () => {
@@ -115,7 +119,7 @@ describe("applyComputedFields", () => {
   it("applies multiple computed fields to same row", () => {
     const rows = [{ plannedAmount: 100, actualAmount: 80 }]
     const out = applyComputedFields(rows, ["variance", "execution_pct"])
-    expect(out[0].variance).toBe(20)
+    expect(out[0].variance).toBe(-20)
     expect(out[0].execution_pct).toBe(80)
   })
 
