@@ -18,6 +18,7 @@
 import type { NextRequest } from "next/server"
 import { QueueEvents } from "bullmq"
 import { getSession } from "@/lib/api-auth"
+import { isBullMqEnabled } from "@/lib/queue/feature-flag"
 import { getRedis } from "@/lib/queue/redis-client"
 import { getQueues } from "@/lib/queue/queues"
 
@@ -29,6 +30,13 @@ export async function GET(
   if (!session) return new Response("Unauthorized", { status: 401 })
   const { jobId } = await ctx.params
   if (!jobId) return new Response("jobId required", { status: 400 })
+
+  // BullMQ off (prod default) → no Redis to subscribe to. Refuse before
+  // opening a connection; the EventSource caller treats this as a closed
+  // stream. See the note in /api/admin/queue/route.ts.
+  if (!isBullMqEnabled()) {
+    return new Response("Job not found", { status: 404 })
+  }
 
   // Probe both queues to find which one owns the job + locate its
   // QueueEvents stream.

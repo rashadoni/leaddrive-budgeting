@@ -31,7 +31,7 @@ import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { aiErrorBody } from "@/lib/ai/ai-error"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
-import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
+import { enforceRateLimit } from "@/lib/rate-limit"
 import { getLogger } from "@/lib/log"
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
@@ -59,6 +59,8 @@ function isDirection(s: string): s is Direction {
 export const maxDuration = 30
 
 const RATE_LIMIT = { name: "explain-indicator", max: 30, windowMs: 60_000 }
+/** One member may not consume the whole org minute on their own. */
+const PER_USER_RATE_LIMIT = { name: "explain-indicator-user", max: 10, windowMs: 60_000 }
 
 const LANGUAGES: readonly ExplainerLanguage[] = ["en", "ru", "az"]
 
@@ -110,11 +112,22 @@ export async function POST(
     )
   }
 
-  const rateLimitError = enforceRateLimit(
-    `${orgId}:${getClientIp(request)}`,
-    RATE_LIMIT,
+  // 2026-08-04 audit — this used to key on `${orgId}:${getClientIp(request)}`,
+  // and getClientIp reads x-forwarded-for, a header the client sets. Rotating
+  // it produced a fresh bucket on every request, so the documented
+  // "30/min/org" cap on a PAID provider call held back nothing at all. The
+  // limiter's own doc says the key depends on the endpoint's threat model;
+  // here the threat is spend, so the identity has to come from the session.
+  //
+  // Both buckets are enforced: the org bucket makes the documented cap real,
+  // and the per-user bucket stops one member draining the whole org's minute.
+  const orgLimitError = enforceRateLimit(orgId, RATE_LIMIT)
+  if (orgLimitError) return orgLimitError
+  const userLimitError = enforceRateLimit(
+    `${orgId}:${session.userId}`,
+    PER_USER_RATE_LIMIT,
   )
-  if (rateLimitError) return rateLimitError
+  if (userLimitError) return userLimitError
 
   const { id: ivId } = await params
   if (typeof ivId !== "string" || ivId.trim() === "") {

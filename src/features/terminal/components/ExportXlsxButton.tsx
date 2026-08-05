@@ -12,6 +12,7 @@
  */
 
 import { useEffect } from "react";
+import { hasEvidencedValue } from "@/lib/risk/heatmap-matrix";
 import { useLocale, useTranslations } from "next-intl";
 import { ensureMatrix } from "../hooks/use-matrix";
 import {
@@ -130,7 +131,14 @@ export function ExportXlsxTrigger() {
             const row: (string | number)[] = [`${co.code} — ${co.name}`];
             for (const ind of matrix.indicators) {
               const cell = cellMap.get(`${co.id}|${ind.id}`);
-              row.push(cell && Number.isFinite(cell.value) ? cell.value : "");
+              // 2026-08-04 audit — Number.isFinite passes an unscored row's
+              // stored 0, so this sheet — the one clients re-sort, average and
+              // chart themselves — carried fabricated zeros indistinguishable
+              // from measured ones. Blank is the honest cell: Excel skips it in
+              // AVERAGE and it cannot win a MIN.
+              row.push(
+                cell && hasEvidencedValue(cell.status, cell.value) ? cell.value : "",
+              );
             }
             return row;
           },

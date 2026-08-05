@@ -2446,6 +2446,7 @@
       "loading": "Loading snapshot…",
       "error": "Snapshot error",
       "companyNotInMatrix": "Company not in current matrix:",
+      "holdingScopesMatrix": "is a holding company — the matrix shows its {count} operating companies. Pick any cell to drill in.",
       "noPlIndicators": "No P&L margin indicators available for",
       "indicators": "indicators",
       "scoreLabel": "Score",
@@ -4455,6 +4456,8 @@
     "refresh": "refresh",
     "loading": "Loading…",
     "emptyState": "No jobs in <strong>{stateName}</strong> state.",
+    "inprocessNotice": "The BullMQ backend is switched off (QUEUE_BACKEND=inprocess), so recomputes and imports run inside the app process instead of a queue. There is nothing to inspect here until BullMQ is enabled and a Redis instance plus a worker process are deployed.",
+    "unavailable": "The queue backend is unreachable — BullMQ is on but Redis is not answering.",
     "state": {
       "active": "active",
       "waiting": "waiting",
@@ -4470,6 +4473,61 @@
       "started": "Started",
       "finished": "Finished",
       "failedReason": "Failed reason"
+    },
+    "queueSection": "BullMQ queue",
+    "jobs": {
+      "title": "Background work",
+      "subtitle": "What runs outside a user's request, and when each piece last left a trace in the database. A job that records nothing is reported as untracked rather than healthy — the monitor does not guess.",
+      "refresh": "refresh",
+      "loading": "Loading…",
+      "noTrace": "no trace",
+      "ago": {
+        "justNow": "just now",
+        "minutes": "{n} min ago",
+        "hours": "{n} h ago",
+        "days": "{n} d ago"
+      },
+      "col": {
+        "job": "Job",
+        "trigger": "Started by",
+        "lastRun": "Last trace",
+        "status": "Status"
+      },
+      "name": {
+        "recompute": "Indicator recompute",
+        "import": "Data import",
+        "intelCrawl": "Intel crawl",
+        "feedRefresh": "Free-feed refresh",
+        "tradeDigest": "Trade alert digest",
+        "softDeletePurge": "Soft-delete purge"
+      },
+      "desc": {
+        "recompute": "Recalculates indicator values after an import or a manual refresh.",
+        "import": "Reads an uploaded workbook and writes budget, balance-sheet and cash-flow rows.",
+        "intelCrawl": "Daily news and market crawl that feeds the Intel panels.",
+        "feedRefresh": "Pulls the free commodity and macro feeds into data points.",
+        "tradeDigest": "Daily trade-alert summary. It writes no heartbeat, so its runs cannot be confirmed from here.",
+        "softDeletePurge": "Physically removes rows soft-deleted more than 30 days ago. Runs from a daily systemd timer; `never` here means the timer is not installed or has not fired yet."
+      },
+      "trigger": {
+        "request": "a user's request",
+        "timer": "systemd timer",
+        "cron": "crontab",
+        "worker": "BullMQ worker"
+      },
+      "status": {
+        "ok": "on schedule",
+        "stale": "late",
+        "never": "never ran",
+        "onDemand": "on demand",
+        "untracked": "not tracked"
+      },
+      "detail": {
+        "recomputedLast24h": "values recomputed in 24h",
+        "verdict": "verdict",
+        "runStatus": "run status",
+        "errors": "errors"
+      }
     }
   },
   "adminDataArchive": {

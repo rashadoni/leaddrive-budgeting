@@ -208,3 +208,33 @@ describe("PLAUSIBILITY_RULES — coverage spot-check", () => {
     }
   })
 })
+
+describe("checkPlausibility — BALTIC_DRY_INDEX carries the ETF, not the index", () => {
+  // 2026-08-04 — this band was [50, 20000], the range of the Baltic Dry Index
+  // itself, while `yahoo-fuel-bdi` emits BDRY (the Breakwave Dry Bulk ETF, in
+  // USD/share) because Yahoo's public API 404s on `^BDIY`. The rule therefore
+  // rejected every reading the feed has ever produced — 19 of the 24 errors on
+  // the scheduled run were exactly this, refusing values of 7.51 … 12.07.
+  it("accepts the readings production actually produces", () => {
+    for (const v of [7.51, 8.1, 8.77, 9.97, 11.53, 12.07]) {
+      expect(checkPlausibility("BALTIC_DRY_INDEX", v).ok).toBe(true)
+    }
+  })
+
+  it("accepts the ETF's historical extremes", () => {
+    expect(checkPlausibility("BALTIC_DRY_INDEX", 4).ok).toBe(true)
+    expect(checkPlausibility("BALTIC_DRY_INDEX", 40).ok).toBe(true)
+  })
+
+  it("still rejects an index-scale value — that means the instrument changed", () => {
+    // The failure worth keeping: if someone repoints the adapter at the real
+    // index without revisiting the downstream thresholds, 1500 must not pass
+    // as if it were a share price.
+    expect(checkPlausibility("BALTIC_DRY_INDEX", 1500).ok).toBe(false)
+  })
+
+  it("still rejects a zero or negative price", () => {
+    expect(checkPlausibility("BALTIC_DRY_INDEX", 0).ok).toBe(false)
+    expect(checkPlausibility("BALTIC_DRY_INDEX", -3).ok).toBe(false)
+  })
+})

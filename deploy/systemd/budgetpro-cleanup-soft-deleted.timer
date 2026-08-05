@@ -1,0 +1,18 @@
+[Unit]
+Description=Run the BudgetPro soft-delete purge daily
+
+[Timer]
+# 03:00 UTC — the schedule the BullMQ path would have used
+# (CLEANUP_DEFAULT_CRON in src/lib/queue/queues.ts). Off-peak for AZ business
+# hours (Baku is UTC+4, so 07:00 local) and well clear of the 02:15 DB backup.
+OnCalendar=*-*-* 03:00:00 UTC
+RandomizedDelaySec=10m
+# Deliberately true, unlike the two feed timers. Those skip a missed window
+# because a late market feed is stale data nobody wants; a missed purge just
+# leaves rows sitting past their retention window, and catching up after a
+# reboot is exactly what you want. The work is idempotent.
+Persistent=true
+Unit=budgetpro-cleanup-soft-deleted.service
+
+[Install]
+WantedBy=timers.target

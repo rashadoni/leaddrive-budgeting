@@ -369,10 +369,15 @@ export async function GET(
         return { companyCode: co?.code ?? b.companyId, companyName: co?.name ?? b.companyId, baselineScore: b.baselineScore, scenarioScore: b.scenarioScore, topDeltas }
       })
 
-    // `?narrative=0` → skip the slow AI call so the cascade fires immediately;
-    // the client fetches the narrative separately via POST .../narrative.
-    // Default (omitted / =1) keeps the inline narrative — back-compat.
-    const wantNarrative = searchParams.get('narrative') !== '0'
+    // `?narrative=1` → run the inline AI brief. Omitted or anything else
+    // skips it; the client fetches the narrative separately via
+    // POST .../narrative when it wants one without blocking the cascade.
+    // 2026-08-04 audit — this read `!== '0'`, so a bare GET on this route
+    // spent money on a paid Anthropic call by default, at viewer level, with
+    // no rate limit. The terminal tells users the opposite in its own words:
+    // "LLM calls are user-triggered (Explain / Re-run) — never auto-fired on
+    // cell-click navigation." Opt-in now; ScenarioPanel asks for it explicitly.
+    const wantNarrative = searchParams.get('narrative') === '1'
     let narrative: string | null = null
     let mitigations: string[] = []
     let narrativeError: string | null = null

@@ -1,0 +1,45 @@
+[Unit]
+Description=BudgetPro soft-delete physical purge (30-day retention)
+Documentation=file:/opt/budgetpro/deploy/README.md
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+StartLimitIntervalSec=45min
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/budgetpro
+# Same hardened runner as the other two cron jobs; only the endpoint differs.
+# The work is idempotent — a second fire in the same day finds nothing left
+# outside the retention window and deletes nothing.
+Environment=BUDGETPRO_CRON_PATH=/api/cron/cleanup-soft-deleted
+Environment=BUDGETPRO_CRON_LABEL=cleanup-soft-deleted
+ExecStart=/opt/budgetpro/deploy/run-refresh-feeds.sh
+TimeoutStartSec=10min
+Restart=on-failure
+RestartSec=15min
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=budgetpro-cleanup-soft-deleted
+
+# The caller only reads the deployment and makes one loopback HTTP request.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

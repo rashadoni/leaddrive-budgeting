@@ -17,6 +17,7 @@ import {
   statusShape,
   statusColor,
   hasStatementMismatch,
+  hasEvidencedValue,
   type HeatMapCell,
 } from "@/lib/risk/heatmap-matrix";
 import {
@@ -241,7 +242,9 @@ export function HeatMapCellTd({
   // hunted for.
   const statementMismatch = hasStatementMismatch(cell ?? {});
   const mismatchTitle =
-    statementMismatch && cell
+    // 2026-08-04 audit — this quoted `actual` and a delta for a cell this same
+    // component renders as "—" twelve lines further down.
+    statementMismatch && cell && hasEvidencedValue(status, cell.value)
       ? t('heatMap.statementMismatchTitle', {
           actual: formatValue(cell.value, ind.unit),
           expected: formatValue(cell.reconExpected ?? 0, ind.unit),
@@ -620,9 +623,9 @@ export function HeatMapCellTd({
                   mixBlendMode: status === 'unknown' ? 'normal' : 'difference',
                   textShadow: status === 'unknown' ? '0 0 2px rgba(0,0,0,0.7)' : undefined,
                 }}
-                title={status === 'unknown' ? '—' : formatValueCompact(cell.value, ind.unit)}
+                title={hasEvidencedValue(status, cell.value) ? formatValueCompact(cell.value, ind.unit) : '—'}
               >
-                {status === 'unknown' ? '—' : formatValueTiny(cell.value, ind.unit)}
+                {hasEvidencedValue(status, cell.value) ? formatValueTiny(cell.value, ind.unit) : '—'}
               </span>
             ) : null}
             {/* CLI Bloomberg-sweep: inline sparkline + value in normal mode.
@@ -655,7 +658,7 @@ export function HeatMapCellTd({
                   {/* Phase A.3 — `unknown` status hides the numeric value
                       (which could read as a real measurement). Show "—"
                       so the empty-state is unambiguous. */}
-                  {status === 'unknown' ? '—' : formatValueCompact(cell.value, ind.unit)}
+                  {hasEvidencedValue(status, cell.value) ? formatValueCompact(cell.value, ind.unit) : '—'}
                 </span>
               </div>
             ) : null}

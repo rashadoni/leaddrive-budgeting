@@ -13,6 +13,8 @@ type Row = {
   indicatorId: string
   period: string
   value: number
+  /** 2026-08-04 — an unscored row still stores a value; the pass must skip it. */
+  status?: string | null
   reconStatus?: string | null
   reconAcceptedDelta?: number | null
 }
@@ -77,6 +79,46 @@ describe("reconcileImportedIndicators", () => {
       reconCheckedAt: NOW,
       reconciledBy: "import",
     })
+  })
+
+  it("does not certify a cell that was never measured", async () => {
+    // 2026-08-04 audit. An unscored row still stores a value, almost always 0.
+    // When the statement figure was also 0 the pair landed inside tolerance,
+    // was written `matched`, and stamped `lastReconciledAt` — the field the
+    // decision-grade gate reads as "checked against its source". The platform
+    // was issuing itself a certificate for a number it had never computed.
+    const db = fakeDb(DEFS, [
+      { id: "iv1", companyId: "c1", indicatorId: "d-rev", period: "2026", value: 0, status: "unknown" },
+    ])
+    const s = await reconcileImportedIndicators(db, {
+      organizationId: "org",
+      year: 2026,
+      sources: [{ companyId: "c1", statedSubtotals: EDEN }],
+      actor: "import",
+      now: NOW,
+    })
+    expect(s.matched).toBe(0)
+    expect(s.mismatched).toBe(0)
+    // It stays counted as what it is: not checked.
+    expect(s.checked).toBe(0)
+    expect(db.updates).toHaveLength(0)
+  })
+
+  it("still reconciles a scored row whose measured value is zero", async () => {
+    // The other half of the contract: a real, measured 0 is a real figure and
+    // must still be checked against the statement.
+    const db = fakeDb(DEFS, [
+      { id: "iv1", companyId: "c1", indicatorId: "d-rev", period: "2026", value: 31_986_950.0, status: "green" },
+    ])
+    const s = await reconcileImportedIndicators(db, {
+      organizationId: "org",
+      year: 2026,
+      sources: [{ companyId: "c1", statedSubtotals: EDEN }],
+      actor: "import",
+      now: NOW,
+    })
+    expect(s.matched).toBe(1)
+    expect(db.updates[0].data).toMatchObject({ reconStatus: "matched", lastReconciledAt: NOW })
   })
 
   it("CLEARS lastReconciledAt on a mismatch", async () => {

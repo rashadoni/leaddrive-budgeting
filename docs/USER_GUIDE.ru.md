@@ -10,21 +10,33 @@
 
 1. [Что это и зачем](#1-что-это-и-зачем)
 2. [Вход и навигация](#2-вход-и-навигация)
-3. [Risk Terminal — рабочий день финансиста](#3-risk-terminal--рабочий-день-финансиста)
-   - [3.1 What-if сценарии — «а что если…»](#31-what-if-сценарии--а-что-если)
-4. [Board Deck — снимок для совета](#4-board-deck--снимок-для-совета)
+   - [2.1 Логин](#21-логин)
+   - [2.2 Боковая навигация](#22-боковая-навигация)
+3. [Risk Terminal — рабочий день финансиста](#3-risk-terminal-—-рабочий-день-финансиста)
+   - [3.1 What-if сценарии — «а что если…»](#31-what-if-сценарии-—-«а-что-если…»)
+   - [3.2 Risk Registry — качественные флаги риска](#32-risk-registry-—-качественные-флаги-риска)
+   - [3.3 Compliance & Legal — реальные индикаторы из аудит-отчётов и судов](#33-compliance-legal-—-реальные-индикаторы-из-аудит-отчётов-и-судов)
+   - [3.4 Concentration — кто держит вашу выручку](#34-concentration-—-кто-держит-вашу-выручку)
+   - [3.5 FX risk — какая часть выручки уязвима к курсу](#35-fx-risk-—-какая-часть-выручки-уязвима-к-курсу)
+4. [Board Deck — снимок для совета](#4-board-deck-—-снимок-для-совета)
 5. [Бюджетирование](#5-бюджетирование)
-   - [5.1 Report Builder (ANALYTICS) — произвольные срезы + графики](#51-report-builder-analytics--произвольные-срезы--графики)
-6. [Онбординг новой компании](#6-онбординг-новой-компании)
-7. [Admin Tools — 16 инструментов в 4 группах](#7-admin-tools--16-инструментов-в-4-группах)
-8. [AI Auto Import — импорт любого Excel](#8-ai-auto-import--импорт-любого-excel)
-9. [Risk Registry — качественные флаги риска](#9-risk-registry--качественные-флаги-риска)
-   - [9.1 Compliance & Legal — реальные индикаторы](#91-compliance--legal--реальные-индикаторы-из-аудит-отчётов-и-судов)
-   - [9.2 Concentration — кто держит вашу выручку](#92-concentration--кто-держит-вашу-выручку)
-10. [AI функции — что, где, сколько стоит](#10-ai-функции--что-где-сколько-стоит)
+   - [5.1 Report Builder (ANALYTICS) — произвольные срезы + графики](#51-report-builder-analytics-—-произвольные-срезы-графики)
+6. [Trade Tower — контроль trade-маркетингового бюджета](#6-trade-tower-—-контроль-trade-маркетингового-бюджета)
+7. [Онбординг новой компании](#7-онбординг-новой-компании)
+8. [AI Auto Import — импорт любого Excel](#8-ai-auto-import-—-импорт-любого-excel)
+9. [Admin Tools — 16 инструментов в 4 группах](#9-admin-tools-—-16-инструментов-в-4-группах)
+   - [9.1 Indicator Health — must-check перед демо](#91-indicator-health-—-must-check-перед-демо)
+   - [9.2 Companies Readiness — сетка готовности](#92-companies-readiness-—-сетка-готовности)
+   - [9.3 Data Archive — soft-delete с restore](#93-data-archive-—-soft-delete-с-restore)
+   - [9.4 Compliance Hub — единый экран аудит-находок + судов](#94-compliance-hub-—-единый-экран-аудит-находок-судов)
+   - [9.5 Indicator Backlog — что не хватает per компании](#95-indicator-backlog-—-что-не-хватает-per-компании)
+10. [AI функции — что, где, сколько стоит](#10-ai-функции-—-что-где-сколько-стоит)
+   - [10.1 Morning Brief (утренний брифинг)](#101-morning-brief-утренний-брифинг)
+   - [10.2 Variance Explainer (объяснитель отклонений)](#102-variance-explainer-объяснитель-отклонений)
+   - [10.3 Board Deck Narration](#103-board-deck-narration)
+   - [10.4 AI Auto Import Classifier](#104-ai-auto-import-classifier)
 11. [Журнал аудита](#11-журнал-аудита)
 12. [Чек-лист самопроверки](#12-чек-лист-самопроверки)
-13. [Trade Tower — контроль trade-маркетингового бюджета](#13-trade-tower--контроль-trade-маркетингового-бюджета)
 
 ---
 
@@ -92,7 +104,7 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 Дерево всех компаний холдинга с **composite-score** бейджем для каждой:
 - 🟢 **зелёный %** — composite score (0-100)
 - 🔴 **R##** — количество красных индикаторов
-- **Чипы:** `Sub` / `Opq` / `NoD` — качественные риск-флаги (см. раздел 9)
+- **Чипы:** `Sub` / `Opq` / `NoD` — качественные риск-флаги (см. раздел 3.2)
 
 **Что проверить:** клик по компании → правая HeatMap фильтруется на эту компанию.
 
@@ -145,11 +157,153 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 - **SSENARI** — значение **после** вашего изменения.
 - **Δ%** — на сколько процентов сдвинулось само значение индикатора (BAZA → SSENARI), а **не** «процент чего-то». Рядом с кодом индикатора показана **единица измерения** (например `FP_WHEAT_PRICE_SIGNAL · USD/tonne`), чтобы было видно, в чём считается строка.
 
-**Почему девальвация иногда «ничего не меняет».** Если вы поднимаете курс (девальвация AZN), а индикаторы не двигаются — для текущих данных это **правильно**: компании AZSEKER в загруженных цифрах **полностью внутренние** (затраты в манатах, импортной валютной составляющей нет). FX-шок повлияет только когда в данных появятся затраты/закупки в валюте (см. раздел 9.2.5 про FX-exposure). Это не баг — модель честно показывает «в этих данных уязвимости нет».
+**Почему девальвация иногда «ничего не меняет».** Если вы поднимаете курс (девальвация AZN), а индикаторы не двигаются — для текущих данных это **правильно**: компании AZSEKER в загруженных цифрах **полностью внутренние** (затраты в манатах, импортной валютной составляющей нет). FX-шок повлияет только когда в данных появятся затраты/закупки в валюте (см. раздел 3.5 про FX-exposure). Это не баг — модель честно показывает «в этих данных уязвимости нет».
 
 **Что значит «sürətli hesablama» (быстрый расчёт).** Это режим önbax / Quick preview из таблицы выше — он работает **только** для индикаторов, привязанных к рыночному фиду. Для драйвер-сценариев (выручка / издержки) используйте Scenario Panel.
 
 > Если горячая клавиша «What-if» открывает не ту страницу — это известная развилка двух поверхностей; ярлыки и подписи разведены, ориентируйтесь на таблицу выше.
+
+---
+
+### 3.2 Risk Registry — качественные флаги риска
+
+**URL:** `/budgeting/admin/companies` → раздел **«Настройки компаний»** → expand карточку компании
+
+![Company Settings + Risk Registry](guide/screenshots/15-risk-registry.webp)
+
+**Это самая свежая фича (Phase 7.N, май 2026).** Качественные финансово-операционные риски, которые HeatMap количественно не показывает.
+
+#### Три канонических флага
+
+| Флаг | Эмодзи | Что значит | Штраф к composite |
+|---|---|---|---|
+| `subsidy_dependency` | ⚠️ | Доход или маржа существенно зависят от субсидий или регулируемых цен | **−5** |
+| `non_transparent_structure` | 🛡 | Related-party или unaudited cost-allocation паттерн | **−8** |
+| `data_absence` | ⚪ | Ключевые финансовые или операционные данные отсутствуют | **−12** |
+
+#### Как ставить
+1. `/budgeting/admin/companies`
+2. Раздел **«Настройки компаний»** (внизу страницы)
+3. Раскрыть карточку компании (например, AZSEKER-EDEN)
+4. Найти **«Risk Registry»** — отсортирован по 8 категориям с дотами серьёзности `● ● ●` (emerald → amber → rose)
+5. Кликнуть на нужный флаг — он подсветится, штраф применится после сохранения
+
+#### Куда эти флаги попадают (4 канала, проверены end-to-end)
+
+| Канал | Где увидите |
+|---|---|
+| **Composite score badges** | Risk Terminal → Company Tree (чипы `Sub` / `Opq` / `NoD` рядом с именем) |
+| **Morning Brief narrative** | Risk Terminal → Today's Brief (фразы типа *«exposure to government policy/subsidy regime»*) |
+| **Board Deck section** | Board Deck → секция **«Qualitative Risk Flags»** с FLAGGED ENTITIES count |
+| **Variance Explainer** | Risk Terminal → click cell → Explain → рекомендация #3 цитирует флаг |
+
+#### Текущее состояние БД
+- **AZSEKER-AZSF** → `non_transparent_structure` + `data_absence` = **−20 к composite**
+- **AZSEKER-CPC** → `subsidy_dependency` + `non_transparent_structure` = **−13**
+- **AZSEKER-EDEN** → `subsidy_dependency` = **−5**
+
+#### Детальный Risk Registry per entity
+
+Помимо 3 канонических флагов, у каждой компании может быть детальный реестр рисков (KRI list) — отображается в admin-панели:
+**`/budgeting/admin/companies` → раскрыть карточку компании → секция «Risk Registry»**.
+
+**Текущее состояние:**
+
+| Entity | KRIs | Источник |
+|---|---|---|
+| **EDEN** | 15 | `Top risk - EDEN AGRO MMC.xlsx` (файл от клиента) |
+| **AZSF / CPC / MALT / HORIZON / PROMALT / FARM** | 0 | ⏳ Pending — ожидается от Nəcəf M (CARRYOVER L2) |
+
+Реестры для остальных entity **не заполнены умышленно** — мы НЕ генерируем риски сами, ждём реальные KRIs от Risk Officer'а холдинга. Тут не должно быть выдуманных данных: финансовый CFO принимает решения по этим показателям.
+
+---
+
+### 3.3 Compliance & Legal — реальные индикаторы из аудит-отчётов и судов
+
+**Где:** Risk Terminal → HeatMap (3 новые колонки) + Board Deck → секция «Compliance»
+
+Three new indicators, питаются от файлов клиента (`Follow up - For GTC.xlsx` + `Açıq məhkəmə mübahisələri.xlsx`):
+
+| Code | Что меряет | Зелёный | Янтарный | Красный |
+|---|---|---|---|---|
+| `AUDIT_CLOSED_PCT` | % закрытых аудит-замечаний (PBC) | ≥ 80% | 60–79% | < 60% |
+| `AUDIT_MAJOR_OPEN` | Открытых **Major** аудит-находок | ≤ 1 | 2–5 | > 5 |
+| `LEGAL_CASES_ACTIVE` | Активных судебных дел | ≤ 2 | 3–9 | ≥ 10 |
+
+#### Что сейчас в БД (live)
+
+| Entity | AUDIT_CLOSED_PCT | AUDIT_MAJOR_OPEN | LEGAL_CASES_ACTIVE |
+|---|---|---|---|
+| **AZSEKER-AZSF** | 🔴 51% | 🔴 6 | 🔴 29 |
+| **AZSEKER-CPC** | 🔴 39% | 🟡 3 | 🟡 7 |
+| **AZSEKER-EDEN** | ⚪ нет данных | ⚪ нет данных | 🟡 4 |
+| MALT / FARM / HORIZON / PROMALT | ⚪ нет данных в файлах клиента | | |
+
+#### Откуда берётся
+
+- **AUDIT_CLOSED_PCT** + **AUDIT_MAJOR_OPEN** — внутренний аудит-журнал клиента: 218 находок (Major / Minor / Observation / OFI). AZSF = 159 находок (51% закрыто, 6 Major open). CPC = 59 находок (39% закрыто, 3 Major open). Полный список доступен через `Company.settings.auditFindings` для drill-down.
+- **LEGAL_CASES_ACTIVE** — реестр открытых судебных дел: 54 кейса. AZSF — ответчик в 26 (29 открытых). CPC — ответчик в 7 (8 открытых). EDEN — только истец (4 открытых). Полный реестр в `Company.settings.courtDisputes`.
+
+#### Что проверить
+- В HeatMap появились 3 новые колонки (AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN / LEGAL_CASES_ACTIVE)
+- Клик на красную ячейку AZSF/AUDIT_MAJOR_OPEN → Variance Explainer должен процитировать открытые Major находки в narrative
+- Board Deck → секция «Critical alerts» теперь содержит compliance/legal warning'и
+
+> **Money-at-risk per case (AZN):** удалён из индикаторов 2026-05-27. Regex покрывал только 4 из 54 кейсов (7%) — misleading floor estimate. Будет реализован заново когда придёт полный реестр claim amounts от Hüquq Şöbəsi.
+
+---
+
+### 3.4 Concentration — кто держит вашу выручку
+
+**Где:** Risk Terminal → HeatMap (3 колонки) + Board Deck → top movers/alerts.
+
+Помимо HHI (математически правильно, но плохо коммуницируется CFO) добавили **прямые показатели концентрации**, которые сразу читаются:
+
+| Code | Что меряет | Зелёный | Янтарный | Красный |
+|---|---|---|---|---|
+| `CUSTOMER_HHI` | Herfindahl-Hirschman index (математическая концентрация) | ≤ 0.15 | 0.15–0.25 | > 0.25 |
+| `TOP_CUSTOMER_SHARE` | % выручки от **одного** крупнейшего клиента | ≤ 20% | 20–30% | > 30% |
+| `TOP3_CUSTOMER_SHARE` | % выручки от **топ-3** крупнейших клиентов | ≤ 50% | 50–75% | > 75% |
+
+#### Live данные
+
+| Entity | TOP_CUSTOMER | TOP3_CUSTOMER | CUSTOMER_HHI | Кто доминирует |
+|---|---|---|---|---|
+| **HORIZON** | 🔴 80% | 🔴 100% | 🔴 0.68 | 2 клиента вообще |
+| **EDEN** | 🔴 65% | 🔴 93% | 🔴 0.47 | вероятно AZSF (intercompany) |
+| **MALT** | 🔴 42% | 🔴 80% | 🔴 0.27 | Carlsberg single-buyer |
+| **AZSF** | 🔴 32% | 🟡 65% | 🟡 0.19 | Bakı Şirniyyat (confectionery) |
+| **CPC** | 🟡 28% | 🟡 64% | 🟡 0.18 | Hacı Şəkər Bakı |
+| **PROMALT** | ⚪ нет данных | ⚪ | ⚪ | (JV с Azersun) |
+
+#### Зачем оба показателя
+- **TOP_CUSTOMER_SHARE** — «потеря одного клиента» (например AZSF теряет Bakı Şirniyyat → −32% revenue overnight)
+- **TOP3_CUSTOMER_SHARE** — «здоровье long-tail» (MALT 80% значит после top-3 почти ничего — нельзя заменить если уйдут все 3)
+- **CUSTOMER_HHI** — академически корректная мера, для регуляторов / due diligence
+
+---
+
+### 3.5 FX risk — какая часть выручки уязвима к курсу
+
+**Где:** Risk Terminal → HeatMap колонка `REVENUE_FX_EXPOSURE`.
+
+Хранится в `Company.settings.fxRevenueAzn/Usd/Eur/Rub` — % выручки в каждой валюте. Формула: **100 − fxRevenueAzn** = % non-AZN.
+
+**Текущее состояние:**
+
+| Entity | AZN | USD | EUR | FX Exposure | Источник |
+|---|---|---|---|---|---|
+| **CPC** | 84% | 14% | 2% | 🟢 16% | `Farming strategy/Sales plan` — реальные volume splits 2027-2035 |
+| AZSF / MALT / EDEN / HORIZON / PROMALT | — | — | — | ⚪ Pending | Ожидается от N. Nəcəfzadə file «Müştəri İcmalı» (CARRYOVER L1) |
+
+Только CPC имеет реальные данные (вычислены из клиентского forward plan). Для остальных 5 entity мы НЕ заполняем split умышленно — `REVENUE_FX_EXPOSURE` показывает `unknown` пока не придёт верифицированный per-customer FX breakdown.
+
+**Пороги:**
+- 🟢 ≤ 20% — внутренний рынок доминирует
+- 🟡 20–50% — смешанная экспозиция
+- 🔴 > 50% — FX-колебания доминируют над выручкой
+
+**Связь с `FX_IMPORTED_INPUT`** (cost-side): два показателя вместе дадут **NET FX position** когда у всех будет revenue split. Если cost ≈ revenue в одной валюте → natural hedge.
 
 ---
 
@@ -177,7 +331,7 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 - **AZSEKER-AZSF** Azərşəkər Sugar — `Non-transparent structure` + `Data absence`
 - **AZSEKER-CPC** CPC — `Subsidy dependency` + `Non-transparent structure`
 
-Эти флаги **автоматически уменьшают composite score** компании и попадают в утренний брифинг (см. раздел 9).
+Эти флаги **автоматически уменьшают composite score** компании и попадают в утренний брифинг (см. раздел 3.2).
 
 ### Кнопки экспорта
 - `Export PPTX` — байт-в-байт идентичная презентация PowerPoint
@@ -243,7 +397,44 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 
 ---
 
-## 6. Онбординг новой компании
+## 6. Trade Tower — контроль trade-маркетингового бюджета
+
+**Для кого:** финансы + trade-маркетинг дистрибьютора. Модуль ежедневно отвечает:
+сколько trade-бюджета потрачено, куда идёт месяц и нужно ли вмешаться — не дожидаясь
+закрытия месяца.
+
+**Разделы страницы (сверху вниз):**
+
+1. **Дневной pacing** — «картина на 15-е число». Три полосы: сколько месяца прошло,
+   сколько бюджета потрачено, сколько плана продаж выполнено. Карточка справа — прогноз
+   на конец месяца по текущему темпу с риск-чипом (В норме / Наблюдение / Высокий /
+   Критично). Вся математика прозрачна — каждый снимок хранит свои входные данные для
+   ручной проверки. После проводки затрат нажмите **Пересчитать**.
+2. **Входящие алерты** — система открывает алерт, когда прогноз пробивает бюджет или расход
+   опережает продажи, и сама закрывает его, когда условие исчезло. **Принято** означает
+   «увидел», алерт при этом не закрывается.
+3. **Журнал затрат** — План / Начислено / Факт тремя отдельными цифрами, плюс **Контроль** —
+   цифра, которую pacing сравнивает с бюджетом (начисление для invoice-скидок и
+   ретро-бонусов, только оплаченное для промо-платежей и listing fee). До подключения
+   дневного фида накладных проводки ручные; отрицательная сумма = сторно; записи не
+   удаляются, а аннулируются.
+4. **Trade-бюджет** — месячные пулы от плана продаж (по умолчанию 5%, редактируется
+   помесячно). Кликните на % или сумму, чтобы изменить; карандаш — ручное переопределение,
+   переживает пересчёт.
+5. **Кампании** — карточка кампании: цель, даты, бюджет, ожидаемый прирост, охват
+   (канал/бренд/точки). Черновик уходит на согласование финансов; работающей считается
+   только согласованная кампания.
+6. **Импорт справочников** — списки точек / SKU / представителей загружаются .xlsx
+   (выгрузка Mikro/1C). Сначала всегда предпросмотр; запись только после «Применить».
+   Повторная загрузка того же файла — no-op; исправленный файл заменяет предыдущую партию.
+
+**Типичный день:** открыть Trade Tower → взглянуть на риск-чип и алерты → если расход
+опережает, открыть журнал и увидеть, какой вид затрат съедает бюджет → решить (пауза
+кампании, срез скидки) → пересчитать.
+
+---
+
+## 7. Онбординг новой компании
 
 **URL:** `/budgeting/onboarding`
 
@@ -269,181 +460,6 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 | AZSEKER-CPC | CPC | food_processing | 90% | ✅ VERIFIED |
 
 **Что проверить:** клик по карточке → раскрывается detail с тем, какие секции (P&L / BS / CF / KPI / Descriptions / Land / CAPEX) заполнены, а какие нужно добить.
-
----
-
-## 7. Admin Tools — 16 инструментов в 4 группах
-
-**URL:** `/budgeting/admin`
-
-![Admin Tools landing](guide/screenshots/05-admin-landing.webp)
-
-**Это «инженерная панель»** — что использовать **перед клиентским демо** и для повседневной поддержки.
-
-### Четыре группы
-
-#### 🧪 Data Ingestion (загрузка данных)
-| Карточка | Что делает |
-|---|---|
-| **Импорт данных** `Phase 7.M Tier 7` | Drag-drop любого xlsx → AI определит тип (P&L/BS/CF/KPI/Land/CAPEX/Descriptions/Forecast) и роутит на правильный adapter. Один экран вместо 5 разных форм. |
-| **Data Entry** | Ручной ввод KPI и ESG disclosures для non-engineer admin. |
-| **Data Sources Catalog** | Client-facing список внешних feeds: business value, sample value, dependencies. |
-| **Source Registry** | Drift-watchdog: список разрешённых xlsx-источников для ingest. |
-
-#### 🩺 Data Quality (качество данных)
-| Карточка | Что делает |
-|---|---|
-| **Indicator Health** `Phase 7.M` | Per-indicator green/amber/red/unknown с remediation guidance. Используйте **перед** клиентским демо. |
-| **Drift Dashboard** | Recent drift events + reference-feed freshness + stalled onboarding cases. |
-| **Companies Readiness** | Per-entity 7-area scoring с tiers (complete/good/partial/thin/empty). CSV export. |
-| **Data Archive** | Self-service архив + restore: BudgetLine / BalanceSheetLine / CashFlowEntry / Counterparty. |
-| **Intel Health** | Статус external feed adapter + recent crawls + news pipeline diagnostics. |
-
-#### 🔒 Operations (операции)
-- **Period Locks** — закрытие закрытых периодов от mutations
-- **Approvals** — workflow для согласований изменений
-- **AI Usage** — мониторинг LLM-расходов с 30-дневным трендом
-
-#### 👥 Access (доступы)
-- **User Access** — управление пользователями и ролями
-- **API Keys** — машинные ключи для внешних интеграций
-
-### 7.1 Indicator Health — must-check перед демо
-
-**URL:** `/budgeting/admin/indicator-health`
-
-![Indicator Health](guide/screenshots/09-indicator-health.webp)
-
-**Сверху:** счётчики
-- 🟢 GREEN: 258 (21.5%)
-- 🟡 AMBER: 193
-- 🔴 RED: 73
-- ⚪ UNKNOWN: 677 (43.6% computed из 1201 total IVs)
-
-**Unknown breakdown by error code:**
-- `eval: 430` — формулы упали
-- `non_finite: 123` — деление на ноль / NaN
-- `no_budget_lines: 64` — нет источников в P&L
-- `no_foreign_currency_lines: 35`
-- `rollup_no_children: 22`
-- `parse: 2`
-- `out_of_range: 1`
-
-**Внизу:** список конкретных индикаторов с проблемами + remediation в одну строку.
-
-**Что проверить перед демо:**
-1. **AGRO_COMMODITY_VOL** → 75 cells, нужно investigate
-2. **FP_INVENTORY_TURNS** → 49 cells, нужно `inventory` в BS
-3. **FP_YIELD_LOSS** → 49 cells, нужен `raw_input` в production KPI
-4. **AGRO_DROUGHT_RISK** → 37 cells, нужен `drought_index` per entity
-
-### 7.2 Companies Readiness — сетка готовности
-
-**URL:** `/budgeting/admin/companies-readiness`
-
-![Companies Readiness](guide/screenshots/08-companies-readiness.webp)
-
-Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty / FX tags / Strategic narrative.
-
-Колонки:
-- **Score** — 0-100%
-- **Tier** — Complete / Good / Partial / Thin / Empty
-- **Top missing** — что нужно добавить, чтобы поднять tier
-
-**На скрине видно:**
-- HORIZON 15% Thin → нужны P&L (budget lines), balance sheet, counterparties
-- PROMALT 25% Thin → то же
-- MALT 65% Good → нужны operational KPIs, strategic narrative, FX tags
-- AZSF 80% Good → strategic narrative, FX tags
-- EDEN 83% Good → counterparties, FX tags
-- CPC 88% Complete → strategic narrative, FX tags
-
-Кнопка **Export CSV** копирует gap-list для email.
-
-### 7.3.6 Indicator Backlog — что не хватает per компании
-
-**URL:** `/budgeting/admin/indicator-backlog`
-
-**Цель:** ровно одна страница где видно «что недозалили per entity» — без бесполезных галочек, с конкретным action-планом.
-
-**Структура:**
-- **5 summary-карточек:** Entities / Applicable indicators / With data / Missing / Overall readiness %
-- **By-owner aggregate** — кликабельные бэйджи «Risk Officer owes 5 items», «Sales Director owes 12», «CFO owes 8»
-- **Фильтры:** Category / Owner / Hide entities with 0 missing
-- **Per-entity cards** с двумя колонками: **«Has data»** (зелёные чипы с уже заполненными показателями) и **«Needs data»** (розовые строки с owner + action)
-
-**Чипы и строки показывают читаемое название (RU)**, а технический код (`AGRO_COMMODITY_VOL`, `FP_INVENTORY_TURNS` и т.п.) отображается мелким моноширинным текстом рядом или в tooltip при наведении. Это сделано чтобы финансовый персонал не учил аббревиатуры — но при общении с разработчиком/AI-импортом код остаётся под рукой.
-
-**Per-row actions:**
-- 📧 **Email** — открывает mailto: с pre-filled телом письма к owner'у с конкретным списком запрашиваемых данных
-- ⬆️ **Upload file** (entity-level) — deep-link на `/admin/ai-import?forEntity=AZSEKER-AZSF`
-- 📥 **CSV** (entity-level) — выгрузка gap-list для отправки клиенту
-- 📨 **Email all owners** (entity-level) — bulk mailto с группировкой по owner
-
-**Integration с AI Auto Import:**
-После успешного импорта в `/admin/ai-import` появляется banner:
-> ✅ Закрыто 7 пунктов из Indicator Backlog
-> - AZSEKER-AZSF → AUDIT_CLOSED_PCT
-> - AZSEKER-CPC → AUDIT_MAJOR_OPEN
-> - ...
-> [Открыть Indicator Backlog →]
-
-**Owner mapping** — кто за что отвечает:
-
-| Категория данных | Owner role |
-|---|---|
-| Audit findings | Internal Audit / Hüquq Şöbəsi |
-| Court cases | Hüquq Şöbəsi (Legal) |
-| Customers (counterparty) | Sales Director / Commercial Manager |
-| Suppliers | Procurement / Təchizat Şöbəsi |
-| P&L / BS / CF | CFO / Finance Manager |
-| Strategic narrative + Risk Registry + competitors + NPS | Risk Officer (Nəcəf M) |
-| Operational KPIs (harvest / yield / sugar content) | Farm Manager / QA / Production |
-| Commodity / weather / news | BudgetPro System (auto-populated) |
-
-**Per-org customization:** для каждой организации (FO Holding, в будущем azmade / tabia) owner mapping можно переопределить через `Organization.settings.dataOwners` JSON — добавить реальные имена и email'ы. Без override используется generic role label.
-
-### 7.3.5 Compliance Hub — единый экран аудит-находок + судов
-
-**URL:** `/budgeting/admin/compliance`
-
-**Цель:** одна страница для compliance/legal officer'а — все 218 аудит-находок (Major/Minor/Observation/OFI) + 54 судебных дела по 6 entity, с фильтрами и CSV-выгрузкой.
-
-**Что внутри:**
-- **2 таба** — Audit findings / Court cases
-- **5 summary-карточек сверху** для активного таба (Total / Open / Major / Minor / Observation для аудита; Total / Open / Defendant / Plaintiff / Money claims для судов)
-- **Таблица с цветовой кодировкой** severity-chip'ов: Major (rose), Minor (amber), Observation (slate), OFI (sky)
-- **Drill-down по клику** — строки и аудит-находок, и **судебных дел** открывают модалку с деталями (по суду: истец → ответчик, дата, тип спора, суд, статус, бейдж open/closed). Раньше судебные строки были «мёртвыми», некликабельными — теперь открываются мышью и с клавиатуры (Enter / Space).
-- **Фильтры:** Entity (one of 6) / Severity / Status (Open/Closed/All)
-- **Export CSV** отфильтрованного среза с timestamp в имени файла
-
-**Откуда данные:** уже в БД из Phase 7.N (`Company.settings.auditFindings.items` + `courtDisputes.cases`). Никаких новых таблиц.
-
-**Что проверить:**
-- AZSF aud: 6 Major / 30 Minor / 42 Observation = 159 total → CSV должен дать 159 строк
-- CPC ct: 8 cases, все open, 7 как defendant
-- Фильтр `Status: Open only` + `Entity: AZSEKER-AZSF` + `Severity: Major` → должно быть 6 строк
-
-### 7.3 Data Archive — soft-delete с restore
-
-**URL:** `/budgeting/admin/data-archive`
-
-![Data Archive](guide/screenshots/10-data-archive.webp)
-
-**Зачем:** ошиблись с импортом → нужно убрать строки из расчёта, **но не удалять физически** для IFRS-аудита.
-
-**Как работает:**
-- Архивирование скрывает данные из HeatMap, recompute, отчётов
-- Физически данные **не удаляются** — восстановление возможно в течение **90 дней**
-- Все действия пишутся в audit trail
-- Через 90 дней — daily cron `soft-delete-purge` физически удаляет
-
-**Форма:**
-- **Действие:** Архивировать / Восстановить
-- **Тип:** P&L / BS / CF / Counterparty
-- **Компания + Год**
-- **Причина** (попадает в audit log)
-- **Подтверждение:** ввести `ALL` чтобы исключить опечатку
 
 ---
 
@@ -506,147 +522,180 @@ Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty /
 
 ---
 
-## 9. Risk Registry — качественные флаги риска
+## 9. Admin Tools — 16 инструментов в 4 группах
 
-**URL:** `/budgeting/admin/companies` → раздел **«Настройки компаний»** → expand карточку компании
+**URL:** `/budgeting/admin`
 
-![Company Settings + Risk Registry](guide/screenshots/15-risk-registry.webp)
+![Admin Tools landing](guide/screenshots/05-admin-landing.webp)
 
-**Это самая свежая фича (Phase 7.N, май 2026).** Качественные финансово-операционные риски, которые HeatMap количественно не показывает.
+**Это «инженерная панель»** — что использовать **перед клиентским демо** и для повседневной поддержки.
 
-### Три канонических флага
+### Четыре группы
 
-| Флаг | Эмодзи | Что значит | Штраф к composite |
-|---|---|---|---|
-| `subsidy_dependency` | ⚠️ | Доход или маржа существенно зависят от субсидий или регулируемых цен | **−5** |
-| `non_transparent_structure` | 🛡 | Related-party или unaudited cost-allocation паттерн | **−8** |
-| `data_absence` | ⚪ | Ключевые финансовые или операционные данные отсутствуют | **−12** |
-
-### Как ставить
-1. `/budgeting/admin/companies`
-2. Раздел **«Настройки компаний»** (внизу страницы)
-3. Раскрыть карточку компании (например, AZSEKER-EDEN)
-4. Найти **«Risk Registry»** — отсортирован по 8 категориям с дотами серьёзности `● ● ●` (emerald → amber → rose)
-5. Кликнуть на нужный флаг — он подсветится, штраф применится после сохранения
-
-### Куда эти флаги попадают (4 канала, проверены end-to-end)
-
-| Канал | Где увидите |
+#### 🧪 Data Ingestion (загрузка данных)
+| Карточка | Что делает |
 |---|---|
-| **Composite score badges** | Risk Terminal → Company Tree (чипы `Sub` / `Opq` / `NoD` рядом с именем) |
-| **Morning Brief narrative** | Risk Terminal → Today's Brief (фразы типа *«exposure to government policy/subsidy regime»*) |
-| **Board Deck section** | Board Deck → секция **«Qualitative Risk Flags»** с FLAGGED ENTITIES count |
-| **Variance Explainer** | Risk Terminal → click cell → Explain → рекомендация #3 цитирует флаг |
+| **Импорт данных** `Phase 7.M Tier 7` | Drag-drop любого xlsx → AI определит тип (P&L/BS/CF/KPI/Land/CAPEX/Descriptions/Forecast) и роутит на правильный adapter. Один экран вместо 5 разных форм. |
+| **Data Entry** | Ручной ввод KPI и ESG disclosures для non-engineer admin. |
+| **Data Sources Catalog** | Client-facing список внешних feeds: business value, sample value, dependencies. |
+| **Source Registry** | Drift-watchdog: список разрешённых xlsx-источников для ingest. |
 
-### Текущее состояние БД
-- **AZSEKER-AZSF** → `non_transparent_structure` + `data_absence` = **−20 к composite**
-- **AZSEKER-CPC** → `subsidy_dependency` + `non_transparent_structure` = **−13**
-- **AZSEKER-EDEN** → `subsidy_dependency` = **−5**
+#### 🩺 Data Quality (качество данных)
+| Карточка | Что делает |
+|---|---|
+| **Indicator Health** `Phase 7.M` | Per-indicator green/amber/red/unknown с remediation guidance. Используйте **перед** клиентским демо. |
+| **Drift Dashboard** | Recent drift events + reference-feed freshness + stalled onboarding cases. |
+| **Companies Readiness** | Per-entity 7-area scoring с tiers (complete/good/partial/thin/empty). CSV export. |
+| **Data Archive** | Self-service архив + restore: BudgetLine / BalanceSheetLine / CashFlowEntry / Counterparty. |
+| **Intel Health** | Статус external feed adapter + recent crawls + news pipeline diagnostics. |
 
-### Детальный Risk Registry per entity
+#### 🔒 Operations (операции)
+- **Period Locks** — закрытие закрытых периодов от mutations
+- **Approvals** — workflow для согласований изменений
+- **AI Usage** — мониторинг LLM-расходов с 30-дневным трендом
 
-Помимо 3 канонических флагов, у каждой компании может быть детальный реестр рисков (KRI list) — отображается в admin-панели:
-**`/budgeting/admin/companies` → раскрыть карточку компании → секция «Risk Registry»**.
+#### 👥 Access (доступы)
+- **User Access** — управление пользователями и ролями
+- **API Keys** — машинные ключи для внешних интеграций
 
-**Текущее состояние:**
+### 9.1 Indicator Health — must-check перед демо
 
-| Entity | KRIs | Источник |
-|---|---|---|
-| **EDEN** | 15 | `Top risk - EDEN AGRO MMC.xlsx` (файл от клиента) |
-| **AZSF / CPC / MALT / HORIZON / PROMALT / FARM** | 0 | ⏳ Pending — ожидается от Nəcəf M (CARRYOVER L2) |
+**URL:** `/budgeting/admin/indicator-health`
 
-Реестры для остальных entity **не заполнены умышленно** — мы НЕ генерируем риски сами, ждём реальные KRIs от Risk Officer'а холдинга. Тут не должно быть выдуманных данных: финансовый CFO принимает решения по этим показателям.
+![Indicator Health](guide/screenshots/09-indicator-health.webp)
 
----
+**Сверху:** счётчики
+- 🟢 GREEN: 258 (21.5%)
+- 🟡 AMBER: 193
+- 🔴 RED: 73
+- ⚪ UNKNOWN: 677 (43.6% computed из 1201 total IVs)
 
-## 9.1 Compliance & Legal — реальные индикаторы из аудит-отчётов и судов
+**Unknown breakdown by error code:**
+- `eval: 430` — формулы упали
+- `non_finite: 123` — деление на ноль / NaN
+- `no_budget_lines: 64` — нет источников в P&L
+- `no_foreign_currency_lines: 35`
+- `rollup_no_children: 22`
+- `parse: 2`
+- `out_of_range: 1`
 
-**Где:** Risk Terminal → HeatMap (3 новые колонки) + Board Deck → секция «Compliance»
+**Внизу:** список конкретных индикаторов с проблемами + remediation в одну строку.
 
-Three new indicators, питаются от файлов клиента (`Follow up - For GTC.xlsx` + `Açıq məhkəmə mübahisələri.xlsx`):
+**Что проверить перед демо:**
+1. **AGRO_COMMODITY_VOL** → 75 cells, нужно investigate
+2. **FP_INVENTORY_TURNS** → 49 cells, нужно `inventory` в BS
+3. **FP_YIELD_LOSS** → 49 cells, нужен `raw_input` в production KPI
+4. **AGRO_DROUGHT_RISK** → 37 cells, нужен `drought_index` per entity
 
-| Code | Что меряет | Зелёный | Янтарный | Красный |
-|---|---|---|---|---|
-| `AUDIT_CLOSED_PCT` | % закрытых аудит-замечаний (PBC) | ≥ 80% | 60–79% | < 60% |
-| `AUDIT_MAJOR_OPEN` | Открытых **Major** аудит-находок | ≤ 1 | 2–5 | > 5 |
-| `LEGAL_CASES_ACTIVE` | Активных судебных дел | ≤ 2 | 3–9 | ≥ 10 |
+### 9.2 Companies Readiness — сетка готовности
 
-### Что сейчас в БД (live)
+**URL:** `/budgeting/admin/companies-readiness`
 
-| Entity | AUDIT_CLOSED_PCT | AUDIT_MAJOR_OPEN | LEGAL_CASES_ACTIVE |
-|---|---|---|---|
-| **AZSEKER-AZSF** | 🔴 51% | 🔴 6 | 🔴 29 |
-| **AZSEKER-CPC** | 🔴 39% | 🟡 3 | 🟡 7 |
-| **AZSEKER-EDEN** | ⚪ нет данных | ⚪ нет данных | 🟡 4 |
-| MALT / FARM / HORIZON / PROMALT | ⚪ нет данных в файлах клиента | | |
+![Companies Readiness](guide/screenshots/08-companies-readiness.webp)
 
-### Откуда берётся
+Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty / FX tags / Strategic narrative.
 
-- **AUDIT_CLOSED_PCT** + **AUDIT_MAJOR_OPEN** — внутренний аудит-журнал клиента: 218 находок (Major / Minor / Observation / OFI). AZSF = 159 находок (51% закрыто, 6 Major open). CPC = 59 находок (39% закрыто, 3 Major open). Полный список доступен через `Company.settings.auditFindings` для drill-down.
-- **LEGAL_CASES_ACTIVE** — реестр открытых судебных дел: 54 кейса. AZSF — ответчик в 26 (29 открытых). CPC — ответчик в 7 (8 открытых). EDEN — только истец (4 открытых). Полный реестр в `Company.settings.courtDisputes`.
+Колонки:
+- **Score** — 0-100%
+- **Tier** — Complete / Good / Partial / Thin / Empty
+- **Top missing** — что нужно добавить, чтобы поднять tier
 
-### Что проверить
-- В HeatMap появились 3 новые колонки (AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN / LEGAL_CASES_ACTIVE)
-- Клик на красную ячейку AZSF/AUDIT_MAJOR_OPEN → Variance Explainer должен процитировать открытые Major находки в narrative
-- Board Deck → секция «Critical alerts» теперь содержит compliance/legal warning'и
+**На скрине видно:**
+- HORIZON 15% Thin → нужны P&L (budget lines), balance sheet, counterparties
+- PROMALT 25% Thin → то же
+- MALT 65% Good → нужны operational KPIs, strategic narrative, FX tags
+- AZSF 80% Good → strategic narrative, FX tags
+- EDEN 83% Good → counterparties, FX tags
+- CPC 88% Complete → strategic narrative, FX tags
 
-> **Money-at-risk per case (AZN):** удалён из индикаторов 2026-05-27. Regex покрывал только 4 из 54 кейсов (7%) — misleading floor estimate. Будет реализован заново когда придёт полный реестр claim amounts от Hüquq Şöbəsi.
+Кнопка **Export CSV** копирует gap-list для email.
 
----
+### 9.3 Data Archive — soft-delete с restore
 
-## 9.2.5 FX risk — какая часть выручки уязвима к курсу
+**URL:** `/budgeting/admin/data-archive`
 
-**Где:** Risk Terminal → HeatMap колонка `REVENUE_FX_EXPOSURE`.
+![Data Archive](guide/screenshots/10-data-archive.webp)
 
-Хранится в `Company.settings.fxRevenueAzn/Usd/Eur/Rub` — % выручки в каждой валюте. Формула: **100 − fxRevenueAzn** = % non-AZN.
+**Зачем:** ошиблись с импортом → нужно убрать строки из расчёта, **но не удалять физически** для IFRS-аудита.
 
-**Текущее состояние:**
+**Как работает:**
+- Архивирование скрывает данные из HeatMap, recompute, отчётов
+- Физически данные **не удаляются** — восстановление возможно в течение **90 дней**
+- Все действия пишутся в audit trail
+- Через 90 дней — daily cron `soft-delete-purge` физически удаляет
 
-| Entity | AZN | USD | EUR | FX Exposure | Источник |
-|---|---|---|---|---|---|
-| **CPC** | 84% | 14% | 2% | 🟢 16% | `Farming strategy/Sales plan` — реальные volume splits 2027-2035 |
-| AZSF / MALT / EDEN / HORIZON / PROMALT | — | — | — | ⚪ Pending | Ожидается от N. Nəcəfzadə file «Müştəri İcmalı» (CARRYOVER L1) |
-
-Только CPC имеет реальные данные (вычислены из клиентского forward plan). Для остальных 5 entity мы НЕ заполняем split умышленно — `REVENUE_FX_EXPOSURE` показывает `unknown` пока не придёт верифицированный per-customer FX breakdown.
-
-**Пороги:**
-- 🟢 ≤ 20% — внутренний рынок доминирует
-- 🟡 20–50% — смешанная экспозиция
-- 🔴 > 50% — FX-колебания доминируют над выручкой
-
-**Связь с `FX_IMPORTED_INPUT`** (cost-side): два показателя вместе дадут **NET FX position** когда у всех будет revenue split. Если cost ≈ revenue в одной валюте → natural hedge.
-
----
-
-## 9.2 Concentration — кто держит вашу выручку
-
-**Где:** Risk Terminal → HeatMap (3 колонки) + Board Deck → top movers/alerts.
-
-Помимо HHI (математически правильно, но плохо коммуницируется CFO) добавили **прямые показатели концентрации**, которые сразу читаются:
-
-| Code | Что меряет | Зелёный | Янтарный | Красный |
-|---|---|---|---|---|
-| `CUSTOMER_HHI` | Herfindahl-Hirschman index (математическая концентрация) | ≤ 0.15 | 0.15–0.25 | > 0.25 |
-| `TOP_CUSTOMER_SHARE` | % выручки от **одного** крупнейшего клиента | ≤ 20% | 20–30% | > 30% |
-| `TOP3_CUSTOMER_SHARE` | % выручки от **топ-3** крупнейших клиентов | ≤ 50% | 50–75% | > 75% |
-
-### Live данные
-
-| Entity | TOP_CUSTOMER | TOP3_CUSTOMER | CUSTOMER_HHI | Кто доминирует |
-|---|---|---|---|---|
-| **HORIZON** | 🔴 80% | 🔴 100% | 🔴 0.68 | 2 клиента вообще |
-| **EDEN** | 🔴 65% | 🔴 93% | 🔴 0.47 | вероятно AZSF (intercompany) |
-| **MALT** | 🔴 42% | 🔴 80% | 🔴 0.27 | Carlsberg single-buyer |
-| **AZSF** | 🔴 32% | 🟡 65% | 🟡 0.19 | Bakı Şirniyyat (confectionery) |
-| **CPC** | 🟡 28% | 🟡 64% | 🟡 0.18 | Hacı Şəkər Bakı |
-| **PROMALT** | ⚪ нет данных | ⚪ | ⚪ | (JV с Azersun) |
-
-### Зачем оба показателя
-- **TOP_CUSTOMER_SHARE** — «потеря одного клиента» (например AZSF теряет Bakı Şirniyyat → −32% revenue overnight)
-- **TOP3_CUSTOMER_SHARE** — «здоровье long-tail» (MALT 80% значит после top-3 почти ничего — нельзя заменить если уйдут все 3)
-- **CUSTOMER_HHI** — академически корректная мера, для регуляторов / due diligence
+**Форма:**
+- **Действие:** Архивировать / Восстановить
+- **Тип:** P&L / BS / CF / Counterparty
+- **Компания + Год**
+- **Причина** (попадает в audit log)
+- **Подтверждение:** ввести `ALL` чтобы исключить опечатку
 
 ---
+
+### 9.4 Compliance Hub — единый экран аудит-находок + судов
+
+**URL:** `/budgeting/admin/compliance`
+
+**Цель:** одна страница для compliance/legal officer'а — все 218 аудит-находок (Major/Minor/Observation/OFI) + 54 судебных дела по 6 entity, с фильтрами и CSV-выгрузкой.
+
+**Что внутри:**
+- **2 таба** — Audit findings / Court cases
+- **5 summary-карточек сверху** для активного таба (Total / Open / Major / Minor / Observation для аудита; Total / Open / Defendant / Plaintiff / Money claims для судов)
+- **Таблица с цветовой кодировкой** severity-chip'ов: Major (rose), Minor (amber), Observation (slate), OFI (sky)
+- **Drill-down по клику** — строки и аудит-находок, и **судебных дел** открывают модалку с деталями (по суду: истец → ответчик, дата, тип спора, суд, статус, бейдж open/closed). Раньше судебные строки были «мёртвыми», некликабельными — теперь открываются мышью и с клавиатуры (Enter / Space).
+- **Фильтры:** Entity (one of 6) / Severity / Status (Open/Closed/All)
+- **Export CSV** отфильтрованного среза с timestamp в имени файла
+
+**Откуда данные:** уже в БД из Phase 7.N (`Company.settings.auditFindings.items` + `courtDisputes.cases`). Никаких новых таблиц.
+
+**Что проверить:**
+- AZSF aud: 6 Major / 30 Minor / 42 Observation = 159 total → CSV должен дать 159 строк
+- CPC ct: 8 cases, все open, 7 как defendant
+- Фильтр `Status: Open only` + `Entity: AZSEKER-AZSF` + `Severity: Major` → должно быть 6 строк
+
+### 9.5 Indicator Backlog — что не хватает per компании
+
+**URL:** `/budgeting/admin/indicator-backlog`
+
+**Цель:** ровно одна страница где видно «что недозалили per entity» — без бесполезных галочек, с конкретным action-планом.
+
+**Структура:**
+- **5 summary-карточек:** Entities / Applicable indicators / With data / Missing / Overall readiness %
+- **By-owner aggregate** — кликабельные бэйджи «Risk Officer owes 5 items», «Sales Director owes 12», «CFO owes 8»
+- **Фильтры:** Category / Owner / Hide entities with 0 missing
+- **Per-entity cards** с двумя колонками: **«Has data»** (зелёные чипы с уже заполненными показателями) и **«Needs data»** (розовые строки с owner + action)
+
+**Чипы и строки показывают читаемое название (RU)**, а технический код (`AGRO_COMMODITY_VOL`, `FP_INVENTORY_TURNS` и т.п.) отображается мелким моноширинным текстом рядом или в tooltip при наведении. Это сделано чтобы финансовый персонал не учил аббревиатуры — но при общении с разработчиком/AI-импортом код остаётся под рукой.
+
+**Per-row actions:**
+- 📧 **Email** — открывает mailto: с pre-filled телом письма к owner'у с конкретным списком запрашиваемых данных
+- ⬆️ **Upload file** (entity-level) — deep-link на `/admin/ai-import?forEntity=AZSEKER-AZSF`
+- 📥 **CSV** (entity-level) — выгрузка gap-list для отправки клиенту
+- 📨 **Email all owners** (entity-level) — bulk mailto с группировкой по owner
+
+**Integration с AI Auto Import:**
+После успешного импорта в `/admin/ai-import` появляется banner:
+> ✅ Закрыто 7 пунктов из Indicator Backlog
+> - AZSEKER-AZSF → AUDIT_CLOSED_PCT
+> - AZSEKER-CPC → AUDIT_MAJOR_OPEN
+> - ...
+> [Открыть Indicator Backlog →]
+
+**Owner mapping** — кто за что отвечает:
+
+| Категория данных | Owner role |
+|---|---|
+| Audit findings | Internal Audit / Hüquq Şöbəsi |
+| Court cases | Hüquq Şöbəsi (Legal) |
+| Customers (counterparty) | Sales Director / Commercial Manager |
+| Suppliers | Procurement / Təchizat Şöbəsi |
+| P&L / BS / CF | CFO / Finance Manager |
+| Strategic narrative + Risk Registry + competitors + NPS | Risk Officer (Nəcəf M) |
+| Operational KPIs (harvest / yield / sugar content) | Farm Manager / QA / Production |
+| Commodity / weather / news | BudgetPro System (auto-populated) |
+
+**Per-org customization:** для каждой организации (FO Holding, в будущем azmade / tabia) owner mapping можно переопределить через `Organization.settings.dataOwners` JSON — добавить реальные имена и email'ы. Без override используется generic role label.
 
 ## 10. AI функции — что, где, сколько стоит
 
@@ -818,43 +867,6 @@ Three new indicators, питаются от файлов клиента (`Follow
 - [ ] `ai_morning_brief_run` есть за сегодня
 - [ ] `ai_board_deck_narration_run` есть (генерируется при открытии Board Deck)
 - [ ] `fromCache: true` для повторных запросов с одинаковыми параметрами
-
----
-
-## 13. Trade Tower — контроль trade-маркетингового бюджета
-
-**Для кого:** финансы + trade-маркетинг дистрибьютора. Модуль ежедневно отвечает:
-сколько trade-бюджета потрачено, куда идёт месяц и нужно ли вмешаться — не дожидаясь
-закрытия месяца.
-
-**Разделы страницы (сверху вниз):**
-
-1. **Дневной pacing** — «картина на 15-е число». Три полосы: сколько месяца прошло,
-   сколько бюджета потрачено, сколько плана продаж выполнено. Карточка справа — прогноз
-   на конец месяца по текущему темпу с риск-чипом (В норме / Наблюдение / Высокий /
-   Критично). Вся математика прозрачна — каждый снимок хранит свои входные данные для
-   ручной проверки. После проводки затрат нажмите **Пересчитать**.
-2. **Входящие алерты** — система открывает алерт, когда прогноз пробивает бюджет или расход
-   опережает продажи, и сама закрывает его, когда условие исчезло. **Принято** означает
-   «увидел», алерт при этом не закрывается.
-3. **Журнал затрат** — План / Начислено / Факт тремя отдельными цифрами, плюс **Контроль** —
-   цифра, которую pacing сравнивает с бюджетом (начисление для invoice-скидок и
-   ретро-бонусов, только оплаченное для промо-платежей и listing fee). До подключения
-   дневного фида накладных проводки ручные; отрицательная сумма = сторно; записи не
-   удаляются, а аннулируются.
-4. **Trade-бюджет** — месячные пулы от плана продаж (по умолчанию 5%, редактируется
-   помесячно). Кликните на % или сумму, чтобы изменить; карандаш — ручное переопределение,
-   переживает пересчёт.
-5. **Кампании** — карточка кампании: цель, даты, бюджет, ожидаемый прирост, охват
-   (канал/бренд/точки). Черновик уходит на согласование финансов; работающей считается
-   только согласованная кампания.
-6. **Импорт справочников** — списки точек / SKU / представителей загружаются .xlsx
-   (выгрузка Mikro/1C). Сначала всегда предпросмотр; запись только после «Применить».
-   Повторная загрузка того же файла — no-op; исправленный файл заменяет предыдущую партию.
-
-**Типичный день:** открыть Trade Tower → взглянуть на риск-чип и алерты → если расход
-опережает, открыть журнал и увидеть, какой вид затрат съедает бюджет → решить (пауза
-кампании, срез скидки) → пересчитать.
 
 ---
 
