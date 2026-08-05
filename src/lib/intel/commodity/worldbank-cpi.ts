@@ -37,6 +37,7 @@
  * scrapers rather than at us.
  */
 
+import { OUTBOUND_USER_AGENT } from "./outbound-agent"
 import type {
   CommodityAdapter,
   CommodityAdapterOptions,
@@ -49,8 +50,10 @@ const WB_LABEL = "World Bank — CPI YoY (regional)"
 /** ISO-2 country codes — coverage matches FO holding's procurement footprint. */
 const WB_COUNTRIES = ["AZ", "RU", "TR", "GE", "IR"] as const
 const WB_INDICATOR = "FP.CPI.TOTL.ZG"
-/** Sent on every World Bank request — see the 403 note in the header. */
-export const WB_USER_AGENT = "BudgetPro/1.0 (+https://budget.fo.az) commodity-adapter"
+/** Sent on every World Bank request — see the 403 note in the header.
+ *  Re-exported so this adapter's tests keep their own name for it; the value
+ *  is shared with every other outbound feed. */
+export const WB_USER_AGENT = OUTBOUND_USER_AGENT
 
 interface WBDataPoint {
   date?: string // YYYY (annual data)

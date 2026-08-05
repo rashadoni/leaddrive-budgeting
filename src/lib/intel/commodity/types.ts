@@ -77,4 +77,7 @@ export interface CommodityAdapter {
 export interface CommodityAdapterOptions {
   /** Override fetch (Node 18+ global). Tests inject a mock. */
   fetchImpl?: typeof fetch
+  /** Override the delay used when an API answers 429 and asks us to wait.
+   *  Tests inject a no-op so a rate-limit retry costs no real seconds. */
+  sleep?: (ms: number) => Promise<void>
 }
