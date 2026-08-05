@@ -11,34 +11,60 @@
  * compound — Bloomberg-layout demos with Compare modal open over
  * Snapshot drilldown = 3 simultaneous matrix fetches today.
  *
- * **Implementation strategy:**
- *  - Module-level cache keyed by `period` (`Map<string, CacheState>`)
- *    so different periods are independent cache entries (a sparkline
- *    switching periods doesn't blow away the active panel's cache).
- *  - `useMatrix(period?)` — reactive hook for components that subscribe
- *    to the data.
- *  - Event-driven consumers can use the third-argument `enabled` option to
- *    defer their first subscription until the overlay opens.
- *  - `ensureMatrix(period)` — async accessor for one-shot reads (e.g.
- *    `CommandBar.IND` resolving an indicator code).
- *  - `getMatrixSync(period)` — sync accessor returning cached data or
- *    null. Useful for quick sanity reads without subscribing.
- *  - `refresh(period)` — purges cache entry + re-fetches; called by
- *    HeatMap on SSE indicator-changed events.
+ * ## 2026-08-05 — subscriber registry (defect B + the request storm)
  *
- * **What this hook DOESN'T do (v1 scope):**
- *  - SSE-driven cache invalidation built into the hook (consumers
- *    still wire their own SSE listener and call `refresh()` —
- *    centralizing this is a v2 follow-up since debounce / partial-cell
- *    semantics differ per consumer).
- *  - Stale-while-revalidate (callers explicit-refresh on stale data).
+ * v1 was a bare `Map<key, {promise, data, error}>` that every consumer
+ * read ONCE into its own React state. Two defects fell out of that:
+ *
+ *  - **Stale forever.** A hit returned `entry.promise` unconditionally and
+ *    nothing ever revalidated, so a period visited earlier in the session
+ *    was served its first payload for the rest of the session. `refresh()`
+ *    deleted one key and refetched into the CALLING component's state —
+ *    the other mounted consumers of that same key kept rendering the old
+ *    payload they had copied at mount.
+ *  - **The request storm.** `indicator_values_notify_trg` is `FOR EACH ROW`
+ *    (`prisma/migrations/00000000000000_init/migration.sql:2983`), so one
+ *    SSE `indicator:changed` reaches the client per IndicatorValue row.
+ *    `CompanySnapshot` calls `refresh()` per event with no debounce, and
+ *    each call deleted the key the other subscribers read from. A full
+ *    recompute with a company selected therefore fired up to one
+ *    full-matrix GET per (company × indicator) pair — ~221 today, ~4801 at
+ *    the Phase F target.
+ *
+ * The shape now: a module-local **subscriber registry** read through
+ * `useSyncExternalStore`. One entry per cache key; every mounted consumer
+ * of that key subscribes to the SAME snapshot object, so
+ *
+ *  - N simultaneous subscribers produce exactly ONE in-flight GET;
+ *  - an invalidation updates EVERY subscriber of the key instead of one,
+ *    and is debounced AT THE REGISTRY (`INVALIDATE_DEBOUNCE_MS`) so an
+ *    undebounced caller like `CompanySnapshot` cannot reintroduce the
+ *    storm — a 221-event burst collapses to a single refetch;
+ *  - a response is dropped if its entry's `generation` moved while it was
+ *    in flight, so a late response cannot overwrite newer data;
+ *  - entries nobody subscribes to are dropped on invalidation (that is the
+ *    stale-forever fix) and the surviving warm set is LRU-capped at
+ *    `WARM_ENTRY_CAP`, so switching back to a recent period stays instant
+ *    without unbounded memory.
+ *
+ * Public accessors:
+ *  - `useMatrix(period?, includePending?, { enabled })` — reactive
+ *    subscription. `enabled: false` subscribes to NOTHING and fetches
+ *    NOTHING (`TerminalOverlayHost.runtime.test.tsx` asserts zero matrix
+ *    GETs at mount on mobile — a real cost guarantee, not a nicety).
+ *  - `ensureMatrix(period?)` — async one-shot read (e.g. `CommandBar.IND`,
+ *    the export buttons). Shares the same in-flight request; adds no
+ *    subscriber.
+ *  - `getMatrixSync(period?)` — sync peek. NEVER fetches; `ScenarioPanel`
+ *    depends on exactly that to stay inside the zero-GET guarantee above.
+ *  - `invalidateMatrix(period?)` / `refresh()` — coalesced revalidation.
  *
  * **Naming:** `MatrixResponse` mirrors `/api/indicators/matrix` shape;
  * if that endpoint changes, this hook AND callers update in lockstep —
  * single point of truth.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { HeatMapCell } from "@/lib/risk/heatmap-matrix";
 import { useTerminalStore } from "../store/terminalStore";
 
@@ -163,17 +189,86 @@ export interface UseMatrixResult {
   loading: boolean;
   /** Set on fetch failure; null on success. */
   error: string | null;
-  /** Force re-fetch (purges cache entry for this period). */
+  /** Force re-fetch. Invalidates the SHARED entry for this key: every
+   *  mounted subscriber gets the new payload, and a burst of calls
+   *  coalesces into one request. Resolves when that request settles. */
   refresh: () => Promise<void>;
+  /**
+   * OPTIONAL — true while a revalidation is in flight over data that is
+   * already on screen (stale-while-revalidate). Never gates rendering;
+   * `loading` keeps its original meaning ("nothing to show yet"). Optional
+   * so pre-existing typed mocks of this hook still compile.
+   */
+  revalidating?: boolean;
 }
 
-interface CacheState {
-  promise: Promise<MatrixResponse>;
-  data: MatrixResponse | null;
-  error: string | null;
+/**
+ * Immutable per-key view handed to `useSyncExternalStore`. A new object is
+ * published on every change; the reference is stable between changes, which
+ * is what keeps `getSnapshot` loop-free.
+ */
+interface MatrixSnapshot {
+  readonly data: MatrixResponse | null;
+  readonly error: string | null;
+  readonly loading: boolean;
+  readonly revalidating: boolean;
 }
 
-const cacheByPeriod = new Map<string, CacheState>();
+const COLD_SNAPSHOT: MatrixSnapshot = {
+  data: null,
+  error: null,
+  loading: true,
+  revalidating: false,
+};
+
+interface Deferred {
+  promise: Promise<void>;
+  resolve: () => void;
+}
+
+interface CacheEntry {
+  key: string;
+  period: string | undefined;
+  includePending: boolean;
+  snapshot: MatrixSnapshot;
+  /**
+   * Last request promise, RETAINED after it settles so a late `ensureMatrix`
+   * gets the same rejected promise instead of retrying a failing endpoint
+   * (the "sticky error" contract locked in use-matrix.test.tsx).
+   */
+  promise: Promise<MatrixResponse> | null;
+  inFlight: boolean;
+  /**
+   * Epoch guard. Every invalidation bumps it; a response whose captured
+   * generation no longer matches is discarded, so two refetches landing out
+   * of order cannot leave the older payload on screen.
+   */
+  generation: number;
+  subscribers: Set<() => void>;
+  refetchTimer: ReturnType<typeof setTimeout> | null;
+  refetchDeferred: Deferred | null;
+  /** Monotonic tick, for LRU ordering of the unsubscribed (warm) set. */
+  lastUsed: number;
+}
+
+/**
+ * Debounce applied to invalidations AT THE REGISTRY. Deliberately not in the
+ * components: `CompanySnapshot` calls `refresh()` straight out of the SSE
+ * handler, and the per-row NOTIFY trigger means one recompute delivers
+ * hundreds of those. Coalescing here is the only placement a future
+ * undebounced caller cannot undo.
+ */
+const INVALIDATE_DEBOUNCE_MS = 120;
+
+/**
+ * How many settled entries with NO subscribers stay cached. Keeps
+ * "switch to Q1 and back" instant while bounding memory (a Phase F payload
+ * is ~4800 cells). Subscribed entries are never counted or evicted.
+ */
+const WARM_ENTRY_CAP = 6;
+
+const registry = new Map<string, CacheEntry>();
+let lruClock = 0;
 
 function buildUrl(period: string | undefined, includePending: boolean): string {
   const base = period
@@ -227,50 +322,297 @@ function fetchMatrix(
 function cacheKey(period: string | undefined, includePending: boolean): string {
   // Truth-infra C.3 — cache key includes includePending so the admin
   // toggle gets its own cached response (independent of the default
-  // operating-view cache).
+  // operating-view cache). CompanyTree passes a component-local
+  // `showPending` with NO explicit period (CompanyTree.tsx:84), so the
+  // pending variant must key off the same store-selected period.
   const base = period ?? "__default__";
   return includePending ? `${base}:pending` : base;
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function createDeferred(): Deferred {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+function touch(entry: CacheEntry): void {
+  entry.lastUsed = ++lruClock;
+}
+
+/** An entry is "warm" when nothing is watching it and nothing is pending. */
+function isWarm(entry: CacheEntry): boolean {
+  return (
+    entry.subscribers.size === 0 && !entry.inFlight && entry.refetchTimer === null
+  );
+}
+
+function cancelPendingRefetch(entry: CacheEntry): void {
+  if (entry.refetchTimer !== null) {
+    clearTimeout(entry.refetchTimer);
+    entry.refetchTimer = null;
+  }
+  // Nobody is left to receive the refetch — release awaiting callers so a
+  // `refresh()` promise can never hang.
+  entry.refetchDeferred?.resolve();
+  entry.refetchDeferred = null;
+}
+
+function enforceWarmCap(): void {
+  const warm: CacheEntry[] = [];
+  for (const entry of registry.values()) {
+    if (isWarm(entry)) warm.push(entry);
+  }
+  if (warm.length <= WARM_ENTRY_CAP) return;
+  warm.sort((a, b) => a.lastUsed - b.lastUsed);
+  for (const entry of warm.slice(0, warm.length - WARM_ENTRY_CAP)) {
+    registry.delete(entry.key);
+  }
+}
+
+function getOrCreateEntry(
+  period: string | undefined,
+  includePending: boolean,
+): CacheEntry {
+  const key = cacheKey(period, includePending);
+  let entry = registry.get(key);
+  if (!entry) {
+    entry = {
+      key,
+      period,
+      includePending,
+      snapshot: COLD_SNAPSHOT,
+      promise: null,
+      inFlight: false,
+      generation: 0,
+      subscribers: new Set(),
+      refetchTimer: null,
+      refetchDeferred: null,
+      lastUsed: 0,
+    };
+    registry.set(key, entry);
+    // Touch BEFORE capping so the entry we just created is the
+    // most-recently-used one and can never be the eviction victim.
+    touch(entry);
+    enforceWarmCap();
+  }
+  touch(entry);
+  return entry;
+}
+
+function publish(entry: CacheEntry, next: Partial<MatrixSnapshot>): void {
+  const merged: MatrixSnapshot = { ...entry.snapshot, ...next };
+  if (
+    merged.data === entry.snapshot.data &&
+    merged.error === entry.snapshot.error &&
+    merged.loading === entry.snapshot.loading &&
+    merged.revalidating === entry.snapshot.revalidating
+  ) {
+    return;
+  }
+  entry.snapshot = merged;
+  // Copy first: a subscriber may unmount (and unsubscribe) as it re-renders.
+  for (const notify of Array.from(entry.subscribers)) notify();
+}
+
+/** True while `entry` is still the live entry for its key AND un-invalidated. */
+function isCurrent(entry: CacheEntry, generation: number): boolean {
+  return registry.get(entry.key) === entry && entry.generation === generation;
+}
+
+function startFetch(entry: CacheEntry): Promise<MatrixResponse> {
+  const generation = entry.generation;
+  const promise = fetchMatrix(entry.period, entry.includePending);
+  entry.promise = promise;
+  entry.inFlight = true;
+  if (entry.snapshot.data) {
+    // Stale-while-revalidate: keep the payload on screen. Blanking every
+    // panel on each SSE recompute is exactly the thrash this rewrite exists
+    // to remove.
+    publish(entry, { revalidating: true });
+  } else {
+    // Cold start. Publishing the same content COLD_SNAPSHOT already carries
+    // is a no-op by design (see `publish`) — a first mount must not cost an
+    // extra render just to say "still loading".
+    publish(entry, { loading: true, error: null, revalidating: false });
+  }
+  promise.then(
+    (data) => {
+      if (!isCurrent(entry, generation)) return;
+      entry.inFlight = false;
+      publish(entry, { data, error: null, loading: false, revalidating: false });
+    },
+    (err: unknown) => {
+      if (!isCurrent(entry, generation)) return;
+      entry.inFlight = false;
+      publish(entry, {
+        error: errorMessage(err),
+        loading: false,
+        revalidating: false,
+      });
+    },
+  );
+  return promise;
+}
+
+/** Run a scheduled refetch NOW (timer fired, or a one-shot reader demanded it). */
+function flushRefetch(entry: CacheEntry): Promise<MatrixResponse> {
+  if (entry.refetchTimer !== null) {
+    clearTimeout(entry.refetchTimer);
+    entry.refetchTimer = null;
+  }
+  const deferred = entry.refetchDeferred;
+  entry.refetchDeferred = null;
+  const promise = startFetch(entry);
+  if (deferred) {
+    // Resolve either way — `refresh()` reports "the revalidation finished",
+    // not "it succeeded"; the error lands in the snapshot.
+    promise.then(
+      () => deferred.resolve(),
+      () => deferred.resolve(),
+    );
+  }
+  return promise;
+}
+
+function scheduleRefetch(entry: CacheEntry): Promise<void> {
+  if (!entry.refetchDeferred) entry.refetchDeferred = createDeferred();
+  if (entry.refetchTimer !== null) clearTimeout(entry.refetchTimer);
+  entry.refetchTimer = setTimeout(() => {
+    entry.refetchTimer = null;
+    flushRefetch(entry);
+  }, INVALIDATE_DEBOUNCE_MS);
+  return entry.refetchDeferred.promise;
+}
+
 /**
- * Ensure a cache entry exists for the given period. Returns the
- * shared promise; multiple callers subscribe to the same in-flight
- * request. Sets `cache.data` on resolve / `cache.error` on reject.
+ * Ensure a cache entry exists for the given period. Returns the shared
+ * promise; multiple callers subscribe to the same in-flight request.
+ * Adds no subscriber — a one-shot read must not keep an entry alive.
+ *
+ * ⚠ Pass the period. A bare `ensureMatrix()` keys on `__default__`, which is
+ * a DIFFERENT entry from the one every panel is showing the moment a period
+ * chip is picked — so it costs a second full-matrix GET and answers about
+ * the wrong period. Same footgun `displayed-period.ts:27-30` documents for
+ * `getMatrixSync()`. `CommandBar.tsx:179` still calls it bare.
  */
 export function ensureMatrix(
   period?: string,
   includePending: boolean = false,
 ): Promise<MatrixResponse> {
-  const key = cacheKey(period, includePending);
-  let entry = cacheByPeriod.get(key);
-  if (!entry) {
-    const promise = fetchMatrix(period, includePending);
-    entry = { promise, data: null, error: null };
-    cacheByPeriod.set(key, entry);
-    promise
-      .then((data) => {
-        const e = cacheByPeriod.get(key);
-        if (e) e.data = data;
-      })
-      .catch((err: unknown) => {
-        const e = cacheByPeriod.get(key);
-        if (e) e.error = err instanceof Error ? err.message : String(err);
-      });
-  }
-  return entry.promise;
+  const entry = getOrCreateEntry(period, includePending);
+  if (entry.snapshot.data) return Promise.resolve(entry.snapshot.data);
+  // A revalidation is queued behind the debounce and this caller wants data
+  // now — run it immediately rather than firing a second, parallel request.
+  if (entry.refetchTimer !== null) return flushRefetch(entry);
+  if (entry.promise) return entry.promise;
+  return startFetch(entry);
 }
 
 /**
- * Sync accessor: return cached matrix for `period` or null. Doesn't
- * trigger a fetch. Useful for quick reads (e.g. one-shot lookups in
- * keyboard handlers) where the caller already knows the cache should
- * be primed by an upstream consumer.
+ * Sync accessor: return cached matrix for `period` or null. NEVER triggers a
+ * fetch — `ScenarioPanel` mounts unconditionally inside `TerminalOverlayHost`
+ * and relies on that to keep the mobile zero-GET guarantee
+ * (`TerminalOverlayHost.runtime.test.tsx:105`).
  */
 export function getMatrixSync(
   period?: string,
   includePending: boolean = false,
 ): MatrixResponse | null {
-  return cacheByPeriod.get(cacheKey(period, includePending))?.data ?? null;
+  const entry = registry.get(cacheKey(period, includePending));
+  if (!entry) return null;
+  // A peeked entry is in use — keep it out of the LRU firing line.
+  touch(entry);
+  return entry.snapshot.data;
+}
+
+/**
+ * Invalidate one cache key: bump its epoch, drop every entry nobody is
+ * subscribed to, and schedule ONE debounced refetch shared by all
+ * subscribers of that key. Returns a promise that settles when that
+ * refetch settles (immediately if there is nothing to refetch).
+ *
+ * Dropping the unsubscribed entries is deliberate and is the stale-forever
+ * fix: their data just moved underneath them and nothing on screen is
+ * showing them, so a re-visit must go back to the server. The LRU cap
+ * governs plain navigation; an invalidation clears the warm set outright.
+ */
+export function invalidateMatrix(
+  period?: string,
+  includePending: boolean = false,
+): Promise<void> {
+  const key = cacheKey(period, includePending);
+  const entry = registry.get(key) ?? null;
+
+  for (const other of Array.from(registry.values())) {
+    if (other === entry) continue;
+    if (!isWarm(other)) continue;
+    registry.delete(other.key);
+  }
+
+  if (!entry) return Promise.resolve();
+
+  entry.generation += 1;
+  entry.inFlight = false;
+  entry.promise = null;
+  touch(entry);
+
+  if (entry.subscribers.size === 0) {
+    cancelPendingRefetch(entry);
+    registry.delete(key);
+    return Promise.resolve();
+  }
+
+  if (entry.snapshot.error) {
+    publish(entry, { error: null, loading: !entry.snapshot.data });
+  }
+  return scheduleRefetch(entry);
+}
+
+function subscribeToMatrix(
+  period: string | undefined,
+  includePending: boolean,
+  onStoreChange: () => void,
+): () => void {
+  const entry = getOrCreateEntry(period, includePending);
+  entry.subscribers.add(onStoreChange);
+  touch(entry);
+  const settled = entry.snapshot.data !== null || entry.snapshot.error !== null;
+  if (!settled && !entry.inFlight && entry.refetchTimer === null) {
+    startFetch(entry);
+  }
+  return () => {
+    entry.subscribers.delete(onStoreChange);
+    touch(entry);
+    if (entry.subscribers.size === 0) {
+      if (entry.refetchTimer !== null) {
+        // The last watcher left before the coalesced refetch fired — no one
+        // is waiting for it. Drop the entry rather than spend the request.
+        cancelPendingRefetch(entry);
+        registry.delete(entry.key);
+        return;
+      }
+      enforceWarmCap();
+    }
+  };
+}
+
+function readSnapshot(key: string): MatrixSnapshot {
+  return registry.get(key)?.snapshot ?? COLD_SNAPSHOT;
+}
+
+/**
+ * SSR snapshot. The registry is client-only (nothing populates it during a
+ * server render), so the server always reports the cold state and hydration
+ * starts from the same place.
+ */
+function getServerSnapshot(): MatrixSnapshot {
+  return COLD_SNAPSHOT;
 }
 
 export function useMatrix(
@@ -286,63 +628,46 @@ export function useMatrix(
   const storePeriod = useTerminalStore((s) => s.selectedPeriod);
   const effectivePeriod = period ?? storePeriod;
   const key = cacheKey(effectivePeriod, includePending);
-  const [matrix, setMatrix] = useState<MatrixResponse | null>(
-    () => cacheByPeriod.get(key)?.data ?? null,
-  );
-  const [error, setError] = useState<string | null>(
-    () => cacheByPeriod.get(key)?.error ?? null,
-  );
-  const [loading, setLoading] = useState<boolean>(() => {
-    const entry = cacheByPeriod.get(key);
-    return enabled && !(entry?.data || entry?.error);
-  });
 
-  useEffect(() => {
-    if (!enabled) return;
-
-    let cancelled = false;
-    ensureMatrix(effectivePeriod, includePending)
-      .then((data) => {
-        if (cancelled) return;
-        setMatrix(data);
-        setLoading(false);
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : String(e));
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // `effectivePeriod` + `includePending` together form the cache key —
-    // toggling includePending triggers a separate fetch (admin "Show pending"
-    // view); changing the store-selected period re-scopes every panel.
-  }, [effectivePeriod, includePending, key, enabled]);
-
-  const refresh = useMemo(
-    () => async (): Promise<void> => {
-      cacheByPeriod.delete(cacheKey(effectivePeriod, includePending));
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await ensureMatrix(effectivePeriod, includePending);
-        setMatrix(data);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setLoading(false);
-      }
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      // `enabled: false` subscribes to nothing and fetches nothing. Overlay
+      // hosts mount their panels eagerly; this is what keeps the mobile
+      // zero-request guarantee.
+      if (!enabled) return () => {};
+      return subscribeToMatrix(effectivePeriod, includePending, onStoreChange);
     },
+    [effectivePeriod, includePending, enabled],
+  );
+
+  const getSnapshot = useCallback(() => readSnapshot(key), [key]);
+
+  const snapshot = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot,
+  );
+
+  const refresh = useCallback(
+    () => invalidateMatrix(effectivePeriod, includePending),
     [effectivePeriod, includePending],
   );
 
-  const visibleLoading = enabled && (loading || (!matrix && !error));
-  return { matrix, loading: visibleLoading, error, refresh };
+  return useMemo(() => {
+    const visibleLoading =
+      enabled && (snapshot.loading || (!snapshot.data && !snapshot.error));
+    return {
+      matrix: snapshot.data,
+      loading: visibleLoading,
+      error: snapshot.error,
+      refresh,
+      revalidating: enabled && snapshot.revalidating,
+    };
+  }, [snapshot, enabled, refresh]);
 }
 
 /**
- * Test-only: clear the module-level cache between test runs.
+ * Test-only: clear the module-level registry between test runs.
  *
  * **Convention (mirror of `useCompanies` sub-19 pattern):** call from
  * `beforeEach` in EVERY test file that mocks `/api/indicators/matrix`
@@ -351,7 +676,21 @@ export function useMatrix(
  * insufficient because the first `it()` would have already populated
  * the cache from the success-path mock; per-test overrides need their
  * own reset to make the new mock visible.
+ *
+ * Reset BEFORE rendering, never with components still mounted: their
+ * subscriptions belong to the entries this discards, so they would keep a
+ * dead handle and re-read as cold. `cleanup()` in `afterEach` (every suite
+ * here does it) makes that automatic.
  */
 export function __resetMatrixCacheForTests(): void {
-  cacheByPeriod.clear();
+  for (const entry of Array.from(registry.values())) {
+    // Bump the epoch so a request still in flight from the previous test
+    // cannot publish into the next one.
+    entry.generation += 1;
+    entry.inFlight = false;
+    entry.promise = null;
+    cancelPendingRefetch(entry);
+  }
+  registry.clear();
+  lruClock = 0;
 }
