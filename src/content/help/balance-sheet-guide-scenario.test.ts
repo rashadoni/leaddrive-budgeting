@@ -93,8 +93,19 @@ describe("Balance Sheet help-video scenario", () => {
     }
   })
 
-  it("does not publish a help-video asset before reviewed media exists", async () => {
+  // 2026-08-04 — this used to assert the entry was NOT published, which was
+  // right while the scenario existed and no take had been recorded. The media
+  // now exists in az/en/ru and has been checked frame by frame, so the guard
+  // flips: the tab must resolve to its OWN guide and to no other. The
+  // "media really exists" half is now enforced for every registered slug at
+  // once, on disk, in video-assets.test.ts.
+  it("publishes the balance-sheet guide on its own tab and nowhere else", async () => {
     const { getHelpVideoForPath } = await import("./video-assets")
-    expect(getHelpVideoForPath("/budgeting", "tab=balance-sheet")).toBeNull()
+    expect(getHelpVideoForPath("/budgeting", "tab=balance-sheet")).toMatchObject({
+      slug: "balance-sheet",
+    })
+    expect(getHelpVideoForPath("/budgeting", "tab=cash-flow")).not.toMatchObject({
+      slug: "balance-sheet",
+    })
   })
 })

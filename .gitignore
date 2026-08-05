@@ -11,6 +11,11 @@ data/*/
 
 # Dependencies
 node_modules/
+# …and the same name without the trailing slash. Git worktrees under
+# .claude/worktrees/ symlink node_modules to the main checkout, and a pattern
+# ending in "/" matches directories only — so the symlink showed up as an
+# untracked file that `git add -A` would happily commit.
+node_modules
 .pnp
 .pnp.js
 

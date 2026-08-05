@@ -377,6 +377,13 @@ async function recordSection(context, slug, lang, audio, out, poster) {
       await page.locator("h1").first().waitFor({ state: "visible", timeout: 20000 })
         .catch(() => page.locator("main, body").first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {}));
       await applyGuideStyles(page); // hide tour/widget + style cursor BEFORE the poster
+      // Collapse first, then again after the settle. Navigation used to happen
+      // between scenes, so the second or so of expanded sidebar fell into the
+      // silence and nobody saw it. Now that a scene navigates while it is still
+      // speaking, that window is on camera — data-control caught it mid-take.
+      // The early call can miss if the control has not hydrated yet, so the
+      // original call stays as the backstop; collapsing twice is a no-op.
+      await collapseSidebar(page);
       await page.waitForTimeout(PREROLL_SETTLE_MS);
       await dismissTours(page); // click the tour's skip so it completes and won't re-open
       await collapseSidebar(page); // focus the guide on its content, not the left menu
@@ -394,7 +401,18 @@ async function recordSection(context, slug, lang, audio, out, poster) {
     // Re-pointed at each scene below so h.holdUntil() knows which narration it
     // is pacing against.
     const sceneRef = { t0, startMs: 0, durMs: 0 };
-    const helpers = makeHelpers(page, sceneRef); // cursor move/click/hover/fill for `do` scenes
+    // In-scene navigation. The loop below navigates BETWEEN scenes, which puts
+    // the whole page load — 3-4s of blank screen — into the silence between two
+    // narrations. A scenario that walks eight admin screens therefore collected
+    // eight dead pauses. Calling this from inside a scene's `do` moves the load
+    // under the OUTGOING narration instead, so the voice never stops.
+    // `gotoRoute` updates `currentRoute`, so the next scene's own `route`
+    // becomes a no-op rather than a second navigation.
+    const navigate = async (route) => {
+      await gotoRoute(route);
+      await injectCursor(page); // navigation blew away the overlay
+    };
+    const helpers = makeHelpers(page, sceneRef, navigate); // cursor move/click/hover/fill for `do` scenes
 
     for (let i = 0; i < units.length; i += 1) {
       const unit = units[i];
@@ -528,7 +546,7 @@ function muxSection(webm, audio, offsetsMs, out) {
   filters.unshift(`[0:v]scale=${videoSize.width}:${videoSize.height},format=yuv420p,tpad=stop_mode=clone:stop_duration=${outSec}[v]`);
   filters.push(`${mixLabels.join("")}amix=inputs=${n}:normalize=0:dropout_transition=0[aout]`);
 
-  execFileSync("ffmpeg", [
+  const args = [
     ...inputs,
     "-filter_complex", filters.join(";"),
     "-map", "[v]", "-map", "[aout]",
@@ -537,7 +555,38 @@ function muxSection(webm, audio, offsetsMs, out) {
     "-movflags", "+faststart",
     "-t", outSec, // output length = last narration end (+tail); video is padded to reach it
     out,
-  ], { stdio: "inherit" });
+  ];
+
+  // One retry. risk-terminal.az lost a complete nine-scene take to a mux that
+  // failed once and then succeeded on the identical command with the identical
+  // inputs.
+  //
+  // The cause is resource exhaustion, not a half-written webm: this box caps a
+  // cgroup at pids.max=512, and ffmpeg cannot start its decoder threads when
+  // Chromium plus the encoder are already holding slots — it reports
+  // "Resource temporarily unavailable" and exits non-zero. Confirmed by hitting
+  // the identical error running an unrelated ffmpeg by hand during a batch.
+  //
+  // Re-recording costs seven minutes; waiting two seconds and trying again
+  // costs two seconds, and by then the previous section's processes are gone.
+  // Backoff, not a single retry: 2s was not enough on the first real batch —
+  // comparison.en failed, retried two seconds later, and failed again while the
+  // slots were still occupied. The later waits are long enough for the previous
+  // section's Chromium to have fully exited.
+  const waits = [2, 8, 20];
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      execFileSync("ffmpeg", args, { stdio: "inherit" });
+      return;
+    } catch (err) {
+      if (attempt >= waits.length) throw err;
+      const wait = waits[attempt];
+      console.warn(
+        `  ⚠ mux failed (attempt ${attempt + 1}/${waits.length + 1}), retrying in ${wait}s: ${err.message.split("\n")[0]}`,
+      );
+      spawnSync("sleep", [String(wait)]);
+    }
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -768,9 +817,22 @@ async function applyGuideStyles(page) {
 // collapsed flag is React state reset to expanded on every full page.goto, so
 // this runs after each navigation; a fresh page is always expanded, so the
 // single toggle click is idempotent. Best-effort — a miss just leaves it open.
+// Collapse the left nav — idempotently.
+//
+// The control is a TOGGLE that keeps the same ChevronLeft icon in both states
+// (src/components/sidebar.tsx:219 just adds `rotate-180` when collapsed), so
+// "click the chevron" collapses on the first call and RE-EXPANDS on the second.
+// That bit the moment a second call was added to cover on-camera navigation.
+// Read the rotation and click only while it is still expanded.
 async function collapseSidebar(page) {
-  await page.locator("button:has(svg.lucide-chevron-left)").first()
-    .click({ timeout: 3000 }).catch(() => {});
+  const toggle = page.locator("button:has(svg.lucide-chevron-left)").first();
+  const expanded = await toggle
+    .locator("svg.lucide-chevron-left")
+    .first()
+    .evaluate((el) => !el.classList.contains("rotate-180"))
+    .catch(() => false); // no such control on this screen — nothing to collapse
+  if (!expanded) return;
+  await toggle.click({ timeout: 3000 }).catch(() => {});
   await page.waitForTimeout(250);
 }
 
@@ -830,7 +892,7 @@ async function pulse(page, x, y) {
 // place its beats as fractions of the narration instead of fixed sleeps, so the
 // same scenario stays in sync across languages (az narration runs ~2× longer
 // than en/ru, and fixed pauses would freeze the screen on the short ones).
-function makeHelpers(page, scene) {
+function makeHelpers(page, scene, navigate) {
   const point = async (sel) => {
     const loc = await firstLocator(page, sel);
     await loc?.scrollIntoViewIfNeeded({ timeout: 8000 }).catch(() => {});
@@ -839,6 +901,87 @@ function makeHelpers(page, scene) {
     const y = box ? box.y + Math.min(box.height / 2, 40) : viewport.height / 2;
     await page.mouse.move(x, y, { steps: 18 });
     return { loc, x, y };
+  };
+  // Put a target genuinely under the cursor before clicking it. Two distinct
+  // failures, both from the risk-terminal heatmap and both reported by
+  // Playwright as the same opaque click timeout:
+  //
+  //   · a 54px cell at x≈1274 of a 1280px viewport. Six pixels showed, so
+  //     `scrollIntoViewIfNeeded` ("is ANY of it visible") did nothing and the
+  //     click aimed at x≈1300, outside the window.
+  //   · the same cell scrolled to sit directly under the STICKY <thead>, whose
+  //     column label then swallowed every attempt — "…intercepts pointer
+  //     events" — until the timeout.
+  //
+  // Handled here rather than per scenario, so every target benefits and no
+  // scenario has to know where its screen keeps its sticky furniture.
+  const prepareClickTarget = async (loc, label) => {
+    await loc.scrollIntoViewIfNeeded({ timeout: 8000 });
+    await page.waitForTimeout(400);
+
+    // What actually sits at the click point? `null` means the point is outside
+    // the window entirely; anything that is not the target means something
+    // covers it. Both are the same class of problem: the click would not land.
+    const inspect = () =>
+      loc
+        .evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          const px = r.left + r.width / 2;
+          const py = r.top + Math.min(r.height / 2, 40);
+          const hit = document.elementFromPoint(px, py);
+          if (hit && (hit === el || el.contains(hit) || hit.contains(el))) return { ok: true, overlap: 0 };
+          if (!hit) return { ok: false, overlap: 0, blocker: null, at: [Math.round(px), Math.round(py)] };
+          return {
+            ok: false,
+            overlap: Math.ceil(hit.getBoundingClientRect().bottom - r.top) + 12,
+            blocker: `<${hit.tagName.toLowerCase()}> "${(hit.textContent || "").trim().slice(0, 30)}"`,
+            at: [Math.round(px), Math.round(py)],
+          };
+        })
+        .catch(() => ({ ok: true, overlap: 0 }));
+
+    let state = await inspect();
+    if (!state.ok) {
+      // Say what is in the way. A bare "click timeout" cost three recordings
+      // and two probes before the sticky <thead> was identified by hand.
+      console.log(
+        `      · ${label}: point (${state.at?.join(",")}) blocked by ${state.blocker ?? "nothing — off-screen"} — correcting`,
+      );
+      // Centre it in EVERY scrollable ancestor. This is the move that works on
+      // the heatmap: its scrollport is ~94px tall behind a ~30px sticky header,
+      // so a row parked at the top edge is unreachable, while a centred one
+      // clears the header — and, being fully visible, Playwright's own
+      // pre-click scroll then leaves it exactly where we put it.
+      await loc.evaluate((el) => el.scrollIntoView({ block: "center", inline: "center" }));
+      await page.waitForTimeout(500);
+      state = await inspect();
+    }
+    if (!state.ok && state.overlap > 0) {
+      // Still covered: scroll the nearest scrollable ancestor back by the
+      // measured overlap. Last resort — a container already at its limit will
+      // simply clamp, and the click below still gets its own retry.
+      await loc.evaluate((el, dy) => {
+        let node = el.parentElement;
+        while (node && node !== document.body) {
+          const style = getComputedStyle(node);
+          if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) {
+            node.scrollTop -= dy;
+            return;
+          }
+          node = node.parentElement;
+        }
+        window.scrollBy(0, -dy);
+      }, state.overlap);
+      await page.waitForTimeout(400);
+    }
+
+    const box = await loc.boundingBox();
+    if (!box) throw new Error(`${label} has no bounding box`);
+    const x = box.x + box.width / 2;
+    const y = box.y + Math.min(box.height / 2, 40);
+    await page.mouse.move(x, y, { steps: 18 });
+    await page.waitForTimeout(250);
+    return { x, y };
   };
   return {
     firstLocator: (sel) => firstLocator(page, sel),
@@ -852,6 +995,16 @@ function makeHelpers(page, scene) {
       const target = scene.startMs + Math.min(Math.max(fraction, 0), 0.98) * scene.durMs;
       const remain = target - (Date.now() - scene.t0);
       if (remain > 0) await sleep(remain);
+    },
+    // A plain GET to another screen, performed while the current scene is still
+    // speaking. Safe under READONLY by construction — a navigation issues no
+    // POST/PUT/PATCH/DELETE, and the route interceptor stays armed across it.
+    async goto(route) {
+      if (typeof navigate !== "function") throw new Error("h.goto is unavailable in this context");
+      if (typeof route !== "string" || !route.startsWith("/")) {
+        throw new Error(`h.goto expects an in-app path, got: ${String(route)}`);
+      }
+      await navigate(route);
     },
     async moveTo(sel) { await point(sel); await page.waitForTimeout(200); },
     async hover(sel) { const { loc } = await point(sel); await loc?.hover({ timeout: 6000 }).catch(() => {}); await page.waitForTimeout(300); },
@@ -883,14 +1036,23 @@ function makeHelpers(page, scene) {
       if (!(await loc.isVisible())) {
         throw new Error(`safeClick target is not visible: ${sel}`);
       }
-      await loc.scrollIntoViewIfNeeded({ timeout: 8000 });
-      const box = await loc.boundingBox();
-      if (!box) throw new Error(`safeClick has no bounding box: ${sel}`);
-      const x = box.x + box.width / 2;
-      const y = box.y + Math.min(box.height / 2, 40);
-      await page.mouse.move(x, y, { steps: 18 });
-      await page.waitForTimeout(250);
-      await loc.click({ timeout: 8000 });
+      const { x, y } = await prepareClickTarget(loc, `safeClick ${sel}`);
+      // 2026-08-04 — 8s was not enough on pages that draw charts. Playwright
+      // refuses to click an element it considers unstable, and a mounting chart
+      // can nudge the layout for longer than that: cash-flow and risk-terminal
+      // both failed here with "waiting for element to be visible, enabled and
+      // stable" on buttons that click in 46ms once the page is idle.
+      //
+      // The wait is longer and gets one retry — the strictness is untouched.
+      // Still exactly one match, still visible, still no force: a click that
+      // cannot land honestly must still fail rather than be forced through
+      // something the viewer would not have been able to press either.
+      try {
+        await loc.click({ timeout: 20000 });
+      } catch (err) {
+        await page.waitForTimeout(1500);
+        await loc.click({ timeout: 20000 });
+      }
       await pulse(page, x, y);
       await page.waitForTimeout(400);
     },
@@ -934,14 +1096,23 @@ function makeHelpers(page, scene) {
       if (!(await loc.isVisible())) {
         throw new Error(`mutatingClick target is not visible: ${sel}`);
       }
-      await loc.scrollIntoViewIfNeeded({ timeout: 8000 });
-      const box = await loc.boundingBox();
-      if (!box) throw new Error(`mutatingClick has no bounding box: ${sel}`);
-      const x = box.x + box.width / 2;
-      const y = box.y + Math.min(box.height / 2, 40);
-      await page.mouse.move(x, y, { steps: 18 });
-      await page.waitForTimeout(250);
-      await loc.click({ timeout: 8000 });
+      const { x, y } = await prepareClickTarget(loc, `mutatingClick ${sel}`);
+      // 2026-08-04 — 8s was not enough on pages that draw charts. Playwright
+      // refuses to click an element it considers unstable, and a mounting chart
+      // can nudge the layout for longer than that: cash-flow and risk-terminal
+      // both failed here with "waiting for element to be visible, enabled and
+      // stable" on buttons that click in 46ms once the page is idle.
+      //
+      // The wait is longer and gets one retry — the strictness is untouched.
+      // Still exactly one match, still visible, still no force: a click that
+      // cannot land honestly must still fail rather than be forced through
+      // something the viewer would not have been able to press either.
+      try {
+        await loc.click({ timeout: 20000 });
+      } catch (err) {
+        await page.waitForTimeout(1500);
+        await loc.click({ timeout: 20000 });
+      }
       await pulse(page, x, y);
       await page.waitForTimeout(400);
     },

@@ -830,9 +830,22 @@ export default {
           ru: "«Записи» — это переход к источникам расчёта: месяц, тип поступления или платежа, деятельность, описание и сумма. Для менеджера и администратора строки могут содержать inline-редактирование и восстановимое мягкое удаление. Гайд лишь переключает локальную вкладку: не фокусирует поля, не меняет значения, не вызывает blur и не касается удаления.",
         },
         do: async (p, l, h) => {
+          // Wait for the overview to finish rendering before aiming at the tab
+          // bar. While this screen was empty the tabs mounted once and stayed
+          // put; with a populated year (43,440 projected entries) the overview
+          // re-renders as its data arrives and takes the tab bar with it, so
+          // the click landed on a node that had already been swapped out —
+          // "locator.click: Timeout … waiting for locator".
+          //
+          // A rendered overview is a positive signal that the data is in, which
+          // is why this waits for it rather than for network silence: this page
+          // polls, so a networkidle wait would have to swallow its own timeout,
+          // and a scenario that swallows errors is how a broken take ships.
+          await p.waitForSelector(CF_OVERVIEW, { timeout: 20000 });
+          await p.waitForSelector(CF_TABS, { timeout: 20000 });
           await h.holdUntil(0.3);
           await h.safeClick(CF_ENTRIES_BUTTON);
-          await p.waitForSelector(CF_ENTRIES_VIEW, { timeout: 8000 });
+          await p.waitForSelector(CF_ENTRIES_VIEW, { timeout: 15000 });
           await h.holdUntil(0.65);
           await h.moveTo(CF_ENTRIES_EVIDENCE);
           await h.holdUntil(0.92);
@@ -845,9 +858,10 @@ export default {
           ru: "После возврата в Обзор безопасный порядок прост: подтвердите год и scope организации, проверьте наличие исходных записей и только затем читайте график, месячные балансы и отчёт по деятельности. Если доказательств нет, следующий шаг — не придумывать нули и не запускать генератор вслепую, а сделать preview и импортировать утверждённый исходный файл Cash Flow.",
         },
         do: async (p, l, h) => {
+          await p.waitForSelector(CF_TABS, { timeout: 20000 });
           await h.holdUntil(0.3);
           await h.safeClick(CF_OVERVIEW_BUTTON);
-          await p.waitForSelector(CF_OVERVIEW, { timeout: 8000 });
+          await p.waitForSelector(CF_OVERVIEW, { timeout: 15000 });
           await h.holdUntil(0.65);
           await h.moveTo(CF_EVIDENCE);
           await h.holdUntil(0.92);
@@ -1355,6 +1369,24 @@ export default {
         },
         do: async (p, l, h) => {
           await p.waitForSelector(TERM_CELL, { timeout: 15000 });
+          // The heatmap body scrolls inside a ~94px port behind a two-line
+          // sticky <thead>. A 30px row therefore has only a couple of pixels of
+          // clearance, and the recorder lands on the wrong side of them: a bare
+          // probe clicks this cell at y=411 in 134ms, while the recorder — same
+          // page, same collapsed sidebar — arrives at y=413 and every attempt
+          // dies with "<thead> subtree intercepts pointer events".
+          //
+          // Verified in that order, not assumed: centring the cell in its
+          // scrollport did not help, and neither did collapsing the sidebar
+          // (which was separately broken and is now fixed). The margin is the
+          // problem.
+          //
+          // The header carries a column label and a hover tooltip and no
+          // controls at all, and no scene targets it. Making it transparent to
+          // the pointer changes nothing the viewer sees and nothing they could
+          // have clicked. Preferred over forcing the click, which would let a
+          // genuinely unreachable control pass unnoticed.
+          await p.addStyleTag({ content: "#risk-heatmap-table thead { pointer-events: none; }" });
           await h.holdUntil(0.25);
           await h.safeClick(TERM_CELL);
           await p.waitForSelector('[data-testid="indicator-detail-result"]', { timeout: 15000 });
@@ -2006,6 +2038,11 @@ export default {
           await h.hover(DC_READINESS_TABLE);
           await h.holdUntil(0.55);
           await h.moveTo(DC_READINESS);
+          await h.holdUntil(0.72);
+          // Navigate under this scene's own narration. Left to the recorder's
+          // between-scene step, the page load would land in the silence between
+          // two takes — eight screens, eight dead pauses.
+          await h.goto("/budgeting/admin/indicator-backlog");
           await h.holdUntil(0.92);
         },
       },
@@ -2022,6 +2059,8 @@ export default {
           await h.hover(DC_BACKLOG_PERIOD);
           await h.holdUntil(0.55);
           await h.moveTo(DC_BACKLOG);
+          await h.holdUntil(0.72);
+          await h.goto("/budgeting/admin/indicator-health");
           await h.holdUntil(0.92);
         },
       },
@@ -2038,6 +2077,8 @@ export default {
           await h.hover(DC_HEALTH_PERIOD);
           await h.holdUntil(0.55);
           await h.moveTo(DC_HEALTH);
+          await h.holdUntil(0.72);
+          await h.goto("/budgeting/admin/statement-controls");
           await h.holdUntil(0.92);
         },
       },
@@ -2054,6 +2095,8 @@ export default {
           await h.hover(DC_STATEMENT_BANNER);
           await h.holdUntil(0.55);
           await h.moveTo(DC_STATEMENT);
+          await h.holdUntil(0.72);
+          await h.goto("/budgeting/admin/ifrs-conformance");
           await h.holdUntil(0.92);
         },
       },
@@ -2069,6 +2112,8 @@ export default {
           await h.hover(DC_IFRS);
           await h.holdUntil(0.55);
           await h.moveTo(DC_TITLE);
+          await h.holdUntil(0.72);
+          await h.goto("/budgeting/admin/compliance");
           await h.holdUntil(0.92);
         },
       },
@@ -2084,6 +2129,8 @@ export default {
           await h.hover(DC_COMPLIANCE);
           await h.holdUntil(0.55);
           await h.moveTo(DC_TITLE);
+          await h.holdUntil(0.72);
+          await h.goto("/budgeting/admin/drift");
           await h.holdUntil(0.92);
         },
       },
@@ -2100,6 +2147,8 @@ export default {
           await h.hover(DC_DRIFT_FRESHNESS);
           await h.holdUntil(0.55);
           await h.moveTo(DC_DRIFT);
+          await h.holdUntil(0.72);
+          await h.goto("/budgeting/admin/intel-health");
           await h.holdUntil(0.92);
         },
       },
@@ -2116,6 +2165,8 @@ export default {
           await h.hover(DC_INTEL_SUMMARY);
           await h.holdUntil(0.55);
           await h.moveTo(DC_INTEL);
+          await h.holdUntil(0.72);
+          await h.goto("/budgeting/admin/companies-readiness");
           await h.holdUntil(0.92);
         },
       },

@@ -75,6 +75,17 @@ export async function GET(req: NextRequest) {
     const opening = runningBalance
     runningBalance = opening + inflows - outflows
 
+    // 2026-08-04 — `inflowEntries`/`outflowEntries` used to ride along here,
+    // carrying the FULL Prisma record for every entry of every month. Nothing
+    // read them: a repo-wide grep for either name finds no consumer outside
+    // this file, and the flat `entries` list below (trimmed to the seven fields
+    // the inline-edit view uses) is what the UI actually renders.
+    //
+    // They were harmless while this org had no cash flow at all. Once the
+    // generator was fixed and a year was actually projected, they made this
+    // response **31.8 MB** for 43,440 entries — every row serialized twice,
+    // once in full — and the page stopped becoming interactive inside 60s. The
+    // API itself was never slow (2.3s); the browser was drowning in JSON.
     monthlyData.push({
       month: m,
       year,
@@ -83,8 +94,6 @@ export async function GET(req: NextRequest) {
       outflows,
       net: inflows - outflows,
       closing: runningBalance,
-      inflowEntries: monthEntries.filter((e: CashFlowEntry) => e.entryType === "inflow"),
-      outflowEntries: monthEntries.filter((e: CashFlowEntry) => e.entryType === "outflow"),
     })
   }
 

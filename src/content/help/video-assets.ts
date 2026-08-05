@@ -26,13 +26,50 @@ export interface HelpVideoEntry {
 }
 
 const HELP_VIDEO_BASE_PATH = process.env.NEXT_PUBLIC_HELP_VIDEO_BASE_URL ?? "/api/help-videos"
-const HELP_VIDEO_ASSET_VERSION = "20260804-rerecord"
+const HELP_VIDEO_ASSET_VERSION = "20260804-ten-sections"
 const HELP_VIDEO_BLOCKED_LOCAL_TTS_SLUGS = new Set<string>()
 
 const HELP_VIDEO_ENTRIES_RAW = [
   { slug: "statement-controls", routes: ["/budgeting/admin/statement-controls"] },
   { slug: "ai-import", routes: ["/budgeting/admin/ai-import"] },
   { slug: "indicator-backlog", routes: ["/budgeting/admin/indicator-backlog"] },
+
+  // Budgeting tabs. Each pins its own `tab` value, so a viewer on Cash Flow is
+  // never offered the Balance Sheet walkthrough.
+  { slug: "workspace", routes: ["/budgeting?tab=workspace"] },
+  { slug: "balance-sheet", routes: ["/budgeting?tab=balance-sheet"] },
+  // NOT cash-flow. Its scenario exists and its narration is written in all
+  // three languages, but the take cannot be recorded yet: with a fully
+  // projected year in the database the Entries sub-view does not open at all
+  // (three minutes and the tab is still unclickable — the view renders every
+  // one of 43,440 rows). Registering the slug without media would put a play
+  // button on the page that 404s. Add the entry back with the recording.
+  { slug: "comparison", routes: ["/budgeting?tab=comparison"] },
+  { slug: "forecast", routes: ["/budgeting?tab=forecast"] },
+  { slug: "plans", routes: ["/budgeting?tab=plans"] },
+
+  // Standalone screens.
+  { slug: "risk-terminal", routes: ["/budgeting/terminal"] },
+  { slug: "alerts", routes: ["/budgeting/alerts/history"] },
+  { slug: "board-deck", routes: ["/budgeting/board-deck"] },
+
+  // The Data Control group overview walks eight admin screens in one take, but
+  // it deliberately claims only SIX of them. Statement Controls and Indicator
+  // Backlog have their own dedicated deep-dives above, and the resolver sorts
+  // by longest route: "/budgeting/admin/companies-readiness" (36 chars) beats
+  // "/budgeting/admin/statement-controls" (35), so listing those two here would
+  // silently replace the detailed guide with a passing mention of it.
+  {
+    slug: "data-control",
+    routes: [
+      "/budgeting/admin/companies-readiness",
+      "/budgeting/admin/indicator-health",
+      "/budgeting/admin/ifrs-conformance",
+      "/budgeting/admin/compliance",
+      "/budgeting/admin/drift",
+      "/budgeting/admin/intel-health",
+    ],
+  },
 ] as const satisfies readonly HelpVideoEntry[]
 
 export const HELP_VIDEO_ENTRIES: readonly HelpVideoEntry[] = HELP_VIDEO_ENTRIES_RAW
@@ -52,6 +89,13 @@ const HELP_VIDEO_TITLE_OVERRIDES: Record<string, string> = {
   // Without an override this renders "Indicator Backlog" — which is the English
   // page title anyway, but pin it so the card never drifts from the page.
   "indicator-backlog": "Indicator Backlog",
+  // The slug is the route segment; the screen is titled Alert evaluation
+  // snapshot and lives under /alerts/history. "Alerts" alone would suggest a
+  // live feed the page does not claim to be.
+  alerts: "Alert History",
+  // Six admin screens under one card — "Data Control" is the group's name, not
+  // any single page's.
+  "data-control": "Data Control",
 }
 
 function versionHelpVideoAsset(src: string) {
