@@ -4,6 +4,7 @@
 import { describe, it, expect, vi } from "vitest"
 import {
   buildComtradeUrl,
+  comtradePeriods,
   comtradeResponseToDataPoints,
   createUnComtradeAzAdapter,
   isComtradeYearPlausible,
@@ -12,12 +13,82 @@ import {
 } from "./un-comtrade-az"
 
 describe("buildComtradeUrl", () => {
-  it("includes AZ reporter 031 + 2 prior years + TOTAL", () => {
+  it("includes AZ reporter 031 + TOTAL, defaulting to the newest period", () => {
     const url = buildComtradeUrl(new Date("2026-05-17"))
     expect(url).toContain("reporterCode=031")
-    expect(url).toContain("period=2025%2C2024")
+    expect(url).toContain("period=2025")
     expect(url).toContain("cmdCode=TOTAL")
     expect(url).toContain("flowCode=M%2CX")
+  })
+
+  it("asks for exactly ONE period — the preview tier refuses more", () => {
+    // 2026-08-05 — this used to send `period=2025,2024`, and Comtrade answered
+    // HTTP 400 {"error":"Maximum number of periods for preview is 1"}. The
+    // adapter had therefore been returning nothing at all, showing up in the
+    // run log as an unexplained 400.
+    for (const p of [2025, 2024]) {
+      const url = buildComtradeUrl(new Date("2026-05-17"), p)
+      const period = new URL(url).searchParams.get("period")
+      expect(period).toBe(String(p))
+      expect(period).not.toContain(",")
+    }
+  })
+
+  it("still covers two years, because Comtrade publishes late", () => {
+    expect(comtradePeriods(new Date("2026-05-17"))).toEqual([2025, 2024])
+  })
+})
+
+describe("createUnComtradeAzAdapter — one request per period", () => {
+  const okResponse = (rows: unknown[]) =>
+    ({ ok: true, status: 200, json: async () => ({ data: rows }) }) as unknown as Response
+
+  const row = (period: number, flowCode: string, value: number) => ({
+    period,
+    flowCode,
+    primaryValue: value,
+    partnerCode: 0,
+    cmdCode: "TOTAL",
+  })
+
+  it("fetches each year separately and merges the rows", async () => {
+    const urls: string[] = []
+    const fetchImpl = vi.fn(async (url: string) => {
+      urls.push(url)
+      const period = Number(new URL(url).searchParams.get("period"))
+      return period === 2025
+        ? okResponse([row(2025, "X", 1_000_000_000), row(2025, "M", 24_000_000_000)])
+        : okResponse([row(2024, "X", 30_000_000_000), row(2024, "M", 14_000_000_000)])
+    })
+    const adapter = createUnComtradeAzAdapter({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      sleep: async () => {},
+    })
+    const result = await adapter.fetch(new Date("2026-05-17"))
+
+    expect(urls).toHaveLength(2)
+    expect(new URL(urls[0]).searchParams.get("period")).toBe("2025")
+    expect(new URL(urls[1]).searchParams.get("period")).toBe("2024")
+    // 2025 is a partial report (X $1B vs M $24B) so the plausibility walk
+    // falls back to 2024 — which only works because both years were fetched.
+    expect(result.dataPoints.length).toBeGreaterThan(0)
+    expect(result.dataPoints[0].datetime.getUTCFullYear()).toBe(2024)
+  })
+
+  it("keeps the year it could fetch when the other one fails", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      const period = Number(new URL(url).searchParams.get("period"))
+      if (period === 2025) return { ok: false, status: 400 } as unknown as Response
+      return okResponse([row(2024, "X", 30_000_000_000), row(2024, "M", 14_000_000_000)])
+    })
+    const adapter = createUnComtradeAzAdapter({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      sleep: async () => {},
+    })
+    const result = await adapter.fetch(new Date("2026-05-17"))
+
+    expect(result.dataPoints.length).toBeGreaterThan(0)
+    expect(result.errors.some((e) => e.includes("2025: HTTP 400"))).toBe(true)
   })
 })
 
