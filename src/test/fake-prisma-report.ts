@@ -73,6 +73,7 @@ const COLUMNS: Record<string, string[]> = {
     "createdAt",
   ],
   chartOfAccount: ["id", "organizationId", "code", "name"],
+  company: ["id", "organizationId", "code", "name", "level", "role", "isActive"],
   budgetCostType: ["id", "organizationId", "key", "label"],
   budgetDepartment: ["id", "organizationId", "key", "label"],
   productLine: ["id", "organizationId", "code", "name", "unit"],
@@ -82,6 +83,7 @@ const COLUMNS: Record<string, string[]> = {
 const RELATIONS: Record<string, Record<string, { model: string; fk: string }>> = {
   budgetLine: {
     plan: { model: "budgetPlan", fk: "planId" },
+    company: { model: "company", fk: "companyId" },
     account: { model: "chartOfAccount", fk: "accountId" },
     costType: { model: "budgetCostType", fk: "costTypeId" },
     budgetDept: { model: "budgetDepartment", fk: "departmentId" },
@@ -97,13 +99,16 @@ const RELATIONS: Record<string, Record<string, { model: string; fk: string }>> =
   },
   balanceSheetLine: {
     plan: { model: "budgetPlan", fk: "planId" },
+    company: { model: "company", fk: "companyId" },
     account: { model: "chartOfAccount", fk: "accountId" },
   },
   cashFlowEntry: {
     account: { model: "chartOfAccount", fk: "accountId" },
+    company: { model: "company", fk: "companyId" },
   },
   budgetActual: {
     plan: { model: "budgetPlan", fk: "planId" },
+    company: { model: "company", fk: "companyId" },
     costType: { model: "budgetCostType", fk: "costTypeId" },
     budgetDept: { model: "budgetDepartment", fk: "departmentId" },
   },

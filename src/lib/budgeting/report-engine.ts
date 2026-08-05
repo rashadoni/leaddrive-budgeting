@@ -22,6 +22,40 @@ interface RelationDef {
    * `plan.year` as a number on the client would print a year as currency.
    */
   fieldTypes?: Record<string, FieldDef["type"]>
+  /**
+   * The scalar foreign key this relation hangs off, when the FK is itself
+   * exposed as a groupable column. Prisma's `groupBy` takes scalars, so
+   * "P&L by company" groups on `companyId` and comes back keyed by cuid —
+   * unreadable. Naming the FK lets the engine resolve each group to a label
+   * after the aggregate. See `labelField`.
+   */
+  fk?: string
+  /** Which of `fields` reads as the human label for a resolved group. */
+  labelField?: string
+}
+
+/**
+ * How to synthesize a period for an entity that has no `year`/`month` columns
+ * of its own.
+ *
+ * `BudgetLine` is the case this exists for: it carries `monthIndex` (0-11)
+ * and takes its year from the plan, so a monthly P&L was not buildable at
+ * all — `hasYearMonth: false` hid the period control outright.
+ *
+ * `monthIndex` is nullable by design (legacy, annual and rollup-derived rows
+ * carry null), so a roll-up cannot simply drop those rows: the monthly view
+ * would then under-report against the same report ungrouped. They go to an
+ * explicit `unknown` bucket instead, which keeps the total cross-footing and
+ * puts the gap on screen.
+ */
+interface DerivedPeriod {
+  /** 0-indexed or 1-indexed month column on the base model. */
+  monthField: string
+  /** 0 when the column is 0=Jan (BudgetLine.monthIndex), 1 when 1=Jan. */
+  monthBase: 0 | 1
+  /** Relation carrying the year, e.g. `plan` → `plan.year`. */
+  yearRelation: string
+  yearField: string
 }
 
 /**
@@ -65,15 +99,20 @@ export interface EntityConfig {
    * keys on, and the same pairing `budgetActuals` performs by swapping plans).
    */
   actualsFromMatchingPlan?: boolean
+  /** Set when the entity has no year/month of its own — see `DerivedPeriod`. */
+  derivedPeriod?: DerivedPeriod
 }
 
 const ENTITY_CONFIGS: Record<string, EntityConfig> = {
   budgetLines: {
     model: "budgetLine",
     hasPlanId: true,
-    hasYearMonth: false,
+    // BudgetLine has no year/month columns — the period is synthesized from
+    // `monthIndex` plus the plan's year. See `derivedPeriod`.
+    hasYearMonth: true,
     measures: { planned: "plannedAmount", actual: "actualAmount" },
     actualsFromMatchingPlan: true,
+    derivedPeriod: { monthField: "monthIndex", monthBase: 0, yearRelation: "plan", yearField: "year" },
     fields: [
       { name: "department", label: "Department", type: "string" },
       { name: "lineType", label: "Line Type", type: "string" },
@@ -84,6 +123,8 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       { name: "unitCost", label: "Unit Cost", type: "number" },
       { name: "quantity", label: "Quantity", type: "number" },
       { name: "costModelKey", label: "Cost Model Key", type: "string" },
+      { name: "companyId", label: "Company", type: "string" },
+      { name: "monthIndex", label: "Month (0-11)", type: "number" },
       { name: "notes", label: "Notes", type: "string" },
       { name: "sortOrder", label: "Sort Order", type: "number" },
     ],
@@ -91,6 +132,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       { name: "plan", model: "budgetPlan", fields: ["name", "year"], fieldTypes: { year: "number" } },
       { name: "costType", model: "budgetCostType", fields: ["key", "label"] },
       { name: "budgetDept", model: "budgetDepartment", fields: ["key", "label"] },
+      { name: "company", model: "company", fields: ["code", "name"], fk: "companyId", labelField: "name" },
       // Phase 2.1 dropped the scalar `category` column → the account dimension
       // now lives on the `accountId` FK. Expose it via the relation so reports
       // keep an account code/name column.
@@ -108,7 +150,8 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
   budgetActuals: {
     model: "budgetLine",
     hasPlanId: true,
-    hasYearMonth: false,
+    hasYearMonth: true,
+    derivedPeriod: { monthField: "monthIndex", monthBase: 0, yearRelation: "plan", yearField: "year" },
     // Fact-only source: there is no plan to compare against on the row, so
     // variance / execution have no second operand and evaluate to null.
     measures: { actual: "plannedAmount" },
@@ -117,12 +160,15 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       { name: "department", label: "Department", type: "string" },
       { name: "plannedAmount", label: "Actual Amount", type: "number" },
       { name: "forecastAmount", label: "Forecast Amount", type: "number" },
+      { name: "companyId", label: "Company", type: "string" },
+      { name: "monthIndex", label: "Month (0-11)", type: "number" },
       { name: "notes", label: "Notes", type: "string" },
     ],
     relations: [
       { name: "plan", model: "budgetPlan", fields: ["name", "year"], fieldTypes: { year: "number" } },
       { name: "costType", model: "budgetCostType", fields: ["key", "label"] },
       { name: "budgetDept", model: "budgetDepartment", fields: ["key", "label"] },
+      { name: "company", model: "company", fields: ["code", "name"], fk: "companyId", labelField: "name" },
       { name: "account", model: "chartOfAccount", fields: ["code", "name"] },
     ],
   },
@@ -150,6 +196,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       { name: "lineType", label: "Line Type", type: "string" },
       { name: "actualAmount", label: "Actual Amount", type: "number" },
       { name: "monthIndex", label: "Month Index (0-11)", type: "number" },
+      { name: "companyId", label: "Company", type: "string" },
       { name: "expenseDate", label: "Expense Date", type: "string" },
       { name: "description", label: "Description", type: "string" },
       { name: "currencyCode", label: "Currency", type: "string" },
@@ -162,6 +209,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       { name: "plan", model: "budgetPlan", fields: ["name", "year"], fieldTypes: { year: "number" } },
       { name: "costType", model: "budgetCostType", fields: ["key", "label"] },
       { name: "budgetDept", model: "budgetDepartment", fields: ["key", "label"] },
+      { name: "company", model: "company", fields: ["code", "name"], fk: "companyId", labelField: "name" },
     ],
   },
 
@@ -212,12 +260,14 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     fields: [
       { name: "lineType", label: "Type", type: "string" },
       { name: "subType", label: "Sub Type", type: "string" },
+      { name: "companyId", label: "Company", type: "string" },
       { name: "year", label: "Year", type: "number" },
       { name: "month", label: "Month", type: "number" },
       { name: "amount", label: "Amount", type: "number" },
       { name: "notes", label: "Notes", type: "string" },
     ],
     relations: [
+      { name: "company", model: "company", fields: ["code", "name"], fk: "companyId", labelField: "name" },
       { name: "plan", model: "budgetPlan", fields: ["name", "year"] },
       { name: "account", model: "chartOfAccount", fields: ["code", "name"] },
     ],
@@ -235,11 +285,13 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       { name: "amount", label: "Amount", type: "number" },
       { name: "description", label: "Description", type: "string" },
       { name: "activityType", label: "Activity Type", type: "string" },
+      { name: "companyId", label: "Company", type: "string" },
       { name: "isProjected", label: "Projected", type: "boolean" },
       { name: "plannedAmount", label: "Planned Amount", type: "number" },
       { name: "createdAt", label: "Created", type: "date" },
     ],
     relations: [
+      { name: "company", model: "company", fields: ["code", "name"], fk: "companyId", labelField: "name" },
       { name: "account", model: "chartOfAccount", fields: ["code", "name"] },
     ],
   },
@@ -323,6 +375,19 @@ interface ReportResultMeta {
    * presented as complete when it was computed over a truncated page.
    */
   truncated?: boolean
+  /**
+   * Rows that landed in the `unknown` period bucket because they carry no
+   * month (or no year). Reported so a monthly view can say how much of itself
+   * is unattributed instead of quietly showing a smaller total.
+   */
+  rowsWithoutPeriod?: number
+  /**
+   * When `groupBy` is a foreign key, the field on each row carrying the
+   * resolved human label (e.g. `companyId` → `companyLabel`). The client uses
+   * it for the axis and the table, so a chart of "P&L by company" is not
+   * labelled with cuids.
+   */
+  groupLabelField?: string
 }
 
 export type ReportResult =
@@ -564,13 +629,37 @@ interface PeriodGroup extends ReportRow {
   month?: unknown
 }
 
+/** The bucket for rows whose period cannot be resolved — see `DerivedPeriod`. */
+export const UNKNOWN_PERIOD = "unknown"
+
+/**
+ * Numeric columns that must never be summed across a group or a period.
+ *
+ * 2026-08-05 — the groupBy path used to sum EVERY numeric field of the
+ * entity, so a grouped report added up unit prices and sort orders, and the
+ * chart then plotted "Sort Order" as a money series beside "Planned Amount".
+ * A rate and an ordinal do not add.
+ */
+const NON_ADDITIVE = new Set([
+  "unitPrice", "unitCost", "sortOrder", "monthIndex", "value", "exchangeRate", "vatRate",
+])
+
 export function periodGroupData(rows: ReportRow[], periodGroupBy: "month" | "quarter" | "year", numericFields: string[]) {
   const groups = new Map<string, PeriodGroup>()
 
   for (const row of rows) {
     const month = asNum(row.month, 1)
     let key: string
-    if (periodGroupBy === "year") {
+    // A row with no resolvable year (or, below month/quarter granularity, no
+    // month) goes to an explicit bucket rather than being dropped or folded
+    // into a "NaN"/"undefined" key. Dropping it would make the periodised
+    // total disagree with the same report ungrouped, which is the failure
+    // mode a reader cannot see.
+    const hasYear = row.year !== null && row.year !== undefined && row.year !== ""
+    const hasMonth = row.month !== null && row.month !== undefined
+    if (!hasYear || (periodGroupBy !== "year" && !hasMonth)) {
+      key = UNKNOWN_PERIOD
+    } else if (periodGroupBy === "year") {
       key = `${row.year}`
     } else if (periodGroupBy === "quarter") {
       const q = Math.ceil(month / 3)
@@ -580,11 +669,12 @@ export function periodGroupData(rows: ReportRow[], periodGroupBy: "month" | "qua
     }
 
     if (!groups.has(key)) {
-      groups.set(key, { period: key, year: row.year, _count: 0 })
-      if (periodGroupBy === "quarter") {
+      const unknown = key === UNKNOWN_PERIOD
+      groups.set(key, { period: key, year: unknown ? null : row.year, _count: 0 })
+      if (periodGroupBy === "quarter" && !unknown) {
         groups.get(key)!.quarter = Math.ceil(month / 3)
       }
-      if (periodGroupBy === "month") {
+      if (periodGroupBy === "month" && !unknown) {
         groups.get(key)!.month = row.month
       }
       for (const f of numericFields) {
@@ -599,7 +689,13 @@ export function periodGroupData(rows: ReportRow[], periodGroupBy: "month" | "qua
     }
   }
 
-  return [...groups.values()].sort((a, b) => a.period.localeCompare(b.period))
+  // Chronological, with the unresolved bucket last — it belongs at the end of
+  // the table, not sorted into the middle of the year by string order.
+  return [...groups.values()].sort((a, b) => {
+    if (a.period === UNKNOWN_PERIOD) return 1
+    if (b.period === UNKNOWN_PERIOD) return -1
+    return a.period.localeCompare(b.period)
+  })
 }
 
 // ─── Computed fields (post-processing) ────────────────────────
@@ -845,6 +941,37 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
     return byCode
   }
 
+  /**
+   * When the grouped-by column is a foreign key with a declared relation,
+   * fetch the related rows and stamp a readable label on each group.
+   *
+   * Returns the field name the label was written to, or null when the group
+   * key is already human-readable. A group whose key is null (unscoped rows —
+   * holding-level cash flow, intragroup eliminations, legacy budget lines with
+   * no company) gets a null label rather than an invented one.
+   */
+  async function resolveGroupLabels(rows: ReportRow[], groupBy: string): Promise<string | null> {
+    const rel = entityConfig.relations?.find((r) => r.fk === groupBy && r.labelField)
+    if (!rel) return null
+
+    const ids = [...new Set(rows.map((r) => r[groupBy]).filter((v): v is string => typeof v === "string"))]
+    if (ids.length === 0) return null
+
+    const related = (await modelDispatch[rel.model].findMany({
+      where: { id: { in: ids }, organizationId: orgId },
+      select: Object.fromEntries([["id", true], ...rel.fields.map((f) => [f, true])]),
+    })) as ReportRow[]
+
+    const byId = new Map(related.map((r) => [r.id as string, r]))
+    const labelField = `${rel.name}Label`
+    for (const row of rows) {
+      const target = typeof row[groupBy] === "string" ? byId.get(row[groupBy] as string) : undefined
+      row[labelField] = target?.[rel.labelField!] ?? null
+      row[rel.name] = target ?? null
+    }
+    return labelField
+  }
+
   /** Attach the realized figure to each row under the entity's actual measure. */
   function attachActuals(rows: ReportRow[], byCode: Map<string, number> | null, key = "department") {
     if (!byCode) return rows
@@ -863,12 +990,39 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
 
   // ── Period groupBy path ──
   if (config.periodGroupBy && entityConfig.hasYearMonth) {
-    const allRows = await modelDispatch[entityConfig.model].findMany({
+    const derived = entityConfig.derivedPeriod
+    const allRows = (await modelDispatch[entityConfig.model].findMany({
       where,
+      // An entity with no year column takes its year from a relation, so that
+      // relation has to come back with the rows.
+      ...(derived
+        ? { include: { [derived.yearRelation]: { select: { [derived.yearField]: true } } } }
+        : {}),
       take: limit,
-    })
+    })) as ReportRow[]
 
-    const numericFields = entityConfig.fields.filter(f => f.type === "number" && !["year", "month"].includes(f.name)).map(f => f.name)
+    // Synthesize `year` / `month` for entities that carry neither — BudgetLine
+    // has `monthIndex` (0-11) and gets its year from the plan. Rows with a
+    // null month keep it null and land in the `unknown` bucket, so the
+    // periodised total still cross-foots against the ungrouped one.
+    let rowsWithoutPeriod = 0
+    if (derived) {
+      for (const row of allRows) {
+        const rel = row[derived.yearRelation] as Record<string, unknown> | null | undefined
+        const year = rel?.[derived.yearField]
+        const rawMonth = row[derived.monthField]
+        const hasMonth = typeof rawMonth === "number" && Number.isFinite(rawMonth)
+        row.year = typeof year === "number" ? year : null
+        row.month = hasMonth ? rawMonth + (1 - derived.monthBase) : null
+        if (row.year === null || !hasMonth) rowsWithoutPeriod++
+      }
+    }
+
+    // Rates and ordinals do not add across a period any more than they add
+    // across a group — same exclusion as the groupBy path.
+    const numericFields = entityConfig.fields
+      .filter(f => f.type === "number" && !["year", "month"].includes(f.name) && !NON_ADDITIVE.has(f.name))
+      .map(f => f.name)
     let grouped: ReportRow[] = periodGroupData(allRows, config.periodGroupBy, numericFields)
 
     if (config.computedFields?.length) {
@@ -881,6 +1035,7 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
       periodGroupBy: config.periodGroupBy,
       total: grouped.length,
       ...(allRows.length >= limit ? { truncated: true } : {}),
+      ...(rowsWithoutPeriod > 0 ? { rowsWithoutPeriod } : {}),
       ...unavailableMeta,
     }
   }
@@ -896,13 +1051,6 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
       }
     }
 
-    // Only sum columns that are additive across rows.
-    //
-    // 2026-08-05 — this used to sum EVERY numeric field of the entity, so a
-    // grouped report added up unit prices and sort orders, and the chart then
-    // plotted "Sort Order" as a money series beside "Planned Amount". A rate
-    // and an ordinal do not add.
-    const NON_ADDITIVE = new Set(["unitPrice", "unitCost", "sortOrder", "monthIndex", "value", "exchangeRate", "vatRate"])
     const sumFields: Record<string, boolean> = {}
     for (const nf of entityConfig.fields) {
       if (nf.type !== "number") continue
@@ -964,12 +1112,17 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
       applyComputedFields(limitedResult, config.computedFields, entityConfig.measures ?? {})
     }
 
+    // Grouping by a foreign key returns cuids as the group key. Resolve them
+    // to names so "P&L by company" is readable on the axis and in the table.
+    const groupLabelField = await resolveGroupLabels(limitedResult, config.groupBy)
+
     return {
       type: "grouped",
       data: limitedResult,
       groupBy: config.groupBy,
       total: limitedResult.length,
       ...(flatResult.length > limit ? { truncated: true } : {}),
+      ...(groupLabelField ? { groupLabelField } : {}),
       ...unavailableMeta,
     }
   }

@@ -2277,7 +2277,8 @@
     "filterValue": "Значение",
     "sortAsc": "А→Я",
     "sortDesc": "Я→А",
-    "deleteConfirm": "Удалить отчёт «{name}»? Действие необратимо."
+    "deleteConfirm": "Удалить отчёт «{name}»? Действие необратимо.",
+    "noPeriodNotice": "У {count} строк не указан месяц. Они собраны в группу «unknown», чтобы итоги сходились."
   },
   "terminal": {
     "v2": {

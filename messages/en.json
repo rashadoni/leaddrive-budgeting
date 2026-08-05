@@ -2277,7 +2277,8 @@
     "filterValue": "Value",
     "sortAsc": "A→Z",
     "sortDesc": "Z→A",
-    "deleteConfirm": "Delete the report \"{name}\"? This cannot be undone."
+    "deleteConfirm": "Delete the report \"{name}\"? This cannot be undone.",
+    "noPeriodNotice": "{count} rows have no month recorded. They are grouped under \"unknown\" so the totals still add up."
   },
   "terminal": {
     "v2": {

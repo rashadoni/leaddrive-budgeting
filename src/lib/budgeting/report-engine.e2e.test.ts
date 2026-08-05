@@ -38,7 +38,7 @@ vi.mock("@/lib/prisma", () => ({
   ),
 }))
 
-import { executeBudgetReport } from "./report-engine"
+import { executeBudgetReport, getEntityFields } from "./report-engine"
 import { mockSession, makeRequest } from "@/test/api-harness"
 
 const ORG = "org_audit_2026aaaaaaaaaaa"
@@ -105,15 +105,19 @@ function seed(): FakePrismaStore {
     ],
     budgetCostType: [{ id: "ct_1", organizationId: ORG, key: "fixed", label: "Fixed" }],
     budgetDepartment: [{ id: "dep_1", organizationId: ORG, key: "ops", label: "Operations" }],
+    company: [
+      { id: "co_1", organizationId: ORG, code: "CPC", name: "Caspian Products", level: 2, role: "operational", isActive: true },
+      { id: "co_2", organizationId: ORG, code: "EDEN", name: "Eden Agro", level: 2, role: "operational", isActive: true },
+    ],
 
     budgetLine: [
       // ── Budget plan: parents + children, as imported ──
       line("bl_601", PLAN_BUDGET, "601", "revenue", 1_000_000),
-      line("bl_601_01", PLAN_BUDGET, "601-01", "revenue", 600_000, { notes: "Domestic, wholesale" }),
-      line("bl_601_02", PLAN_BUDGET, "601-02", "revenue", 400_000),
+      line("bl_601_01", PLAN_BUDGET, "601-01", "revenue", 600_000, { notes: "Domestic, wholesale", companyId: "co_1", monthIndex: 0 }),
+      line("bl_601_02", PLAN_BUDGET, "601-02", "revenue", 400_000, { companyId: "co_2", monthIndex: 1 }),
       line("bl_701", PLAN_BUDGET, "701", "expense", 500_000, { accountId: "acc_701" }),
-      line("bl_701_01", PLAN_BUDGET, "701-01", "expense", 300_000, { accountId: "acc_701" }),
-      line("bl_701_02", PLAN_BUDGET, "701-02", "expense", 200_000, { accountId: "acc_701" }),
+      line("bl_701_01", PLAN_BUDGET, "701-01", "expense", 300_000, { accountId: "acc_701", companyId: "co_1", monthIndex: 0 }),
+      line("bl_701_02", PLAN_BUDGET, "701-02", "expense", 200_000, { accountId: "acc_701", companyId: null, monthIndex: null }),
       // ── Archived by a re-import: must never be counted ──
       line("bl_archived", PLAN_BUDGET, "601-01", "revenue", 999_999, {
         deletedAt: new Date("2026-03-01"),
@@ -449,6 +453,216 @@ describe("E2E — groupBy path", () => {
     })
     expect(res.data[0]).not.toHaveProperty("_sum")
     expect(res.data[0]).not.toHaveProperty("_count")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────
+describe("E2E — company dimension (Phase 15.10)", () => {
+  /**
+   * `companyId` is on budgetLine, budgetActual, balanceSheetLine and
+   * cashFlowEntry, and no entity exposed it — so a ~60-company holding could
+   * not ask for one company's P&L, and every report was a group total.
+   *
+   * The fixture attributes: 601-01 and 701-01 to CPC, 601-02 to EDEN, and
+   * leaves 701-02 with no company at all (holding-level / legacy rows are a
+   * real case — they must stay countable, not disappear).
+   */
+  const cols = [{ field: "department" }, { field: "plannedAmount" }]
+
+  it("filters to one company through the relation", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET, columns: cols,
+      filters: [{ field: "company.code", op: "eq", value: "CPC" }],
+    })
+    expect(res.data.map((r) => r.department).sort()).toEqual(["601-01", "701-01"])
+    expect(sum(res.data, "plannedAmount")).toBe(900_000)
+  })
+
+  it("filters by company name, case-insensitively", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET, columns: cols,
+      filters: [{ field: "company.name", op: "contains", value: "eden" }],
+    })
+    expect(res.data.map((r) => r.department)).toEqual(["601-02"])
+  })
+
+  it("projects the company as a column", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET,
+      columns: [{ field: "department" }, { field: "company.code" }, { field: "company.name" }],
+      filters: [{ field: "department", op: "eq", value: "601-02" }],
+    })
+    expect(res.data[0].company).toEqual({ code: "EDEN", name: "Eden Agro" })
+  })
+
+  it("groups by company and resolves cuids to names", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET,
+      columns: [{ field: "plannedAmount", aggregate: "sum" }], filters: [],
+      groupBy: "companyId",
+    })
+    expect(res.type).toBe("grouped")
+    expect(res.groupLabelField).toBe("companyLabel")
+    const byLabel = Object.fromEntries(res.data.map((r) => [r.companyLabel, r.plannedAmount]))
+    expect(byLabel["Caspian Products"]).toBe(900_000)
+    expect(byLabel["Eden Agro"]).toBe(400_000)
+  })
+
+  it("a row with no company keeps its own group with a null label, never a fake one", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET,
+      columns: [{ field: "plannedAmount", aggregate: "sum" }], filters: [],
+      groupBy: "companyId",
+    })
+    const unscoped = res.data.find((r) => r.companyId === null)!
+    expect(unscoped.companyLabel).toBeNull()
+    expect(unscoped.plannedAmount).toBe(200_000)
+  })
+
+  it("company groups cross-foot to the ungrouped total", async () => {
+    const grouped = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET,
+      columns: [{ field: "plannedAmount", aggregate: "sum" }], filters: [], groupBy: "companyId",
+    })
+    const flat = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET, columns: cols, filters: [],
+    })
+    expect(sum(grouped.data, "plannedAmount")).toBe(sum(flat.data, "plannedAmount"))
+    expect(sum(grouped.data, "plannedAmount")).toBe(1_500_000)
+  })
+
+  it("the label lookup is org-scoped — a company id from elsewhere resolves to null", async () => {
+    const store = seed()
+    store.company = [{ id: "co_1", organizationId: OTHER_ORG, code: "X", name: "Not yours", level: 2, role: "operational", isActive: true }]
+    db.current = createFakePrisma(store) as unknown as Record<string, unknown>
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET,
+      columns: [{ field: "plannedAmount", aggregate: "sum" }], filters: [], groupBy: "companyId",
+    })
+    expect(res.data.every((r) => r.companyLabel === null)).toBe(true)
+  })
+
+  it("cash flow and balance sheet carry the same dimension", async () => {
+    const cf = await executeBudgetReport(ORG, {
+      entityType: "cashFlow", columns: [{ field: "amount" }, { field: "company.code" }],
+      filters: [{ field: "company.code", op: "eq", value: "CPC" }],
+    })
+    expect(cf.data).toHaveLength(2)
+
+    const bs = await executeBudgetReport(ORG, {
+      entityType: "balanceSheet", planId: PLAN_ACTUAL,
+      columns: [{ field: "lineType" }, { field: "amount" }],
+      filters: [{ field: "company.code", op: "eq", value: "CPC" }],
+    })
+    // The elimination row has no company, so a per-company read excludes it.
+    expect(bs.data).toHaveLength(2)
+    expect(sum(bs.data, "amount")).toBe(14_000)
+  })
+
+  it("an entity without the column does not offer it", () => {
+    for (const entity of ["salesBudget", "cogsBudget", "forecasts", "assumptions"]) {
+      const names = getEntityFields(entity).map((f) => f.name)
+      expect(names).not.toContain("companyId")
+      expect(names).not.toContain("company.code")
+    }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────
+describe("E2E — monthly P&L from monthIndex (Phase 15.10)", () => {
+  /**
+   * BudgetLine has no year/month columns: the month is `monthIndex` (0-11)
+   * and the year comes from the plan, so `hasYearMonth: false` hid the period
+   * control and a monthly P&L was not buildable at all.
+   *
+   * Fixture: 601-01 and 701-01 in January, 601-02 in February, 701-02 with no
+   * month — the nullable-by-design case (legacy, annual and rollup-derived
+   * rows all carry null).
+   */
+  const cols = [{ field: "department" }, { field: "plannedAmount" }]
+
+  it("buckets by month, taking the year from the plan", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET, columns: cols,
+      filters: [], periodGroupBy: "month",
+    })
+    expect(res.type).toBe("period")
+    const byPeriod = Object.fromEntries(res.data.map((r) => [r.period, r.plannedAmount]))
+    expect(byPeriod["2026-01"]).toBe(900_000) // 600 000 + 300 000
+    expect(byPeriod["2026-02"]).toBe(400_000)
+  })
+
+  it("monthIndex 0 is January, not December", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET, columns: cols,
+      filters: [{ field: "department", op: "eq", value: "601-01" }],
+      periodGroupBy: "month",
+    })
+    expect(res.data[0].period).toBe("2026-01")
+  })
+
+  it("rows with no month go to an explicit bucket, counted and reported", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET, columns: cols,
+      filters: [], periodGroupBy: "month",
+    })
+    const unknown = res.data.find((r) => r.period === "unknown")!
+    expect(unknown.plannedAmount).toBe(200_000)
+    expect(res.rowsWithoutPeriod).toBe(1)
+  })
+
+  it("the unresolved bucket sorts last, not into the middle of the year", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET, columns: cols,
+      filters: [], periodGroupBy: "month",
+    })
+    expect(res.data.map((r) => r.period)).toEqual(["2026-01", "2026-02", "unknown"])
+  })
+
+  it("the monthly total still cross-foots to the same report ungrouped", async () => {
+    const monthly = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET, columns: cols, filters: [], periodGroupBy: "month",
+    })
+    const flat = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET, columns: cols, filters: [],
+    })
+    // This is the property that makes the unknown bucket worth having: drop
+    // those rows and the monthly view quietly under-reports by 200 000.
+    expect(sum(monthly.data, "plannedAmount")).toBe(sum(flat.data, "plannedAmount"))
+  })
+
+  it("quarters roll the synthesized months up correctly", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET, columns: cols, filters: [], periodGroupBy: "quarter",
+    })
+    expect(res.data.find((r) => r.period === "2026-Q1")?.plannedAmount).toBe(1_300_000)
+  })
+
+  it("the yearly bucket keeps rows that have a year but no month", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET, columns: cols, filters: [], periodGroupBy: "year",
+    })
+    // Year comes from the plan, so a null monthIndex is no obstacle here.
+    expect(res.data.find((r) => r.period === "2026")?.plannedAmount).toBe(1_500_000)
+    expect(res.data.some((r) => r.period === "unknown")).toBe(false)
+  })
+
+  it("does not sum rates or ordinals into a period bucket", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "budgetLines", planId: PLAN_BUDGET, columns: cols, filters: [], periodGroupBy: "month",
+    })
+    expect(res.data[0].unitPrice).toBeUndefined()
+    expect(res.data[0].sortOrder).toBeUndefined()
+  })
+
+  it("entities with real year/month columns are untouched by the synthesis", async () => {
+    const res = await executeBudgetReport(ORG, {
+      entityType: "salesBudget", planId: PLAN_BUDGET,
+      columns: [{ field: "year" }, { field: "month" }, { field: "amount" }],
+      filters: [], periodGroupBy: "month",
+    })
+    expect(res.data.map((r) => r.period)).toEqual(["2025-12", "2026-01", "2026-02", "2026-03", "2026-04"])
+    expect(res.rowsWithoutPeriod).toBeUndefined()
   })
 })
 

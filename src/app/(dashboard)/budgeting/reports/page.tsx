@@ -326,6 +326,12 @@ export default function ReportBuilderPage() {
     (preview.data as { truncated?: boolean } | undefined)?.truncated,
   )
 
+  /** Rows the period roll-up could not date. They are in the report (under
+   *  "unknown", so the totals still tie) but they are not in any month, and
+   *  a monthly view that doesn't say so is the quiet kind of wrong. */
+  const rowsWithoutPeriod =
+    (preview.data as { rowsWithoutPeriod?: number } | undefined)?.rowsWithoutPeriod ?? 0
+
   // Numeric columns for charts — derive from actual data when grouped/period
   const numericColumns = useMemo(() => {
     if (!currentEntity) return []
@@ -338,6 +344,8 @@ export default function ReportBuilderPage() {
       const exclude = new Set(["_count", "_sum", "year", "month", "quarter", "period", "id"])
       // Include the groupBy field in exclude since it's the label, not a value
       if (groupBy) exclude.add(groupBy)
+      const labelField = (preview.data as { groupLabelField?: string } | undefined)?.groupLabelField
+      if (labelField) exclude.add(labelField)
       return Object.keys(sample).filter(k => !exclude.has(k) && typeof sample[k] === "number")
     }
 
@@ -364,6 +372,11 @@ export default function ReportBuilderPage() {
 
     // Period data always has "period" key
     if (dataType === "period" && rows && rows.length > 0 && "period" in rows[0]) return "period"
+
+    // Grouping by a foreign key comes back keyed by cuid; the engine resolves
+    // a readable label alongside it and names the field it used.
+    const labelField = (preview.data as { groupLabelField?: string } | undefined)?.groupLabelField
+    if (labelField) return labelField
 
     // Period groupBy set but entity doesn't support it — fall through to groupBy or string col
     if (periodGroupBy !== "none" && dataType !== "period") {
@@ -692,6 +705,13 @@ export default function ReportBuilderPage() {
           <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-600 dark:text-amber-400">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-px" />
             <span>{t("truncatedNotice", { limit })}</span>
+          </div>
+        )}
+
+        {rowsWithoutPeriod > 0 && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-px" />
+            <span>{t("noPeriodNotice", { count: rowsWithoutPeriod })}</span>
           </div>
         )}
 

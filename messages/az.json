@@ -2277,7 +2277,8 @@
     "filterValue": "Dəyər",
     "sortAsc": "A→Z",
     "sortDesc": "Z→A",
-    "deleteConfirm": "«{name}» hesabatı silinsin? Bu geri qaytarıla bilməz."
+    "deleteConfirm": "«{name}» hesabatı silinsin? Bu geri qaytarıla bilməz.",
+    "noPeriodNotice": "{count} sətirdə ay göstərilməyib. Yekunların uyğun gəlməsi üçün onlar «unknown» qrupundadır."
   },
   "terminal": {
     "v2": {
