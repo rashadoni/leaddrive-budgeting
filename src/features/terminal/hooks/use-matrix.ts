@@ -47,6 +47,30 @@
  *    `WARM_ENTRY_CAP`, so switching back to a recent period stays instant
  *    without unbounded memory.
  *
+ * ## 2026-08-05 — defect A (a period switch gives honest feedback)
+ *
+ * The registry decided this defect's central question by construction: the
+ * cache key contains the period, so the instant `selectedPeriod` changes the
+ * hook reads a different entry, and that entry either has nothing or has a
+ * payload for exactly that period. The grid therefore CANNOT show period A's
+ * numbers under a control that says B — which is what makes it safe for the
+ * period chips to follow the SELECTION rather than the loaded payload. (The
+ * one-second strip lag measured on production was a property of the old
+ * single-slot cache, which kept serving the previous payload; it does not
+ * survive this rewrite.)
+ *
+ * What the key change did NOT fix, and this pass does:
+ *
+ *  - **The control strip blinked with the grid.** `availableYears` is fed to
+ *    the year chips from the same payload, so dropping the payload dropped
+ *    the year row to one chip mid-switch. It is org-scoped and identical on
+ *    every response, so it is now retained across keys — see
+ *    `UseMatrixResult.availableYears`.
+ *  - **A failure outlived the failing.** An errored entry nobody watched
+ *    stayed warm, so re-selecting that period replayed the old error text
+ *    with no request. Dropped on the unsubscribe path; the sticky-error
+ *    contract for concurrent readers is untouched.
+ *
  * Public accessors:
  *  - `useMatrix(period?, includePending?, { enabled })` — reactive
  *    subscription. `enabled: false` subscribes to NOTHING and fetches
@@ -200,6 +224,29 @@ export interface UseMatrixResult {
    * so pre-existing typed mocks of this hook still compile.
    */
   revalidating?: boolean;
+  /**
+   * OPTIONAL — the org's navigable years, RETAINED across a period switch.
+   *
+   * Defect A. `matrix` is deliberately null the instant `selectedPeriod`
+   * changes: the numbers on screen must never belong to a period other than
+   * the one the control says. But the period CONTROL is fed from the same
+   * payload (`HeatMap.tsx:362` → `PeriodChips.tsx:74`), so dropping the
+   * payload also dropped the year row down to the single active year for the
+   * length of the request — click 2026-Q1 and the 2024/2025 chips vanish.
+   * That is the "fabricated absence" failure one component over from the
+   * grid: the strip stops offering navigation it demonstrably has.
+   *
+   * Retaining it is a statement of fact, not a guess. `route.ts:93-107`
+   * derives `availableYears` from every distinct `IndicatorValue.period` in
+   * the organization and never reads `?period=` — the same list comes back
+   * on every request, which is why `route.ts:423` resolves it even for an
+   * explicit period. It is org-scoped; the cache key is period-scoped; so it
+   * belongs to the registry, not to a key.
+   *
+   * `undefined` until a payload has actually carried one, and it is never
+   * synthesized: absent metadata stays absent.
+   */
+  availableYears?: number[];
 }
 
 /**
@@ -269,6 +316,14 @@ const WARM_ENTRY_CAP = 6;
 
 const registry = new Map<string, CacheEntry>();
 let lruClock = 0;
+
+/**
+ * The one org-scoped fact a period-scoped cache must not forget when its key
+ * changes. See `UseMatrixResult.availableYears` for why this is sound rather
+ * than convenient. Written only from a response that is still current for its
+ * entry, so a superseded or post-reset late arrival cannot seed it.
+ */
+let lastAvailableYears: number[] | null = null;
 
 function buildUrl(period: string | undefined, includePending: boolean): string {
   const base = period
@@ -445,6 +500,9 @@ function startFetch(entry: CacheEntry): Promise<MatrixResponse> {
     (data) => {
       if (!isCurrent(entry, generation)) return;
       entry.inFlight = false;
+      if (Array.isArray(data.availableYears) && data.availableYears.length > 0) {
+        lastAvailableYears = data.availableYears;
+      }
       publish(entry, { data, error: null, loading: false, revalidating: false });
     },
     (err: unknown) => {
@@ -597,6 +655,27 @@ function subscribeToMatrix(
         registry.delete(entry.key);
         return;
       }
+      // Defect A — a failure is not a cache entry.
+      //
+      // The warm set exists so that returning to a period you just left is
+      // instant. A key that holds ONLY an error has nothing to return to: it
+      // would answer the next visit with a failure that is not happening any
+      // more, without asking the server, and the terminal has no retry
+      // button — re-selecting the period IS the retry, so it has to reach
+      // the network.
+      //
+      // Deliberately narrow. It requires `data === null`: a revalidation that
+      // failed over an existing payload leaves both set, and those numbers
+      // are still true, so that entry stays warm. It also fires only on the
+      // UNSUBSCRIBE path, which leaves the sticky-error contract intact —
+      // while at least one consumer is watching a failed key, and for
+      // `ensureMatrix()` entries that never had a subscriber at all, the
+      // rejected result is still shared instead of re-hammering the endpoint
+      // (`use-matrix.test.tsx:195`).
+      if (entry.snapshot.error !== null && entry.snapshot.data === null) {
+        registry.delete(entry.key);
+        return;
+      }
       enforceWarmCap();
     }
   };
@@ -662,6 +741,12 @@ export function useMatrix(
       error: snapshot.error,
       refresh,
       revalidating: enabled && snapshot.revalidating,
+      // Payload first (it is the freshest statement of the same fact), the
+      // retained list second, `undefined` third. Reading the module value
+      // inside the memo is safe because the only transition that can make the
+      // fallback load-bearing — this key's payload going away — is itself a
+      // snapshot change, so the memo has already recomputed by then.
+      availableYears: snapshot.data?.availableYears ?? lastAvailableYears ?? undefined,
     };
   }, [snapshot, enabled, refresh]);
 }
@@ -693,4 +778,5 @@ export function __resetMatrixCacheForTests(): void {
   }
   registry.clear();
   lruClock = 0;
+  lastAvailableYears = null;
 }

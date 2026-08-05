@@ -146,7 +146,14 @@ export function useHeatMapModel(period: string | undefined) {
   // in-flight matrix fetch when they mount concurrently. SSE-driven
   // refetch goes through `refresh()` so the cache is invalidated and
   // every subscribing panel re-renders with fresh data.
-  const { matrix: data, loading, error, refresh: refetchMatrix } =
+  // `availableYears` is read separately from `data` ON PURPOSE (defect A,
+  // 2026-08-05). `data` is null for the length of a period switch — it has to
+  // be, or the grid would show the old period's numbers under the new
+  // period's chip — but the year row is navigation, not data, and it is the
+  // same list for every period. Taking it from `data.availableYears` made the
+  // chip strip collapse to a single year on every click; taking it from the
+  // registry keeps the strip whole while the grid honestly says «loading».
+  const { matrix: data, loading, error, refresh: refetchMatrix, availableYears } =
     useMatrix(selectedPeriod);
   // Phase 7.N — qualitative riskTags from the SAME module-cached
   // `/api/companies` source CompanyTree (Panel 1) reads, so the
@@ -677,8 +684,8 @@ export function useHeatMapModel(period: string | undefined) {
     setAlertedCompanyCodes, setAlertMatches, compactMode, scenarioDelta,
     activeScenarioLabel, clearScenarioDelta, lockedPeriods, setLockedPeriods,
     showAllIndicators, setShowAllIndicators, data,
-    loading, error, refetchMatrix, companyTree, searchInputRef, mounted,
-    setMounted,
+    loading, error, refetchMatrix, availableYears, companyTree, searchInputRef,
+    mounted, setMounted,
     // Only ever hand out a tally that belongs to the period on screen. Keeping
     // the filter here rather than at the call site means HeatMap keeps reading
     // `dbSummary ?? summary` unchanged and cannot reintroduce the mismatch —

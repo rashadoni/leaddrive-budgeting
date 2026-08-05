@@ -46,8 +46,8 @@ export function HeatMap({ period }: Props) {
     setAlertedCompanyCodes, setAlertMatches, compactMode, scenarioDelta,
     activeScenarioLabel, clearScenarioDelta, lockedPeriods, setLockedPeriods,
     showAllIndicators, setShowAllIndicators, data,
-    loading, error, refetchMatrix, companyTree, searchInputRef, mounted,
-    setMounted, dbSummary, setDbSummary, activePeriod, alertThresholds,
+    loading, error, refetchMatrix, availableYears, companyTree, searchInputRef,
+    mounted, setMounted, dbSummary, setDbSummary, activePeriod, alertThresholds,
     setAlertThresholds, refetchTimerRef, cellMap, compositeByCompany,
     provisionalSummary,
     statementMismatchCount,
@@ -343,13 +343,23 @@ export function HeatMap({ period }: Props) {
       </div>
 
       {/* CLI Bloomberg-sweep: period chip row — annual / quarters / months.
-          Active chip wired to setSelectedPeriod, which drives useMatrix(). */}
+          Active chip wired to setSelectedPeriod, which drives useMatrix().
+
+          `availableYears` comes from the hook, NOT from `data` (defect A,
+          2026-08-05). `data` is null for the length of a period switch — it
+          must be, or the grid would show the previous period's numbers under
+          the new period's chip — and feeding the year row from it collapsed
+          the row to a single chip on every click: press 2026-Q1 and 2024/2025
+          disappeared until the response landed. The list is org-scoped and
+          identical for every period, so the registry keeps it across the
+          switch. Steady state is unchanged: with a payload loaded the two
+          expressions are the same array. */}
       <div className="mb-1 shrink-0">
         <PeriodChips
           current={renderedPeriod}
           onChange={(p) => setSelectedPeriod(p)}
           compact={compactMode}
-          availableYears={data?.availableYears}
+          availableYears={availableYears}
         />
       </div>
       {/* Tier 3 time-machine — scrub through months with play/pause.
@@ -409,8 +419,26 @@ export function HeatMap({ period }: Props) {
           {t('heatMap.partialYearBody')}
         </div>
       )}
+      {/* Defect A — the other half of "chips follow the selection". Dropping
+          the previous period's numbers is only honest if what replaces them
+          says LOADING rather than nothing, and this line was the only thing
+          saying it at `text-gray-700` on `#0A0E27`: a measured 1.84:1
+          contrast ratio, i.e. not a statement a user can read. It now names
+          the period it is fetching, so the chip, the header and the body all
+          say the same thing while the grid is empty. Renders ONLY while
+          `loading` — absent from the loaded frame the visual baseline
+          captures. */}
       {loading && (
-        <span className="text-gray-700 text-[11px] py-2">{t('heatMap.loadingHeatmap')}</span>
+        <span
+          data-testid="heatmap-loading"
+          role="status"
+          aria-live="polite"
+          className="text-gray-400 text-[11px] py-2"
+        >
+          {renderedPeriod
+            ? t('heatMap.loadingPeriod', { period: renderedPeriod })
+            : t('heatMap.loadingHeatmap')}
+        </span>
       )}
       {isEmpty && (
         <span className="text-gray-700 text-[11px] py-2">

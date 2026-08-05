@@ -80,6 +80,11 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'heatMap.staleInputTitle': 'Input «{source}» is {status}. Open Drift Dashboard to refresh.',
   'heatMap.staleInputStale': 'stale',
   'heatMap.staleInputCritical': 'critically stale',
+  // 2026-08-05 cell-legend rebuild — the counter line renders the ◇ glyph
+  // through an ICU placeholder so the legend cannot drift from
+  // `statusShape('unknown')`. The camelCase fallback would drop the
+  // placeholder, hiding exactly the thing the test checks.
+  'legendCellUnknownCounter': 'Counted in the panel header as {glyph}',
   'panels.heatMapShort': 'HEATMAP',
   'panels.companyTreeShort': 'TREE',
   'snapshot.title': 'Snapshot',
