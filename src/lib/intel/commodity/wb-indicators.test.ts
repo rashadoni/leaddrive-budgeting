@@ -2,6 +2,7 @@
  * Tests for the WB Indicators adapter (tourism + education).
  */
 import { describe, it, expect, vi } from "vitest"
+import { OUTBOUND_USER_AGENT } from "./outbound-agent"
 import {
   wbIndicatorResponseToDataPoint,
   createWbIndicatorsAdapter,
@@ -99,5 +100,30 @@ describe("createWbIndicatorsAdapter", () => {
     await adapter.fetch()
     const url = fetchImpl.mock.calls[0]?.[0] ?? ""
     expect(url).toContain("/country/AZ/indicator/")
+  })
+})
+
+describe("wb-indicators — the same 403 that took out worldbank-cpi", () => {
+  // 2026-08-04 — this adapter kept 403ing after worldbank-cpi was fixed,
+  // because the fix went to the adapter the error list named instead of to
+  // every caller of api.worldbank.org. Measured from the production host:
+  // UA `node` -> 403, UA `BudgetPro/1.0` -> 200.
+  it("sends the shared outbound User-Agent on every request", async () => {
+    const seen: RequestInit[] = []
+    const fetchImpl = vi.fn(async (_u: string, init?: RequestInit) => {
+      seen.push(init ?? {})
+      return { ok: true, status: 200, json: async () => [{ page: 1 }, []] } as unknown as Response
+    })
+    const adapter = createWbIndicatorsAdapter({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    await adapter.fetch()
+
+    expect(seen.length).toBeGreaterThan(0)
+    for (const init of seen) {
+      expect((init.headers as Record<string, string>)?.["User-Agent"]).toBe(
+        OUTBOUND_USER_AGENT,
+      )
+    }
   })
 })

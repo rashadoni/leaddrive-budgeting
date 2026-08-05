@@ -29,6 +29,7 @@
  * of 2-3 months). Idempotent via the unique constraint.
  */
 
+import { fetchWithRateLimitRetry } from "./outbound-agent"
 import type {
   CommodityAdapter,
   CommodityAdapterOptions,
@@ -231,7 +232,7 @@ export function createUnComtradeAzAdapter(
       const url = buildComtradeUrl(now)
       let response: Response
       try {
-        response = await fetchImpl(url)
+        response = await fetchWithRateLimitRetry(fetchImpl, url, opts.sleep)
       } catch (e) {
         return {
           source: COMTRADE_SOURCE,
