@@ -734,7 +734,12 @@ export function useBudgetReportExport() {
       const res = await fetch("/api/budgeting/reports/export", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-organization-id": orgId },
-        body: JSON.stringify(data),
+        // `limit` here is the PREVIEW page size (100). Sending it as-is
+        // truncated every export to the first 100 rows while the route was
+        // willing to serve 10 000 — the file people reconcile against was
+        // silently a page of the screen. The export route reads
+        // `exportLimit` instead and ignores the preview's own limit.
+        body: JSON.stringify({ ...data, limit: undefined }),
       })
       if (!res.ok) {
         const json = await res.json()
@@ -768,6 +773,8 @@ export function useReportEntities() {
         fields: Array<{ name: string; label: string; type: string }>
         hasPlanId: boolean
         hasYearMonth: boolean
+        /** Computed fields this source has the operands for. */
+        computedFields?: string[]
       }>
     },
     enabled: !!orgId,

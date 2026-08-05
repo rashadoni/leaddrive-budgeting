@@ -2249,8 +2249,35 @@
       "balanceSheet": "Баланс",
       "cashFlow": "Денежный поток",
       "forecasts": "Прогнозы",
-      "assumptions": "Допущения"
-    }
+      "assumptions": "Допущения",
+      "actualsLedger": "Факт (проводки)"
+    },
+    "computedUnavailable": "В этом источнике нет пары «план–факт» или «выручка–себестоимость», поэтому вычисляемые поля построить не из чего.",
+    "truncatedNotice": "Показаны первые {limit} строк. Итоги выше относятся только к ним — выгрузите файл, чтобы получить полный набор.",
+    "computedFields": {
+      "variance": "Отклонение (План − Факт)",
+      "execution_pct": "Исполнение %",
+      "margin_pct": "Маржа %"
+    },
+    "chartTypes": {
+      "table": "Таблица",
+      "bar": "Столбцы",
+      "stacked_bar": "С накоплением",
+      "line": "Линия",
+      "pie": "Круговая",
+      "area": "Область"
+    },
+    "periodOptions": {
+      "none": "Без",
+      "month": "По месяцам",
+      "quarter": "По кварталам",
+      "year": "По годам"
+    },
+    "filterField": "Поле",
+    "filterValue": "Значение",
+    "sortAsc": "А→Я",
+    "sortDesc": "Я→А",
+    "deleteConfirm": "Удалить отчёт «{name}»? Действие необратимо."
   },
   "terminal": {
     "v2": {

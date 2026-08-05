@@ -120,7 +120,7 @@ describe("DELETE /api/budgeting/reports/[id]", () => {
   })
 
   it("404 when no rows affected (cross-tenant or missing)", async () => {
-    await mockSession({ orgId: ORG_ID, userId: "u1", role: "editor" })
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
     prismaMock.savedBudgetReport.deleteMany.mockResolvedValue({ count: 0 })
     const res = await DELETE(
       makeRequest("/api/budgeting/reports/r1", { method: "DELETE" }),
@@ -130,7 +130,7 @@ describe("DELETE /api/budgeting/reports/[id]", () => {
   })
 
   it("200 + defense-in-depth (id, organizationId) scope", async () => {
-    await mockSession({ orgId: ORG_ID, userId: "u1", role: "editor" })
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
     prismaMock.savedBudgetReport.deleteMany.mockResolvedValue({ count: 1 })
     const res = await DELETE(
       makeRequest("/api/budgeting/reports/r1", { method: "DELETE" }),

@@ -79,13 +79,16 @@ function toFilterItems(
   }))
 }
 
+// Labels for these live in `reportBuilder.chartTypes.*` / `.periodOptions.*` /
+// `.computedFields.*`. They used to be English literals rendered inside the
+// AZ and RU screens — "Variance (Plan - Actual)" under «Hesablanan sahələr».
 const CHART_TYPES = [
-  { value: "table", icon: Table2, label: "Table" },
-  { value: "bar", icon: BarChart3, label: "Bar" },
-  { value: "stacked_bar", icon: Layers3, label: "Stacked" },
-  { value: "line", icon: LineChart, label: "Line" },
-  { value: "pie", icon: PieChart, label: "Pie" },
-  { value: "area", icon: AreaChart, label: "Area" },
+  { value: "table", icon: Table2 },
+  { value: "bar", icon: BarChart3 },
+  { value: "stacked_bar", icon: Layers3 },
+  { value: "line", icon: LineChart },
+  { value: "pie", icon: PieChart },
+  { value: "area", icon: AreaChart },
 ]
 
 const FILTER_OPS = [
@@ -98,17 +101,12 @@ const FILTER_OPS = [
   { value: "contains", label: "Contains" },
 ]
 
-const PERIOD_GROUP_OPTIONS = [
-  { value: "none", label: "None" },
-  { value: "month", label: "Monthly" },
-  { value: "quarter", label: "Quarterly" },
-  { value: "year", label: "Yearly" },
-]
+const PERIOD_GROUP_OPTIONS = ["none", "month", "quarter", "year"]
 
 const COMPUTED_FIELD_OPTIONS = [
-  { value: "variance", label: "Variance (Plan - Actual)" },
-  { value: "execution_pct", label: "Execution %" },
-  { value: "margin_pct", label: "Margin %" },
+  { value: "variance" },
+  { value: "execution_pct" },
+  { value: "margin_pct" },
 ]
 
 type FilterItem = { field: string; op: string; value: string }
@@ -173,6 +171,29 @@ export default function ReportBuilderPage() {
     [entities.data, entityType],
   )
 
+  // Computed fields this source can actually produce. The server decides —
+  // it owns the measure map that says which column means "plan" and which
+  // means "fact" for each entity.
+  const availableComputedFields = useMemo(
+    () =>
+      COMPUTED_FIELD_OPTIONS.filter(o =>
+        (currentEntity?.computedFields ?? []).includes(o.value),
+      ),
+    [currentEntity],
+  )
+
+  /**
+   * The selection filtered down to what the current source can produce.
+   * Derived rather than synced into state: a saved report carrying
+   * `margin_pct` keeps its stored selection, and simply doesn't render a
+   * column of dashes on a source that has no margin to compute.
+   */
+  const effectiveComputedFields = useMemo(() => {
+    if (!currentEntity) return computedFields
+    const allowed = new Set(currentEntity.computedFields ?? [])
+    return computedFields.filter(cf => allowed.has(cf))
+  }, [computedFields, currentEntity])
+
   // Build preview config
   const previewConfig = useMemo<BudgetReportConfig | null>(() => {
     if (!entityType || selectedColumns.length === 0) return null
@@ -189,10 +210,10 @@ export default function ReportBuilderPage() {
       periodGroupBy: asPeriodGroupBy(periodGroupBy),
       sortBy: sortBy || undefined,
       sortOrder,
-      computedFields: computedFields.length > 0 ? computedFields : undefined,
+      computedFields: effectiveComputedFields.length > 0 ? effectiveComputedFields : undefined,
       limit,
     }
-  }, [entityType, planId, selectedColumns, filters, groupBy, periodGroupBy, sortBy, sortOrder, computedFields, limit])
+  }, [entityType, planId, selectedColumns, filters, groupBy, periodGroupBy, sortBy, sortOrder, effectiveComputedFields, limit])
 
   const preview = useBudgetReportPreview(previewConfig)
 
@@ -277,10 +298,17 @@ export default function ReportBuilderPage() {
     exportReport.mutate({ ...previewConfig, format })
   }, [previewConfig, exportReport])
 
-  // Compute KPI from preview data
+  // Compute KPI from preview data.
+  //
+  // `hasActuals` gates the fact-side cards. They used to render
+  // unconditionally off `r.actualAmount` — a field no data source produced —
+  // so "Fakt" read 0 and Execution sat at 0 % on every report ever built.
+  // The engine materializes `actualAmount` only when it has a realized side
+  // to pair against, so its presence is the honest test.
   const kpis = useMemo(() => {
     if (!preview.data?.data?.length) return null
     const rows = (previewRows ?? [])
+    const hasActuals = rows.some(r => typeof r.actualAmount === "number")
     let totalPlanned = 0, totalActual = 0, totalAmount = 0
     for (const r of rows) {
       totalPlanned += asNum(r.plannedAmount ?? r.amount ?? r.forecastAmount ?? r.totalCost)
@@ -289,8 +317,14 @@ export default function ReportBuilderPage() {
     }
     const variance = totalPlanned - totalActual
     const executionPct = totalPlanned > 0 ? (totalActual / totalPlanned) * 100 : 0
-    return { totalPlanned, totalActual, totalAmount, variance, executionPct, count: rows.length }
-  }, [preview.data])
+    return { totalPlanned, totalActual, totalAmount, variance, executionPct, count: rows.length, hasActuals }
+  }, [preview.data, previewRows])
+
+  /** The server sets this when `limit` cut the result short — the totals
+   *  above then describe a page, not the report. */
+  const isTruncated = Boolean(
+    (preview.data as { truncated?: boolean } | undefined)?.truncated,
+  )
 
   // Numeric columns for charts — derive from actual data when grouped/period
   const numericColumns = useMemo(() => {
@@ -416,13 +450,13 @@ export default function ReportBuilderPage() {
             <div className="flex gap-1">
               {PERIOD_GROUP_OPTIONS.map(o => (
                 <Button
-                  key={o.value}
+                  key={o}
                   size="sm"
-                  variant={periodGroupBy === o.value ? "default" : "outline"}
+                  variant={periodGroupBy === o ? "default" : "outline"}
                   className="h-7 text-xs flex-1"
-                  onClick={() => setPeriodGroupBy(o.value)}
+                  onClick={() => setPeriodGroupBy(o)}
                 >
-                  {o.label}
+                  {t(`periodOptions.${o}`)}
                 </Button>
               ))}
             </div>
@@ -451,29 +485,39 @@ export default function ReportBuilderPage() {
           </div>
         )}
 
-        {/* Computed Fields */}
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">{t("computed")}</Label>
-          <div className="space-y-1">
-            {COMPUTED_FIELD_OPTIONS.map(cf => (
-              <label key={cf.value} className="flex items-center gap-2 text-xs cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="h-3.5 w-3.5 rounded accent-primary"
-                  checked={computedFields.includes(cf.value)}
-                  onChange={() =>
-                    setComputedFields(prev =>
-                      prev.includes(cf.value)
-                        ? prev.filter(v => v !== cf.value)
-                        : [...prev, cf.value],
-                    )
-                  }
-                />
-                <span>{cf.label}</span>
-              </label>
-            ))}
+        {/* Computed Fields — only the ones this data source has operands for.
+            Offering all three regardless is how Margin % came to read 100 %
+            on every P&L row: the operands were never there. */}
+        {currentEntity && (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">{t("computed")}</Label>
+            {availableComputedFields.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                {t("computedUnavailable")}
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {availableComputedFields.map(cf => (
+                  <label key={cf.value} className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 rounded accent-primary"
+                      checked={computedFields.includes(cf.value)}
+                      onChange={() =>
+                        setComputedFields(prev =>
+                          prev.includes(cf.value)
+                            ? prev.filter(v => v !== cf.value)
+                            : [...prev, cf.value],
+                        )
+                      }
+                    />
+                    <span>{t(`computedFields.${cf.value}`)}</span>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Filters */}
         <div className="space-y-1.5">
@@ -490,7 +534,7 @@ export default function ReportBuilderPage() {
                 value={f.field}
                 onChange={e => updateFilter(idx, "field", e.target.value)}
               >
-                <option value="">Field</option>
+                <option value="">{t("filterField")}</option>
                 {currentEntity?.fields.map(fd => (
                   <option key={fd.name} value={fd.name}>{fd.label}</option>
                 ))}
@@ -508,7 +552,7 @@ export default function ReportBuilderPage() {
                 className="h-7 text-[11px] flex-1"
                 value={f.value}
                 onChange={e => updateFilter(idx, "value", e.target.value)}
-                placeholder="Value"
+                placeholder={t("filterValue")}
               />
               <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeFilter(idx)}>
                 <X className="h-3 w-3" />
@@ -538,7 +582,7 @@ export default function ReportBuilderPage() {
                 className="h-8 text-xs w-14"
                 onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
               >
-                {sortOrder === "asc" ? "A→Z" : "Z→A"}
+                {sortOrder === "asc" ? t("sortAsc") : t("sortDesc")}
               </Button>
             </div>
           </div>
@@ -555,7 +599,8 @@ export default function ReportBuilderPage() {
                 variant={chartType === ct.value ? "default" : "outline"}
                 className="h-8 flex-1 text-xs"
                 onClick={() => setChartType(ct.value)}
-                title={ct.label}
+                title={t(`chartTypes.${ct.value}`)}
+                aria-label={t(`chartTypes.${ct.value}`)}
               >
                 <ct.icon className="h-3.5 w-3.5" />
               </Button>
@@ -641,9 +686,18 @@ export default function ReportBuilderPage() {
           </div>
         )}
 
+        {/* Truncation notice — the KPI totals below describe only the rows
+            that were fetched, so saying so is not optional. */}
+        {isTruncated && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-px" />
+            <span>{t("truncatedNotice", { limit })}</span>
+          </div>
+        )}
+
         {/* KPI Summary */}
         {kpis && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className={`grid grid-cols-2 gap-4 ${kpis.hasActuals ? "md:grid-cols-5" : "md:grid-cols-2"}`}>
             <Card className="bg-gradient-to-br from-indigo-500/10 to-indigo-500/5 border-indigo-500/20">
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground">{t("totalAmount")}</p>
@@ -652,36 +706,40 @@ export default function ReportBuilderPage() {
                 </p>
               </CardContent>
             </Card>
-            <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-emerald-500/20">
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">{t("totalActual")}</p>
-                <p className="text-xl font-bold text-emerald-500">
-                  <AnimatedNumber value={kpis.totalActual} formatter={fmtManat} />
-                </p>
-              </CardContent>
-            </Card>
-            <Card className={`bg-gradient-to-br ${kpis.variance >= 0 ? "from-green-500/10 to-green-500/5 border-green-500/20" : "from-red-500/10 to-red-500/5 border-red-500/20"}`}>
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">{t("variance")}</p>
-                <p className={`text-xl font-bold ${kpis.variance >= 0 ? "text-green-500" : "text-red-500"}`}>
-                  <AnimatedNumber value={kpis.variance} formatter={fmtManat} />
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="bg-gradient-to-br from-violet-500/10 to-violet-500/5 border-violet-500/20">
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">{t("execution")}</p>
-                <p className="text-xl font-bold text-violet-500">
-                  <AnimatedNumber value={kpis.executionPct} formatter={v => `${v.toFixed(1)}%`} />
-                </p>
-                <div className="mt-2 h-1.5 w-full rounded-full bg-violet-500/10 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-violet-500 transition-all duration-700"
-                    style={{ width: `${Math.min(kpis.executionPct, 100)}%` }}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+            {kpis.hasActuals && (
+              <>
+                <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-emerald-500/20">
+                  <CardContent className="p-4">
+                    <p className="text-xs text-muted-foreground">{t("totalActual")}</p>
+                    <p className="text-xl font-bold text-emerald-500">
+                      <AnimatedNumber value={kpis.totalActual} formatter={fmtManat} />
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className={`bg-gradient-to-br ${kpis.variance >= 0 ? "from-green-500/10 to-green-500/5 border-green-500/20" : "from-red-500/10 to-red-500/5 border-red-500/20"}`}>
+                  <CardContent className="p-4">
+                    <p className="text-xs text-muted-foreground">{t("variance")}</p>
+                    <p className={`text-xl font-bold ${kpis.variance >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      <AnimatedNumber value={kpis.variance} formatter={fmtManat} />
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-gradient-to-br from-violet-500/10 to-violet-500/5 border-violet-500/20">
+                  <CardContent className="p-4">
+                    <p className="text-xs text-muted-foreground">{t("execution")}</p>
+                    <p className="text-xl font-bold text-violet-500">
+                      <AnimatedNumber value={kpis.executionPct} formatter={v => `${v.toFixed(1)}%`} />
+                    </p>
+                    <div className="mt-2 h-1.5 w-full rounded-full bg-violet-500/10 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-violet-500 transition-all duration-700"
+                        style={{ width: `${Math.min(kpis.executionPct, 100)}%` }}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
             <Card className="bg-gradient-to-br from-amber-500/10 to-amber-500/5 border-amber-500/20">
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground">{t("rows")}</p>
@@ -825,9 +883,9 @@ export default function ReportBuilderPage() {
                           {currentEntity?.fields.find(f => f.name === col)?.label ?? col}
                         </th>
                       ))}
-                      {computedFields.map(cf => (
+                      {effectiveComputedFields.map(cf => (
                         <th key={cf} className="px-3 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">
-                          {COMPUTED_FIELD_OPTIONS.find(o => o.value === cf)?.label ?? cf}
+                          {t(`computedFields.${cf}`)}
                         </th>
                       ))}
                     </tr>
@@ -844,13 +902,17 @@ export default function ReportBuilderPage() {
                             </td>
                           )
                         })}
-                        {computedFields.map(cf => {
+                        {effectiveComputedFields.map(cf => {
                           const cell = row[cf]
+                          // null means "this row has no operand for it" — a
+                          // dash, never 0.0 %. `asNum` used to turn every
+                          // absent value into a confident zero.
+                          const isPct = cf === "execution_pct" || cf === "margin_pct"
                           return (
                             <td key={cf} className="px-3 py-1.5 text-right font-mono whitespace-nowrap">
-                              {cf === "execution_pct" || cf === "margin_pct"
-                                ? `${asNum(cell).toFixed(1)}%`
-                                : typeof cell === "number" ? fmtManat(cell) : "—"}
+                              {typeof cell !== "number"
+                                ? <span className="text-muted-foreground">—</span>
+                                : isPct ? `${cell.toFixed(1)}%` : fmtManat(cell)}
                             </td>
                           )
                         })}
@@ -920,7 +982,13 @@ export default function ReportBuilderPage() {
                   size="icon"
                   variant="ghost"
                   className="h-7 w-7 text-muted-foreground hover:text-red-500"
-                  onClick={() => deleteReport.mutate(r.id)}
+                  // A saved report is shared across the org and the delete is
+                  // a hard one — it had no confirmation at all.
+                  onClick={() => {
+                    if (window.confirm(t("deleteConfirm", { name: r.name }))) {
+                      deleteReport.mutate(r.id)
+                    }
+                  }}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z, ZodError } from "zod";
-import { getOrgId } from "@/lib/api-auth";
+import { getOrgId, requireRole, isAuthError } from "@/lib/api-auth";
 import { withOrgScope } from "@/lib/db/with-org-scope";
 
 const createReportSchema = z.object({
@@ -68,9 +68,18 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const orgId = await getOrgId(req);
-  if (!orgId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Saved reports are org-wide — the list endpoint returns every one of them
+  // to every member — and this had no role gate at all, so a viewer could
+  // create them.
+  //
+  // "editor" rather than the "manager" the rest of the budgeting module uses
+  // for writes: those endpoints mutate financial reference data (departments,
+  // cost types, cash flow entries). A saved report is a view definition over
+  // data the caller can already read. Building one is an editor's job.
+  // Deleting one destroys a shared artifact, and that stays at "manager".
+  const session = await requireRole(req, "editor");
+  if (isAuthError(session)) return session;
+  const orgId = session.orgId;
 
   let body;
   try {
@@ -96,6 +105,9 @@ export async function POST(req: NextRequest) {
     tx.savedBudgetReport.create({
       data: {
         organizationId: orgId,
+        // `createdBy` was in the schema and never written, so a saved report
+        // had no author. Stamped now; the list still shows every org report.
+        createdBy: session.userId,
         name: data.name,
         description: data.description ?? null,
         entityType: data.entityType,

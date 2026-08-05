@@ -2249,8 +2249,35 @@
       "balanceSheet": "Balans hesabatı",
       "cashFlow": "Pul axını",
       "forecasts": "Proqnozlar",
-      "assumptions": "Fərziyyələr"
-    }
+      "assumptions": "Fərziyyələr",
+      "actualsLedger": "Fakt (mühasibat qeydləri)"
+    },
+    "computedUnavailable": "Bu mənbədə «plan–fakt» və ya «gəlir–maya dəyəri» cütü yoxdur, ona görə hesablanan sahə qurmaq mümkün deyil.",
+    "truncatedNotice": "İlk {limit} sətir göstərilir. Yuxarıdakı yekunlar yalnız bu sətirlərə aiddir — tam siyahı üçün ixrac edin.",
+    "computedFields": {
+      "variance": "Fərq (Plan − Fakt)",
+      "execution_pct": "İcra %",
+      "margin_pct": "Marja %"
+    },
+    "chartTypes": {
+      "table": "Cədvəl",
+      "bar": "Sütun",
+      "stacked_bar": "Yığılmış",
+      "line": "Xətt",
+      "pie": "Dairəvi",
+      "area": "Sahə"
+    },
+    "periodOptions": {
+      "none": "Yoxdur",
+      "month": "Aylıq",
+      "quarter": "Rüblük",
+      "year": "İllik"
+    },
+    "filterField": "Sahə",
+    "filterValue": "Dəyər",
+    "sortAsc": "A→Z",
+    "sortDesc": "Z→A",
+    "deleteConfirm": "«{name}» hesabatı silinsin? Bu geri qaytarıla bilməz."
   },
   "terminal": {
     "v2": {

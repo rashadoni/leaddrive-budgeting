@@ -15,10 +15,19 @@ const { executeBudgetReportMock, getEntityFieldsMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: {} }))
-vi.mock("@/lib/budgeting/report-engine", () => ({
-  executeBudgetReport: executeBudgetReportMock,
-  getEntityFields: getEntityFieldsMock,
-}))
+vi.mock("@/lib/budgeting/report-engine", async () => {
+  // Partial mock: the route now also validates the entity against the real
+  // catalog and maps `ReportConfigError` to 400, so those two have to be the
+  // genuine articles or the test stops exercising the route it claims to.
+  const actual = await vi.importActual<typeof import("@/lib/budgeting/report-engine")>(
+    "@/lib/budgeting/report-engine",
+  )
+  return {
+    ...actual,
+    executeBudgetReport: executeBudgetReportMock,
+    getEntityFields: getEntityFieldsMock,
+  }
+})
 
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { POST } from "./route"
@@ -127,17 +136,30 @@ describe("POST /api/budgeting/reports/export", () => {
     expect(buf.byteLength).toBeGreaterThan(1000)
   })
 
-  it("limit caps at 10000", async () => {
+  it("exportLimit caps at 10000", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "editor" })
     executeBudgetReportMock.mockResolvedValue({ data: [{ category: "x" }], total: 1 })
     await POST(
       makeRequest("/api/budgeting/reports/export", {
         method: "POST",
-        json: { format: "csv", entityType: "budgetLines", limit: 999999 },
+        json: { format: "csv", entityType: "budgetLines", exportLimit: 999999 },
       }),
     )
-    const call = executeBudgetReportMock.mock.calls[0][1]
-    expect(call.limit).toBe(10000)
+    expect(executeBudgetReportMock.mock.calls[0][1].limit).toBe(10000)
+  })
+
+  it("ignores the preview page size the client sends as `limit`", async () => {
+    // The page spreads its preview config into the export request, so `limit`
+    // arrived as 100 and every export was truncated to a page of the screen.
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "editor" })
+    executeBudgetReportMock.mockResolvedValue({ data: [{ category: "x" }], total: 1 })
+    await POST(
+      makeRequest("/api/budgeting/reports/export", {
+        method: "POST",
+        json: { format: "csv", entityType: "budgetLines", limit: 100 },
+      }),
+    )
+    expect(executeBudgetReportMock.mock.calls[0][1].limit).toBe(10000)
   })
 
   it("500 on report engine error", async () => {
