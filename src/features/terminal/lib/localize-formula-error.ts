@@ -36,5 +36,12 @@ export function localizeFormulaError(
   }
   if (code === 'parse') return t('heatMap.errParse');
   if (code === 'eval') return t('heatMap.errEval');
+  // 2026-08-05 — a holding whose children have no value for the period. The
+  // engine reason says "the sum is empty, not zero" in English only; the
+  // whole point of the code is that a reader must not take the cell for a
+  // measured zero, so it cannot be left to the raw-reason fallback.
+  if (code === 'rollup_no_child_values') {
+    return t('heatMap.errRollupNoChildValues');
+  }
   return reason;
 }

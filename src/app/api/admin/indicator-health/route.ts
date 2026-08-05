@@ -127,6 +127,10 @@ const REMEDIATION_MAP: Record<string, { category: string; remediation: string }>
 const ERROR_CODE_CATEGORY: Record<string, string> = {
   no_foreign_currency_lines: "ingest-gap",
   rollup_no_children: "leaf-rollup",
+  // Distinct from rollup_no_children: the parent HAS children, they just have
+  // no value for this period. That is a real gap to close, not the benign
+  // leaf case — so it categorises as no-data, never "OK for leaf".
+  rollup_no_child_values: "no-data",
   non_finite: "formula-edge-case",
   no_budget_lines: "ingest-gap",
   parse: "code-bug",
@@ -246,6 +250,13 @@ export async function GET(req: NextRequest) {
             category: "leaf-rollup",
             remediation:
               "Correct behavior — only parent companies (level=1) should compute this rollup indicator.",
+          }
+        }
+        if (!remediation && errorCode === "rollup_no_child_values") {
+          remediation = {
+            category: "no-data",
+            remediation:
+              "This parent has children, but not one of them has a value for this period, so there is nothing to sum. The cell is NOT a zero — do not read it as one. Import or enter the children's data for this period and recompute.",
           }
         }
         if (!remediation && errorCode === "non_finite") {

@@ -3759,6 +3759,169 @@ describe('recomputeIndicator — zombie-row guard (Phase 7.L)', () => {
   });
 });
 
+// --- Phase 7.L follow-up 2026-08-05 — children exist, values don't ----------
+//
+// The zombie guard above keys on `children_count === 0`. A holding with real
+// children but no child VALUES for the period sums to a finite 0, gets
+// CLASSIFIED, and lands amber under the shipped IND_HOLDING_REVENUE bands
+// (`amber: { op: '>=', value: 0 }`). Amber is a scored status, so
+// `hasEvidencedValue` waves it through: PeerPanel ranks it, reconciliation
+// certifies it, the board deck and XLSX export print it. An empty sum was
+// being reported as a measured zero at holding level.
+
+/** Thresholds copied from the shipped seed, so the test reproduces the
+ *  production symptom (amber) rather than a test-local one. */
+const HOLDING_REVENUE_SEED_BANDS: IndicatorDefinitionLike = {
+  id: 'ind_holding_rev_seed_bands',
+  code: 'IND_HOLDING_REVENUE',
+  formula: 'rollup("IND_REVENUE_TOTAL")',
+  thresholds: {
+    green: { op: '>=', value: 1_000_000 },
+    amber: { op: '>=', value: 0 },
+    red: { op: '<', value: 0 },
+  },
+  requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+};
+
+describe('recomputeIndicator — rollup with children but no child values', () => {
+  it('marks the holding unknown with rollup_no_child_values, not amber 0', async () => {
+    const ds = mockDs({
+      children: { c_holding: ['c_a', 'c_b', 'c_c'] },
+      // No ivReads at all — every child read returns null, exactly as the
+      // Prisma source does for a missing row OR a stored status='unknown'.
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c_holding',
+      definition: HOLDING_REVENUE_SEED_BANDS,
+      period: '2026',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe('unknown');
+    // The line this test exists for.
+    expect(result.status).not.toBe('amber');
+    expect(ds.state.upserts[0].status).toBe('unknown');
+    expect(ds.state.upserts[0].inputs.error).toMatchObject({
+      code: 'rollup_no_child_values',
+    });
+    // The childless-leaf code must NOT be reused — its remediation says
+    // "correct for a leaf company, no action needed", which is the opposite
+    // of the truth here.
+    expect(ds.state.upserts[0].inputs.error?.code).not.toBe('rollup_no_children');
+  });
+
+  it('keeps computing normally when the children DO have values', async () => {
+    const ds = mockDs({
+      children: { c_holding: ['c_a', 'c_b'] },
+      ivReads: {
+        'c_a:IND_REVENUE_TOTAL@2026': 500_000,
+        'c_b:IND_REVENUE_TOTAL@2026': 750_000,
+      },
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c_holding',
+      definition: HOLDING_REVENUE_SEED_BANDS,
+      period: '2026',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe(1_250_000);
+    expect(result.status).toBe('green');
+    expect(ds.state.upserts[0].inputs.error).toBeUndefined();
+  });
+
+  it('does not demote when only SOME children reported', async () => {
+    // Partial evidence is still evidence. 3 children, 1 value → a real
+    // (if incomplete) 250k measurement, amber under the seed bands.
+    const ds = mockDs({
+      children: { c_holding: ['c_a', 'c_b', 'c_c'] },
+      ivReads: { 'c_b:IND_REVENUE_TOTAL@2026': 250_000 },
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c_holding',
+      definition: HOLDING_REVENUE_SEED_BANDS,
+      period: '2026',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe(250_000);
+    expect(result.status).toBe('amber');
+    expect(ds.state.upserts[0].inputs.error).toBeUndefined();
+  });
+
+  it('leaves a childless leaf on rollup_no_children', async () => {
+    // Precedence pin: the older, narrower code still wins where it applies.
+    const ds = mockDs({ children: {} });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c_leaf',
+      definition: HOLDING_REVENUE_SEED_BANDS,
+      period: '2026',
+    });
+    expect(result.status).toBe('unknown');
+    expect(ds.state.upserts[0].inputs.error).toMatchObject({
+      code: 'rollup_no_children',
+    });
+  });
+
+  it('does not demote a mixed-input formula whose rollup term is empty', async () => {
+    // `requiredInputs` is not rollup-only, so the empty rollup term may be a
+    // legitimate zero inside a larger expression. Demoting here would blank a
+    // cell that has a real budget-line measurement behind it.
+    const MIXED: IndicatorDefinitionLike = {
+      id: 'ind_mixed_rollup',
+      formula: 'revenue - rollup("IND_REVENUE_TOTAL")',
+      thresholds: {
+        green: { op: '>=', value: 0 },
+        amber: { op: '>=', value: -1 },
+        red: { op: '<', value: -1 },
+      },
+      requiredInputs: ['rollup:IND_REVENUE_TOTAL', 'budgetLine'],
+    };
+    const ds = mockDs({
+      children: { c_holding: ['c_a'] },
+      budgetLines: [bl({ accountType: 'revenue', plannedAmount: 900_000 })],
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c_holding',
+      definition: MIXED,
+      period: '2026',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe(900_000);
+    expect(result.status).toBe('green');
+    expect(ds.state.upserts[0].inputs.error).toBeUndefined();
+  });
+
+  it('applies the same code on the non_finite path', async () => {
+    // 0/0 → NaN → the mirror guard in the failure branch. Without it the
+    // dashboard files this under "formula edge case" instead of a data gap.
+    const RATIO_OF_ROLLUPS: IndicatorDefinitionLike = {
+      id: 'ind_rollup_ratio',
+      formula: 'rollup("IND_REVENUE_TOTAL") / rollup("IND_HEADCOUNT")',
+      thresholds: {
+        green: { op: '>=', value: 0 },
+        amber: { op: '>=', value: -1 },
+        red: { op: '<', value: -1 },
+      },
+      requiredInputs: ['rollup:IND_REVENUE_TOTAL', 'rollup:IND_HEADCOUNT'],
+    };
+    const ds = mockDs({ children: { c_holding: ['c_a', 'c_b'] } });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c_holding',
+      definition: RATIO_OF_ROLLUPS,
+      period: '2026',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('unknown');
+    expect(ds.state.upserts[0].inputs.error).toMatchObject({
+      code: 'rollup_no_child_values',
+    });
+  });
+});
+
 // --- Phase 7.M Step 4 follow-up — FX zombie-guard ---------------------------
 
 const FX_IMPORTED_INPUT_TEST: IndicatorDefinitionLike = {

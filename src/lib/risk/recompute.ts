@@ -102,6 +102,13 @@ import type {
 } from './recompute-resolvers';
 export { FACT_INPUT_PREFIX, ROLLUP_INPUT_PREFIX };
 
+// Phase 7.L follow-up (2026-08-05) — the second empty-rollup shape: children
+// exist but none of them has a value for the period. See ./rollup-evidence.ts.
+import {
+  rollupContribution,
+  isRollupOnlyIndicator,
+} from './rollup-evidence';
+
 
 // --- Prisma adapter (extracted to ./recompute-data-source.ts — Phase 8 D1 2026-05-29) ---
 // createPrismaDataSource moved to a sibling module to shrink this file;
@@ -641,7 +648,10 @@ export async function recomputeIndicator(
     {
       const formulaText = String(args.definition.formula ?? '');
       const rollupAgg = finalInputs.aggregates?.rollup as
-        | { children_count?: number }
+        | {
+            children_count?: number;
+            sums?: Record<string, { sum?: number; matched_count?: number }>;
+          }
         | undefined;
       const budgetLineAgg = finalInputs.aggregates?.budget_line as
         | { line_count?: number; foreign_line_count?: number }
@@ -671,6 +681,18 @@ export async function recomputeIndicator(
         );
       const rollupEmpty =
         usesRollup && (rollupAgg?.children_count ?? 0) === 0;
+      // Phase 7.L follow-up (2026-08-05) — the OTHER empty rollup: children
+      // exist, but not one of them had a value for this period, so the sum
+      // is empty rather than zero. Only fires for indicators that compute
+      // from rollups and nothing else (a mixed formula's empty rollup term
+      // may be a legitimate zero), and only when the aggregate is fully
+      // legible — `rollupContribution` answers 'indeterminate' otherwise
+      // and this stays false. `rollupEmpty` is checked FIRST below so a
+      // childless leaf keeps `rollup_no_children` and its leaf remediation.
+      const rollupNoChildValues =
+        usesRollup &&
+        isRollupOnlyIndicator(args.definition.requiredInputs) &&
+        rollupContribution(rollupAgg) === 'no_contributors';
       const budgetEmpty =
         usesBudget && (budgetLineAgg?.line_count ?? 0) === 0;
       // Phase 7.M Tier 4 (2026-05-19) — fxExposureSource opt-in. When
@@ -692,24 +714,40 @@ export async function recomputeIndicator(
         (budgetLineAgg?.foreign_line_count ?? 0) === 0;
       const bookingEmpty =
         usesBooking && (bookingAgg?.booking_count ?? 0) === 0;
-      if (rollupEmpty || budgetEmpty || fxUntagged || bookingEmpty) {
+      // First match wins, in declaration order. `rollup_no_children` stays at
+      // the top so a childless leaf keeps the code (and the "correct for a
+      // leaf company" remediation) it has always had.
+      const emptyInputSignals: Array<[boolean, string, string]> = [
+        [
+          rollupEmpty,
+          'rollup_no_children',
+          'Rollup indicator on entity with no children to aggregate',
+        ],
+        [
+          rollupNoChildValues,
+          'rollup_no_child_values',
+          'Rollup indicator whose children have no value for this period — the sum is empty, not zero',
+        ],
+        [
+          budgetEmpty,
+          'no_budget_lines',
+          'Formula references budget-line aggregates but the entity has no budget lines for this period',
+        ],
+        [
+          fxUntagged,
+          'no_foreign_currency_lines',
+          'FX-share formula references imported_input_cost but no foreign-currency lines are tagged (xlsx importer dropped the currency column?)',
+        ],
+        [
+          bookingEmpty,
+          'no_bookings',
+          'Hospitality formula references booking aggregates but the entity has no booking rows for this period',
+        ],
+      ];
+      const firedSignal = emptyInputSignals.find(([fired]) => fired);
+      if (firedSignal) {
         status = 'unknown';
-        finalInputs.error = {
-          code: rollupEmpty
-            ? 'rollup_no_children'
-            : budgetEmpty
-              ? 'no_budget_lines'
-              : fxUntagged
-                ? 'no_foreign_currency_lines'
-                : 'no_bookings',
-          reason: rollupEmpty
-            ? 'Rollup indicator on entity with no children to aggregate'
-            : budgetEmpty
-              ? 'Formula references budget-line aggregates but the entity has no budget lines for this period'
-              : fxUntagged
-                ? 'FX-share formula references imported_input_cost but no foreign-currency lines are tagged (xlsx importer dropped the currency column?)'
-                : 'Hospitality formula references booking aggregates but the entity has no booking rows for this period',
-        };
+        finalInputs.error = { code: firedSignal[1], reason: firedSignal[2] };
       }
     }
 
@@ -744,7 +782,10 @@ export async function recomputeIndicator(
     if (result.code === 'non_finite') {
       const formulaText = String(args.definition.formula ?? '');
       const rollupAgg = finalInputs.aggregates?.rollup as
-        | { children_count?: number }
+        | {
+            children_count?: number;
+            sums?: Record<string, { sum?: number; matched_count?: number }>;
+          }
         | undefined;
       const budgetLineAgg = finalInputs.aggregates?.budget_line as
         | { line_count?: number; foreign_line_count?: number }
@@ -769,6 +810,12 @@ export async function recomputeIndicator(
         companySettingsAgg?.fx_exposure_source === 'all_domestic';
       const rollupEmpty =
         usesRollup && (rollupAgg?.children_count ?? 0) === 0;
+      // Mirror of the ok-branch guard (2026-08-05). Same precedence: the
+      // childless-leaf case is tested first and keeps its own code.
+      const rollupNoChildValues =
+        usesRollup &&
+        isRollupOnlyIndicator(args.definition.requiredInputs) &&
+        rollupContribution(rollupAgg) === 'no_contributors';
       const budgetEmpty =
         usesBudget && (budgetLineAgg?.line_count ?? 0) === 0;
       const fxUntagged =
@@ -783,6 +830,12 @@ export async function recomputeIndicator(
           code: 'rollup_no_children',
           reason:
             'Rollup indicator on entity with no children to aggregate (formula returned non-finite)',
+        };
+      } else if (rollupNoChildValues) {
+        finalInputs.error = {
+          code: 'rollup_no_child_values',
+          reason:
+            `Rollup indicator whose children have no value for period ${args.period} — the sum is empty, not zero (formula returned non-finite)`,
         };
       } else if (budgetEmpty) {
         finalInputs.error = {
