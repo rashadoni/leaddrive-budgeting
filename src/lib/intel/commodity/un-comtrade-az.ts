@@ -62,14 +62,30 @@ interface ComtradeResponse {
  * Build the Comtrade URL for AZ totals, last 2 reported years.
  * Pure helper for testability.
  */
-export function buildComtradeUrl(now: Date = new Date()): string {
+/** The two years we ask about, newest first. Comtrade lags 2-3 months, and
+ *  `comtradeResponseToDataPoints` falls back to the older year when the newer
+ *  one is still a partial report. */
+export function comtradePeriods(now: Date = new Date()): number[] {
   const year = now.getUTCFullYear()
-  // Comtrade lags 2-3 months; we ask for last 2 years to maximize
-  // the chance of getting at least one populated row.
-  const periods = [year - 1, year - 2].join(",")
+  return [year - 1, year - 2]
+}
+
+/**
+ * Build the Comtrade URL for AZ totals for ONE period.
+ *
+ * 2026-08-05 — this used to ask for both years in a single request
+ * (`period=2025,2024`), and the public preview tier answers that with
+ * `HTTP 400 {"error":"Maximum number of periods for preview is 1"}`. So the
+ * adapter had been returning nothing at all, and the failure looked like a
+ * generic 400 in the run log. One period per request; the caller loops.
+ */
+export function buildComtradeUrl(
+  now: Date = new Date(),
+  period: number = comtradePeriods(now)[0],
+): string {
   const params = new URLSearchParams({
     reporterCode: AZ_REPORTER,
-    period: periods,
+    period: String(period),
     partnerCode: "0", // 0 = World
     motCode: "0", // 0 = All modes of transport
     customsCode: "C00", // C00 = All
@@ -229,39 +245,48 @@ export function createUnComtradeAzAdapter(
     source: COMTRADE_SOURCE,
     label: COMTRADE_LABEL,
     async fetch(now: Date = new Date()): Promise<CommodityFetchResult> {
-      const url = buildComtradeUrl(now)
-      let response: Response
-      try {
-        response = await fetchWithRateLimitRetry(fetchImpl, url, opts.sleep)
-      } catch (e) {
+      // One request per period — the preview tier refuses more (see
+      // buildComtradeUrl). Rows from both years are merged and the existing
+      // newest-first plausibility walk decides which year to publish.
+      const rows: ComtradeRow[] = []
+      const fetchErrors: string[] = []
+      let anyFetched = false
+      for (const period of comtradePeriods(now)) {
+        const url = buildComtradeUrl(now, period)
+        let response: Response
+        try {
+          response = await fetchWithRateLimitRetry(fetchImpl, url, opts.sleep)
+          anyFetched = true
+        } catch (e) {
+          fetchErrors.push(
+            `${period}: fetch failed: ${e instanceof Error ? e.message : String(e)}`,
+          )
+          continue
+        }
+        if (!response.ok) {
+          fetchErrors.push(`${period}: HTTP ${response.status} from Comtrade`)
+          continue
+        }
+        try {
+          const body = (await response.json()) as ComtradeResponse
+          if (Array.isArray(body?.data)) rows.push(...body.data)
+        } catch (e) {
+          fetchErrors.push(
+            `${period}: JSON parse failed: ${e instanceof Error ? e.message : String(e)}`,
+          )
+        }
+      }
+      if (!anyFetched) {
         return {
           source: COMTRADE_SOURCE,
           dataPoints: [],
-          errors: [`fetch failed: ${e instanceof Error ? e.message : String(e)}`],
+          errors: fetchErrors,
           fetched: false,
         }
       }
-      if (!response.ok) {
-        return {
-          source: COMTRADE_SOURCE,
-          dataPoints: [],
-          errors: [`HTTP ${response.status} from Comtrade`],
-          fetched: true,
-        }
-      }
-      let parsed: ComtradeResponse
-      try {
-        parsed = (await response.json()) as ComtradeResponse
-      } catch (e) {
-        return {
-          source: COMTRADE_SOURCE,
-          dataPoints: [],
-          errors: [`JSON parse failed: ${e instanceof Error ? e.message : String(e)}`],
-          fetched: true,
-        }
-      }
+      const parsed: ComtradeResponse = { data: rows }
       const { dataPoints, skipped } = comtradeResponseToDataPoints(parsed)
-      const errors: string[] = []
+      const errors: string[] = [...fetchErrors]
       for (const s of skipped) {
         errors.push(`skipped ${s.year}: ${s.reason}`)
       }
