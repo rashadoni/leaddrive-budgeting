@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma"
 import { withOrgScope } from "@/lib/db/with-org-scope"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
-import type { CashFlowEntry } from "@prisma/client"
+import type { CashFlowEntry, Prisma } from "@prisma/client"
 
 const generateSchema = z.object({
   year: z.number().int().min(2020).max(2050),
@@ -97,6 +97,26 @@ export async function POST(req: NextRequest) {
   let created = 0
   let skippedActualCells = 0
 
+  // 2026-08-04 — batched. This loop used to `await tx.cashFlowEntry.create()`
+  // once per (budget line × month), which for this organization is 3,620 live
+  // lines across two annual plans = 43,440 sequential round-trips inside ONE
+  // interactive transaction. It never finished: Prisma killed it at the 60,000ms
+  // limit ("however 60002 ms passed"), rolled back, and the table stayed empty —
+  // so Cash Flow showed "no data for this year" and the only button offered to
+  // fix that could not succeed at this data volume.
+  //
+  // The rows are identical; they are just inserted in chunks. Chunked rather
+  // than one createMany so a very large year cannot build one oversized
+  // statement.
+  const pending: Prisma.CashFlowEntryCreateManyInput[] = []
+  const CHUNK = 5000
+  const flush = async (force = false) => {
+    while (pending.length >= CHUNK || (force && pending.length)) {
+      const batch = pending.splice(0, CHUNK)
+      await tx.cashFlowEntry.createMany({ data: batch })
+    }
+  }
+
   for (const plan of plans) {
     const lines = await tx.budgetLine.findMany({
       // deletedAt:null (2026-05-31): project CF from LIVE budget lines only —
@@ -125,28 +145,28 @@ export async function POST(req: NextRequest) {
           skippedActualCells++
           continue // this company's actuals already cover this (company, month)
         }
-        await tx.cashFlowEntry.create({
-          data: {
-            organizationId: orgId,
-            year: plan.year,
-            month: m,
-            entryType,
-            source: "budget_line",
-            sourceId: line.id,
-            // inherit the budget line's company so projected CF is per-company too
-            companyId: line.companyId,
-            // accountId is NOT NULL on CashFlowEntry — inherit the budget line's
-            // account (BudgetLine.accountId is itself NOT NULL since Phase 2.1).
-            accountId: line.accountId,
-            amount: monthlyAmount,
-            description: `${(line as any).account?.name ?? (line as any).account?.code ?? ""} (${line.lineType})`,
-            isProjected: true,
-          },
+        pending.push({
+          organizationId: orgId,
+          year: plan.year,
+          month: m,
+          entryType,
+          source: "budget_line",
+          sourceId: line.id,
+          // inherit the budget line's company so projected CF is per-company too
+          companyId: line.companyId,
+          // accountId is NOT NULL on CashFlowEntry — inherit the budget line's
+          // account (BudgetLine.accountId is itself NOT NULL since Phase 2.1).
+          accountId: line.accountId,
+          amount: monthlyAmount,
+          description: `${(line as any).account?.name ?? (line as any).account?.code ?? ""} (${line.lineType})`,
+          isProjected: true,
         })
         created++
       }
+      await flush()
     }
   }
+  await flush(true) // everything must be written before the alerts read below
 
   // 2. From invoices — DISABLED 2026-05-31. `CashFlowEntry.accountId` is now
   // NOT NULL (schema↔DB reconciled to the Phase-2.1 integrity rule): every cash

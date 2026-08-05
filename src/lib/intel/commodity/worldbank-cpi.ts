@@ -18,8 +18,26 @@
  * - `FP.CPI.TOTL.ZG` = inflation, consumer prices (annual %)
  * - `format=json` returns paginated array; we pull last 12 months
  * - No auth required, no rate limit advertised
+ *
+ * **2026-08-04 — every request 403'd, and the cause was the User-Agent.**
+ * The scheduled run recorded `AZ: HTTP 403` … `IR: HTTP 403`, five for five,
+ * every time. Not throttling (the loop below is sequential) and not an outage
+ * — measured from the production host against the exact URL:
+ *
+ *     User-Agent: node          → 403
+ *     User-Agent: undici        → 200
+ *     User-Agent: <empty>       → 200
+ *     User-Agent: Mozilla/5.0   → 200
+ *
+ * Node's global `fetch` sends `User-Agent: node`, which World Bank's WAF
+ * refuses. So this adapter had never once succeeded on the server, while
+ * `curl` from the same box worked and made it look transient. We now send an
+ * explicit, honest identifier — good manners for an unauthenticated public
+ * API, and it sidesteps a filter that is clearly aimed at unattributed
+ * scrapers rather than at us.
  */
 
+import { OUTBOUND_USER_AGENT } from "./outbound-agent"
 import type {
   CommodityAdapter,
   CommodityAdapterOptions,
@@ -32,6 +50,10 @@ const WB_LABEL = "World Bank — CPI YoY (regional)"
 /** ISO-2 country codes — coverage matches FO holding's procurement footprint. */
 const WB_COUNTRIES = ["AZ", "RU", "TR", "GE", "IR"] as const
 const WB_INDICATOR = "FP.CPI.TOTL.ZG"
+/** Sent on every World Bank request — see the 403 note in the header.
+ *  Re-exported so this adapter's tests keep their own name for it; the value
+ *  is shared with every other outbound feed. */
+export const WB_USER_AGENT = OUTBOUND_USER_AGENT
 
 interface WBDataPoint {
   date?: string // YYYY (annual data)
@@ -88,7 +110,9 @@ export function createWorldBankCPIAdapter(
         const url = `https://api.worldbank.org/v2/country/${country}/indicator/${WB_INDICATOR}?format=json&per_page=10`
         let response: Response
         try {
-          response = await fetchImpl(url)
+          response = await fetchImpl(url, {
+            headers: { "User-Agent": WB_USER_AGENT },
+          })
           anyFetched = true
         } catch (e) {
           errors.push(

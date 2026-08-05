@@ -4458,6 +4458,8 @@
     "refresh": "yenilə",
     "loading": "Yüklənir…",
     "emptyState": "<strong>{stateName}</strong> statusunda iş yoxdur.",
+    "inprocessNotice": "BullMQ backend-i söndürülüb (QUEUE_BACKEND=inprocess) — yenidən hesablama və idxal növbə vasitəsilə deyil, tətbiqin prosesi daxilində icra olunur. BullMQ aktivləşdirilənə və Redis ilə işçi prosesi quraşdırılana qədər burada göstəriləcək iş yoxdur.",
+    "unavailable": "Növbə backend-i əlçatmazdır — BullMQ aktivdir, lakin Redis cavab vermir.",
     "state": {
       "active": "aktiv",
       "waiting": "gözləyir",
@@ -4473,6 +4475,61 @@
       "started": "Başlanıb",
       "finished": "Bitib",
       "failedReason": "Uğursuzluq səbəbi"
+    },
+    "queueSection": "BullMQ növbəsi",
+    "jobs": {
+      "title": "Fon işləri",
+      "subtitle": "İstifadəçi sorğusundan kənarda nə icra olunur və hər iş sonuncu dəfə bazada nə vaxt iz qoyub. Heç nə qeyd etməyən iş sağlam yox, «uçot yoxdur» kimi göstərilir — monitor təxmin etmir.",
+      "refresh": "yenilə",
+      "loading": "Yüklənir…",
+      "noTrace": "iz yoxdur",
+      "ago": {
+        "justNow": "indicə",
+        "minutes": "{n} dəq əvvəl",
+        "hours": "{n} saat əvvəl",
+        "days": "{n} gün əvvəl"
+      },
+      "col": {
+        "job": "İş",
+        "trigger": "Kim başladır",
+        "lastRun": "Sonuncu iz",
+        "status": "Status"
+      },
+      "name": {
+        "recompute": "İndikatorların yenidən hesablanması",
+        "import": "Data idxalı",
+        "intelCrawl": "Xəbər toplanması (Intel)",
+        "feedRefresh": "Pulsuz lentlərin yenilənməsi",
+        "tradeDigest": "Ticarət siqnallarının icmalı",
+        "softDeletePurge": "Yumşaq silinmişlərin təmizlənməsi"
+      },
+      "desc": {
+        "recompute": "İdxaldan və ya əl ilə yeniləmədən sonra indikator dəyərlərini yenidən hesablayır.",
+        "import": "Yüklənmiş kitabı oxuyur və büdcə, balans və pul axını sətirlərini yazır.",
+        "intelCrawl": "Intel panellərini qidalandıran gündəlik xəbər və bazar toplanması.",
+        "feedRefresh": "Pulsuz əmtəə və makro lentləri data nöqtələrinə çəkir.",
+        "tradeDigest": "Ticarət siqnallarının gündəlik icmalı. Heartbeat yazmır, ona görə buradan icrasını təsdiqləmək mümkün deyil.",
+        "softDeletePurge": "30 gündən çox əvvəl yumşaq silinmiş sətirləri fiziki olaraq silir. Gündəlik systemd taymeri ilə işə düşür; «heç vaxt icra olunmayıb» statusu taymerin quraşdırılmadığını və ya hələ işə düşmədiyini bildirir."
+      },
+      "trigger": {
+        "request": "istifadəçi sorğusu",
+        "timer": "systemd taymeri",
+        "cron": "crontab",
+        "worker": "BullMQ işçisi"
+      },
+      "status": {
+        "ok": "cədvələ uyğun",
+        "stale": "gecikir",
+        "never": "heç vaxt icra olunmayıb",
+        "onDemand": "tələb üzrə",
+        "untracked": "uçot yoxdur"
+      },
+      "detail": {
+        "recomputedLast24h": "24 saatda yenidən hesablanan dəyər",
+        "verdict": "hökm",
+        "runStatus": "icra statusu",
+        "errors": "xəta"
+      }
     }
   },
   "adminDataArchive": {

@@ -198,6 +198,11 @@ describe('Cash Flow help-video scenario', () => {
       // through mutatingClick below, never through this list.
       // Navigation to the deletion screen — a GET, not a write.
       'AI_RESET_CTA',
+      // Мастер удаления пошаговый: задача → компания → год. Все три меняют
+      // только клиентское состояние; сама очистка идёт через mutatingClick.
+      'DD_TASK_CLEAR_YEAR',
+      'DD_COMPANY_OPTION',
+      'DD_YEAR_CHIP',
       'AI_TAB_SINGLE',
       'AI_TAB_MULTI',
       'RUN_BTN',
@@ -209,6 +214,60 @@ describe('Cash Flow help-video scenario', () => {
       'IB_HIDE_COMPLETE',
       'IB_OWNER_UNKNOWN',
     ]);
+  });
+
+  /**
+   * 2026-08-04 — `h.goto` moves a page load under the OUTGOING narration so a
+   * multi-screen scenario stops collecting a dead pause per screen. It is a
+   * plain GET and cannot write, but it is still a way for a scenario to reach a
+   * screen nobody reviewed, so the destinations are pinned like the clicks are.
+   */
+  it('pins every in-scene navigation to a reviewed read-only screen', async () => {
+    const url = pathToFileURL(
+      resolve(process.cwd(), 'video/scenarios/overrides.mjs'),
+    ).href;
+    const module = (await import(url)) as {
+      default: Record<string, GuideScenario>;
+    };
+    const actions = Object.values(module.default)
+      .flatMap((scenario) => scenario.scenes)
+      .map((scene) => scene.do.toString())
+      .join('\n');
+    const routes = Array.from(
+      actions.matchAll(/h\.goto\(["']([^"']+)["']\)/g),
+    ).map((match) => match[1]);
+
+    // data-control walks eight admin screens in one take; each hop is performed
+    // by the scene that is still speaking, in the order the narration names them.
+    expect(routes).toEqual([
+      '/budgeting/admin/indicator-backlog',
+      '/budgeting/admin/indicator-health',
+      '/budgeting/admin/statement-controls',
+      '/budgeting/admin/ifrs-conformance',
+      '/budgeting/admin/compliance',
+      '/budgeting/admin/drift',
+      '/budgeting/admin/intel-health',
+      '/budgeting/admin/companies-readiness',
+    ]);
+
+    // Every destination is a GET-only admin report. Nothing here may reach the
+    // importer, the deletion screen, or anything outside the app.
+    for (const route of routes) {
+      expect(route.startsWith('/budgeting/admin/')).toBe(true);
+      expect(route).not.toMatch(/ai-import|delete-data|api\//);
+    }
+
+    // And the helper itself refuses anything that is not an in-app path, so a
+    // scenario can never navigate the recorder off to an external host.
+    const producer = readFileSync(
+      resolve(process.cwd(), 'scripts/produce-guides.mjs'),
+      'utf8',
+    );
+    const helper = producer.slice(
+      producer.indexOf('async goto(route)'),
+      producer.indexOf('async moveTo(sel)'),
+    );
+    expect(helper).toContain('route.startsWith("/")');
   });
 
   it('pins every MUTATING click and keeps it off prod', async () => {
@@ -236,8 +295,10 @@ describe('Cash Flow help-video scenario', () => {
     // DD_CHECK computes the blast radius and deletes nothing, DD_CONFIRM_SUBMIT
     // is the deletion itself and can only follow it.
     expect(mutatingTargets).toEqual([
+      // The deletion's dry check computes the blast radius and deletes nothing.
+      // The confirmation itself is deliberately NOT in this list — see the note
+      // in ai-import-guide-scenario.test.ts.
       'DD_CHECK',
-      'DD_CONFIRM_SUBMIT',
       'AI_ANALYZE',
       'AI_APPLY',
     ]);

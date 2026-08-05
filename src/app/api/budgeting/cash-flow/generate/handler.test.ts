@@ -16,7 +16,11 @@ const { prismaMock } = vi.hoisted(() => ({
       deleteMany: vi.fn(),
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      // 2026-08-04 — the projection writes through createMany in chunks. `create`
+      // stays mocked so a reintroduced per-row insert shows up as an explicit
+      // assertion failure below rather than as an unmocked-function crash.
       create: vi.fn(),
+      createMany: vi.fn(),
     },
     cashFlowAlert: {
       deleteMany: vi.fn(),
@@ -45,6 +49,7 @@ beforeEach(() => {
   prismaMock.cashFlowEntry.findMany.mockReset().mockResolvedValue([])
   prismaMock.cashFlowEntry.findFirst.mockReset().mockResolvedValue(null)
   prismaMock.cashFlowEntry.create.mockReset()
+  prismaMock.cashFlowEntry.createMany.mockReset().mockResolvedValue({ count: 0 })
   prismaMock.cashFlowAlert.deleteMany.mockReset().mockResolvedValue({ count: 0 })
   prismaMock.cashFlowAlert.findFirst.mockReset().mockResolvedValue(null)
   prismaMock.cashFlowAlert.create.mockReset()
@@ -52,6 +57,13 @@ beforeEach(() => {
   prismaMock.budgetLine.findMany.mockReset().mockResolvedValue([])
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
 })
+
+/** Every projected row, flattened back out of the chunked createMany batches. */
+function createdRows() {
+  return prismaMock.cashFlowEntry.createMany.mock.calls.flatMap(
+    (call) => (call[0] as { data: Array<{ month: number; companyId: string }> }).data,
+  )
+}
 
 describe("POST /api/budgeting/cash-flow/generate — gates", () => {
   it("returns 401 unauth", async () => {
@@ -115,7 +127,8 @@ describe("POST /api/budgeting/cash-flow/generate — happy path", () => {
     expect(delArg.where.organizationId).toBe(ORG_ID)
     expect(delArg.where.year).toBe(2025)
     expect(delArg.where.source).toBe("budget_line")
-    // Empty plans → no creates fire
+    // Empty plans → no creates fire, by either route
+    expect(prismaMock.cashFlowEntry.createMany).not.toHaveBeenCalled()
     expect(prismaMock.cashFlowEntry.create).not.toHaveBeenCalled()
   })
 
@@ -167,15 +180,18 @@ describe("POST /api/budgeting/cash-flow/generate — happy path", () => {
     const body = (await res.json()) as Record<string, unknown>
     expect(body.entriesCreated).toBe(9) // 12 − 3 actual (co1) cells
     expect(body.skippedActualCells).toBe(3)
-    const createdMonths = prismaMock.cashFlowEntry.create.mock.calls.map(
-      (c) => (c[0] as { data: { month: number } }).data.month,
-    )
+    // Rows are inserted in chunks, so flatten every batch back into one list.
+    // Same assertions as when this wrote row by row — WHICH cells are projected
+    // is the behaviour under test; how many statements carry them is not.
+    const created = createdRows()
+    const createdMonths = created.map((r) => r.month)
     expect(createdMonths).not.toContain(1)
     expect(createdMonths).toContain(4)
     // companyId inherited from the budget line (per-company projected CF).
-    expect(
-      (prismaMock.cashFlowEntry.create.mock.calls[0][0] as { data: { companyId: string } }).data.companyId,
-    ).toBe("co1")
+    expect(created[0].companyId).toBe("co1")
+    // And the per-row path stays unused: 43,440 sequential inserts inside one
+    // interactive transaction is what made this endpoint impossible to finish.
+    expect(prismaMock.cashFlowEntry.create).not.toHaveBeenCalled()
   })
 
   it("does not treat bridge-only evidence as an actual movement cell or alert movement", async () => {

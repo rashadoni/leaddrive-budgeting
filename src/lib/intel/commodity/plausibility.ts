@@ -214,10 +214,30 @@ export const PLAUSIBILITY_RULES: ReadonlyArray<PlausibilityRule> = [
   {
     id: "baltic-dry-index",
     match: "BALTIC_DRY_INDEX",
-    min: 50,
-    max: 20_000,
+    // 2026-08-04 — this band used to be [50, 20000], the range of the Baltic
+    // Dry Index itself, and it rejected every value the feed has ever
+    // produced: 19 of the 24 errors on the scheduled run were this rule
+    // refusing readings of 7.51 … 12.07.
+    //
+    // The band was measuring the wrong instrument. `yahoo-fuel-bdi` cannot
+    // fetch the index — Yahoo's public chart API 404s on `^BDIY` — so it
+    // deliberately emits BDRY, the Breakwave Dry Bulk Shipping ETF built to
+    // track the BDI through 3-month freight futures, priced in USD/share.
+    // The adapter says so, and the indicator thresholds were calibrated for
+    // ETF scale (green ≥ 20, amber ≥ 10, red < 10). Only this rule never got
+    // the memo, so the sanity check and the data disagreed about what the
+    // metric even is — and the sanity check won, silently, for months.
+    //
+    // Bounds are the ETF's: BDRY has traded roughly $4-$40 since its 2018
+    // launch. [1, 200] leaves room for a genuine freight spike while still
+    // catching the two failures worth catching — a zero/negative price, and
+    // an index-scale number arriving here (e.g. 1500), which would mean
+    // someone repointed the adapter at the real index without revisiting the
+    // downstream thresholds.
+    min: 1,
+    max: 200,
     reason:
-      "BDI historical 300-11000; outside [50, 20000] = bug",
+      "BDRY (Breakwave Dry Bulk ETF, USD/share, proxy for the BDI) has traded $4-40 since 2018; outside [1, 200] = bug — an index-scale value here means the adapter changed instrument",
   },
 
   // ── FAO ────────────────────────────────────────────────────────

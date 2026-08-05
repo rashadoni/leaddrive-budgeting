@@ -23,6 +23,7 @@
  * **Per-indicator isolation**: same as eia-energy.
  */
 
+import { OUTBOUND_FETCH_INIT } from "./outbound-agent"
 import type {
   CommodityAdapter,
   CommodityAdapterOptions,
@@ -138,7 +139,7 @@ export function createWbIndicatorsAdapter(
       for (const indicator of WB_INDICATORS) {
         let response: Response
         try {
-          response = await fetchImpl(wbUrl(indicator))
+          response = await fetchImpl(wbUrl(indicator), OUTBOUND_FETCH_INIT)
         } catch (e) {
           errors.push(
             `${indicator.metric}: fetch failed: ${e instanceof Error ? e.message : String(e)}`,
