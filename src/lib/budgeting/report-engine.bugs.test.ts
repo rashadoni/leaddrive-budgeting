@@ -129,13 +129,15 @@ const planVsFact = (extra: Record<string, unknown> = {}) => ({
 })
 
 // ─────────────────────────────────────────────────────────────
-describe("BUG-01 [MONEY] FIXED — variance is plan minus fact, not the plan", () => {
+describe("BUG-01 [MONEY] FIXED — variance is fact minus plan, not the plan", () => {
   /**
    * Was: `applyComputedFields` read `row.actualAmount`, a column that exists
    * only on `BudgetActual` — a model no entity mapped to. `actual` was always
    * 0, so variance returned the plan unchanged (600 000 here).
    * Now: the entity declares its measures and the engine pairs each budget row
-   * with the matching-year actuals plan on the account code.
+   * with the matching-year actuals plan on the account code. The sign is
+   * ACTUAL − PLAN, matching `variance-helpers.ts` and the rest of the
+   * product (owner decision, 2026-08-05).
    */
   it("pairs the budget row with the actuals plan on the account code", async () => {
     const res = await executeBudgetReport(ORG, planVsFact({
@@ -144,14 +146,14 @@ describe("BUG-01 [MONEY] FIXED — variance is plan minus fact, not the plan", (
     }))
     expect(res.data[0].plannedAmount).toBe(600_000)
     expect(res.data[0].actualAmount).toBe(550_000)
-    expect(res.data[0].variance).toBe(50_000) // was 600 000
+    expect(res.data[0].variance).toBe(-50_000) // was 600 000; collected 50 000 short
   })
 
-  it("variance across the whole P&L reconciles with plan − fact", async () => {
+  it("variance across the whole P&L reconciles with fact − plan", async () => {
     const res = await executeBudgetReport(ORG, planVsFact({ computedFields: ["variance"] }))
     expect(sum(res.data, "plannedAmount")).toBe(1_500_000)
     expect(sum(res.data, "actualAmount")).toBe(1_380_000)
-    expect(sum(res.data, "variance")).toBe(120_000)
+    expect(sum(res.data, "variance")).toBe(-120_000)
   })
 
   it("a plan code with no realized rows reports the plan as the variance, not null", async () => {
@@ -167,7 +169,7 @@ describe("BUG-01 [MONEY] FIXED — variance is plan minus fact, not the plan", (
     // The actuals plan exists and simply has nothing on this code — that is a
     // realized zero, which is a different statement from "unknown".
     expect(res.data[0].actualAmount).toBe(0)
-    expect(res.data[0].variance).toBe(400_000)
+    expect(res.data[0].variance).toBe(-400_000)
   })
 
   it("no actuals plan for the year → null, never a fabricated zero", async () => {
@@ -184,7 +186,7 @@ describe("BUG-01 [MONEY] FIXED — variance is plan minus fact, not the plan", (
   })
 
   it("the legacy no-measures contract is untouched for direct callers", () => {
-    expect(applyComputedFields([{ plannedAmount: 100, actualAmount: 80 }], ["variance"])[0].variance).toBe(20)
+    expect(applyComputedFields([{ plannedAmount: 100, actualAmount: 80 }], ["variance"])[0].variance).toBe(-20)
   })
 })
 
@@ -509,7 +511,7 @@ describe("BUG-10 [SILENT] FIXED — computed fields reach grouped reports and ex
     })
     const g = res.data.find((r) => r.department === "601-01")!
     expect(g.plannedAmount).toBe(600_000)
-    expect(g.variance).toBe(50_000) // the column used to be absent entirely
+    expect(g.variance).toBe(-50_000) // the column used to be absent entirely
   })
 
   it("CSV export carries the computed columns the screen showed", async () => {
@@ -528,7 +530,7 @@ describe("BUG-10 [SILENT] FIXED — computed fields reach grouped reports and ex
     )
     const lines = (await res.text()).split("\n")
     expect(lines[0]).toBe("Department,Planned Amount,Variance,Execution %")
-    expect(lines[1]).toMatch(/^601-01,600000,50000,91\.66/)
+    expect(lines[1]).toMatch(/^601-01,600000,-50000,91\.66/)
   })
 })
 
@@ -751,8 +753,8 @@ describe("BUG-13 [MONEY] FIXED — revenue and expense can be netted", () => {
 
 describe("BUG-13b [MONEY] FIXED — variance colour follows favourability, not raw sign", () => {
   /**
-   * `variance` means plan − actual, so +50 000 is a cost saving on an expense
-   * row and a revenue SHORTFALL on a revenue row. The xlsx export coloured
+   * The sign alone does not say whether the news is good: −50 000 is a
+   * revenue shortfall and +20 000 an expense OVERRUN. The xlsx export coloured
    * both green (`val >= 0`), painting every under-collection as good news.
    * The engine now attaches `variance_favourable`, computed the way
    * `variance-helpers.ts` does it: (actual − plan) × favourable direction.
@@ -762,7 +764,7 @@ describe("BUG-13b [MONEY] FIXED — variance colour follows favourability, not r
       filters: [{ field: "department", op: "eq", value: "601-01" }],
       computedFields: ["variance"],
     }))
-    expect(res.data[0].variance).toBe(50_000) // plan 600k − actual 550k
+    expect(res.data[0].variance).toBe(-50_000) // actual 550k − plan 600k
     expect(res.data[0].variance_favourable).toBe(-50_000) // collected less than planned
   })
 

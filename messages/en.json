@@ -2255,7 +2255,7 @@
     "computedUnavailable": "This data source has no plan-vs-fact or revenue-and-cost pair, so no computed field can be produced from it.",
     "truncatedNotice": "Showing the first {limit} rows. The totals above describe those rows only — export to get the full set.",
     "computedFields": {
-      "variance": "Variance (Plan − Actual)",
+      "variance": "Variance (Actual − Plan)",
       "execution_pct": "Execution %",
       "margin_pct": "Margin %",
       "net_amount": "Net (signed)"

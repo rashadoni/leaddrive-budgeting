@@ -798,16 +798,22 @@ export function applyComputedFields(
     for (const cf of computedFields) {
       switch (cf) {
         case "variance":
+          // ACTUAL − PLAN.
+          //
+          // 2026-08-05, owner decision: this used to be plan − actual, the
+          // opposite of `variance-helpers.ts` and of every other surface in
+          // the product (P&L drill, Workspace). Two conventions in one
+          // product is a defect on its own — a report exported from here and
+          // reconciled against the P&L disagreed on sign. Labels in EN/RU/AZ
+          // were changed with it.
           row.variance =
             planned === undefined || actual === undefined
-              ? legacy ? (planned ?? 0) - (actual ?? 0) : null
-              : planned - actual
-          // Direction, alongside the magnitude. `variance` itself keeps the
-          // plan-minus-actual meaning its own label states, but that sign
-          // says nothing about whether the news is good: +50 000 is a
-          // revenue shortfall and a cost saving depending on the row. This
-          // carries the answer, computed exactly as `variance-helpers.ts`
-          // does it — (actual − plan) × favourable direction — so the
+              ? legacy ? (actual ?? 0) - (planned ?? 0) : null
+              : actual - planned
+          // Direction, alongside the magnitude. The sign of a variance still
+          // says nothing about whether the news is good: −50 000 is a revenue
+          // shortfall and a cost saving depending on the row. This carries
+          // the answer, exactly as `variance-helpers.ts` computes it, so the
           // export's red/green stops painting an under-collection green.
           // Not a user-selectable column; it rides along for the renderer.
           if (sign && planned !== undefined && actual !== undefined) {

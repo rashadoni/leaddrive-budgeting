@@ -30,6 +30,7 @@ import {
   useBudgetReportExport,
   useReportEntities,
 } from "@/lib/budgeting/hooks"
+import { pickDefaultPlanId } from "@/lib/budgeting/plan-select"
 import type { BudgetReportConfig, ReportRow } from "@/lib/budgeting/report-engine"
 import type { BudgetPlan, SavedBudgetReport } from "@/lib/budgeting/types"
 
@@ -225,6 +226,13 @@ export default function ReportBuilderPage() {
   const hasRows = Boolean(previewRows && previewRows.length > 0)
 
   // Handlers
+  /**
+   * Sources whose figures are realized results rather than a forward plan.
+   * They default to the newest ACTUALS plan; everything else defaults to the
+   * newest budget plan.
+   */
+  const ACTUALS_SOURCES = useMemo(() => new Set(["budgetActuals", "actualsLedger"]), [])
+
   const handleEntityChange = useCallback((val: string) => {
     setEntityType(val)
     setSelectedColumns([])
@@ -233,7 +241,15 @@ export default function ReportBuilderPage() {
     setPeriodGroupBy("none")
     setSortBy("")
     setComputedFields([])
-  }, [])
+    // Owner decision 2026-08-05: land on the newest plan of the right kind
+    // rather than "All plans". The old default summed every plan of every
+    // year into one figure — budget added to fact — in the screen's opening
+    // state. "All plans" is still in the list, now as an explicit choice.
+    // Reuses the Workspace's own default-pick so there is one rule.
+    if (val && plans.data?.length) {
+      setPlanId(pickDefaultPlanId(plans.data, ACTUALS_SOURCES.has(val) ? "actual" : "budget"))
+    }
+  }, [plans.data, ACTUALS_SOURCES])
 
   const toggleColumn = useCallback((field: string) => {
     setSelectedColumns(prev =>
