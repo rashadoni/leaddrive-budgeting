@@ -57,6 +57,38 @@ import { SECTION_LABELS, type Section } from "@/lib/ai/section-meta"
 // The AI panel header names the section the user is looking at. SECTION_LABELS
 // stays the English source of truth for the API contract; the header reuses the
 // sidebar's already-translated nav labels so the two never disagree.
+/**
+ * Nav label per budgeting tab, so the page header can name where the reader
+ * actually is.
+ *
+ * Every tab used to render the same "Budgeting" heading: you clicked
+ * Assumptions in the sidebar and the page still said Budgeting, with the
+ * active tab visible only as a highlight in the left menu. Owner's words on
+ * 2026-08-06: «в меню допущение а внутри бюджетирование».
+ *
+ * Keys are the SAME `labelKey`s the sidebar uses (`src/components/sidebar.tsx`)
+ * rather than a second set of strings — a parallel list would drift, and the
+ * header naming a tab differently from the menu item you just clicked is worse
+ * than not naming it at all.
+ */
+const TAB_NAV_KEYS: Record<string, string> = {
+  "pnl-report": "navPnl",
+  "sales-budget": "navSales",
+  cogs: "navCogs",
+  "balance-sheet": "navBalanceSheet",
+  "cash-flow": "navCashFlow",
+  assumptions: "navAssumptions",
+  workspace: "navWorkspace",
+  pl: "navPnlPlan",
+  forecast: "navForecast",
+  comparison: "navComparison",
+  plans: "navPlans",
+  "sales-forecast": "navSales",
+  "expense-forecast": "navExpenses",
+  rolling: "navRolling",
+  config: "navConfiguration",
+}
+
 const AI_SECTION_NAV_KEYS: Record<Section, string> = {
   "pnl-report": "navPnl",
   pl: "navPnlPlan",
@@ -343,7 +375,15 @@ export default function BudgetingPage() {
             <PiggyBank className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">{t("title")}</h1>
+            <h1 className="text-xl font-bold">
+              {t("title")}
+              {TAB_NAV_KEYS[activeTab] && (
+                <>
+                  <span className="mx-2 font-normal text-muted-foreground">·</span>
+                  <span data-testid="budgeting-active-tab">{tNav(TAB_NAV_KEYS[activeTab])}</span>
+                </>
+              )}
+            </h1>
             <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
           </div>
         </div>
