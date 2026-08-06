@@ -1056,6 +1056,38 @@ function makeHelpers(page, scene, navigate) {
       await pulse(page, x, y);
       await page.waitForTimeout(400);
     },
+    // Sibling of `safeClick`, with the same contract and the same reason to
+    // exist. `fill` degrades to a hover under READONLY, which is right for a
+    // field whose value gets SAVED — but typing into a form that is then
+    // cancelled issues no request at all, and a guide that only waves the
+    // cursor at a form teaches nothing. The regulation asks for "показывай В
+    // ДЕЙСТВИИ": this is how a remote take can show the form being filled
+    // without touching the data behind it.
+    //
+    // Same strictness as safeClick — one exact selector, exactly one match,
+    // must be visible. A scenario using this is responsible for cancelling the
+    // form afterwards; nothing here may ever type into a control that submits.
+    async safeFill(sel, text) {
+      if (typeof sel !== "string") {
+        throw new Error("safeFill requires one exact selector string");
+      }
+      const loc = page.locator(sel);
+      const count = await loc.count();
+      if (count !== 1) {
+        throw new Error(`safeFill expected exactly one ${sel}, found ${count}`);
+      }
+      if (!(await loc.isVisible())) {
+        throw new Error(`safeFill target is not visible: ${sel}`);
+      }
+      const { x, y } = await prepareClickTarget(loc, `safeFill ${sel}`);
+      await loc.click({ timeout: 20000 });
+      await loc.selectText().catch(() => {});
+      // Typed, not set: the viewer should see the characters appear, and a
+      // React-controlled input only updates its state on real key events.
+      await loc.pressSequentially(String(text), { delay: 26, timeout: 30000 });
+      await pulse(page, x, y);
+      await page.waitForTimeout(300);
+    },
     async fill(sel, text) {
       const { loc, x, y } = await point(sel);
       if (READONLY) {
