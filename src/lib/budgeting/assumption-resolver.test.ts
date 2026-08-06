@@ -206,3 +206,35 @@ describe("resolveAssumptions / ambiguousKeys", () => {
     expect(ambiguousKeys(rows, null)).toEqual(["fx_usd", "inflation"]);
   });
 });
+
+describe("resolveAssumption — after a company is deleted (observed 2026-08-06)", () => {
+  // Measured against a real Postgres, not reasoned about: the 16.1 migration's
+  // `ON DELETE SET NULL` means deleting a company DEGRADES its override to a
+  // plan-level default rather than removing the row. The row survives with its
+  // value and its now-misleading label intact — which is the "visible and
+  // correctable" outcome the migration comment claims, and which necessarily
+  // produces a SECOND plan-level default for that key.
+  const afterCompanyDeleted = [
+    row({ id: "a_default", key: "import_share", value: 0.3, companyId: null }),
+    row({ id: "a_override", key: "import_share", value: 0.7, companyId: null }),
+  ];
+
+  it("resolves deterministically rather than picking whichever row came back first", () => {
+    const first = resolveAssumption(afterCompanyDeleted, "import_share", null);
+    const second = resolveAssumption([...afterCompanyDeleted].reverse(), "import_share", null);
+    expect(first?.source.id).toBe(second?.source.id);
+    expect(first?.value).toBe(0.3);
+  });
+
+  it("flags the key as ambiguous so the tab shows the amber banner", () => {
+    expect(ambiguousKeys(afterCompanyDeleted, null)).toEqual(["import_share"]);
+    expect(resolveAssumption(afterCompanyDeleted, "import_share", null)?.ambiguous).toBe(true);
+  });
+
+  it("the orphaned override no longer applies to the company it named", () => {
+    // Its companyId is gone, so it is now a holding-wide statement — which is
+    // exactly why it must be surfaced rather than silently kept.
+    const got = resolveAssumption(afterCompanyDeleted, "import_share", "cmp_sugar");
+    expect(got?.tier).toBe("plan");
+  });
+});
