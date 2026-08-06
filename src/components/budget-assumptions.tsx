@@ -116,7 +116,16 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId
   const [search, setSearch] = useState("")
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+  // Collapsed-by-default hid everything: a plan typically holds a handful of
+  // drivers, so opening the tab showed two category headers and no values at
+  // all — the reader had to click before seeing a single number. Categories
+  // now start OPEN and collapse on demand, which is the right default for a
+  // short list; the toggle is unchanged.
+  //
+  // `null` means "untouched" and renders every category open. It only becomes
+  // a real Set once the reader toggles something, so the default never has to
+  // be recomputed when the fetched rows change.
+  const [expandedCategories, setExpandedCategories] = useState<Set<string> | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   // Phase 7.Q — `null` while closed; `{ row: null }` opens in create mode.
   const [editing, setEditing] = useState<{ row: AssumptionItem | null } | null>(null)
@@ -191,6 +200,8 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
 
   const totalAssumptions = assumptions.length
   const categories = Array.from(grouped.keys())
+  /** Every category present, i.e. what the untouched default renders as open. */
+  const allCategoryKeys = categories
 
   // All categories with item counts (for treemap — shows ALL categories)
   const allCategoryCounts = Array.from(grouped.entries()).map(([cat, items]) => {
@@ -228,7 +239,10 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
 
   const toggleCategory = (cat: string) => {
     setExpandedCategories(prev => {
-      const next = new Set(prev)
+      // `null` = the untouched default, which renders every category open, so
+      // the first click must start from "all open" and remove one — not from
+      // an empty set, which would collapse everything except the one clicked.
+      const next = new Set(prev ?? allCategoryKeys)
       if (next.has(cat)) next.delete(cat)
       else next.add(cat)
       return next
@@ -429,7 +443,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
 
         <div className="max-h-[500px] overflow-y-auto">
           {filteredCategories.map(([cat, items]) => {
-            const isExpanded = expandedCategories.has(cat) || !!search
+            const isExpanded = (expandedCategories?.has(cat) ?? true) || !!search
             const catTotal = items.filter((i) => i.unit === "AZN").reduce((s, i) => s + i.value, 0)
             const filteredItems = search
               ? items.filter((i) => i.label?.toLowerCase().includes(search.toLowerCase()))

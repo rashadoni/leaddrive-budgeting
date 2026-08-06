@@ -478,6 +478,11 @@ const AS_F_NOTES = ['[data-testid="assumption-field-notes"]', AS_EDITOR[0]];
 const AS_CANCEL = ['[data-testid="assumption-cancel"]', AS_EDITOR[0]];
 
 export default {
+  // Assumptions (Fərziyyələr). Recorded against production, where the recorder
+  // runs READONLY — every `click` degrades to a hover. The narration is written
+  // for that: it never claims an action the take cannot perform. Nothing here
+  // opens the dialog or edits a row; the form is described while the cursor
+  // rests on the button that opens it, which is true in either mode.
   "assumptions": {
     route: "/budgeting?tab=assumptions",
     title: {
@@ -493,7 +498,7 @@ export default {
           ru: "Это раздел «Допущения». Здесь не отчётность, а предпосылки, из которых собран бюджет: курсы валют, инфляция, нормы расхода, доля импортных затрат. Отчёт отвечает на вопрос «сколько», а этот раздел — «почему именно столько». Без него ни один план невозможно защитить на совете директоров.",
         },
         do: async (p, l, h) => {
-          await p.waitForSelector(AS_ROOT[0], { timeout: 15000 }).catch(() => {});
+          await p.waitForSelector(AS_ROOT[0], { timeout: 20000 }).catch(() => {});
           await h.moveTo(AS_ROOT);
           await h.holdUntil(0.45);
           await h.hover(AS_DETAILS);
@@ -502,15 +507,15 @@ export default {
       },
       {
         voice: {
-          az: "Hər sətrin tətbiq sahəsi var. Boz «Plan» nişanı o deməkdir ki, dəyər holdinqin bütün şirkətlərinə aid defolt dəyərdir. Şirkət kodu olan nişan isə əvəzetmədir: yalnız həmin şirkət üçün işləyir və plan defoltunu üstələyir. Beləliklə, bir parametr həm ümumi qaydanı, həm də istisnaları təsvir edir.",
-          en: "Every row carries a scope. The grey Plan badge means the value is the default for every company in the holding. A badge with a company code is an override: it applies to that company alone and beats the plan default. One parameter therefore describes both the general rule and its exceptions.",
-          ru: "У каждой строки есть область применения. Серый бейдж «План» означает значение по умолчанию для всех компаний холдинга. Бейдж с кодом компании — это переопределение: оно действует только для неё и перекрывает план-дефолт. Так один параметр описывает и общее правило, и исключения из него.",
+          az: "Cədvələ baxaq. Hər sətrin tətbiq sahəsi var. Boz «Plan» nişanı o deməkdir ki, dəyər holdinqin bütün şirkətlərinə aid defolt dəyərdir. Şirkət kodu olan nişan isə əvəzetmədir: yalnız həmin şirkət üçün işləyir və plan defoltunu üstələyir. Beləliklə, bir parametr həm ümumi qaydanı, həm də istisnaları təsvir edir.",
+          en: "Look at the table. Every row carries a scope. The grey Plan badge means the value is the default for every company in the holding. A badge with a company code is an override: it applies to that company alone and beats the plan default. One parameter therefore describes both the general rule and its exceptions.",
+          ru: "Посмотрим на таблицу. У каждой строки есть область применения. Серый бейдж «План» означает значение по умолчанию для всех компаний холдинга. Бейдж с кодом компании — это переопределение: оно действует только для неё и перекрывает план-дефолт. Так один параметр описывает и общее правило, и исключения из него.",
         },
         do: async (p, l, h) => {
           await h.moveTo(AS_ROW_PLAN);
           await h.holdUntil(0.4);
           await h.hover(AS_ROW_PLAN);
-          await h.holdUntil(0.62);
+          await h.holdUntil(0.65);
           await h.hover(AS_ROW_COMPANY);
           await h.holdUntil(0.92);
         },
@@ -530,99 +535,94 @@ export default {
       },
       {
         voice: {
-          az: "İndi bir sürücü əlavə edək. «Əlavə et» düyməsi formanı açır. Diqqət yetirin: formanı tam dolduracağıq, amma yadda saxlamayacağıq — bu, nümayişdir. İşdə isə eyni addımlarla real dəyəri daxil edib saxlayırsınız.",
-          en: "Now let us add a driver. The Add button opens the form. Note that we will fill it in completely but will not save it — this is a demonstration. In real work you follow the same steps and then save the value.",
-          ru: "Теперь добавим драйвер. Кнопка «Добавить» открывает форму. Обратите внимание: заполним её полностью, но сохранять не будем — это демонстрация. В работе вы теми же шагами вводите реальное значение и сохраняете.",
+          az: "İndi ekranda məhz bu görünür. Idxal payı hər şirkət üçün ayrıca göstərilib: emal zavodlarında yüksək, kənd təsərrüfatında xeyli aşağı. Devalvasiya ssenarisi indi hər şirkətə onun öz payı ilə vurur, ümumi əmsalla yox — və nəticədə alınan reytinq artıq tapıntıdır.",
+          en: "And that is exactly what is on screen now. The imported-input share is stated per company: high for the processing plants, much lower for the farming arm. The devaluation scenario now hits each company with its own share rather than one shared coefficient — and the ranking it produces is finally a finding.",
+          ru: "И именно это сейчас на экране. Доля импорта указана отдельно по каждой компании: у перерабатывающих заводов высокая, у аграрного подразделения заметно ниже. Сценарий девальвации теперь бьёт по каждой компании её собственной долей, а не общим коэффициентом — и полученный рейтинг наконец является находкой.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_ROW_IMPORT);
+          await h.holdUntil(0.35);
+          await h.hover(AS_ROW_COMPANY);
+          await h.holdUntil(0.7);
+          await h.hover(AS_ROW_PLAN);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Sıfıra ayrıca diqqət yetirin. Xammalı yalnız daxili bazardan alan şirkət üçün sıfır boşluq deyil — bu, mənalı bir bəyanatdır: «bizim idxal xərcimiz yoxdur». Sistem onu belə də oxuyur və həmin şirkətə holdinq defoltunu tətbiq etmir. Boş qoyulmuş sətir isə tam əksinə işləyir — defolt tətbiq olunur.",
+          en: "Pay attention to the zero. For a company that buys everything domestically, zero is not emptiness — it is a meaningful statement: we have no imported cost. The system reads it that way and does not apply the holding default to that company. A row left blank does the opposite: the default applies.",
+          ru: "Обратите внимание на ноль. Для компании, которая покупает всё на внутреннем рынке, ноль — это не пустота, а осмысленное утверждение: «импортных затрат у нас нет». Система читает его именно так и не применяет к этой компании холдинговый дефолт. А оставленная пустой строка работает наоборот — дефолт применится.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_ROW_COMPANY);
+          await h.holdUntil(0.5);
+          await h.hover(AS_ROW_IMPORT);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "İkinci sürücü — batmış xərclərin payı. Bu, həcm düşəndə qalan xərclərin hissəsidir. Kənd təsərrüfatında o yüksəkdir: toxum, gübrə və suvarma məhsuldan çox əvvəl xərclənir, ona görə də quraqlıq marjanı sıxır. Xidmət bölməsində isə əksinə — həcm düşür, xərclər də düşür.",
+          en: "The second driver is the sunk-cost share: how much of the cost stays when volume falls. In farming it is high — seed, fertiliser and irrigation are spent long before the harvest, which is why a drought crushes the margin. In a services arm it is the opposite: volume falls and cost falls with it.",
+          ru: "Второй драйвер — доля невозвратных затрат: сколько затрат остаётся при падении объёма. В сельском хозяйстве она высокая: семена, удобрения и полив тратятся задолго до урожая, поэтому засуха сжимает маржу. В сервисном подразделении наоборот — падает объём, падают и затраты.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_DETAILS);
+          await h.holdUntil(0.4);
+          await h.hover(AS_ROW_COMPANY);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Yeni sürücünü necə əlavə etmək olar. Yuxarıdakı «Əlavə et» düyməsi forma açır. Formada altı sahə var: kateqoriya, açar, ad, dəyər və ölçü vahidi, tətbiq sahəsi və qeyd. İndi onların hər birinin nə üçün lazım olduğunu deyəcəyəm, çünki səhv doldurulmuş sətir cədvəldə görünəcək, amma heç bir hesablamaya təsir etməyəcək.",
+          en: "How to add a new driver. The Add button at the top opens a form with six fields: category, key, name, value and unit, scope, and a note. I will go through what each is for, because a row filled in wrongly still appears in the table while affecting no calculation at all.",
+          ru: "Как добавить новый драйвер. Кнопка «Добавить» сверху открывает форму из шести полей: категория, ключ, название, значение с единицей, область применения и примечание. Разберу, зачем каждое, потому что неверно заполненная строка появится в таблице, но ни на один расчёт не повлияет.",
         },
         do: async (p, l, h) => {
           await h.moveTo(AS_ADD);
-          await h.holdUntil(0.45);
-          await h.click(AS_ADD);
-          await p.waitForSelector(AS_EDITOR[0], { timeout: 8000 }).catch(() => {});
+          await h.holdUntil(0.5);
+          await h.hover(AS_ADD);
           await h.holdUntil(0.92);
         },
       },
       {
         voice: {
-          az: "Birinci sahə — açar. Bu, ad deyil, düsturların və ssenarilərin sürücünü tapdığı sabit identifikatordur. Adı istənilən vaxt dəyişmək olar, açarı isə yox: devalvasiya ssenarisi məhz «import_share» açarını axtarır. Açar səhv olsa, sətir cədvəldə görünəcək, amma heç bir hesablama onu oxumayacaq.",
-          en: "The first field is the key. It is not a name but the stable identifier formulas and scenarios look the driver up by. The name can change at any time; the key cannot. The devaluation scenario looks for exactly import share. With a wrong key the row still appears in the table, but no calculation will ever read it.",
-          ru: "Первое поле — ключ. Это не название, а стабильный идентификатор, по которому формулы и сценарии находят драйвер. Название можно менять когда угодно, ключ — нет: сценарий девальвации ищет именно «import_share». С неверным ключом строка в таблице появится, но ни один расчёт её не прочитает.",
+          az: "Ən vacib sahə — açar. Bu, ad deyil, düsturların və ssenarilərin sürücünü tapdığı sabit identifikatordur. Adı istənilən vaxt dəyişmək olar, açarı isə yox: devalvasiya ssenarisi məhz «import share» açarını axtarır. Açar səhv olsa, sətir cədvəldə görünəcək, amma heç bir hesablama onu oxumayacaq — bu, ən çox rast gəlinən səhvdir.",
+          en: "The most important field is the key. It is not a name but the stable identifier formulas and scenarios look the driver up by. The name can change at any time; the key cannot. The devaluation scenario looks for exactly import share. With a wrong key the row still appears in the table but no calculation ever reads it — that is the most common mistake here.",
+          ru: "Самое важное поле — ключ. Это не название, а стабильный идентификатор, по которому формулы и сценарии находят драйвер. Название можно менять когда угодно, ключ — нет: сценарий девальвации ищет именно «import share». С неверным ключом строка в таблице появится, но ни один расчёт её не прочитает — это самая частая здесь ошибка.",
         },
         do: async (p, l, h) => {
-          await h.moveTo(AS_F_KEY);
-          await h.holdUntil(0.3);
-          await h.fill(AS_F_KEY, "import_share");
-          await h.holdUntil(0.7);
-          await h.fill(AS_F_LABEL, "Idxal xərclərinin payı");
-          await h.holdUntil(0.92);
-        },
-      },
-      {
-        voice: {
-          az: "Dəyər və ölçü vahidi. Burada əsas tələ var: pay kəsr kimi yazılır — sıfır tam yeddi, yetmiş yox. Yetmiş yazsanız, sistem sükutla yenidən hesablamayacaq: dəyəri istifadə etməkdən imtina edəcək və bunu açıq deyəcək, çünki xərcləri yetmişə vurmaq bütün reytinqi alt-üst edərdi.",
-          en: "Value and unit. Here is the main trap: a share is written as a fraction — zero point seven, not seventy. If you type seventy the system will not silently rescale it. It refuses to use the value and says so, because multiplying cost by seventy would reorder the entire ranking while looking like a finding.",
-          ru: "Значение и единица. Здесь главная ловушка: доля пишется дробью — ноль целых семь десятых, а не семьдесят. Если написать семьдесят, система не пересчитает молча: она откажется использовать значение и прямо об этом скажет, потому что умножение затрат на семьдесят перевернуло бы весь рейтинг.",
-        },
-        do: async (p, l, h) => {
-          await h.moveTo(AS_F_VALUE);
-          await h.holdUntil(0.3);
-          await h.fill(AS_F_VALUE, "0.7");
-          await h.holdUntil(0.65);
-          await h.fill(AS_F_UNIT, "%");
-          await h.holdUntil(0.92);
-        },
-      },
-      {
-        voice: {
-          az: "Tətbiq sahəsi. Defolt olaraq «Bütün plan» seçilir — dəyər plandakı bütün şirkətlərə aid olur. Siyahıdan şirkət seçmək sətri yalnız həmin şirkət üçün əvəzetməyə çevirir. Əvəzetməni yalnız şirkət həqiqətən fərqləndiyi yerdə yaradın, yoxsa eyni rəqəmi altmış dəfə saxlamalı olacaqsınız.",
-          en: "Now the scope. It defaults to the whole plan, so the value applies to every company in it. Picking a company from the list turns the row into an override for that company alone. Create an override only where a company genuinely differs — otherwise you end up maintaining the same number sixty times.",
-          ru: "Область применения. По умолчанию выбран весь план — значение действует на все компании в нём. Выбор компании из списка превращает строку в переопределение только для неё. Заводите переопределение там, где компания действительно отличается, иначе придётся поддерживать одно и то же число шестьдесят раз.",
-        },
-        do: async (p, l, h) => {
-          await h.moveTo(AS_F_SCOPE);
-          await h.holdUntil(0.45);
-          await h.hover(AS_F_SCOPE);
-          await h.holdUntil(0.92);
-        },
-      },
-      {
-        voice: {
-          az: "«Niyə» sahəsi rəqəmin özündən vacibdir. Mənbə, metod, kimin razılaşdırdığı. Məhz bunu idarə heyətində soruşurlar, və məhsulda bu əsaslandırma başqa heç bir yerdə saxlanmır. Boş qoyulmuş sahə altı ay sonra heç kimin xatırlamadığı rəqəmə çevrilir.",
-          en: "The Why field matters more than the number itself: the source, the method, who agreed it. That is exactly what a board asks about, and nowhere else in the product is that reasoning stored. A field left empty becomes, six months later, a number nobody can account for.",
-          ru: "Поле «Почему» важнее самого числа: источник, метод, кто согласовал. Именно это спрашивают на совете директоров, и больше нигде в продукте обоснование не хранится. Оставленное пустым поле через полгода превращается в цифру, которую никто не может объяснить.",
-        },
-        do: async (p, l, h) => {
-          await h.moveTo(AS_F_NOTES);
-          await h.holdUntil(0.35);
-          await h.fill(AS_F_NOTES, "Satınalma müqavilələri üzrə orta, 2026 büdcə komitəsi");
-          await h.holdUntil(0.92);
-        },
-      },
-      {
-        voice: {
-          az: "İndi «Ləğv et» düyməsini basırıq — heç nə saxlanılmadı, cədvəl olduğu kimi qaldı. İş zamanı bu yerdə «Yadda saxla» düyməsini basardınız və sətir öz tətbiq sahəsi nişanı ilə cədvəldə görünərdi. Sətri sonradan redaktə etmək və silmək də mümkündür.",
-          en: "Now we press Cancel — nothing was saved and the table is unchanged. In real work you would press Save at this point and the row would appear in the table with its own scope badge. A row can also be edited or deleted afterwards.",
-          ru: "Теперь нажимаем «Отмена» — ничего не сохранено, таблица осталась прежней. В работе на этом месте вы нажали бы «Сохранить», и строка появилась бы в таблице с бейджем своей области применения. Строку затем можно отредактировать или удалить.",
-        },
-        do: async (p, l, h) => {
-          await h.moveTo(AS_CANCEL);
-          await h.holdUntil(0.4);
-          await h.click(AS_CANCEL);
-          await h.holdUntil(0.75);
-          await h.moveTo(AS_DETAILS);
-          await h.holdUntil(0.92);
-        },
-      },
-      {
-        voice: {
-          az: "Sonda bir xəbərdarlıq. Əgər eyni açar plan səviyyəsində iki dəfə verilibsə, cədvəlin üstündə sarı xəbərdarlıq görünür: sistem bir sətri müəyyən qaydaya görə seçir, qalanlarını isə nəzərə almır — və bunu gizlətmir. Yekun sadədir: buradakı bir neçə sətir ssenariləri kalkulyatordan əsaslandırılmış hesablamaya çevirir.",
-          en: "One warning at the end. If the same key is stated twice at plan level, an amber notice appears above the table: the system picks one row by a fixed rule and ignores the rest — and it does not hide that. The takeaway is simple: a handful of rows here turn the scenarios from a calculator into a grounded calculation.",
-          ru: "И последнее предупреждение. Если один ключ задан дважды на уровне плана, над таблицей появляется янтарное уведомление: система возьмёт одну строку по фиксированному правилу, а остальные проигнорирует — и не скрывает этого. Вывод простой: несколько строк здесь превращают сценарии из калькулятора в обоснованный расчёт.",
-        },
-        do: async (p, l, h) => {
-          await h.moveTo(AS_DUP);
-          await h.holdUntil(0.45);
           await h.hover(AS_ROW_IMPORT);
+          await h.holdUntil(0.5);
+          await h.moveTo(AS_ADD);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Dəyərdə isə əsas tələ var: pay kəsr kimi yazılır — sıfır tam yeddi, yetmiş yox. Yetmiş yazsanız, sistem sükutla yenidən hesablamayacaq: dəyəri istifadə etməkdən imtina edəcək və bunu açıq deyəcək, çünki xərcləri yetmişə vurmaq bütün reytinqi alt-üst edərdi. Ekrandakı dəyərlərə baxın — hamısı sıfırla bir arasındadır.",
+          en: "The value holds the main trap: a share is written as a fraction — zero point seven, not seventy. If you type seventy the system will not silently rescale it. It refuses to use the value and says so, because multiplying cost by seventy would overturn the whole ranking. Look at the values on screen — every one of them sits between zero and one.",
+          ru: "В значении главная ловушка: доля пишется дробью — ноль целых семь десятых, а не семьдесят. Если написать семьдесят, система не пересчитает молча: она откажется использовать значение и прямо об этом скажет, потому что умножение затрат на семьдесят перевернуло бы весь рейтинг. Посмотрите на значения на экране — все они между нулём и единицей.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_ROW_IMPORT);
+          await h.holdUntil(0.45);
+          await h.hover(AS_ROW_PLAN);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Sonuncu sahə — «Niyə». O, rəqəmin özündən vacibdir: mənbə, metod, kimin razılaşdırdığı. Məhz bunu idarə heyətində soruşurlar, və məhsulda bu əsaslandırma başqa heç bir yerdə saxlanmır. Yekun sadədir: buradakı bir neçə sətir ssenariləri kalkulyatordan əsaslandırılmış hesablamaya çevirir.",
+          en: "The last field is Why. It matters more than the number itself: the source, the method, who agreed it. That is exactly what a board asks about, and nowhere else in the product is that reasoning stored. The takeaway is simple: a handful of rows here turn the scenarios from a calculator into a grounded calculation.",
+          ru: "Последнее поле — «Почему». Оно важнее самого числа: источник, метод, кто согласовал. Именно это спрашивают на совете директоров, и больше нигде в продукте обоснование не хранится. Вывод простой: несколько строк здесь превращают сценарии из калькулятора в обоснованный расчёт.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_ROW_IMPORT);
+          await h.holdUntil(0.4);
+          await h.hover(AS_DETAILS);
           await h.holdUntil(0.92);
         },
       },
