@@ -1134,6 +1134,21 @@ model BudgetAssumption {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   planId         String
   plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  /// Phase 7.Q (2026-08-06) — two-tier scope.
+  ///
+  /// NULL means the row is the PLAN-LEVEL default and applies to every
+  /// company in the plan; a set companyId is that company's OVERRIDE and
+  /// wins over the default for the same `key`. See `resolveAssumption` in
+  /// `src/lib/budgeting/assumption-resolver.ts` — nothing else may
+  /// re-implement the precedence.
+  ///
+  /// The tiering exists because a plan is org-scoped, not company-scoped
+  /// (companies enter at BudgetLine.companyId), so a single-tier table
+  /// forces one inflation rate for a whole holding OR one hand-typed row
+  /// per company per driver. With ~60 companies the second is what nobody
+  /// maintains, which is why this tab has stayed empty.
+  companyId      String?
+  company        Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   category       String // transport | food | utilities | mining | repair | marketing
   key            String
   label          String
@@ -1148,6 +1163,8 @@ model BudgetAssumption {
   @@index([organizationId])
   @@index([planId])
   @@index([planId, category])
+  @@index([planId, key, companyId])
+  @@index([companyId])
   @@map("budget_assumptions")
 }
 
@@ -1255,6 +1272,9 @@ model Company {
   balanceSheetLines     BalanceSheetLine[]
   // 2026-06-23 — company-scoped cash flow (CF double-layer fix).
   cashFlowEntries       CashFlowEntry[]
+  // Phase 7.Q — per-company overrides of a plan-level budget driver.
+  // Plan-level defaults carry a null companyId and are NOT in this list.
+  budgetAssumptions     BudgetAssumption[]
 
   @@unique([organizationId, code])
   @@index([organizationId, parentCompanyId, industry])

@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
-import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -13,82 +12,26 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Treemap, Legend,
 } from "recharts"
-import { Settings2, Layers, Hash, Search, ChevronDown, ChevronRight, TrendingUp, DollarSign, Upload } from "lucide-react"
+import { Settings2, Layers, Hash, Search, ChevronDown, ChevronRight, TrendingUp, DollarSign, Plus, Pencil, AlertTriangle } from "lucide-react"
+import { BudgetAssumptionEditor, type EditableAssumption } from "@/components/budget-assumption-editor"
+import { ambiguousKeys } from "@/lib/budgeting/assumption-resolver"
 
 /**
- * Sub-44 cont'd — collapsed 3 parallel `Record<string, string>` maps
- * (CATEGORY_LABELS / CATEGORY_COLORS / CATEGORY_ICONS) into a single
- * `Record<string, CategoryMeta>` to close sub-38 architect ⚠️.
+ * Category display metadata now lives in `@/lib/budgeting/assumption-categories`
+ * — the editor dialog needs the same catalogue, and importing it from this
+ * component made a tab → editor → tab module cycle.
  *
- * Why: the 3-map pattern was prone to drift — sub-35 (industry-code
- * leak) was the first miss; sub-38 (gray-fallback regression) was the
- * second; pattern would have recurred on every data-shape extension.
- * Single-entry shape forces every new category to bring all 3 fields
- * at compile time.
- *
- * Use `getCategoryMeta(cat)` for safe lookup (returns `DEFAULT_CATEGORY_META`
- * with the cat-as-label for unknown codes — keeps the fallback contract
- * the original maps had via `|| cat` / `|| "#9ca3af"` / `|| "📋"`).
+ * Re-exported here so existing importers (and `budget-assumptions.test.ts`)
+ * keep working against the original path.
  */
-export interface CategoryMeta {
-  label: string
-  color: string
-  icon: string
-}
+import { CATEGORY_META, getCategoryMeta } from "@/lib/budgeting/assumption-categories"
 
-export const DEFAULT_CATEGORY_META: CategoryMeta = {
-  label: "Other", // Caller supplies the cat string when label fallback matters.
-  color: "#9ca3af",
-  icon: "📋",
-}
-
-export const CATEGORY_META: Record<string, CategoryMeta> = {
-  // Legacy product-line categories carried over from earlier tenant data
-  // shapes. Keys are still in use as BudgetCategory.key in DB; renaming
-  // would need a migration. Labels stay descriptive of the category kind.
-  returns_transport: { label: "Returns & Transport", color: "#3b82f6", icon: "🚛" },
-  mhb_transport: { label: "MHB/Lime Transport", color: "#2563eb", icon: "🏗️" },
-  pallet_export: { label: "Pallets / Export", color: "#14b8a6", icon: "📦" },
-  waste: { label: "Waste & Scrap", color: "#ef4444", icon: "♻️" },
-  food: { label: "Food Costs", color: "#f59e0b", icon: "🍽️" },
-  prepaid: { label: "Prepaid Expenses", color: "#84cc16", icon: "💳" },
-  utilities: { label: "Utilities", color: "#8b5cf6", icon: "⚡" },
-  mining: { label: "Mining", color: "#6b7280", icon: "⛏️" },
-  repair: { label: "Repair & Maintenance", color: "#f97316", icon: "🔧" },
-  mhb_recipe: { label: "Recipe (BOM)", color: "#a855f7", icon: "🧪" },
-  labor_base: { label: "Labor (Base)", color: "#10b981", icon: "👷" },
-  labor_summary: { label: "Labor (Summary)", color: "#059669", icon: "👥" },
-  marketing: { label: "Marketing", color: "#ec4899", icon: "📢" },
-  depreciation: { label: "Depreciation", color: "#06b6d4", icon: "📉" },
-  other: { label: "Other", color: "#9ca3af", icon: "📋" },
-  // Generic holding-wide FP&A categories. Without these the treemap +
-  // donut + ranking bars all fall back to the gray default because the
-  // data shape changed but the color map did not.
-  operations: { label: "Operations", color: "#3b82f6", icon: "⚙️" }, // blue — primary ops backbone
-  commercial: { label: "Commercial", color: "#f97316", icon: "🛒" }, // orange — sales / commerce
-  finance: { label: "Finance", color: "#10b981", icon: "💰" },        // emerald — money / fin
-  fx: { label: "FX / Currency", color: "#a855f7", icon: "💱" },       // purple — currency / FX
-  hr: { label: "HR / People", color: "#14b8a6", icon: "👥" },         // teal — people
-  pricing: { label: "Pricing", color: "#f59e0b", icon: "🏷️" },         // amber — pricing
-  risk: { label: "Risk", color: "#ef4444", icon: "⚠️" },               // red — risk
-  tax: { label: "Tax", color: "#6366f1", icon: "🏛️" },                 // indigo — formal / regulatory
-  inflation: { label: "Inflation", color: "#ec4899", icon: "📈" },    // pink — macro / monetary
-}
-
-/**
- * Safe lookup for a category's display metadata. Returns the
- * registered entry when present; falls back to a synthesized entry
- * with the raw cat code as the label and the default gray + 📋 icon
- * (matches the legacy `CATEGORY_LABELS[cat] || cat` / `... || "#9ca3af"`
- * / `... || "📋"` semantics from the pre-consolidation maps).
- *
- * Pure / no React; testable without rendering the parent component.
- */
-export function getCategoryMeta(cat: string): CategoryMeta {
-  const entry = CATEGORY_META[cat]
-  if (entry) return entry
-  return { ...DEFAULT_CATEGORY_META, label: cat }
-}
+export {
+  CATEGORY_META,
+  DEFAULT_CATEGORY_META,
+  getCategoryMeta,
+  type CategoryMeta,
+} from "@/lib/budgeting/assumption-categories"
 
 /**
  * i18n key per known category code. `CATEGORY_META.label` stays as the
@@ -126,6 +69,10 @@ interface AssumptionItem {
   period: string | null
   notes: string | null
   sortOrder: number
+  /** Phase 7.Q — null is the plan-level default; set is that company's override. */
+  companyId: string | null
+  /** Joined by the GET route purely to label an override row. */
+  company?: { id: string; name: string; code: string | null } | null
 }
 
 /** Recharts Treemap content callback signature. Recharts ships
@@ -167,13 +114,14 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
     return key ? t(key) : getCategoryMeta(cat).label
   }
   const { data: session } = useSession()
-  const router = useRouter()
   const orgId = session?.user?.organizationId
   const [search, setSearch] = useState("")
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  // Phase 7.Q — `null` while closed; `{ row: null }` opens in create mode.
+  const [editing, setEditing] = useState<{ row: AssumptionItem | null } | null>(null)
 
-  const { data: assumptions, isLoading } = useQuery<AssumptionItem[]>({
+  const { data: assumptions, isLoading, refetch } = useQuery<AssumptionItem[]>({
     queryKey: ["assumptions", planId],
     queryFn: async () => {
       const res = await fetch(`/api/budgeting/assumptions?planId=${planId}`, {
@@ -183,6 +131,16 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
     },
     enabled: !!planId && !!orgId,
   })
+
+  const editorDialog = (
+    <BudgetAssumptionEditor
+      planId={planId}
+      open={editing !== null}
+      existing={(editing?.row as EditableAssumption | null | undefined) ?? null}
+      onOpenChange={(next) => { if (!next) setEditing(null) }}
+      onSaved={() => { void refetch() }}
+    />
+  )
 
   if (isLoading) {
     return (
@@ -201,19 +159,26 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
   }
 
   if (!assumptions || assumptions.length === 0) {
+    // Phase 7.Q — this used to offer "Import Excel data" and route to AI Auto
+    // Import, which has no assumptions data type and therefore could never fill
+    // this tab: the button ran, the import succeeded, the tab stayed empty.
+    // Entering a driver by hand is the path that actually exists.
     return (
-      <Card>
-        <CardContent className="p-12 text-center">
-          <Settings2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium text-foreground">{t("assumptionsEmptyTitle")}</p>
-          <p className="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">
-            {t("assumptionsEmptyDescription")}
-          </p>
-          <Button className="mt-5" onClick={() => router.push("/budgeting/admin/ai-import")}>
-            <Upload className="h-4 w-4 mr-1" /> {t("balanceSheetImport")}
-          </Button>
-        </CardContent>
-      </Card>
+      <>
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Settings2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
+            <p className="font-medium text-foreground">{t("assumptionsEmptyTitle")}</p>
+            <p className="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">
+              {t("assumptionsEmptyDescription")}
+            </p>
+            <Button className="mt-5" onClick={() => setEditing({ row: null })}>
+              <Plus className="h-4 w-4 mr-1" /> {t("assumptionAddFirst")}
+            </Button>
+          </CardContent>
+        </Card>
+        {editorDialog}
+      </>
     )
   }
 
@@ -282,8 +247,15 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
     name: c.name, value: c.count, color: c.color, key: c.key,
   }))
 
+  // Keys with more than one row at the plan-level tier. Checked against the
+  // default tier (companyId=null) because that is the collision the resolver
+  // must silently break; a company override shadowing a default is intended
+  // layering, not a duplicate.
+  const duplicateKeys = ambiguousKeys(assumptions, null)
+
   return (
     <div className="space-y-4">
+      {editorDialog}
       {/* KPI Strip — Power BI style scorecards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200 dark:from-amber-950/30 dark:to-amber-900/20 dark:border-amber-800 p-4">
@@ -418,23 +390,41 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
       <div className="rounded-xl border bg-card">
         <div className="flex items-center justify-between p-4 border-b">
           <h3 className="text-sm font-semibold text-foreground">{t("assumptionsDetailsTitle")}</h3>
-          <div className="relative w-64">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder={t("assumptionsSearchPlaceholder")}
-              value={search}
-              onChange={e => { setSearch(e.target.value); setSelectedCategory(null) }}
-              className="pl-8 h-8 text-xs"
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative w-64">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder={t("assumptionsSearchPlaceholder")}
+                value={search}
+                onChange={e => { setSearch(e.target.value); setSelectedCategory(null) }}
+                className="pl-8 h-8 text-xs"
+              />
+            </div>
+            <Button size="sm" className="h-8" onClick={() => setEditing({ row: null })}>
+              <Plus className="h-3.5 w-3.5 mr-1" /> {t("btnAdd")}
+            </Button>
           </div>
         </div>
 
+        {/* Duplicate-key warning. There is no UNIQUE constraint on
+            (planId, key, companyId) — see the 7.Q migration — so the resolver
+            has to break ties deterministically, and a reader deserves to know
+            a tie was broken rather than to trust the surviving number. */}
+        {duplicateKeys.length > 0 && (
+          <div className="flex items-start gap-2 px-4 py-2 border-b bg-amber-50 dark:bg-amber-950/30 text-[11px] text-amber-800 dark:text-amber-300">
+            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>{t("assumptionsDuplicateKeys", { keys: duplicateKeys.join(", ") })}</span>
+          </div>
+        )}
+
         {/* Table Header */}
-        <div className="grid grid-cols-[1fr_100px_80px_80px] gap-2 px-4 py-2 border-b bg-muted/30 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="grid grid-cols-[1fr_110px_100px_80px_80px_32px] gap-2 px-4 py-2 border-b bg-muted/30 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           <span>{t("assumptionsColParameter")}</span>
+          <span>{t("assumptionsColScope")}</span>
           <span className="text-right">{t("assumptionsColValue")}</span>
           <span className="text-center">{t("assumptionsColUnit")}</span>
           <span className="text-center">{t("assumptionsColPeriod")}</span>
+          <span />
         </div>
 
         <div className="max-h-[500px] overflow-y-auto">
@@ -468,10 +458,29 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                 {isExpanded && filteredItems.map((item) => (
                   <div
                     key={item.id}
-                    className="grid grid-cols-[1fr_100px_80px_80px] gap-2 px-4 py-1.5 border-b border-dashed border-muted hover:bg-muted/20 transition-colors"
+                    className="group grid grid-cols-[1fr_110px_100px_80px_80px_32px] items-center gap-2 px-4 py-1.5 border-b border-dashed border-muted hover:bg-muted/20 transition-colors"
                     style={{ paddingLeft: "2.5rem" }}
                   >
-                    <span className="text-xs text-foreground/80 truncate">{item.label}</span>
+                    <span className="text-xs text-foreground/80 truncate" title={item.notes ?? undefined}>
+                      {item.label}
+                      {/* The note is the "why", and it is the answer to the only
+                          question a board actually asks about a driver. */}
+                      {item.notes && <span className="ml-1 text-muted-foreground">*</span>}
+                    </span>
+                    {/* Scope: a company override must be visually distinct from
+                        the plan-level default it shadows, or the two-tier model
+                        is invisible and reads as one flat list. */}
+                    <span className="truncate">
+                      {item.companyId ? (
+                        <Badge variant="outline" className="text-[9px] font-normal border-primary/40 text-primary" title={item.company?.name ?? undefined}>
+                          {item.company?.code || item.company?.name || t("assumptionScopeCompany")}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[9px] font-normal text-muted-foreground">
+                          {t("assumptionScopePlan")}
+                        </Badge>
+                      )}
+                    </span>
                     <span className="text-xs font-semibold tabular-nums text-right text-foreground">
                       {typeof item.value === "number" ? item.value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : item.value}
                     </span>
@@ -491,6 +500,15 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                         <Badge variant="secondary" className="text-[9px] font-normal">{item.period}</Badge>
                       )}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => setEditing({ row: item })}
+                      title={t("assumptionEditTitle")}
+                      aria-label={`${t("assumptionEditTitle")}: ${item.label}`}
+                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 ))}
               </div>
