@@ -576,53 +576,79 @@ export default {
       },
       {
         voice: {
-          az: "Yeni sürücünü necə əlavə etmək olar. Yuxarıdakı «Əlavə et» düyməsi forma açır. Formada altı sahə var: kateqoriya, açar, ad, dəyər və ölçü vahidi, tətbiq sahəsi və qeyd. İndi onların hər birinin nə üçün lazım olduğunu deyəcəyəm, çünki səhv doldurulmuş sətir cədvəldə görünəcək, amma heç bir hesablamaya təsir etməyəcək.",
-          en: "How to add a new driver. The Add button at the top opens a form with six fields: category, key, name, value and unit, scope, and a note. I will go through what each is for, because a row filled in wrongly still appears in the table while affecting no calculation at all.",
-          ru: "Как добавить новый драйвер. Кнопка «Добавить» сверху открывает форму из шести полей: категория, ключ, название, значение с единицей, область применения и примечание. Разберу, зачем каждое, потому что неверно заполненная строка появится в таблице, но ни на один расчёт не повлияет.",
+          az: "İndi yeni sürücünü necə əlavə etməyi göstərim. Yuxarıdakı «Əlavə et» düyməsi formanı açır. Diqqət: formanı tam dolduracağıq, amma yadda saxlamayacağıq — sonda «Ləğv et» basılacaq və cədvəldə heç nə dəyişməyəcək.",
+          en: "Now let me show how a new driver is added. The Add button at the top opens the form. Note that we will fill it in completely but will not save it — at the end we press Cancel and nothing in the table changes.",
+          ru: "Теперь покажу, как добавляется новый драйвер. Кнопка «Добавить» сверху открывает форму. Внимание: заполним её полностью, но сохранять не будем — в конце нажмём «Отмена», и в таблице ничего не изменится.",
         },
         do: async (p, l, h) => {
           await h.moveTo(AS_ADD);
+          await h.holdUntil(0.3);
+          // Opening the dialog is a local view toggle — no request leaves the
+          // page — so safeClick is the sanctioned way to do it for real even
+          // against production. The scenario is responsible for the Cancel at
+          // the end, and never touches the save control.
+          await h.safeClick(AS_ADD[0]);
+          await p.waitForSelector(AS_EDITOR[0], { timeout: 15000 });
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Ən vacib sahə — açar. Bu, ad deyil, düsturların və ssenarilərin sürücünü tapdığı sabit identifikatordur. İndi «import share» yazıram. Adı istənilən vaxt dəyişmək olar, açarı isə yox: devalvasiya ssenarisi məhz bu açarı axtarır. Açar səhv olsa, sətir cədvəldə görünəcək, amma heç bir hesablama onu oxumayacaq.",
+          en: "The most important field is the key. It is not a name but the stable identifier formulas and scenarios look the driver up by. I am typing import share now. The name can change at any time; the key cannot — the devaluation scenario looks for exactly this key. With a wrong key the row still appears in the table but no calculation ever reads it.",
+          ru: "Самое важное поле — ключ. Это не название, а стабильный идентификатор, по которому формулы и сценарии находят драйвер. Сейчас набираю «import share». Название можно менять когда угодно, ключ — нет: сценарий девальвации ищет именно этот ключ. С неверным ключом строка в таблице появится, но ни один расчёт её не прочитает.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_F_KEY);
+          await h.holdUntil(0.25);
+          await h.safeFill(AS_F_KEY[0], "import_share");
+          await h.holdUntil(0.6);
+          await h.safeFill(AS_F_LABEL[0], "Idxal xərclərinin payı");
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Dəyər və ölçü vahidi. Burada əsas tələ var: pay kəsr kimi yazılır. Sıfır tam yeddi yazıram — yetmiş yox. Yetmiş yazsanız, sistem sükutla yenidən hesablamayacaq: dəyəri istifadə etməkdən imtina edəcək və səbəbini açıq deyəcək, çünki xərcləri yetmişə vurmaq bütün reytinqi alt-üst edərdi.",
+          en: "Value and unit. Here is the main trap: a share is written as a fraction. I am typing zero point seven — not seventy. If you type seventy the system will not silently rescale it: it refuses to use the value and says why, because multiplying cost by seventy would overturn the whole ranking.",
+          ru: "Значение и единица. Здесь главная ловушка: доля пишется дробью. Набираю ноль целых семь десятых — не семьдесят. Если написать семьдесят, система не пересчитает молча: она откажется использовать значение и прямо скажет почему, потому что умножение затрат на семьдесят перевернуло бы весь рейтинг.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_F_VALUE);
+          await h.holdUntil(0.25);
+          await h.safeFill(AS_F_VALUE[0], "0.7");
+          await h.holdUntil(0.62);
+          await h.safeFill(AS_F_UNIT[0], "%");
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Tətbiq sahəsi. Defolt olaraq «Bütün plan» seçilir — dəyər plandakı bütün şirkətlərə aid olur. Siyahıdan şirkət seçmək sətri yalnız həmin şirkət üçün əvəzetməyə çevirir. Əvəzetməni yalnız şirkət həqiqətən fərqləndiyi yerdə yaradın. Aşağıdakı «Niyə» sahəsi isə rəqəmin özündən vacibdir: mənbə, metod, kimin razılaşdırdığı. Məhz bunu idarə heyətində soruşurlar.",
+          en: "Scope. It defaults to the whole plan, so the value applies to every company in it. Picking a company turns the row into an override for that company alone — create one only where a company genuinely differs. The Why field below matters more than the number itself: the source, the method, who agreed it. That is exactly what a board asks about.",
+          ru: "Область применения. По умолчанию «Весь план» — значение действует на все компании в нём. Выбор компании превращает строку в переопределение только для неё; заводите его там, где компания действительно отличается. Поле «Почему» ниже важнее самого числа: источник, метод, кто согласовал. Именно это спрашивают на совете директоров.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_F_SCOPE);
+          await h.holdUntil(0.3);
+          await h.hover(AS_F_SCOPE);
           await h.holdUntil(0.5);
-          await h.hover(AS_ADD);
+          await h.safeFill(AS_F_NOTES[0], "Satınalma müqavilələri üzrə orta");
           await h.holdUntil(0.92);
         },
       },
       {
         voice: {
-          az: "Ən vacib sahə — açar. Bu, ad deyil, düsturların və ssenarilərin sürücünü tapdığı sabit identifikatordur. Adı istənilən vaxt dəyişmək olar, açarı isə yox: devalvasiya ssenarisi məhz «import share» açarını axtarır. Açar səhv olsa, sətir cədvəldə görünəcək, amma heç bir hesablama onu oxumayacaq — bu, ən çox rast gəlinən səhvdir.",
-          en: "The most important field is the key. It is not a name but the stable identifier formulas and scenarios look the driver up by. The name can change at any time; the key cannot. The devaluation scenario looks for exactly import share. With a wrong key the row still appears in the table but no calculation ever reads it — that is the most common mistake here.",
-          ru: "Самое важное поле — ключ. Это не название, а стабильный идентификатор, по которому формулы и сценарии находят драйвер. Название можно менять когда угодно, ключ — нет: сценарий девальвации ищет именно «import share». С неверным ключом строка в таблице появится, но ни один расчёт её не прочитает — это самая частая здесь ошибка.",
+          az: "İndi «Ləğv et» basıram — heç nə saxlanılmadı, cədvəl olduğu kimi qaldı. İşdə bu yerdə «Yadda saxla» basılır və sətir öz tətbiq sahəsi nişanı ilə cədvəldə görünür. Yekun sadədir: buradakı bir neçə sətir ssenariləri kalkulyatordan əsaslandırılmış hesablamaya çevirir.",
+          en: "Now I press Cancel — nothing was saved and the table is unchanged. In real work you press Save at this point and the row appears in the table with its own scope badge. The takeaway is simple: a handful of rows here turn the scenarios from a calculator into a grounded calculation.",
+          ru: "Теперь нажимаю «Отмена» — ничего не сохранено, таблица осталась прежней. В работе на этом месте нажимают «Сохранить», и строка появляется в таблице с бейджем своей области применения. Вывод простой: несколько строк здесь превращают сценарии из калькулятора в обоснованный расчёт.",
         },
         do: async (p, l, h) => {
-          await h.hover(AS_ROW_IMPORT);
-          await h.holdUntil(0.5);
-          await h.moveTo(AS_ADD);
-          await h.holdUntil(0.92);
-        },
-      },
-      {
-        voice: {
-          az: "Dəyərdə isə əsas tələ var: pay kəsr kimi yazılır — sıfır tam yeddi, yetmiş yox. Yetmiş yazsanız, sistem sükutla yenidən hesablamayacaq: dəyəri istifadə etməkdən imtina edəcək və bunu açıq deyəcək, çünki xərcləri yetmişə vurmaq bütün reytinqi alt-üst edərdi. Ekrandakı dəyərlərə baxın — hamısı sıfırla bir arasındadır.",
-          en: "The value holds the main trap: a share is written as a fraction — zero point seven, not seventy. If you type seventy the system will not silently rescale it. It refuses to use the value and says so, because multiplying cost by seventy would overturn the whole ranking. Look at the values on screen — every one of them sits between zero and one.",
-          ru: "В значении главная ловушка: доля пишется дробью — ноль целых семь десятых, а не семьдесят. Если написать семьдесят, система не пересчитает молча: она откажется использовать значение и прямо об этом скажет, потому что умножение затрат на семьдесят перевернуло бы весь рейтинг. Посмотрите на значения на экране — все они между нулём и единицей.",
-        },
-        do: async (p, l, h) => {
+          await h.moveTo(AS_CANCEL);
+          await h.holdUntil(0.3);
+          await h.safeClick(AS_CANCEL[0]);
+          await h.holdUntil(0.65);
           await h.moveTo(AS_ROW_IMPORT);
-          await h.holdUntil(0.45);
-          await h.hover(AS_ROW_PLAN);
-          await h.holdUntil(0.92);
-        },
-      },
-      {
-        voice: {
-          az: "Sonuncu sahə — «Niyə». O, rəqəmin özündən vacibdir: mənbə, metod, kimin razılaşdırdığı. Məhz bunu idarə heyətində soruşurlar, və məhsulda bu əsaslandırma başqa heç bir yerdə saxlanmır. Yekun sadədir: buradakı bir neçə sətir ssenariləri kalkulyatordan əsaslandırılmış hesablamaya çevirir.",
-          en: "The last field is Why. It matters more than the number itself: the source, the method, who agreed it. That is exactly what a board asks about, and nowhere else in the product is that reasoning stored. The takeaway is simple: a handful of rows here turn the scenarios from a calculator into a grounded calculation.",
-          ru: "Последнее поле — «Почему». Оно важнее самого числа: источник, метод, кто согласовал. Именно это спрашивают на совете директоров, и больше нигде в продукте обоснование не хранится. Вывод простой: несколько строк здесь превращают сценарии из калькулятора в обоснованный расчёт.",
-        },
-        do: async (p, l, h) => {
-          await h.moveTo(AS_ROW_IMPORT);
-          await h.holdUntil(0.4);
-          await h.hover(AS_DETAILS);
           await h.holdUntil(0.92);
         },
       },

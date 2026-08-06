@@ -143,6 +143,19 @@ describe('Cash Flow help-video scenario', () => {
     expect(safeClickHelper).toContain('loc.isVisible()');
     expect(safeClickHelper).not.toContain('page.mouse.click');
 
+    // `safeFill` is the typing sibling of safeClick, added for the Assumptions
+    // guide so a remote take can show a form being filled rather than hovered.
+    // It must carry the same guarantees, or it becomes the loose end that
+    // safeClick was written to avoid.
+    const safeFillHelper = producer.slice(
+      producer.indexOf('async safeFill(sel, text)'),
+      producer.indexOf('async fill(sel, text)'),
+    );
+    expect(safeFillHelper).toContain('typeof sel !== "string"');
+    expect(safeFillHelper).toContain('count !== 1');
+    expect(safeFillHelper).toContain('loc.isVisible()');
+    expect(safeFillHelper).not.toContain('page.mouse.click');
+
     const recorder = producer.slice(
       producer.indexOf('async function recordSection'),
       producer.indexOf('async function performAction'),
@@ -169,6 +182,13 @@ describe('Cash Flow help-video scenario', () => {
     ).map((match) => match[1]);
 
     expect(safeTargets).toEqual([
+      // Assumptions guide: opens the create form and cancels it. Both are
+      // local view toggles — the dialog is client state and issues no request
+      // — and the recorder additionally aborts every POST/PUT/PATCH/DELETE, so
+      // a take physically cannot write. The scenario never references the save
+      // control; that is asserted separately below.
+      'AS_ADD[0]',
+      'AS_CANCEL[0]',
       'WS_MATERIAL',
       'WS_MATRIX_BUTTON',
       'WS_LIST_BUTTON',

@@ -44,12 +44,6 @@ const HELP_VIDEO_ENTRIES_RAW = [
   // (three minutes and the tab is still unclickable — the view renders every
   // one of 43,440 rows). Registering the slug without media would put a play
   // button on the page that 404s. Add the entry back with the recording.
-  // Registered together with its media, per the cash-flow note above: all three
-  // languages exist (assumptions.{az,en,ru}.VOICE.mp4 + posters), and
-  // getHelpVideoAsset builds the filename from the viewer's locale with NO
-  // fallback — so a slug with only one language recorded would hand every other
-  // viewer a play button that 404s.
-  { slug: "assumptions", routes: ["/budgeting?tab=assumptions"] },
   { slug: "comparison", routes: ["/budgeting?tab=comparison"] },
   { slug: "forecast", routes: ["/budgeting?tab=forecast"] },
   { slug: "plans", routes: ["/budgeting?tab=plans"] },
