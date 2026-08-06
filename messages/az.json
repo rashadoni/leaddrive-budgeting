@@ -4479,6 +4479,7 @@
         "ftForwardForecast": "{sales} satış + {summary} icmal vərəqi, P&L/balans/pul axını yoxdur → gələcək proqnoz faylı",
         "ftCompanies": "{n} şirkət vərəqi, P&L/balans/pul axını yoxdur → holdinq strukturu faylı",
         "ftCompliance": "{n} uyğunluq/reyestr vərəqi, P&L/balans/pul axını yoxdur → müstəqil uyğunluq faylı",
+        "ftAssumptions": "{n} fərziyyə vərəqi, P&L/balans/pul axını yoxdur → müstəqil büdcə sürücüləri faylı",
         "ftLand": "{n} torpaq reyestri vərəqi, P&L/balans/pul axını yoxdur → torpaq sənədləri faylı",
         "ftCapex": "{n} CAPEX vərəqi, P&L/balans/pul axını yoxdur → müstəqil CAPEX faylı",
         "ftDescriptions": "{n} təsvir vərəqi, P&L/balans/pul axını yoxdur → strateji izahat faylı",

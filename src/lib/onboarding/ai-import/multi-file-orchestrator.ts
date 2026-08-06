@@ -212,6 +212,12 @@ const APPLY_ORDER: Record<FileType, number> = {
   // canonical compliance facts; it only needs companies seeded, so it sits
   // beside the other soft buckets. 2026-07-15.
   "compliance-register": 2.7,
+  // Phase 16.5 — assumptions need the BudgetPlan that main-financial resolves
+  // (BudgetAssumption is plan-scoped) and the companies an override row names,
+  // so they apply after both. Ordering against the other soft buckets is free:
+  // no other handler touches `budget_assumptions`, so nothing can overwrite it
+  // and it can overwrite nothing.
+  assumptions: 2.75,
   // Phase 11.12 — product sales need companies seeded and (for the
   // revenue-account link) the CoA that main-financial creates, so they
   // apply after it alongside the other soft buckets.
@@ -1172,6 +1178,7 @@ export async function runMultiFileImport(
           salesForecast: 0,
           salesProducts: 0,
           complianceRegister: 0,
+          assumptions: 0,
           unknown: 0,
         },
       })

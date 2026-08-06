@@ -238,6 +238,15 @@ const DATATYPE_RULES: Record<SheetDataType, DataTypeRule> = {
     note: "распознаётся, но реальный импортёр преждевременен — нет индикатора-потребителя",
     match: () => false,
   },
+  // Phase 16.5 — budget drivers. No seed lists an `assumption:*` requiredInput
+  // yet, so the affected list is honestly empty: the rows land on the
+  // Fərziyyələr tab and are readable by `resolveAssumption`, but nothing in the
+  // indicator engine consumes them until 16.6 wires the scenario shocks.
+  ASSUMPTIONS: {
+    writes: "BudgetAssumption (вкладка «Допущения»)",
+    note: "драйверы бюджета — попадут на вкладку и в резолвер; ни один индикатор их пока не читает (16.6)",
+    match: () => false,
+  },
   UNKNOWN: {
     writes: "Не определено классификатором",
     note: "AI не смог определить тип листа — данные не будут импортированы",

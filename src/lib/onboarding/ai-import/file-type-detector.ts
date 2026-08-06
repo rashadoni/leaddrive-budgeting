@@ -73,6 +73,12 @@ export type FileType =
   // committed (found 2026-07-15 loading the client's court-disputes file:
   // 57 rows parsed, 0 written). Mixed with PLF/BS/CF → main-financial.
   | "compliance-register"
+  // Phase 16.5 (2026-08-06) — a standalone budget-assumptions file: drivers
+  // (FX, inflation, tariffs, imported-input share) and nothing financial.
+  // Mixed with PLF/BS/CF → main-financial, the same rule every soft bucket
+  // above follows, and the ASSUMPTIONS sheets are still routed to their
+  // handler by the registry.
+  | "assumptions"
   | "unknown"
 
 export interface FileTypeResult {
@@ -104,6 +110,8 @@ export interface FileTypeResult {
     salesProducts: number
     /** COUNTERPARTY + LEGAL_CASES + AUDIT_FINDINGS + RISK_REGISTER sheets. */
     complianceRegister: number
+    /** ASSUMPTIONS sheets (budget drivers → BudgetAssumption). Phase 16.5. */
+    assumptions: number
     unknown: number
   }
 }
@@ -129,6 +137,7 @@ function bucketSheets(
     salesForecast: 0,
     salesProducts: 0,
     complianceRegister: 0,
+    assumptions: 0,
     unknown: 0,
   }
   for (const c of classifications) {
@@ -183,6 +192,15 @@ function bucketSheets(
       case "AUDIT_FINDINGS":
       case "RISK_REGISTER":
         counts.complianceRegister++
+        break
+      // Phase 16.5 — counted in its own bucket, NOT folded into
+      // complianceRegister. A standalone drivers file must reach the
+      // `assumptions` fileType below; a dataType that increments nothing
+      // leaves every count at zero, the file classifies as "unknown", and the
+      // group is skipped after parsing cleanly — the 2026-07-15 court-disputes
+      // failure (57 rows parsed, 0 written) repeated on a new type.
+      case "ASSUMPTIONS":
+        counts.assumptions++
         break
       case "UNKNOWN":
         counts.unknown++
@@ -463,6 +481,25 @@ export function detectFileType(
       fileType: "compliance-register",
       confidence: conf,
       reasoning: `${counts.complianceRegister} compliance/register sheet(s), no PLF/BS/CF → standalone compliance file`,
+      sheetCounts: counts,
+    }
+  }
+
+  // Priority 5.65: assumptions — a standalone drivers file. Same "no PLF/BS/CF"
+  // rule as every soft bucket: an assumptions tab living inside a financial
+  // workbook belongs to main-financial, where its sheet is still routed to the
+  // ASSUMPTIONS handler by the registry.
+  if (
+    counts.assumptions >= 1 &&
+    counts.plf === 0 &&
+    counts.bs === 0 &&
+    counts.cf === 0
+  ) {
+    const conf = avgConfidenceOver(classifications, (c) => c.dataType === "ASSUMPTIONS")
+    return {
+      fileType: "assumptions",
+      confidence: conf,
+      reasoning: `${counts.assumptions} assumptions sheet(s), no PLF/BS/CF → standalone budget-drivers file`,
       sheetCounts: counts,
     }
   }

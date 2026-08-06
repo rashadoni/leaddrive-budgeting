@@ -32,6 +32,7 @@ import {
   AUDIT_FINDING_METRICS,
 } from "./audit-findings-parse"
 import { parseRiskRegister } from "./risk-register-parse"
+import { parseAssumptions } from "./assumptions-parse"
 import { buildCompanyMatcher } from "./soft-entity-match"
 import {
   parseIcmalBudgetLines,
@@ -1411,6 +1412,130 @@ export function makeRiskRegisterHandler(
         return {
           rowsInserted: parsed.risks.length,
           touchedCompanyCodes: [target],
+        }
+      },
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ASSUMPTIONS — budget drivers → `BudgetAssumption` (Phase 16.5, 2026-08-06).
+//
+// Cross-entity by nature: one sheet states the holding's drivers, and any row
+// naming a company becomes that company's override. So it does NOT go through
+// `resolveSoftSheetEntity` — a sheet-level entity is not required and, when the
+// classifier guesses one, it is used only as the default owner for rows that do
+// not name a company themselves.
+// ──────────────────────────────────────────────────────────────────────
+
+export function makeAssumptionsHandler(
+  prisma: PrismaClient,
+  ctxRef: { value: OrgContext | null },
+  ensureCtx: () => Promise<OrgContext>,
+): AdapterHandler {
+  void prisma
+  void ctxRef
+  return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
+    const ctx = await ensureCtx()
+    const parsed = parseAssumptions(
+      input.workbook,
+      input.sheetName,
+      input.XLSX,
+      buildCompanyMatcher(ctx.orgCompanies),
+    )
+    const warnings = [...parsed.warnings]
+
+    // A sheet-level entity is a DEFAULT, not an override: a row that names its
+    // own company always wins. When the classifier resolved no entity the rows
+    // stay plan-level, which is the correct reading of a holding-wide sheet.
+    const sheetCompanyId = input.entityCode ? ctx.codeToId.get(input.entityCode) : undefined
+    if (input.entityCode && !sheetCompanyId) {
+      warnings.push(
+        `assumptions: sheet entity "${input.entityCode}" is not in this organization — ` +
+          "rows that do not name their own company were imported as plan-level defaults.",
+      )
+    }
+
+    const resolved = parsed.rows.map((r) => {
+      const companyId = r.companyCode ? ctx.codeToId.get(r.companyCode) : sheetCompanyId
+      return { row: r, companyId: companyId ?? null }
+    })
+    // A row whose company resolved in the parser but not in this org context is
+    // dropped rather than silently promoted to a holding-wide default.
+    const writable = resolved.filter((e) => {
+      if (e.row.companyCode && !e.companyId) {
+        warnings.push(
+          `assumptions: company "${e.row.companyCode}" not resolvable in this org — "${e.row.label}" skipped.`,
+        )
+        return false
+      }
+      return true
+    })
+
+    const overrides = writable.filter((e) => e.companyId).length
+    const defaults = writable.length - overrides
+
+    return {
+      summary:
+        `${writable.length} assumption(s) — ${defaults} plan-level, ${overrides} company override(s)` +
+        ` (plan ${ctx.planId.slice(0, 8)}…)`,
+      itemCount: writable.length,
+      warnings,
+      applyToDb: async (tx: Prisma.TransactionClient) => {
+        if (writable.length === 0) return { rowsInserted: 0 }
+
+        // UPSERT by (planId, key, companyId) — NOT the clean-slate
+        // archive-then-insert every financial adapter uses.
+        //
+        // Clean-slate is right for budget lines because the workbook is the
+        // whole truth for its scope. It is wrong here: a driver may equally
+        // have been typed on the Fərziyyələr tab by a controller, and wiping
+        // every assumption in the plan because one sheet mentions three of them
+        // would delete work no workbook can restore — the 2026-06-11 collateral
+        // pattern, in a table with no soft-delete to recover from.
+        //
+        // So: this sheet owns the rows it names and nothing else.
+        const existing = await tx.budgetAssumption.findMany({
+          where: { organizationId: ctx.organizationId, planId: ctx.planId },
+          select: { id: true, key: true, companyId: true },
+        })
+        const byTuple = new Map(existing.map((e) => [`${e.key}::${e.companyId ?? ""}`, e.id]))
+
+        let inserted = 0
+        let updated = 0
+        for (const { row, companyId } of writable) {
+          const tuple = `${row.key}::${companyId ?? ""}`
+          const id = byTuple.get(tuple)
+          const data = {
+            category: row.category,
+            key: row.key,
+            label: row.label,
+            value: row.value,
+            unit: row.unit,
+            period: row.period,
+            notes: row.notes,
+            companyId,
+          }
+          if (id) {
+            await tx.budgetAssumption.update({ where: { id }, data })
+            updated++
+          } else {
+            const created = await tx.budgetAssumption.create({
+              data: { ...data, organizationId: ctx.organizationId, planId: ctx.planId },
+              select: { id: true },
+            })
+            // Claim the tuple so a duplicate later on the SAME sheet updates
+            // this row instead of inserting a second one the resolver would
+            // then have to break a tie between.
+            byTuple.set(tuple, created.id)
+            inserted++
+          }
+        }
+
+        const touched = [...new Set(writable.map((e) => e.row.companyCode).filter((c): c is string => Boolean(c)))]
+        return {
+          rowsInserted: inserted + updated,
+          touchedCompanyCodes: touched,
         }
       },
     }

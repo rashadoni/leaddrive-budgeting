@@ -4479,6 +4479,7 @@
         "ftForwardForecast": "{sales} sales + {summary} summary sheets, no P&L/BS/CF → forward forecast file",
         "ftCompanies": "{n} company sheet(s), no P&L/BS/CF → holding-structure setup file",
         "ftCompliance": "{n} compliance/register sheet(s), no P&L/BS/CF → standalone compliance file",
+        "ftAssumptions": "{n} assumptions sheet(s), no P&L/BS/CF → standalone budget-drivers file",
         "ftLand": "{n} land registry sheet(s), no P&L/BS/CF → land titles file",
         "ftCapex": "{n} CAPEX sheet(s), no P&L/BS/CF → standalone CAPEX file",
         "ftDescriptions": "{n} description sheet(s), no P&L/BS/CF → strategic narrative file",
