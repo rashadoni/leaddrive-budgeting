@@ -294,7 +294,8 @@ export function ScenarioPanel() {
     changed: number;
     worsened: number;
     improved: number;
-    assumptionNote: string | null;
+    /** Phase 16.10 — structured driver provenance; the server builds the prose. */
+    driverReports: unknown[];
   } | null>(null);
 
   // ── Displayed period (defect C) ─────────────────────────────────────────────
@@ -482,7 +483,10 @@ export function ScenarioPanel() {
             changed: input.changed,
             worsened: input.worsened,
             improved: input.improved,
-            assumptionNote: input.assumptionNote,
+            // Phase 16.10 — the STRUCTURED reports, not the prose. The server
+            // regenerates the caveat from these; sending a sentence would put
+            // client text straight into an LLM instruction.
+            driverReports: input.driverReports,
           }),
         });
         const nd: { narrative?: string | null; mitigations?: string[] } = r.ok
@@ -563,7 +567,7 @@ export function ScenarioPanel() {
         changed: data.changed ?? 0,
         worsened: data.worsened ?? 0,
         improved: data.improved ?? 0,
-        assumptionNote: data.assumptionNote ?? null,
+        driverReports: Array.isArray(data.driverReports) ? data.driverReports : [],
       };
       void postNarrative(aiLang, brief);
     } catch (e: unknown) {

@@ -13,18 +13,15 @@ import { withOrgScope } from '@/lib/db/with-org-scope'
 import { requireAuth, isAuthError } from '@/lib/api-auth'
 import { hasAnthropicKey } from '@/lib/ai/client'
 import { aiErrorBody } from '@/lib/ai/ai-error'
-import { runCrisisBrief, type BriefLanguage, type CrisisBriefWorstHit } from '@/lib/risk/scenario-narrative'
+import { runCrisisBrief } from '@/lib/risk/scenario-narrative'
+import { parseNarrativeBody } from '@/lib/risk/crisis-brief-input'
 
-interface NarrativeBody {
-  language?: BriefLanguage
-  holdingBaselineScore?: number | null
-  holdingScenarioScore?: number | null
-  worstHit?: CrisisBriefWorstHit[]
-  changed?: number
-  worsened?: number
-  improved?: number
-  assumptionNote?: string | null
-}
+// Phase 16.10 — the body shape lives in `crisis-brief-input.ts`, which
+// validates and bounds it. This route no longer casts an unknown blob into a
+// prompt. `assumptionNote` is deliberately NOT part of the accepted body: it is
+// regenerated server-side from the structured `driverReports`, so the client
+// has no way to put a sentence of its own into an LLM instruction.
+
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAuth(request)
@@ -47,12 +44,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Scenario not found' }, { status: 404 })
   }
 
-  let body: NarrativeBody
+  let rawBody: unknown
   try {
-    body = (await request.json()) as NarrativeBody
+    rawBody = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
+  const body = parseNarrativeBody(rawBody)
 
   if (!hasAnthropicKey()) {
     return NextResponse.json({ narrative: null, mitigations: [], narrativeError: 'No Anthropic API key configured.' })
@@ -62,14 +60,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const brief = await runCrisisBrief({
       scenarioCode: scenario.code,
       scenarioNameEn: scenario.nameEn,
-      language: body.language ?? 'ru',
-      holdingBaselineScore: body.holdingBaselineScore ?? null,
-      holdingScenarioScore: body.holdingScenarioScore ?? null,
-      worstHit: Array.isArray(body.worstHit) ? body.worstHit : [],
-      changed: body.changed ?? 0,
-      worsened: body.worsened ?? 0,
-      improved: body.improved ?? 0,
-      assumptionNote: body.assumptionNote ?? null,
+      ...body,
     })
     return NextResponse.json({ narrative: brief.narrative, mitigations: brief.mitigations, narrativeError: null })
   } catch (err) {
