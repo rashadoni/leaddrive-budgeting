@@ -163,6 +163,193 @@ export function resolveShockOverrides(
   return out
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// Phase 16.6 (2026-08-06) — where the imported-input share comes from.
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Provenance of the imported-input share used for one company's FX shock.
+ *
+ *   measured   — `imported_input_cost` is in the data; the share is not used
+ *                at all and the scenario is not modelling anything.
+ *   assumption — the company's own `import_share` driver (a company override,
+ *                or the plan-level default) supplied it.
+ *   catalog    — nothing company-specific existed, so the scenario
+ *                definition's own literal stood in. This is the state the
+ *                board narrative has to disclose.
+ *   none       — no measurement, no assumption, and the scenario carries no
+ *                literal either: the FX shock has no cost base to act on.
+ */
+export type ImportShareSource = 'measured' | 'assumption' | 'catalog' | 'none'
+
+export interface ImportShareResolution {
+  /** The fraction to feed `assumedImportShare`. Zero and inert when `measured`. */
+  share: number
+  source: ImportShareSource
+  /**
+   * Set when an `import_share` assumption existed but was NOT usable as a
+   * fraction, so the resolution fell through to the next tier. Carries the
+   * offending value so the caller can name it rather than say "invalid".
+   */
+  rejected?: { value: number; reason: string }
+}
+
+/**
+ * Decide one company's imported-input share.
+ *
+ * Precedence — measured beats stated beats assumed:
+ *   1. `imported_input_cost > 0` in the company's own resolved scalars. The
+ *      share is then irrelevant: `resolveShockOverrides` prefers the real cost
+ *      and never multiplies by a fraction.
+ *   2. The company's `import_share` assumption.
+ *   3. The scenario definition's `assumedImportShare` literal.
+ *
+ * ── Why an out-of-range assumption is REFUSED rather than rescaled ────────
+ * A driver typed as `70` under a `%` unit means 70%, and `cogs * 70` is a
+ * seventy-fold cost shock — a number so wrong it would reorder the entire
+ * worst-hit ranking while looking like a finding. Dividing by 100 to "fix" it
+ * is a guess, and the import parser deliberately refuses the same guess
+ * (`assumptions-parse.ts` reports ambiguous percent scale instead of
+ * resolving it). So anything outside [0, 1] falls through to the next tier
+ * and is REPORTED, which is the only outcome that cannot silently produce a
+ * wrong board figure.
+ */
+export function resolveImportShare(input: {
+  /** `imported_input_cost` from this company's baseline scalars. */
+  importedInputCost: number
+  /** Value of the company's resolved `import_share` assumption, or null. */
+  assumption: number | null
+  /** The scenario definition's own `assumedImportShare`, if it carries one. */
+  catalogDefault: number | undefined
+}): ImportShareResolution {
+  const { importedInputCost, assumption, catalogDefault } = input
+
+  if (Number.isFinite(importedInputCost) && importedInputCost > 0) {
+    return { share: 0, source: 'measured' }
+  }
+
+  let rejected: ImportShareResolution['rejected']
+  if (assumption != null && Number.isFinite(assumption)) {
+    if (assumption >= 0 && assumption <= 1) {
+      return { share: assumption, source: 'assumption' }
+    }
+    rejected = {
+      value: assumption,
+      reason:
+        assumption < 0
+          ? 'a negative share is not a fraction of cost'
+          : 'a share above 1 is not a fraction — 70 means 70%, and the scale was not guessed',
+    }
+  }
+
+  if (catalogDefault != null && Number.isFinite(catalogDefault)) {
+    return { share: catalogDefault, source: 'catalog', ...(rejected ? { rejected } : {}) }
+  }
+  return { share: 0, source: 'none', ...(rejected ? { rejected } : {}) }
+}
+
+/**
+ * Per-company provenance for one simulation's imported-input share — the
+ * evidence behind the board narrative's caveat.
+ */
+export interface ImportShareReport {
+  /** Companies whose `imported_input_cost` is real data — nothing was assumed. */
+  measured: string[]
+  /** Companies that stated an `import_share` driver, with the value used. */
+  fromAssumption: Array<{ companyCode: string; share: number }>
+  /** Companies still standing on the scenario definition's literal. */
+  fromCatalogDefault: string[]
+  /** Companies with no measurement, no assumption and no literal to fall back on. */
+  unresolved: string[]
+  /** Assumptions that existed but were not usable as a fraction — reported, never rescaled. */
+  rejected: Array<{ companyCode: string; value: number; reason: string }>
+  /** The scenario definition's own literal, for the narrative to cite. */
+  catalogDefault: number | null
+}
+
+const pct = (v: number): number => Math.round(v * 100)
+
+/**
+ * How many company codes the note names before it summarises the rest.
+ *
+ * The note goes into an LLM prompt on every FX narrative, and a holding of ~60
+ * companies would otherwise list all of them each time. The cap is NOT silent:
+ * the elided count is stated, because a reader who cannot see "and 47 others"
+ * would take the listed dozen for the whole picture.
+ */
+const MAX_NAMED_COMPANIES = 12
+
+function nameList(codes: string[]): string {
+  if (codes.length <= MAX_NAMED_COMPANIES) return codes.join(', ')
+  const shown = codes.slice(0, MAX_NAMED_COMPANIES)
+  return `${shown.join(', ')} and ${codes.length - MAX_NAMED_COMPANIES} others`
+}
+
+/**
+ * The FX modelling caveat, stated at the precision the data now supports.
+ *
+ * Until 16.6 this was one sentence asserting a single literal for the whole
+ * holding: "Assumes 30% imported-input share (current data has no tagged
+ * imported costs)." That was true of the model and misleading about the
+ * finding — it read as one modelling choice rather than as sixty companies
+ * sharing one coefficient.
+ *
+ * The rule here is that the sentence must never claim more grounding than
+ * exists. Companies that STATED a share are named as stated; companies still
+ * on the literal are counted, not hidden; and a rejected assumption is
+ * surfaced with its value, because "we ignored the number you typed" is
+ * something the reader has to be told.
+ *
+ * Returns `null` when there is nothing to disclose — every company measured.
+ */
+export function buildImportShareNote(report: ImportShareReport | null): string | null {
+  if (!report) return null
+  const { fromAssumption, fromCatalogDefault, unresolved, rejected, catalogDefault } = report
+
+  const parts: string[] = []
+
+  if (fromAssumption.length > 0) {
+    const shares = fromAssumption.map((f) => `${f.companyCode} ${pct(f.share)}%`)
+    parts.push(
+      `Imported-input share stated for ${fromAssumption.length} ` +
+        `${fromAssumption.length === 1 ? 'company' : 'companies'} (${nameList(shares)}).`,
+    )
+  }
+
+  if (fromCatalogDefault.length > 0) {
+    const share = catalogDefault == null ? null : pct(catalogDefault)
+    parts.push(
+      `${fromCatalogDefault.length} ${fromCatalogDefault.length === 1 ? 'company has' : 'companies have'} ` +
+        `no stated share, so the scenario's ${share == null ? 'own' : `${share}%`} default was used for ` +
+        `${fromCatalogDefault.length === 1 ? 'it' : 'them'} — that figure is a modelling choice, not this business's data.`,
+    )
+  }
+
+  if (unresolved.length > 0) {
+    parts.push(
+      `${unresolved.length} ${unresolved.length === 1 ? 'company' : 'companies'} had no imported-cost ` +
+        'data, no stated share and no default, so the FX shock did not reach ' +
+        `${unresolved.length === 1 ? 'its' : 'their'} cost base at all.`,
+    )
+  }
+
+  // Rejections are listed individually rather than counted: each names a number
+  // a person typed and the model then declined to use, which is not something a
+  // summary count can convey. Capped like the rest, with the remainder stated.
+  for (const r of rejected.slice(0, MAX_NAMED_COMPANIES)) {
+    parts.push(
+      `${r.companyCode}'s stated share of ${r.value} was not used — ${r.reason}; ` +
+        'the value was left as written rather than rescaled.',
+    )
+  }
+  if (rejected.length > MAX_NAMED_COMPANIES) {
+    parts.push(`${rejected.length - MAX_NAMED_COMPANIES} further stated shares were unusable in the same way.`)
+  }
+
+  if (parts.length === 0) return null
+  return parts.join(' ')
+}
+
 /** Parse a raw `Scenario.overrides` blob into a typed ScenarioShock (or null). */
 export function readShock(overrides: unknown): ScenarioShock | null {
   if (!hasShock(overrides)) return null

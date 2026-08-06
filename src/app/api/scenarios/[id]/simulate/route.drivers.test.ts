@@ -11,6 +11,8 @@ const ivFindMany = vi.fn()
 const companyIndicatorFindMany = vi.fn()
 const fxFindMany = vi.fn()
 const intelFindMany = vi.fn()
+// Phase 16.6 — per-company imported-input share is read from BudgetAssumption.
+const assumptionFindMany = vi.fn()
 const getCompanyScopeMock = vi.fn()
 const createPrismaDataSource = vi.fn()
 vi.mock('@/lib/prisma', () => ({
@@ -22,6 +24,7 @@ vi.mock('@/lib/prisma', () => ({
     companyIndicator: { findMany: (...a: unknown[]) => companyIndicatorFindMany(...a) },
     currencyRateHistory: { findMany: (...a: unknown[]) => fxFindMany(...a) },
     intelDataPoint: { findMany: (...a: unknown[]) => intelFindMany(...a) },
+    budgetAssumption: { findMany: (...a: unknown[]) => assumptionFindMany(...a) },
   },
 }))
 vi.mock('@/lib/rbac/company-scope', () => ({
@@ -62,6 +65,7 @@ describe('GET simulate ?mode=drivers', () => {
     createPrismaDataSource.mockReturnValue({})
     fxFindMany.mockResolvedValue([])
     intelFindMany.mockResolvedValue([])
+    assumptionFindMany.mockResolvedValue([])
   })
 
   it('derives revenue from inputs.resolved.revenue + runs sim + narrative', async () => {

@@ -7,6 +7,24 @@
  */
 import type { ScenarioShock } from './scenario-shock'
 
+/**
+ * Phase 16.6 (2026-08-06) — on the `assumedImportShare: 0.3` below.
+ *
+ * That literal used to BE the imported-input share for every company in the
+ * holding: one coefficient applied to a refinery buying raw sugar abroad and to
+ * a domestic logistics arm alike, which made the worst-hit ranking an artifact
+ * of the constant rather than a finding.
+ *
+ * It is now the LAST tier of three. `resolveImportShare` prefers a company's
+ * measured `imported_input_cost`, then its own `import_share` assumption, and
+ * reaches this literal only when a company has stated nothing — at which point
+ * the board narrative says so by name and count.
+ *
+ * So it stays, deliberately: a scenario must still be simulatable for a company
+ * that has never filled in its drivers, and 0.3 is a defensible generic. What
+ * changed is that it can no longer masquerade as this business's data.
+ */
+
 export type CrisisCategory = 'fx_macro' | 'commodity' | 'climate_agro' | 'geopolitics' | 'customers'
 
 export interface CrisisCatalogEntry {
@@ -59,7 +77,7 @@ export const CRISIS_CATALOG: CrisisCatalogEntry[] = [
     nameEn: 'AZN devaluation → 2.04/USD',
     nameRu: 'Девальвация маната → 2.04/USD',
     nameAz: 'Manatın devalvasiyası → 2.04/USD',
-    description: 'AZN/USD to 2.04 (from the live CBAR rate ~1.70) → −20% manat; cost rises on the assumed 30% imported-input share.',
+    description: 'AZN/USD to 2.04 (from the live CBAR rate ~1.70) → −20% manat; cost rises on each company’s imported-input share, or on the 30% default where none is stated.',
     shock: { target: { metric: 'AZN_USD', value: 2.04, drives: 'fxShock' }, assumedImportShare: 0.3 },
   },
   // ── secondary catalog (severity tails + categories) ──

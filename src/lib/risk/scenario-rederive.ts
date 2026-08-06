@@ -19,7 +19,17 @@ import {
 import type { RecomputeDataSource } from './recompute-types'
 import type { IndicatorStatus } from './formula-engine'
 import { parsePeriod } from './periods'
-import { hasShock, readShock, resolveShockOverrides, type ResolvedScalars } from './scenario-shock'
+import {
+  hasShock,
+  readShock,
+  resolveShockOverrides,
+  resolveImportShare,
+  type ResolvedScalars,
+  type ImportShareReport,
+} from './scenario-shock'
+import { resolveAssumption } from '@/lib/budgeting/assumption-resolver'
+
+export type { ImportShareReport } from './scenario-shock'
 import { computeCompositeByCompany, deriveParentComposites } from './composite-score'
 import { countsTowardComposite } from './indicator-provenance'
 import { mapWithConcurrency } from './concurrency'
@@ -62,6 +72,30 @@ export interface SimulateByDriversInput {
   companies: SimulateByDriversCompany[]
   indicators: SimulateByDriversIndicator[]
   baselineIVs: SimulateByDriversBaselineIV[]
+  /**
+   * Phase 16.6 — the org's `BudgetAssumption` rows for this period's year, both
+   * tiers, unresolved. Precedence is applied per company by `resolveAssumption`.
+   *
+   * Pre-loaded by the caller for the same reason `baselineIVs` is: this module
+   * takes a `RecomputeDataSource`, not a Prisma client, and a per-company query
+   * inside the concurrency loop would be ~60 round trips for a table that fits
+   * in one.
+   *
+   * Omitted → every company falls back to the scenario's own literal, which is
+   * exactly the pre-16.6 behaviour, and the result says so.
+   */
+  assumptions?: ScenarioAssumptionRow[]
+}
+
+/** The `BudgetAssumption` columns the shock resolution reads. */
+export interface ScenarioAssumptionRow {
+  id: string
+  key: string
+  value: number
+  unit?: string | null
+  companyId?: string | null
+  sortOrder?: number | null
+  createdAt?: Date | string | null
 }
 export interface SimulateByDriversDeps {
   buildContext?: typeof realBuildContext
@@ -108,7 +142,19 @@ export interface DriverSimulationResult {
   worsened: number
   improved: number
   driftSummary: { pairsAttempted: number; pairsErrored: number; lastError: string | null }
+  /**
+   * Phase 16.6 — where each company's imported-input share came from. Present
+   * only for an FX shock, which is the only lever the share modulates.
+   *
+   * This is the evidence behind the board narrative's caveat. Before 16.6 the
+   * caveat was a single sentence asserting one literal for the whole holding;
+   * it can now name how many companies stated their own share and how many are
+   * still standing on the scenario's default.
+   */
+  importShare: ImportShareReport | null
 }
+
+
 
 const STATUS_ORDER: Record<IndicatorStatus, number> = { green: 3, amber: 2, red: 1, unknown: 0 }
 
@@ -238,6 +284,24 @@ export async function simulateByDrivers(
   // ── Phase 1 — per-company shock overrides (one baseline buildContext each),
   //    run concurrently. ────────────────────────────────────────────────────
   const overridesByCompany = new Map<string, Record<string, number>>()
+  // Phase 16.6 — the FX lever's imported-input share is resolved PER COMPANY.
+  // Before this, one `assumedImportShare` literal from the scenario definition
+  // stood in for every company in the holding, so a devaluation hit a sugar
+  // refinery that buys raw abroad and a domestic logistics arm with the same
+  // coefficient — and the "worst-hit" ranking that produced was an artifact of
+  // that constant rather than a finding.
+  const catalogDefault = shock.assumedImportShare
+  const shareReport: ImportShareReport = {
+    measured: [],
+    fromAssumption: [],
+    fromCatalogDefault: [],
+    unresolved: [],
+    rejected: [],
+    catalogDefault: typeof catalogDefault === 'number' && Number.isFinite(catalogDefault) ? catalogDefault : null,
+  }
+  const assumptionRows = input.assumptions ?? []
+  const tracksImportShare = Boolean(shock.fxShock)
+
   await mapWithConcurrency(activeCompanies, RECOMPUTE_CONCURRENCY, async (co) => {
     const coIVs = ivsByCompany.get(co.id) ?? []
     const coRequired = Array.from(new Set(coIVs.flatMap((iv) => indicatorById.get(iv.indicatorId)?.requiredInputs ?? [])))
@@ -249,12 +313,42 @@ export async function simulateByDrivers(
         requiredInputs: coRequired,
         industry: co.industry ?? null,
       })
-      overridesByCompany.set(co.id, resolveShockOverrides(shock, readScalars(baseCtx.context as Record<string, unknown>)))
+      const scalars = readScalars(baseCtx.context as Record<string, unknown>)
+
+      // A company override beats the plan-level default, and both beat the
+      // scenario's literal — but measured `imported_input_cost` beats all three
+      // and makes the share inert, which is why the resolution takes the
+      // scalars rather than only the assumption.
+      const resolved = resolveImportShare({
+        importedInputCost: scalars.imported_input_cost,
+        assumption: resolveAssumption(assumptionRows, 'import_share', co.id)?.value ?? null,
+        catalogDefault,
+      })
+      if (tracksImportShare) {
+        if (resolved.rejected) {
+          shareReport.rejected.push({ companyCode: co.code, ...resolved.rejected })
+        }
+        if (resolved.source === 'measured') shareReport.measured.push(co.code)
+        else if (resolved.source === 'assumption') shareReport.fromAssumption.push({ companyCode: co.code, share: resolved.share })
+        else if (resolved.source === 'catalog') shareReport.fromCatalogDefault.push(co.code)
+        else shareReport.unresolved.push(co.code)
+      }
+
+      const coShock = resolved.source === 'assumption' ? { ...shock, assumedImportShare: resolved.share } : shock
+      overridesByCompany.set(co.id, resolveShockOverrides(coShock, scalars))
     } catch (err) {
       overridesByCompany.set(co.id, {})
       lastError = err instanceof Error ? err.message : String(err)
     }
   })
+
+  // Concurrency writes these arrays in completion order; sorting makes the
+  // narrative and its cached copy identical across runs of the same scenario.
+  shareReport.measured.sort()
+  shareReport.fromCatalogDefault.sort()
+  shareReport.unresolved.sort()
+  shareReport.fromAssumption.sort((a, b) => (a.companyCode < b.companyCode ? -1 : a.companyCode > b.companyCode ? 1 : 0))
+  shareReport.rejected.sort((a, b) => (a.companyCode < b.companyCode ? -1 : a.companyCode > b.companyCode ? 1 : 0))
 
   // ── Phase 2 — re-derive every (company, indicator) pair CONCURRENTLY (capped).
   //    Each call is still the canonical recomputeIndicator (disclosure / clamps
@@ -415,5 +509,8 @@ export async function simulateByDrivers(
     worsened,
     improved,
     driftSummary: { pairsAttempted, pairsErrored, lastError },
+    // Null for a non-FX scenario: the share modulates the FX lever only, and
+    // reporting an empty breakdown would imply it had been considered.
+    importShare: tracksImportShare ? shareReport : null,
   }
 }
