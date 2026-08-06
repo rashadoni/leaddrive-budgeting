@@ -3725,7 +3725,9 @@
         "geopolitics": "🌍 Geosiyasət",
         "customers": "👥 Müştərilər",
         "__other__": "🧪 Digər (multiplikator)"
-      }
+      },
+      "plannedSourceTitle": "Baza holdinqin bəyan etdiyi plan məzənnəsidir, bazar kotirovkası deyil — canlı lentdə bu metrika üzrə səviyyə yoxdur.",
+      "plannedBadge": "plan məzənnəsi"
     },
     "scenarioForm": {
       "editTitle": "Redaktə: {code}",

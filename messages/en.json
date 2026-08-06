@@ -3725,7 +3725,9 @@
         "geopolitics": "🌍 Geopolitics",
         "customers": "👥 Customers",
         "__other__": "🧪 Other (multiplier)"
-      }
+      },
+      "plannedSourceTitle": "Baseline is the holding's stated planning rate, not a market quote — the live feed had no level for this metric.",
+      "plannedBadge": "planning rate"
     },
     "scenarioForm": {
       "editTitle": "Edit: {code}",

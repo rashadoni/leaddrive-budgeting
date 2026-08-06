@@ -376,3 +376,55 @@ describe("parseAssumptions — refusals and reports", () => {
     expect(r.warnings.join(" ")).toMatch(/No assumptions parsed/)
   })
 })
+
+describe("parseAssumptions — header vocabulary drawn from real client files", () => {
+  // These terms are not dictionary picks. They are the words this tenant's
+  // workbooks actually use, read off the header literals the shipped adapters
+  // match against: 'MADDƏ' / 'GƏLİR/XƏRC MADDƏLƏRİ' as the line-item column in
+  // azseker-plf, 'Məhsul miqdarı (ton)' and 'Miqdar/Məbləğ' as quantity
+  // columns, 'Mərkəz' as the cost centre. The first draft of the vocabulary
+  // missed all three.
+  it("reads MADDƏ as the label column", () => {
+    const r = parseAssumptions(wb([["MADDƏ", "Dəyər"], ["Inflyasiya", 6]]), SHEET, XLSX)
+    expect(r.rows[0]).toMatchObject({ key: "inflation", value: 6 })
+  })
+
+  it("reads Miqdar as the value column", () => {
+    const r = parseAssumptions(wb([["Göstərici", "Miqdar"], ["Inflyasiya", 6]]), SHEET, XLSX)
+    expect(r.rows[0].value).toBe(6)
+  })
+
+  it("reads Mərkəz as the company column", () => {
+    const r = parseAssumptions(
+      wb([["Göstərici", "Dəyər", "Mərkəz"], ["Idxal payı", 0.7, "CPC MMC"]]),
+      SHEET,
+      XLSX,
+      matcher,
+    )
+    expect(r.rows[0].companyCode).toBe("AZSEKER-CPC")
+  })
+
+  it("reads Статья as the Russian label column", () => {
+    const r = parseAssumptions(wb([["Статья", "Значение"], ["Инфляция", 6]]), SHEET, XLSX)
+    expect(r.rows[0]).toMatchObject({ key: "inflation", value: 6 })
+  })
+
+  it("reads Норма and Количество as value columns", () => {
+    for (const header of ["Норма", "Количество"]) {
+      const r = parseAssumptions(wb([["Показатель", header], ["Инфляция", 6]]), SHEET, XLSX)
+      expect(r.rows[0]?.value).toBe(6)
+    }
+  })
+
+  it("reads an English 'Item' / 'Norm' pairing", () => {
+    const r = parseAssumptions(wb([["Item", "Norm"], ["Inflation", 6]]), SHEET, XLSX)
+    expect(r.rows[0]).toMatchObject({ key: "inflation", value: 6 })
+  })
+
+  it("still refuses a sheet whose columns match nothing", () => {
+    // The vocabulary grew; the refusal must not have loosened with it.
+    const r = parseAssumptions(wb([["Foo", "Bar"], ["x", 1]]), SHEET, XLSX)
+    expect(r.rows).toHaveLength(0)
+    expect(r.warnings.join(" ")).toMatch(/no header row recognised/)
+  })
+})

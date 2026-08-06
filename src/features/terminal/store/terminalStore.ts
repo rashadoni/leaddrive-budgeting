@@ -190,6 +190,13 @@ export interface ScenarioBriefState {
     unit: string;
     asOf: string;
     stale: boolean;
+    /**
+     * Phase 16.8 — `assumption` means `currentValue` is the holding's stated
+     * PLANNING rate, used because the live feed had no level for this metric.
+     * Optional so a pre-16.8 cached brief still typechecks; absent reads as
+     * `feed`.
+     */
+    source?: 'feed' | 'assumption';
   }>;
 }
 

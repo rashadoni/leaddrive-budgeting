@@ -85,15 +85,39 @@ const CANONICAL_KEYS: Array<{ key: string; category: string; hints: string[] }> 
   { key: "capacity_utilization", category: "operations", hints: ["capacity utilization", "utilisation", "загрузка мощност", "güc istifadə"] },
 ]
 
-/** Column label hints, EN / RU / AZ. No legacy positional fallback — see below. */
+/**
+ * Column label hints, EN / RU / AZ. No legacy positional fallback — see below.
+ *
+ * ── Provenance of the Azerbaijani terms ──────────────────────────────────
+ * `maddə`, `miqdar` and `mərkəz` are NOT translations chosen here; they are
+ * the words this tenant's real workbooks use, read off the header literals the
+ * shipped adapters match against (`'MADDƏ'` and `'GƏLİR/XƏRC MADDƏLƏRİ'` as the
+ * line-item column in `azseker-plf`, `'Məhsul miqdarı (ton)'` and
+ * `'Miqdar/Məbləğ'` as quantity columns, `'Mərkəz'` as the cost centre).
+ * The first draft of this list was invented from the dictionary and missed all
+ * three, which is exactly the failure mode 16.5a exists to name: a vocabulary
+ * that looks complete because nobody compared it to a real file.
+ *
+ * That comparison is still partial — no client ASSUMPTIONS tab has been seen,
+ * only their P&L / KPI / CAPEX sheets — so 16.5a stays open. What changed is
+ * that the terms below are now evidence where they used to be guesses.
+ */
 const COLUMN_HINTS: Record<string, string[]> = {
   key: ["key", "ключ", "açar", "code", "код", "kod"],
-  label: ["parameter", "assumption", "driver", "name", "indicator", "показател", "параметр", "допущен", "наименован", "название", "gösterici", "göstərici", "ad", "fərziyyə"],
-  value: ["value", "amount", "rate", "значение", "сумма", "ставка", "dəyər", "məbləğ"],
+  label: [
+    "parameter", "assumption", "driver", "name", "indicator", "item", "article",
+    "показател", "параметр", "допущен", "наименован", "название", "статья",
+    "gösterici", "göstərici", "ad", "fərziyyə", "maddə",
+  ],
+  value: [
+    "value", "amount", "rate", "norm", "quantity",
+    "значение", "сумма", "ставка", "норма", "количеств",
+    "dəyər", "məbləğ", "miqdar", "dərəcə",
+  ],
   unit: ["unit", "uom", "единиц", "изм", "vahid", "ölçü"],
   period: ["period", "frequency", "период", "частот", "dövr", "tezlik"],
   category: ["category", "group", "section", "категор", "групп", "раздел", "kateqoriya", "qrup", "bölmə"],
-  company: ["company", "entity", "компан", "предприят", "юрлиц", "şirkət", "müəssisə"],
+  company: ["company", "entity", "компан", "предприят", "юрлиц", "şirkət", "müəssisə", "mərkəz"],
   notes: ["note", "comment", "source", "basis", "примечан", "коммент", "источник", "обоснован", "qeyd", "şərh", "mənbə", "əsas"],
 }
 

@@ -1026,25 +1026,50 @@ export function ScenarioPanel() {
                       </button>
                     </div>
 
-                    {/* Live-feed anchors (Phase 2) — "from the real current level" */}
+                    {/* Live-feed anchors (Phase 2) — "from the real current level".
+                        Phase 16.8: an anchor may instead be the holding's stated
+                        PLANNING rate, used when the feed had no level. It gets a
+                        different colour, icon and date glyph, because the ✓ and
+                        the 📊 below assert a verified market observation and a
+                        planning rate is a decision, not a quote. */}
                     {scenarioBrief.feedAnchors.length > 0 && (
                       <div className="flex flex-wrap gap-2" data-testid="crisis-feed-anchors">
-                        {scenarioBrief.feedAnchors.map((a) => (
+                        {scenarioBrief.feedAnchors.map((a) => {
+                          const planned = a.source === "assumption";
+                          return (
                           <span
                             key={a.label}
-                            className="inline-flex items-baseline gap-1.5 rounded border border-sky-500/25 bg-sky-500/10 px-2 py-1 text-xs"
-                            title={`${t("scenarioPanel.sourceTitle", { asOf: a.asOf })}${a.stale ? t("scenarioPanel.staleSuffix") : ""}`}
+                            data-anchor-source={planned ? "assumption" : "feed"}
+                            className={`inline-flex items-baseline gap-1.5 rounded border px-2 py-1 text-xs ${
+                              planned
+                                ? "border-violet-500/25 bg-violet-500/10"
+                                : "border-sky-500/25 bg-sky-500/10"
+                            }`}
+                            title={
+                              planned
+                                ? t("scenarioPanel.plannedSourceTitle")
+                                : `${t("scenarioPanel.sourceTitle", { asOf: a.asOf })}${a.stale ? t("scenarioPanel.staleSuffix") : ""}`
+                            }
                           >
-                            <span className="text-sky-300/90">📊 {a.label}</span>
+                            <span className={planned ? "text-violet-300/90" : "text-sky-300/90"}>
+                              {planned ? "📝" : "📊"} {a.label}
+                            </span>
                             <span className="text-gray-400 tabular-nums">{a.currentValue}</span>
                             <span className="text-gray-400">→</span>
                             <span className="font-semibold tabular-nums">{a.scenarioValue}</span>
                             <span className="text-[10px] text-gray-400">{a.unit}</span>
-                            <span className={`text-[10px] ${a.stale ? "text-amber-500" : "text-emerald-500/70"}`}>
-                              {a.stale ? `⚠ ${a.asOf}` : `✓ ${a.asOf}`}
-                            </span>
+                            {planned ? (
+                              <span className="text-[10px] text-violet-400/80">
+                                {t("scenarioPanel.plannedBadge")}
+                              </span>
+                            ) : (
+                              <span className={`text-[10px] ${a.stale ? "text-amber-500" : "text-emerald-500/70"}`}>
+                                {a.stale ? `⚠ ${a.asOf}` : `✓ ${a.asOf}`}
+                              </span>
+                            )}
                           </span>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
 

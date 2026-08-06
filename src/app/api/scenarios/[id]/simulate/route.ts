@@ -32,7 +32,15 @@ import {
 } from '@/lib/risk/scenario-simulator'
 import { createPrismaDataSource } from '@/lib/risk/recompute'
 import { hasShock, readShock, buildDriverNote, COMPANY_DRIVERS } from '@/lib/risk/scenario-shock'
-import { resolveFeedShock, resolveFeedContext, FEED_STALE_DAYS, type FeedSnapshot } from '@/lib/risk/scenario-feed-context'
+import {
+  resolveFeedShock,
+  resolveFeedContext,
+  applyAssumptionAnchors,
+  FEED_ANCHOR_ASSUMPTIONS,
+  FEED_STALE_DAYS,
+  type FeedSnapshot,
+} from '@/lib/risk/scenario-feed-context'
+import { resolveAssumption } from '@/lib/budgeting/assumption-resolver'
 import { simulateByDrivers } from '@/lib/risk/scenario-rederive'
 import { aiErrorBody } from '@/lib/ai/ai-error'
 import { runCrisisBrief, type BriefLanguage } from '@/lib/risk/scenario-narrative'
@@ -247,7 +255,12 @@ export async function GET(
               // Phase 16.7 — every driver a scenario lever can read, not just
               // the FX one. Filtered by key rather than loaded whole so a plan
               // with hundreds of documentation-only assumptions costs nothing.
-              key: { in: COMPANY_DRIVERS.map((d) => d.key) },
+              key: {
+                in: [
+                  ...COMPANY_DRIVERS.map((d) => d.key),
+                  ...FEED_ANCHOR_ASSUMPTIONS.map((a) => a.assumptionKey),
+                ],
+              },
               plan: { is: { year: periodYear, deletedAt: null } },
             },
             select: { id: true, key: true, value: true, unit: true, companyId: true, sortOrder: true, createdAt: true },
@@ -311,8 +324,18 @@ export async function GET(
     for (const r of intelRows) {
       feedSnapshot[r.metric] = { value: r.value, asOf: r.datetime.toISOString().slice(0, 10), stale: nowMs - r.datetime.getTime() > staleMs }
     }
-    const resolvedShock = resolveFeedShock(rawShock, feedSnapshot)
-    const feedAnchors = resolveFeedContext(rawShock, feedSnapshot)
+    // Phase 16.8 — a target scenario needs a CURRENT level to anchor against.
+    // When the live feed has none, the holding's own stated planning rate stands
+    // in, marked `source: 'assumption'` so nothing downstream can present it as
+    // a market quote. Without this a missing CBAR row makes AZN_DEVAL_20 — a
+    // flagship scenario — answer 422 and simply not run.
+    const anchoredSnapshot = applyAssumptionAnchors(
+      feedSnapshot,
+      (key) => resolveAssumption(assumptionRows, key, null)?.value ?? null,
+      new Date(nowMs).toISOString().slice(0, 10),
+    )
+    const resolvedShock = resolveFeedShock(rawShock, anchoredSnapshot)
+    const feedAnchors = resolveFeedContext(rawShock, anchoredSnapshot)
     // A target-only scenario whose feed metric is missing can't derive a fraction.
     if (!hasShock({ shock: resolvedShock })) {
       return NextResponse.json(
