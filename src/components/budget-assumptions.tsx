@@ -165,14 +165,14 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
     // Entering a driver by hand is the path that actually exists.
     return (
       <>
-        <Card>
+        <Card data-testid="assumptions-empty">
           <CardContent className="p-12 text-center">
             <Settings2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
             <p className="font-medium text-foreground">{t("assumptionsEmptyTitle")}</p>
             <p className="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">
               {t("assumptionsEmptyDescription")}
             </p>
-            <Button className="mt-5" onClick={() => setEditing({ row: null })}>
+            <Button className="mt-5" data-testid="assumptions-add-first" onClick={() => setEditing({ row: null })}>
               <Plus className="h-4 w-4 mr-1" /> {t("assumptionAddFirst")}
             </Button>
           </CardContent>
@@ -254,7 +254,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
   const duplicateKeys = ambiguousKeys(assumptions, null)
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="assumptions-root">
       {editorDialog}
       {/* KPI Strip — Power BI style scorecards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -389,7 +389,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
       {/* Detail Matrix — Tableau style with search + expandable rows */}
       <div className="rounded-xl border bg-card">
         <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="text-sm font-semibold text-foreground">{t("assumptionsDetailsTitle")}</h3>
+          <h3 className="text-sm font-semibold text-foreground" data-testid="assumptions-details-title">{t("assumptionsDetailsTitle")}</h3>
           <div className="flex items-center gap-2">
             <div className="relative w-64">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -400,7 +400,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                 className="pl-8 h-8 text-xs"
               />
             </div>
-            <Button size="sm" className="h-8" onClick={() => setEditing({ row: null })}>
+            <Button size="sm" className="h-8" data-testid="assumptions-add" onClick={() => setEditing({ row: null })}>
               <Plus className="h-3.5 w-3.5 mr-1" /> {t("btnAdd")}
             </Button>
           </div>
@@ -411,7 +411,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
             has to break ties deterministically, and a reader deserves to know
             a tie was broken rather than to trust the surviving number. */}
         {duplicateKeys.length > 0 && (
-          <div className="flex items-start gap-2 px-4 py-2 border-b bg-amber-50 dark:bg-amber-950/30 text-[11px] text-amber-800 dark:text-amber-300">
+          <div data-testid="assumptions-duplicate-warning" className="flex items-start gap-2 px-4 py-2 border-b bg-amber-50 dark:bg-amber-950/30 text-[11px] text-amber-800 dark:text-amber-300">
             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <span>{t("assumptionsDuplicateKeys", { keys: duplicateKeys.join(", ") })}</span>
           </div>
@@ -458,6 +458,9 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                 {isExpanded && filteredItems.map((item) => (
                   <div
                     key={item.id}
+                    data-testid="assumptions-row"
+                    data-assumption-key={item.key}
+                    data-assumption-scope={item.companyId ? "company" : "plan"}
                     className="group grid grid-cols-[1fr_110px_100px_80px_80px_32px] items-center gap-2 px-4 py-1.5 border-b border-dashed border-muted hover:bg-muted/20 transition-colors"
                     style={{ paddingLeft: "2.5rem" }}
                   >

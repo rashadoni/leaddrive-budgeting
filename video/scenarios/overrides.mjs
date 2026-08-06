@@ -453,7 +453,181 @@ const IB_CSV = ['[data-testid="backlog-csv"]', '[data-testid="backlog-entity-act
 const IB_EMAIL = ['[data-testid="backlog-email"]', '[data-testid="backlog-entity-actions"]'];
 const IB_UPLOAD = ['[data-testid="backlog-upload"]', '[data-testid="backlog-entity-actions"]'];
 
+
+// ── Assumptions (Fərziyyələr) — budget drivers ──────────────────────────
+// Every anchor is a data-testid added in the same change as this scenario, so
+// the take does not hang off CSS classes or translated text.
+const AS_ROOT = ['[data-testid="assumptions-root"]', "main"];
+const AS_DETAILS = ['[data-testid="assumptions-details-title"]', AS_ROOT[0], "main"];
+const AS_ADD = ['[data-testid="assumptions-add"]', '[data-testid="assumptions-add-first"]', AS_ROOT[0]];
+const AS_ROW_PLAN = ['[data-assumption-scope="plan"]', '[data-testid="assumptions-row"]', AS_ROOT[0]];
+const AS_ROW_COMPANY = ['[data-assumption-scope="company"]', '[data-testid="assumptions-row"]', AS_ROOT[0]];
+const AS_ROW_IMPORT = ['[data-assumption-key="import_share"]', '[data-testid="assumptions-row"]', AS_ROOT[0]];
+const AS_DUP = ['[data-testid="assumptions-duplicate-warning"]', AS_DETAILS[0], AS_ROOT[0]];
+// Dialog — opened by AS_ADD, always closed again with AS_CANCEL. Nothing in
+// this scenario may touch AS_SAVE: the recorder clicks for real, and the guide
+// must not leave a row behind. Kept as a constant only so the scenario test can
+// assert it is never referenced inside a `do`.
+const AS_EDITOR = ['[data-testid="assumption-editor"]', "main"];
+const AS_F_KEY = ['[data-testid="assumption-field-key"]', AS_EDITOR[0]];
+const AS_F_LABEL = ['[data-testid="assumption-field-label"]', AS_EDITOR[0]];
+const AS_F_VALUE = ['[data-testid="assumption-field-value"]', AS_EDITOR[0]];
+const AS_F_UNIT = ['[data-testid="assumption-field-unit"]', AS_EDITOR[0]];
+const AS_F_SCOPE = ['[data-testid="assumption-field-scope"]', AS_EDITOR[0]];
+const AS_F_NOTES = ['[data-testid="assumption-field-notes"]', AS_EDITOR[0]];
+const AS_CANCEL = ['[data-testid="assumption-cancel"]', AS_EDITOR[0]];
+
 export default {
+  "assumptions": {
+    route: "/budgeting?tab=assumptions",
+    title: {
+      az: "Fərziyyələr — büdcənin sürücüləri",
+      en: "Assumptions — the drivers a budget is built on",
+      ru: "Допущения — драйверы, на которых собран бюджет",
+    },
+    scenes: [
+      {
+        voice: {
+          az: "Bu, Fərziyyələr bölməsidir. Burada hesabat deyil, büdcənin qurulduğu ilkin şərtlər saxlanılır: valyuta məzənnələri, inflyasiya, sərfiyyat normaları, idxal xərclərinin payı. Hesabat «nə qədər» sualına cavab verir, bu bölmə isə «niyə məhz bu qədər» sualına. Onsuz heç bir planı idarə heyəti qarşısında müdafiə etmək mümkün deyil.",
+          en: "This is the Assumptions section. It holds no results — it holds the premises a budget was built from: exchange rates, inflation, consumption norms, the share of imported cost. A report answers how much; this section answers why that much. Without it no plan can be defended to a board.",
+          ru: "Это раздел «Допущения». Здесь не отчётность, а предпосылки, из которых собран бюджет: курсы валют, инфляция, нормы расхода, доля импортных затрат. Отчёт отвечает на вопрос «сколько», а этот раздел — «почему именно столько». Без него ни один план невозможно защитить на совете директоров.",
+        },
+        do: async (p, l, h) => {
+          await p.waitForSelector(AS_ROOT[0], { timeout: 15000 }).catch(() => {});
+          await h.moveTo(AS_ROOT);
+          await h.holdUntil(0.45);
+          await h.hover(AS_DETAILS);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Hər sətrin tətbiq sahəsi var. Boz «Plan» nişanı o deməkdir ki, dəyər holdinqin bütün şirkətlərinə aid defolt dəyərdir. Şirkət kodu olan nişan isə əvəzetmədir: yalnız həmin şirkət üçün işləyir və plan defoltunu üstələyir. Beləliklə, bir parametr həm ümumi qaydanı, həm də istisnaları təsvir edir.",
+          en: "Every row carries a scope. The grey Plan badge means the value is the default for every company in the holding. A badge with a company code is an override: it applies to that company alone and beats the plan default. One parameter therefore describes both the general rule and its exceptions.",
+          ru: "У каждой строки есть область применения. Серый бейдж «План» означает значение по умолчанию для всех компаний холдинга. Бейдж с кодом компании — это переопределение: оно действует только для неё и перекрывает план-дефолт. Так один параметр описывает и общее правило, и исключения из него.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_ROW_PLAN);
+          await h.holdUntil(0.4);
+          await h.hover(AS_ROW_PLAN);
+          await h.holdUntil(0.62);
+          await h.hover(AS_ROW_COMPANY);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Bunun praktik mənası nədir. Manatın devalvasiyası ssenarisi əvvəllər bütün şirkətlərə eyni otuz faizlik əmsalla vururdu. Amma şəkər zavodu xammalı xaricdən alır, daxili logistika isə demək olar ki, almır. Eyni zərbə «ən çox zərər görənlər» reytinqini tapıntıya yox, sabitin artefaktına çevirirdi.",
+          en: "Why that matters in practice. The manat devaluation scenario used to hit every company with the same thirty per cent coefficient. But a sugar refinery buys its raw material abroad while a domestic logistics arm barely does. One shared coefficient turned the worst-hit ranking into an artefact of the constant rather than a finding.",
+          ru: "Зачем это нужно на практике. Сценарий девальвации маната раньше бил по всем компаниям одним коэффициентом в тридцать процентов. Но сахарный завод покупает сырьё за рубежом, а внутренняя логистика — почти нет. Одинаковый удар превращал рейтинг пострадавших в артефакт константы, а не в находку.",
+        },
+        do: async (p, l, h) => {
+          await h.hover(AS_ROW_IMPORT);
+          await h.holdUntil(0.55);
+          await h.moveTo(AS_ROW_COMPANY);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "İndi bir sürücü əlavə edək. «Əlavə et» düyməsi formanı açır. Diqqət yetirin: formanı tam dolduracağıq, amma yadda saxlamayacağıq — bu, nümayişdir. İşdə isə eyni addımlarla real dəyəri daxil edib saxlayırsınız.",
+          en: "Now let us add a driver. The Add button opens the form. Note that we will fill it in completely but will not save it — this is a demonstration. In real work you follow the same steps and then save the value.",
+          ru: "Теперь добавим драйвер. Кнопка «Добавить» открывает форму. Обратите внимание: заполним её полностью, но сохранять не будем — это демонстрация. В работе вы теми же шагами вводите реальное значение и сохраняете.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_ADD);
+          await h.holdUntil(0.45);
+          await h.click(AS_ADD);
+          await p.waitForSelector(AS_EDITOR[0], { timeout: 8000 }).catch(() => {});
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Birinci sahə — açar. Bu, ad deyil, düsturların və ssenarilərin sürücünü tapdığı sabit identifikatordur. Adı istənilən vaxt dəyişmək olar, açarı isə yox: devalvasiya ssenarisi məhz «import_share» açarını axtarır. Açar səhv olsa, sətir cədvəldə görünəcək, amma heç bir hesablama onu oxumayacaq.",
+          en: "The first field is the key. It is not a name but the stable identifier formulas and scenarios look the driver up by. The name can change at any time; the key cannot. The devaluation scenario looks for exactly import share. With a wrong key the row still appears in the table, but no calculation will ever read it.",
+          ru: "Первое поле — ключ. Это не название, а стабильный идентификатор, по которому формулы и сценарии находят драйвер. Название можно менять когда угодно, ключ — нет: сценарий девальвации ищет именно «import_share». С неверным ключом строка в таблице появится, но ни один расчёт её не прочитает.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_F_KEY);
+          await h.holdUntil(0.3);
+          await h.fill(AS_F_KEY, "import_share");
+          await h.holdUntil(0.7);
+          await h.fill(AS_F_LABEL, "Idxal xərclərinin payı");
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Dəyər və ölçü vahidi. Burada əsas tələ var: pay kəsr kimi yazılır — sıfır tam yeddi, yetmiş yox. Yetmiş yazsanız, sistem sükutla yenidən hesablamayacaq: dəyəri istifadə etməkdən imtina edəcək və bunu açıq deyəcək, çünki xərcləri yetmişə vurmaq bütün reytinqi alt-üst edərdi.",
+          en: "Value and unit. Here is the main trap: a share is written as a fraction — zero point seven, not seventy. If you type seventy the system will not silently rescale it. It refuses to use the value and says so, because multiplying cost by seventy would reorder the entire ranking while looking like a finding.",
+          ru: "Значение и единица. Здесь главная ловушка: доля пишется дробью — ноль целых семь десятых, а не семьдесят. Если написать семьдесят, система не пересчитает молча: она откажется использовать значение и прямо об этом скажет, потому что умножение затрат на семьдесят перевернуло бы весь рейтинг.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_F_VALUE);
+          await h.holdUntil(0.3);
+          await h.fill(AS_F_VALUE, "0.7");
+          await h.holdUntil(0.65);
+          await h.fill(AS_F_UNIT, "%");
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Tətbiq sahəsi. Defolt olaraq «Bütün plan» seçilir — dəyər plandakı bütün şirkətlərə aid olur. Siyahıdan şirkət seçmək sətri yalnız həmin şirkət üçün əvəzetməyə çevirir. Əvəzetməni yalnız şirkət həqiqətən fərqləndiyi yerdə yaradın, yoxsa eyni rəqəmi altmış dəfə saxlamalı olacaqsınız.",
+          en: "Now the scope. It defaults to the whole plan, so the value applies to every company in it. Picking a company from the list turns the row into an override for that company alone. Create an override only where a company genuinely differs — otherwise you end up maintaining the same number sixty times.",
+          ru: "Область применения. По умолчанию выбран весь план — значение действует на все компании в нём. Выбор компании из списка превращает строку в переопределение только для неё. Заводите переопределение там, где компания действительно отличается, иначе придётся поддерживать одно и то же число шестьдесят раз.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_F_SCOPE);
+          await h.holdUntil(0.45);
+          await h.hover(AS_F_SCOPE);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "«Niyə» sahəsi rəqəmin özündən vacibdir. Mənbə, metod, kimin razılaşdırdığı. Məhz bunu idarə heyətində soruşurlar, və məhsulda bu əsaslandırma başqa heç bir yerdə saxlanmır. Boş qoyulmuş sahə altı ay sonra heç kimin xatırlamadığı rəqəmə çevrilir.",
+          en: "The Why field matters more than the number itself: the source, the method, who agreed it. That is exactly what a board asks about, and nowhere else in the product is that reasoning stored. A field left empty becomes, six months later, a number nobody can account for.",
+          ru: "Поле «Почему» важнее самого числа: источник, метод, кто согласовал. Именно это спрашивают на совете директоров, и больше нигде в продукте обоснование не хранится. Оставленное пустым поле через полгода превращается в цифру, которую никто не может объяснить.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_F_NOTES);
+          await h.holdUntil(0.35);
+          await h.fill(AS_F_NOTES, "Satınalma müqavilələri üzrə orta, 2026 büdcə komitəsi");
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "İndi «Ləğv et» düyməsini basırıq — heç nə saxlanılmadı, cədvəl olduğu kimi qaldı. İş zamanı bu yerdə «Yadda saxla» düyməsini basardınız və sətir öz tətbiq sahəsi nişanı ilə cədvəldə görünərdi. Sətri sonradan redaktə etmək və silmək də mümkündür.",
+          en: "Now we press Cancel — nothing was saved and the table is unchanged. In real work you would press Save at this point and the row would appear in the table with its own scope badge. A row can also be edited or deleted afterwards.",
+          ru: "Теперь нажимаем «Отмена» — ничего не сохранено, таблица осталась прежней. В работе на этом месте вы нажали бы «Сохранить», и строка появилась бы в таблице с бейджем своей области применения. Строку затем можно отредактировать или удалить.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_CANCEL);
+          await h.holdUntil(0.4);
+          await h.click(AS_CANCEL);
+          await h.holdUntil(0.75);
+          await h.moveTo(AS_DETAILS);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Sonda bir xəbərdarlıq. Əgər eyni açar plan səviyyəsində iki dəfə verilibsə, cədvəlin üstündə sarı xəbərdarlıq görünür: sistem bir sətri müəyyən qaydaya görə seçir, qalanlarını isə nəzərə almır — və bunu gizlətmir. Yekun sadədir: buradakı bir neçə sətir ssenariləri kalkulyatordan əsaslandırılmış hesablamaya çevirir.",
+          en: "One warning at the end. If the same key is stated twice at plan level, an amber notice appears above the table: the system picks one row by a fixed rule and ignores the rest — and it does not hide that. The takeaway is simple: a handful of rows here turn the scenarios from a calculator into a grounded calculation.",
+          ru: "И последнее предупреждение. Если один ключ задан дважды на уровне плана, над таблицей появляется янтарное уведомление: система возьмёт одну строку по фиксированному правилу, а остальные проигнорирует — и не скрывает этого. Вывод простой: несколько строк здесь превращают сценарии из калькулятора в обоснованный расчёт.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(AS_DUP);
+          await h.holdUntil(0.45);
+          await h.hover(AS_ROW_IMPORT);
+          await h.holdUntil(0.92);
+        },
+      },
+    ],
+  },
   "workspace": {
     route: "/budgeting?tab=workspace",
     title: {

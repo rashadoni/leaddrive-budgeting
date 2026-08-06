@@ -230,7 +230,7 @@ export function BudgetAssumptionEditor({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg" data-testid="assumption-editor">
         <DialogHeader>
           <DialogTitle>{existing ? t("assumptionEditTitle") : t("assumptionAddTitle")}</DialogTitle>
           <DialogDescription>{t("assumptionEditorDescription")}</DialogDescription>
@@ -266,6 +266,7 @@ export function BudgetAssumptionEditor({
           <div className="space-y-1">
             <label className="text-sm font-medium">{t("assumptionFieldKey")}</label>
             <Input
+              data-testid="assumption-field-key"
               value={form.key}
               onChange={(e) => set("key", e.target.value)}
               placeholder="import_share"
@@ -277,6 +278,7 @@ export function BudgetAssumptionEditor({
           <div className="space-y-1">
             <label className="text-sm font-medium">{t("assumptionFieldLabel")}</label>
             <Input
+              data-testid="assumption-field-label"
               value={form.label}
               onChange={(e) => set("label", e.target.value)}
               placeholder={form.key || t("assumptionFieldLabelPlaceholder")}
@@ -287,6 +289,7 @@ export function BudgetAssumptionEditor({
             <div className="space-y-1">
               <label className="text-sm font-medium">{t("assumptionFieldValue")}</label>
               <Input
+                data-testid="assumption-field-value"
                 value={form.value}
                 onChange={(e) => set("value", e.target.value)}
                 inputMode="decimal"
@@ -296,6 +299,7 @@ export function BudgetAssumptionEditor({
             <div className="space-y-1">
               <label className="text-sm font-medium">{t("assumptionFieldUnit")}</label>
               <Input
+                data-testid="assumption-field-unit"
                 value={form.unit}
                 onChange={(e) => set("unit", e.target.value)}
                 placeholder="%, AZN, ton"
@@ -304,6 +308,7 @@ export function BudgetAssumptionEditor({
           </div>
 
           <Select
+            data-testid="assumption-field-scope"
             label={t("assumptionFieldScope")}
             value={form.companyId}
             onChange={(e) => set("companyId", e.target.value)}
@@ -324,6 +329,7 @@ export function BudgetAssumptionEditor({
           <div className="space-y-1">
             <label className="text-sm font-medium">{t("fieldNotes")}</label>
             <Input
+              data-testid="assumption-field-notes"
               value={form.notes}
               onChange={(e) => set("notes", e.target.value)}
               placeholder={t("assumptionFieldNotesPlaceholder")}
@@ -345,10 +351,10 @@ export function BudgetAssumptionEditor({
               <Trash2 className="h-4 w-4 mr-1" /> {t("assumptionDelete")}
             </Button>
           )}
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+          <Button variant="outline" data-testid="assumption-cancel" onClick={() => onOpenChange(false)} disabled={busy}>
             {t("btnCancel")}
           </Button>
-          <Button onClick={submit} disabled={busy}>
+          <Button data-testid="assumption-save" onClick={submit} disabled={busy}>
             {busy && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
             {t("btnSave")}
           </Button>
