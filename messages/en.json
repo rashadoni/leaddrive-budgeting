@@ -1671,6 +1671,39 @@
     "corrections": {
       "includes": "{count, plural, one {This total includes # manual correction} other {This total includes # manual corrections}} — figures entered by a person, not read from the workbook.",
       "includesAndNeedsReview": "{count, plural, one {This total includes # manual correction} other {This total includes # manual corrections}}, and {needsReview, plural, one {# of them needs review} other {# of them need review}}: a later import rewrote the same cell, so the correction may now be counted twice. Nothing was changed automatically — open the corrections list and decide."
+    },
+    "assumptionAddTitle": "New assumption",
+    "assumptionEditTitle": "Edit assumption",
+    "assumptionAddFirst": "Add the first assumption",
+    "assumptionEditorDescription": "A driver the budget is built on. The scope decides whether it applies to the whole plan or to one company.",
+    "assumptionFieldCategory": "Category",
+    "assumptionFieldPeriod": "Period",
+    "assumptionFieldKey": "Key",
+    "assumptionFieldKeyHint": "The stable identifier formulas and scenarios look up — e.g. import_share, inflation, fx_usd. The label can change; this should not.",
+    "assumptionFieldLabel": "Name",
+    "assumptionFieldLabelPlaceholder": "Imported input share",
+    "assumptionFieldValue": "Value",
+    "assumptionFieldUnit": "Unit",
+    "assumptionFieldScope": "Applies to",
+    "assumptionFieldNotesPlaceholder": "Source, method, who agreed it",
+    "assumptionFieldNotesHint": "Why this number — the source or the reasoning. This is what a board question asks for.",
+    "assumptionScopePlanDefault": "Whole plan (default for every company)",
+    "assumptionScopePlanHint": "Applies to every company in the plan unless a company overrides it.",
+    "assumptionScopeCompanyHint": "Overrides the plan-level default for this company only.",
+    "assumptionScopePlan": "Plan",
+    "assumptionScopeCompany": "Company",
+    "assumptionsColScope": "Applies to",
+    "assumptionDelete": "Delete",
+    "assumptionDeleteConfirm": "Delete the assumption “{label}”? This cannot be undone — the row is kept only in the audit log.",
+    "assumptionErrorKeyRequired": "A key is required.",
+    "assumptionErrorValueNumber": "The value must be a number.",
+    "assumptionErrorSaveFailed": "Could not save (HTTP {status}).",
+    "assumptionsDuplicateKeys": "Duplicate keys at plan level: {keys}. One row is used and the rest are ignored — delete or scope the extras.",
+    "assumptionPeriod": {
+      "monthly": "Monthly",
+      "quarterly": "Quarterly",
+      "annual": "Annual",
+      "per_unit": "Per unit"
     }
   },
   "onboardingDashboard": {
@@ -3692,7 +3725,9 @@
         "geopolitics": "🌍 Geopolitics",
         "customers": "👥 Customers",
         "__other__": "🧪 Other (multiplier)"
-      }
+      },
+      "plannedSourceTitle": "Baseline is the holding's stated planning rate, not a market quote — the live feed had no level for this metric.",
+      "plannedBadge": "planning rate"
     },
     "scenarioForm": {
       "editTitle": "Edit: {code}",
@@ -4446,6 +4481,7 @@
         "ftForwardForecast": "{sales} sales + {summary} summary sheets, no P&L/BS/CF → forward forecast file",
         "ftCompanies": "{n} company sheet(s), no P&L/BS/CF → holding-structure setup file",
         "ftCompliance": "{n} compliance/register sheet(s), no P&L/BS/CF → standalone compliance file",
+        "ftAssumptions": "{n} assumptions sheet(s), no P&L/BS/CF → standalone budget-drivers file",
         "ftLand": "{n} land registry sheet(s), no P&L/BS/CF → land titles file",
         "ftCapex": "{n} CAPEX sheet(s), no P&L/BS/CF → standalone CAPEX file",
         "ftDescriptions": "{n} description sheet(s), no P&L/BS/CF → strategic narrative file",

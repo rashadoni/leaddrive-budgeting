@@ -117,6 +117,16 @@ export type SheetDataType =
   // and from SALES_FORECAST (department x month -> sales_forecasts).
   // Detected deterministically by shape, NOT by the LLM.
   | "SALES_PRODUCTS"
+  // Phase 16.5 (2026-08-06) — budget-assumptions sheet: the label/value table of
+  // drivers a plan is built on (FX rates, inflation, tariffs, imported-input
+  // share, operational norms). Writes `BudgetAssumption`, which the Fərziyyələr
+  // tab renders and `resolveAssumption` reads.
+  //
+  // Distinct from OPS_FACTS (a measured fact with a date, one row per
+  // observation) — an assumption is a forward parameter with no date, and its
+  // period column says how it is expressed, not when it happened. Distinct from
+  // KPI_* (realized operational output) for the same reason.
+  | "ASSUMPTIONS"
   | "UNKNOWN"
 
 export interface SheetClassification {
@@ -278,6 +288,7 @@ const VALID_DATA_TYPES = new Set<SheetDataType>([
   "AUDIT_FINDINGS",
   "RISK_REGISTER",
   "SALES_PRODUCTS",
+  "ASSUMPTIONS",
   "UNKNOWN",
 ])
 

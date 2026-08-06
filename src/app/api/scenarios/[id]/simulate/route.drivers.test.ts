@@ -11,6 +11,8 @@ const ivFindMany = vi.fn()
 const companyIndicatorFindMany = vi.fn()
 const fxFindMany = vi.fn()
 const intelFindMany = vi.fn()
+// Phase 16.6 — per-company imported-input share is read from BudgetAssumption.
+const assumptionFindMany = vi.fn()
 const getCompanyScopeMock = vi.fn()
 const createPrismaDataSource = vi.fn()
 vi.mock('@/lib/prisma', () => ({
@@ -22,6 +24,7 @@ vi.mock('@/lib/prisma', () => ({
     companyIndicator: { findMany: (...a: unknown[]) => companyIndicatorFindMany(...a) },
     currencyRateHistory: { findMany: (...a: unknown[]) => fxFindMany(...a) },
     intelDataPoint: { findMany: (...a: unknown[]) => intelFindMany(...a) },
+    budgetAssumption: { findMany: (...a: unknown[]) => assumptionFindMany(...a) },
   },
 }))
 vi.mock('@/lib/rbac/company-scope', () => ({
@@ -62,6 +65,7 @@ describe('GET simulate ?mode=drivers', () => {
     createPrismaDataSource.mockReturnValue({})
     fxFindMany.mockResolvedValue([])
     intelFindMany.mockResolvedValue([])
+    assumptionFindMany.mockResolvedValue([])
   })
 
   it('derives revenue from inputs.resolved.revenue + runs sim + narrative', async () => {
@@ -83,7 +87,7 @@ describe('GET simulate ?mode=drivers', () => {
         { companyId: 'h1', companyCode: 'HOLDING', baselineScore: 60, scenarioScore: 20, isLeaf: false },
       ],
       holdingBaselineScore: 45, holdingScenarioScore: 31, changed: 1, worsened: 1, improved: 0,
-      driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null },
+      driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null }, driverReports: [],
     })
     runCrisisBrief.mockResolvedValue({ narrative: '⚠ 45→31', mitigations: ['hedge'], confidence: 0.7, modelName: 'sonnet', promptVersion: 'v1' })
 
@@ -105,7 +109,7 @@ describe('GET simulate ?mode=drivers', () => {
     companyFindMany.mockResolvedValue([operationalCompany()])
     indicatorFindMany.mockResolvedValue([{ id: 'i1', code: 'X', formula: 'x', thresholds: {}, requiredInputs: [], weight: 1 }])
     ivFindMany.mockResolvedValue([{ companyId: 'c1', indicatorId: 'i1', value: 1, status: 'green', inputs: { resolved: { revenue: 1 } } }])
-    simulateByDrivers.mockResolvedValue({ scenarioCode: 'X', period: '2026', deltas: [], byCompany: [], holdingBaselineScore: 45, holdingScenarioScore: 31, changed: 0, worsened: 0, improved: 0, driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null } })
+    simulateByDrivers.mockResolvedValue({ scenarioCode: 'X', period: '2026', deltas: [], byCompany: [], holdingBaselineScore: 45, holdingScenarioScore: 31, changed: 0, worsened: 0, improved: 0, driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null }, driverReports: [] })
     runCrisisBrief.mockRejectedValue(new Error('LLM down'))
 
     const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers&narrative=1'), { params: Promise.resolve({ id: 's1' }) } as never)
@@ -128,7 +132,7 @@ describe('GET simulate ?mode=drivers', () => {
     companyFindMany.mockResolvedValue([operationalCompany()])
     indicatorFindMany.mockResolvedValue([{ id: 'i1', code: 'X', formula: 'x', thresholds: {}, requiredInputs: [], weight: 1 }])
     ivFindMany.mockResolvedValue([{ companyId: 'c1', indicatorId: 'i1', value: 1, status: 'green', inputs: { resolved: { revenue: 1 } } }])
-    simulateByDrivers.mockResolvedValue({ scenarioCode: 'X', period: '2026', deltas: [], byCompany: [], holdingBaselineScore: 45, holdingScenarioScore: 31, changed: 0, worsened: 0, improved: 0, driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null } })
+    simulateByDrivers.mockResolvedValue({ scenarioCode: 'X', period: '2026', deltas: [], byCompany: [], holdingBaselineScore: 45, holdingScenarioScore: 31, changed: 0, worsened: 0, improved: 0, driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null }, driverReports: [] })
     runCrisisBrief.mockResolvedValue({ narrative: 'should never be requested', mitigations: [], confidence: 0.5, modelName: 'x', promptVersion: 'v1' })
 
     const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers&period=2026'), { params: Promise.resolve({ id: 's1' }) } as never)
@@ -149,7 +153,7 @@ describe('GET simulate ?mode=drivers', () => {
       scenarioCode: 'INPUT_COST_30', period: '2026',
       deltas: [{ companyId: 'c1', companyCode: 'CPC', companyName: 'CPC', indicatorId: 'i1', code: 'IND_EBITDA_MARGIN', baselineValue: 4.5, baselineStatus: 'amber', scenarioValue: -7, scenarioStatus: 'red', changed: true, deltaPct: -255 }],
       byCompany: [{ companyId: 'c1', companyCode: 'CPC', baselineScore: 64, scenarioScore: 40 }],
-      holdingBaselineScore: 61, holdingScenarioScore: 55, financialHoldingBaselineScore: 62, financialHoldingScenarioScore: 50, changed: 1, worsened: 1, improved: 0, driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null },
+      holdingBaselineScore: 61, holdingScenarioScore: 55, financialHoldingBaselineScore: 62, financialHoldingScenarioScore: 50, changed: 1, worsened: 1, improved: 0, driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null }, driverReports: [],
     })
     const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers&narrative=0'), { params: Promise.resolve({ id: 's1' }) } as never)
     const body = await res.json()
@@ -172,7 +176,7 @@ describe('GET simulate ?mode=drivers', () => {
     companyFindMany.mockResolvedValue([operationalCompany()])
     indicatorFindMany.mockResolvedValue([{ id: 'i1', code: 'FX_IMPORTED_INPUT', formula: 'imported_input_cost/total_input_cost*100', thresholds: {}, requiredInputs: [], weight: 1 }])
     ivFindMany.mockResolvedValue([{ companyId: 'c1', indicatorId: 'i1', value: 0, status: 'green', inputs: { resolved: { revenue: 6475882 } } }])
-    simulateByDrivers.mockResolvedValue({ scenarioCode: 'AZN_DEVAL_20', period: '2026', deltas: [], byCompany: [], holdingBaselineScore: 61, holdingScenarioScore: 58, financialHoldingBaselineScore: 62, financialHoldingScenarioScore: 55, changed: 0, worsened: 0, improved: 0, driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null } })
+    simulateByDrivers.mockResolvedValue({ scenarioCode: 'AZN_DEVAL_20', period: '2026', deltas: [], byCompany: [], holdingBaselineScore: 61, holdingScenarioScore: 58, financialHoldingBaselineScore: 62, financialHoldingScenarioScore: 55, changed: 0, worsened: 0, improved: 0, driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null }, driverReports: [] })
     runCrisisBrief.mockResolvedValue({ narrative: '⚠', mitigations: [], confidence: 0.6, modelName: 's', promptVersion: 'v1' })
 
     const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers&period=2026'), { params: Promise.resolve({ id: 's1' }) } as never)
@@ -244,7 +248,7 @@ describe('GET simulate ?mode=drivers', () => {
       changed: 0,
       worsened: 0,
       improved: 0,
-      driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null },
+      driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null }, driverReports: [],
     })
 
     const res = await GET(
@@ -306,7 +310,7 @@ describe('GET simulate ?mode=drivers', () => {
       changed: 0,
       worsened: 0,
       improved: 0,
-      driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null },
+      driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null }, driverReports: [],
     })
 
     const res = await GET(
@@ -380,7 +384,7 @@ describe('GET simulate ?mode=drivers', () => {
       changed: 0,
       worsened: 0,
       improved: 0,
-      driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null },
+      driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null }, driverReports: [],
     })
 
     const res = await GET(
@@ -477,7 +481,7 @@ describe('GET simulate ?mode=drivers', () => {
       changed: 0,
       worsened: 0,
       improved: 0,
-      driftSummary: { pairsAttempted: 2, pairsErrored: 0, lastError: null },
+      driftSummary: { pairsAttempted: 2, pairsErrored: 0, lastError: null }, driverReports: [],
     })
 
     const res = await GET(

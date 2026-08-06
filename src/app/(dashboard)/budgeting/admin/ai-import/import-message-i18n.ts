@@ -278,6 +278,10 @@ const LINE_RULES: Rule[] = [
     key: "msg.ftCompliance",
   },
   {
+    re: /^(?<n>\d+) assumptions sheet\(s\), no PLF\/BS\/CF → standalone budget-drivers file$/,
+    key: "msg.ftAssumptions",
+  },
+  {
     re: /^(?<n>\d+) budget-actuals sheet\(s\), no PLF\/BS\/CF → standalone actuals file$/,
     key: "msg.ftBudgetActuals",
   },

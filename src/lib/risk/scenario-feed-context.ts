@@ -19,6 +19,20 @@ export interface FeedDatum {
   asOf: string
   /** Pre-computed by the caller (now − asOf > STALE_DAYS). */
   stale: boolean
+  /**
+   * Phase 16.8 (2026-08-06) — where this level came from.
+   *
+   * `feed` (the default) is a market observation. `assumption` is the holding's
+   * own PLANNING rate, taken from a `fx_*` budget assumption because the live
+   * feed had nothing for this metric.
+   *
+   * The distinction is load-bearing and must never be dropped on the way to the
+   * UI. A target scenario anchors on `frac = value / current − 1`, so anchoring
+   * on a planning rate produces a DIFFERENT fraction than anchoring on the
+   * market — and a reader shown "AZN/USD 1.70 → 2.04" has every reason to
+   * assume the 1.70 is today's quote unless told otherwise.
+   */
+  source?: 'feed' | 'assumption'
 }
 
 export type FeedSnapshot = Record<string, FeedDatum>
@@ -32,6 +46,8 @@ export interface FeedAnchor {
   unit: string
   asOf: string
   stale: boolean
+  /** Phase 16.8 — `assumption` means the baseline is a planning rate, not a market quote. */
+  source: 'feed' | 'assumption'
 }
 
 /** Days after which a feed observation is flagged stale (caller applies it). */
@@ -86,6 +102,54 @@ export function resolveFeedContext(shock: ScenarioShock, snapshot: FeedSnapshot)
       unit: meta.unit,
       asOf: datum.asOf,
       stale: datum.stale,
+      source: datum.source ?? 'feed',
     },
   ]
+}
+
+/**
+ * Phase 16.8 — budget-assumption keys that can stand in for a missing feed level.
+ *
+ * These are NOT scenario levers and are deliberately absent from
+ * `COMPANY_DRIVERS`: nothing in `ScenarioShock` reads an exchange rate. What
+ * they supply is the BASELINE a target anchors against, which is an input the
+ * computation already has — `resolveFeedShock` needs a current level and simply
+ * has none when the CBAR feed is silent.
+ *
+ * The consequence of having none is not a degraded number, it is no scenario at
+ * all: `resolveFeedShock` drops the target, `hasShock` then sees nothing to
+ * simulate, and `AZN_DEVAL_20` — a flagship — answers 422. A holding that has
+ * written down the rate it plans at should not be told its devaluation scenario
+ * cannot run.
+ *
+ * Plan-level only (`companyId = null`): a target resolves to ONE fraction for
+ * the whole holding, so a per-company exchange rate would have nowhere to go.
+ */
+export const FEED_ANCHOR_ASSUMPTIONS: ReadonlyArray<{ assumptionKey: string; metric: string }> = [
+  { assumptionKey: 'fx_usd', metric: 'AZN_USD' },
+  { assumptionKey: 'fx_eur', metric: 'AZN_EUR' },
+]
+
+/**
+ * Fill gaps in a feed snapshot from the holding's stated planning rates.
+ *
+ * Only fills what is MISSING. A live observation always wins, including a stale
+ * one: a real quote from six weeks ago is still a market fact, and the snapshot
+ * already carries `stale` to say so, whereas a planning rate is a decision. The
+ * two should not be silently swapped by recency.
+ */
+export function applyAssumptionAnchors(
+  snapshot: FeedSnapshot,
+  resolve: (assumptionKey: string) => number | null,
+  /** Stamped by the caller — this module takes no clock. */
+  asOf: string,
+): FeedSnapshot {
+  const out: FeedSnapshot = { ...snapshot }
+  for (const { assumptionKey, metric } of FEED_ANCHOR_ASSUMPTIONS) {
+    if (out[metric]) continue
+    const value = resolve(assumptionKey)
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue
+    out[metric] = { value, asOf, stale: false, source: 'assumption' }
+  }
+  return out
 }

@@ -24,15 +24,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prismaAdmin as prisma } from '@/lib/db/prisma-admin'
 import { requireAuth, isAuthError } from '@/lib/api-auth'
-import { currentBakuYear } from '@/lib/risk/periods'
+import { currentBakuYear, parsePeriod } from '@/lib/risk/periods'
 import {
   simulateScenario,
   buildDeltaMap,
   type SimulatableOverrides,
 } from '@/lib/risk/scenario-simulator'
 import { createPrismaDataSource } from '@/lib/risk/recompute'
-import { hasShock, readShock } from '@/lib/risk/scenario-shock'
-import { resolveFeedShock, resolveFeedContext, FEED_STALE_DAYS, type FeedSnapshot } from '@/lib/risk/scenario-feed-context'
+import { hasShock, readShock, buildDriverNote, COMPANY_DRIVERS } from '@/lib/risk/scenario-shock'
+import {
+  resolveFeedShock,
+  resolveFeedContext,
+  applyAssumptionAnchors,
+  FEED_ANCHOR_ASSUMPTIONS,
+  FEED_STALE_DAYS,
+  type FeedSnapshot,
+} from '@/lib/risk/scenario-feed-context'
+import { resolveAssumption } from '@/lib/budgeting/assumption-resolver'
 import { simulateByDrivers } from '@/lib/risk/scenario-rederive'
 import { aiErrorBody } from '@/lib/ai/ai-error'
 import { runCrisisBrief, type BriefLanguage } from '@/lib/risk/scenario-narrative'
@@ -149,7 +157,18 @@ export async function GET(
       )
     }
     const rawShock = readShock(scenario.overrides)!
-    const [companiesRaw, indicatorsRaw, baselineRows, fxRows, intelRows] = await Promise.all([
+    // Phase 16.6 — the year the period falls in, for the assumption load below.
+    // `parsePeriod` throws on a malformed period; the same period string has
+    // already reached `simulateByDrivers` unvalidated on every path here, so a
+    // failure to read the year must not be the thing that breaks the request —
+    // it only costs the per-company shares.
+    let periodYear: number | null = null
+    try {
+      periodYear = parsePeriod(period).year
+    } catch {
+      periodYear = null
+    }
+    const [companiesRaw, indicatorsRaw, baselineRows, fxRows, intelRows, assumptionRows] = await Promise.all([
       prisma.company.findMany({
         where: {
           organizationId: session.orgId,
@@ -219,6 +238,33 @@ export async function GET(
         distinct: ['metric'],
         select: { metric: true, value: true, datetime: true },
       }),
+      // Phase 16.6 — every assumption on any plan for this period's year, both
+      // tiers, unresolved. `resolveAssumption` applies precedence per company.
+      //
+      // Scoped by YEAR rather than by one plan id because `BudgetAssumption` is
+      // plan-scoped while a scenario is period-scoped, and an org may hold both
+      // an actual and a budget plan for the same year. Taking the union and
+      // letting the resolver break ties deterministically is honest about that;
+      // picking one plan silently would make the answer depend on which plan
+      // happened to be created first.
+      periodYear === null
+        ? Promise.resolve([])
+        : prisma.budgetAssumption.findMany({
+            where: {
+              organizationId: session.orgId,
+              // Phase 16.7 — every driver a scenario lever can read, not just
+              // the FX one. Filtered by key rather than loaded whole so a plan
+              // with hundreds of documentation-only assumptions costs nothing.
+              key: {
+                in: [
+                  ...COMPANY_DRIVERS.map((d) => d.key),
+                  ...FEED_ANCHOR_ASSUMPTIONS.map((a) => a.assumptionKey),
+                ],
+              },
+              plan: { is: { year: periodYear, deletedAt: null } },
+            },
+            select: { id: true, key: true, value: true, unit: true, companyId: true, sortOrder: true, createdAt: true },
+          }),
     ])
 
     // Keep scenario simulation on the same decision surface as the matrix:
@@ -278,8 +324,18 @@ export async function GET(
     for (const r of intelRows) {
       feedSnapshot[r.metric] = { value: r.value, asOf: r.datetime.toISOString().slice(0, 10), stale: nowMs - r.datetime.getTime() > staleMs }
     }
-    const resolvedShock = resolveFeedShock(rawShock, feedSnapshot)
-    const feedAnchors = resolveFeedContext(rawShock, feedSnapshot)
+    // Phase 16.8 — a target scenario needs a CURRENT level to anchor against.
+    // When the live feed has none, the holding's own stated planning rate stands
+    // in, marked `source: 'assumption'` so nothing downstream can present it as
+    // a market quote. Without this a missing CBAR row makes AZN_DEVAL_20 — a
+    // flagship scenario — answer 422 and simply not run.
+    const anchoredSnapshot = applyAssumptionAnchors(
+      feedSnapshot,
+      (key) => resolveAssumption(assumptionRows, key, null)?.value ?? null,
+      new Date(nowMs).toISOString().slice(0, 10),
+    )
+    const resolvedShock = resolveFeedShock(rawShock, anchoredSnapshot)
+    const feedAnchors = resolveFeedContext(rawShock, anchoredSnapshot)
     // A target-only scenario whose feed metric is missing can't derive a fraction.
     if (!hasShock({ shock: resolvedShock })) {
       return NextResponse.json(
@@ -332,17 +388,21 @@ export async function GET(
         value: iv.value,
         status: iv.status as never,
       })),
+      assumptions: assumptionRows,
     })
 
     const deltaMap: Record<string, string> = {}
     for (const d of sim.deltas) if (d.changed && d.scenarioStatus) deltaMap[`${d.companyId}:${d.code}`] = d.scenarioStatus
 
-    // Honest FX modeling caveat for the narrative (assumed import share).
-    // Use the RESOLVED shock — a target-driven FX scenario gets its fxShock here.
-    const assumptionNote =
-      resolvedShock.fxShock && resolvedShock.assumedImportShare
-        ? `Assumes ${Math.round((resolvedShock.assumedImportShare ?? 0) * 100)}% imported-input share (current data has no tagged imported costs).`
-        : null
+    // Honest FX modelling caveat for the narrative.
+    //
+    // Phase 16.6 — built from what each company actually supplied, not from the
+    // scenario's literal. The old sentence asserted one assumed share for the
+    // whole holding, which was true of the model and misleading about the
+    // finding. `buildImportShareNote` returns null when there is nothing left to
+    // disclose (every company measured), and the simulator returns a null report
+    // for a non-FX scenario, so both no-caveat cases collapse here.
+    const assumptionNote = buildDriverNote(sim.driverReports)
 
     // Build worst-hit (cheap, no AI) — ALWAYS returned so the client can render
     // the chips AND post it to the narrative endpoint (the latency split below).
@@ -426,6 +486,12 @@ export async function GET(
       driftSummary: sim.driftSummary,
       feedAnchors,
       assumptionNote,
+      // Phase 16.6 — the structured evidence behind `assumptionNote`, so a
+      // reader can check the prose rather than take it on trust. Null for a
+      // non-FX scenario.
+      importShare: sim.importShare,
+      // Phase 16.7 — the same evidence for every driver, not only the FX share.
+      driverReports: sim.driverReports,
       worstHit,
       narrative,
       mitigations,

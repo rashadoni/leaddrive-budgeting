@@ -19,7 +19,18 @@ import {
 import type { RecomputeDataSource } from './recompute-types'
 import type { IndicatorStatus } from './formula-engine'
 import { parsePeriod } from './periods'
-import { hasShock, readShock, resolveShockOverrides, type ResolvedScalars } from './scenario-shock'
+import {
+  hasShock,
+  readShock,
+  resolveShockOverrides,
+  resolveCompanyDriver,
+  COMPANY_DRIVERS,
+  type ResolvedScalars,
+  type ImportShareReport,
+} from './scenario-shock'
+import { resolveAssumption } from '@/lib/budgeting/assumption-resolver'
+
+export type { ImportShareReport } from './scenario-shock'
 import { computeCompositeByCompany, deriveParentComposites } from './composite-score'
 import { countsTowardComposite } from './indicator-provenance'
 import { mapWithConcurrency } from './concurrency'
@@ -62,6 +73,30 @@ export interface SimulateByDriversInput {
   companies: SimulateByDriversCompany[]
   indicators: SimulateByDriversIndicator[]
   baselineIVs: SimulateByDriversBaselineIV[]
+  /**
+   * Phase 16.6 — the org's `BudgetAssumption` rows for this period's year, both
+   * tiers, unresolved. Precedence is applied per company by `resolveAssumption`.
+   *
+   * Pre-loaded by the caller for the same reason `baselineIVs` is: this module
+   * takes a `RecomputeDataSource`, not a Prisma client, and a per-company query
+   * inside the concurrency loop would be ~60 round trips for a table that fits
+   * in one.
+   *
+   * Omitted → every company falls back to the scenario's own literal, which is
+   * exactly the pre-16.6 behaviour, and the result says so.
+   */
+  assumptions?: ScenarioAssumptionRow[]
+}
+
+/** The `BudgetAssumption` columns the shock resolution reads. */
+export interface ScenarioAssumptionRow {
+  id: string
+  key: string
+  value: number
+  unit?: string | null
+  companyId?: string | null
+  sortOrder?: number | null
+  createdAt?: Date | string | null
 }
 export interface SimulateByDriversDeps {
   buildContext?: typeof realBuildContext
@@ -108,7 +143,25 @@ export interface DriverSimulationResult {
   worsened: number
   improved: number
   driftSummary: { pairsAttempted: number; pairsErrored: number; lastError: string | null }
+  /**
+   * Phase 16.6 — where each company's imported-input share came from. Present
+   * only for an FX shock, which is the only lever the share modulates.
+   *
+   * This is the evidence behind the board narrative's caveat. Before 16.6 the
+   * caveat was a single sentence asserting one literal for the whole holding;
+   * it can now name how many companies stated their own share and how many are
+   * still standing on the scenario's default.
+   */
+  importShare: ImportShareReport | null
+  /**
+   * Phase 16.7 — every driver this scenario resolved per company, in registry
+   * order. `importShare` is the `import_share` entry, kept as its own field for
+   * the client that 16.6 shipped it to.
+   */
+  driverReports: ImportShareReport[]
 }
+
+
 
 const STATUS_ORDER: Record<IndicatorStatus, number> = { green: 3, amber: 2, red: 1, unknown: 0 }
 
@@ -238,6 +291,36 @@ export async function simulateByDrivers(
   // ── Phase 1 — per-company shock overrides (one baseline buildContext each),
   //    run concurrently. ────────────────────────────────────────────────────
   const overridesByCompany = new Map<string, Record<string, number>>()
+  // Phase 16.6 — the FX lever's imported-input share is resolved PER COMPANY.
+  // Before this, one `assumedImportShare` literal from the scenario definition
+  // stood in for every company in the holding, so a devaluation hit a sugar
+  // refinery that buys raw abroad and a domestic logistics arm with the same
+  // coefficient — and the "worst-hit" ranking that produced was an artifact of
+  // that constant rather than a finding.
+  //
+  // Phase 16.7 — generalised from the import-share-only path. Every driver in
+  // `COMPANY_DRIVERS` whose lever this scenario pulls is resolved per company
+  // and reported the same way. `cost_rigidity` is the second: the drought
+  // scenarios ship `costRigidity: 0.8`, asserting "seeds and irrigation are
+  // already spent" of every company the shock touches — including a services
+  // arm, where a volume drop genuinely does scale costs down and 0.8 crushes a
+  // margin that would not have moved.
+  const assumptionRows = input.assumptions ?? []
+  const activeDrivers = COMPANY_DRIVERS.filter((d) => Boolean(shock[d.requiresLever]))
+  const reportByDriver = new Map<string, ImportShareReport>()
+  for (const d of activeDrivers) {
+    const cd = shock[d.feeds]
+    reportByDriver.set(d.key, {
+      driverKey: d.key,
+      measured: [],
+      fromAssumption: [],
+      fromCatalogDefault: [],
+      unresolved: [],
+      rejected: [],
+      catalogDefault: typeof cd === 'number' && Number.isFinite(cd) ? cd : null,
+    })
+  }
+
   await mapWithConcurrency(activeCompanies, RECOMPUTE_CONCURRENCY, async (co) => {
     const coIVs = ivsByCompany.get(co.id) ?? []
     const coRequired = Array.from(new Set(coIVs.flatMap((iv) => indicatorById.get(iv.indicatorId)?.requiredInputs ?? [])))
@@ -249,12 +332,53 @@ export async function simulateByDrivers(
         requiredInputs: coRequired,
         industry: co.industry ?? null,
       })
-      overridesByCompany.set(co.id, resolveShockOverrides(shock, readScalars(baseCtx.context as Record<string, unknown>)))
+      const scalars = readScalars(baseCtx.context as Record<string, unknown>)
+
+      // A company override beats the plan-level default, and both beat the
+      // scenario's literal — but a value MEASURED in the company's own data
+      // beats all three, which is why the resolution takes the scalars rather
+      // than only the assumption.
+      let coShock = shock
+      for (const d of activeDrivers) {
+        const resolved = resolveCompanyDriver(d, {
+          // Only `import_share` has a measurement: a real `imported_input_cost`
+          // makes the fraction inert. Nothing in the data measures rigidity.
+          measured:
+            d.key === 'import_share' &&
+            Number.isFinite(scalars.imported_input_cost) &&
+            scalars.imported_input_cost > 0,
+          assumption: resolveAssumption(assumptionRows, d.key, co.id)?.value ?? null,
+          catalogDefault: shock[d.feeds],
+        })
+        const report = reportByDriver.get(d.key)!
+        if (resolved.rejected) report.rejected.push({ companyCode: co.code, ...resolved.rejected })
+        if (resolved.source === 'measured') report.measured.push(co.code)
+        else if (resolved.source === 'assumption') {
+          report.fromAssumption.push({ companyCode: co.code, share: resolved.value })
+          coShock = { ...coShock, [d.feeds]: resolved.value }
+        } else if (resolved.source === 'catalog') report.fromCatalogDefault.push(co.code)
+        else report.unresolved.push(co.code)
+      }
+      overridesByCompany.set(co.id, resolveShockOverrides(coShock, scalars))
     } catch (err) {
       overridesByCompany.set(co.id, {})
       lastError = err instanceof Error ? err.message : String(err)
     }
   })
+
+  // Concurrency writes these arrays in completion order; sorting makes the
+  // narrative and its cached copy identical across runs of the same scenario.
+  const byCode = <T extends { companyCode: string }>(a: T, b: T) =>
+    a.companyCode < b.companyCode ? -1 : a.companyCode > b.companyCode ? 1 : 0
+  for (const report of reportByDriver.values()) {
+    report.measured.sort()
+    report.fromCatalogDefault.sort()
+    report.unresolved.sort()
+    report.fromAssumption.sort(byCode)
+    report.rejected.sort(byCode)
+  }
+  // Registry order, so a two-driver scenario reads the same way every run.
+  const driverReports = activeDrivers.map((d) => reportByDriver.get(d.key)!)
 
   // ── Phase 2 — re-derive every (company, indicator) pair CONCURRENTLY (capped).
   //    Each call is still the canonical recomputeIndicator (disclosure / clamps
@@ -415,5 +539,11 @@ export async function simulateByDrivers(
     worsened,
     improved,
     driftSummary: { pairsAttempted, pairsErrored, lastError },
+    // Null when this scenario pulls no lever the share modulates — reporting an
+    // empty breakdown would imply it had been considered. Kept as its own field
+    // because 16.6 shipped it in the API response and a client reads it.
+    importShare: reportByDriver.get('import_share') ?? null,
+    // Every driver this scenario resolved, in registry order. Phase 16.7.
+    driverReports,
   }
 }

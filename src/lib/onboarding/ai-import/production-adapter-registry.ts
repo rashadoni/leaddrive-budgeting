@@ -46,6 +46,7 @@ import {
   makeLegalCasesHandler,
   makeAuditFindingsHandler,
   makeRiskRegisterHandler,
+  makeAssumptionsHandler,
   noopHandler,
 } from "./production-adapter-handlers-soft"
 
@@ -135,6 +136,9 @@ export function buildProductionAdapterRegistry(
     LEGAL_CASES: wrap(makeLegalCasesHandler),
     AUDIT_FINDINGS: wrap(makeAuditFindingsHandler),
     RISK_REGISTER: wrap(makeRiskRegisterHandler),
+    // Phase 16.5 — budget drivers -> BudgetAssumption. Cross-entity: the sheet
+    // entity is only the default owner, a row naming its own company wins.
+    ASSUMPTIONS: wrap(makeAssumptionsHandler),
     // forward-forecast file-type uses INFO_SUMMARY classification on
     // its main sheet (İcmal). The file-type detector picks it up by
     // having ≥3 INFO_SUMMARY sheets without PLF/BS/CF. So we wire the

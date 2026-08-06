@@ -229,6 +229,7 @@ describe("detectFileType", () => {
       salesForecast: 1,
       salesProducts: 1,
       complianceRegister: 0,
+      assumptions: 0,
       unknown: 1,
     })
   })
@@ -350,6 +351,45 @@ describe("detectFileType", () => {
     )
     expect(result.fileType).toBe("main-financial")
     expect(result.sheetCounts.salesForecast).toBe(1)
+  })
+})
+
+describe("detectFileType — assumptions (Phase 16.5, 2026-08-06)", () => {
+  // Same failure mode the compliance bucket below was created for: a dataType
+  // that increments no counter leaves every count at zero, the file classifies
+  // as "unknown", and the orchestrator skips the group AFTER parsing it
+  // cleanly. A green run that writes nothing.
+  it("ASSUMPTIONS sheets alone → assumptions, not unknown", () => {
+    const r = detectFileType([cls("Assumptions", "ASSUMPTIONS", null)], "drivers.xlsx")
+    expect(r.fileType).toBe("assumptions")
+    expect(r.sheetCounts.assumptions).toBe(1)
+  })
+
+  it("several drivers sheets resolve to one assumptions file", () => {
+    const r = detectFileType(
+      [cls("FX", "ASSUMPTIONS", null), cls("Macro", "ASSUMPTIONS", null)],
+      "drivers.xlsx",
+    )
+    expect(r.fileType).toBe("assumptions")
+    expect(r.sheetCounts.assumptions).toBe(2)
+  })
+
+  it("financial intent still wins when an assumptions tab sits in a statement file", () => {
+    const r = detectFileType(
+      [cls("a", "PLF", "X"), cls("b", "BS", "X"), cls("c", "ASSUMPTIONS", null)],
+      "fin.xlsx",
+    )
+    expect(r.fileType).toBe("main-financial")
+    expect(r.sheetCounts.assumptions).toBe(1)
+  })
+
+  it("is counted apart from the compliance registers", () => {
+    const r = detectFileType(
+      [cls("a", "ASSUMPTIONS", null), cls("b", "RISK_REGISTER", "X")],
+      "mixed.xlsx",
+    )
+    expect(r.sheetCounts.assumptions).toBe(1)
+    expect(r.sheetCounts.complianceRegister).toBe(1)
   })
 })
 
