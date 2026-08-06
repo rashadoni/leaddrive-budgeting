@@ -23,6 +23,14 @@ import type { ScenarioShock } from './scenario-shock'
  * So it stays, deliberately: a scenario must still be simulatable for a company
  * that has never filled in its drivers, and 0.3 is a defensible generic. What
  * changed is that it can no longer masquerade as this business's data.
+ *
+ * Phase 16.7 — the same now applies to `costRigidity: 0.8` on the two drought
+ * scenarios, which asserted "seeds, fertiliser and irrigation are already
+ * spent" of every company the shock touched. For a services arm that is simply
+ * untrue: a volume drop scales its costs down, and 0.8 crushed a margin that
+ * would not have moved. A company stating `cost_rigidity` now overrides it.
+ *
+ * Both literals are the LAST tier of the same registry — see COMPANY_DRIVERS.
  */
 
 export type CrisisCategory = 'fx_macro' | 'commodity' | 'climate_agro' | 'geopolitics' | 'customers'
@@ -67,7 +75,7 @@ export const CRISIS_CATALOG: CrisisCatalogEntry[] = [
     nameRu: 'Засуха — урожай −30% (затраты уже понесены)',
     nameAz: 'Quraqlıq — məhsul −30% (xərclər artıq çəkilib)',
     description:
-      'Harvest −30%: revenue + yield fall but seeds/fertilizer/labour/irrigation are already spent (costRigidity 0.8) → agro margins crushed.',
+      'Harvest −30%: revenue + yield fall but seeds/fertilizer/labour/irrigation are already spent — 0.8 sunk-cost share by default, or each company’s own where stated → agro margins crushed.',
     shock: { revenueShock: -0.3, yieldShock: -0.3, costRigidity: 0.8 },
   },
   {

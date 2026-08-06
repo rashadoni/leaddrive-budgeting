@@ -23,7 +23,8 @@ import {
   hasShock,
   readShock,
   resolveShockOverrides,
-  resolveImportShare,
+  resolveCompanyDriver,
+  COMPANY_DRIVERS,
   type ResolvedScalars,
   type ImportShareReport,
 } from './scenario-shock'
@@ -152,6 +153,12 @@ export interface DriverSimulationResult {
    * still standing on the scenario's default.
    */
   importShare: ImportShareReport | null
+  /**
+   * Phase 16.7 — every driver this scenario resolved per company, in registry
+   * order. `importShare` is the `import_share` entry, kept as its own field for
+   * the client that 16.6 shipped it to.
+   */
+  driverReports: ImportShareReport[]
 }
 
 
@@ -290,17 +297,29 @@ export async function simulateByDrivers(
   // refinery that buys raw abroad and a domestic logistics arm with the same
   // coefficient — and the "worst-hit" ranking that produced was an artifact of
   // that constant rather than a finding.
-  const catalogDefault = shock.assumedImportShare
-  const shareReport: ImportShareReport = {
-    measured: [],
-    fromAssumption: [],
-    fromCatalogDefault: [],
-    unresolved: [],
-    rejected: [],
-    catalogDefault: typeof catalogDefault === 'number' && Number.isFinite(catalogDefault) ? catalogDefault : null,
-  }
+  //
+  // Phase 16.7 — generalised from the import-share-only path. Every driver in
+  // `COMPANY_DRIVERS` whose lever this scenario pulls is resolved per company
+  // and reported the same way. `cost_rigidity` is the second: the drought
+  // scenarios ship `costRigidity: 0.8`, asserting "seeds and irrigation are
+  // already spent" of every company the shock touches — including a services
+  // arm, where a volume drop genuinely does scale costs down and 0.8 crushes a
+  // margin that would not have moved.
   const assumptionRows = input.assumptions ?? []
-  const tracksImportShare = Boolean(shock.fxShock)
+  const activeDrivers = COMPANY_DRIVERS.filter((d) => Boolean(shock[d.requiresLever]))
+  const reportByDriver = new Map<string, ImportShareReport>()
+  for (const d of activeDrivers) {
+    const cd = shock[d.feeds]
+    reportByDriver.set(d.key, {
+      driverKey: d.key,
+      measured: [],
+      fromAssumption: [],
+      fromCatalogDefault: [],
+      unresolved: [],
+      rejected: [],
+      catalogDefault: typeof cd === 'number' && Number.isFinite(cd) ? cd : null,
+    })
+  }
 
   await mapWithConcurrency(activeCompanies, RECOMPUTE_CONCURRENCY, async (co) => {
     const coIVs = ivsByCompany.get(co.id) ?? []
@@ -316,25 +335,30 @@ export async function simulateByDrivers(
       const scalars = readScalars(baseCtx.context as Record<string, unknown>)
 
       // A company override beats the plan-level default, and both beat the
-      // scenario's literal — but measured `imported_input_cost` beats all three
-      // and makes the share inert, which is why the resolution takes the
-      // scalars rather than only the assumption.
-      const resolved = resolveImportShare({
-        importedInputCost: scalars.imported_input_cost,
-        assumption: resolveAssumption(assumptionRows, 'import_share', co.id)?.value ?? null,
-        catalogDefault,
-      })
-      if (tracksImportShare) {
-        if (resolved.rejected) {
-          shareReport.rejected.push({ companyCode: co.code, ...resolved.rejected })
-        }
-        if (resolved.source === 'measured') shareReport.measured.push(co.code)
-        else if (resolved.source === 'assumption') shareReport.fromAssumption.push({ companyCode: co.code, share: resolved.share })
-        else if (resolved.source === 'catalog') shareReport.fromCatalogDefault.push(co.code)
-        else shareReport.unresolved.push(co.code)
+      // scenario's literal — but a value MEASURED in the company's own data
+      // beats all three, which is why the resolution takes the scalars rather
+      // than only the assumption.
+      let coShock = shock
+      for (const d of activeDrivers) {
+        const resolved = resolveCompanyDriver(d, {
+          // Only `import_share` has a measurement: a real `imported_input_cost`
+          // makes the fraction inert. Nothing in the data measures rigidity.
+          measured:
+            d.key === 'import_share' &&
+            Number.isFinite(scalars.imported_input_cost) &&
+            scalars.imported_input_cost > 0,
+          assumption: resolveAssumption(assumptionRows, d.key, co.id)?.value ?? null,
+          catalogDefault: shock[d.feeds],
+        })
+        const report = reportByDriver.get(d.key)!
+        if (resolved.rejected) report.rejected.push({ companyCode: co.code, ...resolved.rejected })
+        if (resolved.source === 'measured') report.measured.push(co.code)
+        else if (resolved.source === 'assumption') {
+          report.fromAssumption.push({ companyCode: co.code, share: resolved.value })
+          coShock = { ...coShock, [d.feeds]: resolved.value }
+        } else if (resolved.source === 'catalog') report.fromCatalogDefault.push(co.code)
+        else report.unresolved.push(co.code)
       }
-
-      const coShock = resolved.source === 'assumption' ? { ...shock, assumedImportShare: resolved.share } : shock
       overridesByCompany.set(co.id, resolveShockOverrides(coShock, scalars))
     } catch (err) {
       overridesByCompany.set(co.id, {})
@@ -344,11 +368,17 @@ export async function simulateByDrivers(
 
   // Concurrency writes these arrays in completion order; sorting makes the
   // narrative and its cached copy identical across runs of the same scenario.
-  shareReport.measured.sort()
-  shareReport.fromCatalogDefault.sort()
-  shareReport.unresolved.sort()
-  shareReport.fromAssumption.sort((a, b) => (a.companyCode < b.companyCode ? -1 : a.companyCode > b.companyCode ? 1 : 0))
-  shareReport.rejected.sort((a, b) => (a.companyCode < b.companyCode ? -1 : a.companyCode > b.companyCode ? 1 : 0))
+  const byCode = <T extends { companyCode: string }>(a: T, b: T) =>
+    a.companyCode < b.companyCode ? -1 : a.companyCode > b.companyCode ? 1 : 0
+  for (const report of reportByDriver.values()) {
+    report.measured.sort()
+    report.fromCatalogDefault.sort()
+    report.unresolved.sort()
+    report.fromAssumption.sort(byCode)
+    report.rejected.sort(byCode)
+  }
+  // Registry order, so a two-driver scenario reads the same way every run.
+  const driverReports = activeDrivers.map((d) => reportByDriver.get(d.key)!)
 
   // ── Phase 2 — re-derive every (company, indicator) pair CONCURRENTLY (capped).
   //    Each call is still the canonical recomputeIndicator (disclosure / clamps
@@ -509,8 +539,11 @@ export async function simulateByDrivers(
     worsened,
     improved,
     driftSummary: { pairsAttempted, pairsErrored, lastError },
-    // Null for a non-FX scenario: the share modulates the FX lever only, and
-    // reporting an empty breakdown would imply it had been considered.
-    importShare: tracksImportShare ? shareReport : null,
+    // Null when this scenario pulls no lever the share modulates — reporting an
+    // empty breakdown would imply it had been considered. Kept as its own field
+    // because 16.6 shipped it in the API response and a client reads it.
+    importShare: reportByDriver.get('import_share') ?? null,
+    // Every driver this scenario resolved, in registry order. Phase 16.7.
+    driverReports,
   }
 }

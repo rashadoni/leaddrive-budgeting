@@ -31,7 +31,7 @@ import {
   type SimulatableOverrides,
 } from '@/lib/risk/scenario-simulator'
 import { createPrismaDataSource } from '@/lib/risk/recompute'
-import { hasShock, readShock, buildImportShareNote } from '@/lib/risk/scenario-shock'
+import { hasShock, readShock, buildDriverNote, COMPANY_DRIVERS } from '@/lib/risk/scenario-shock'
 import { resolveFeedShock, resolveFeedContext, FEED_STALE_DAYS, type FeedSnapshot } from '@/lib/risk/scenario-feed-context'
 import { simulateByDrivers } from '@/lib/risk/scenario-rederive'
 import { aiErrorBody } from '@/lib/ai/ai-error'
@@ -244,7 +244,10 @@ export async function GET(
         : prisma.budgetAssumption.findMany({
             where: {
               organizationId: session.orgId,
-              key: 'import_share',
+              // Phase 16.7 — every driver a scenario lever can read, not just
+              // the FX one. Filtered by key rather than loaded whole so a plan
+              // with hundreds of documentation-only assumptions costs nothing.
+              key: { in: COMPANY_DRIVERS.map((d) => d.key) },
               plan: { is: { year: periodYear, deletedAt: null } },
             },
             select: { id: true, key: true, value: true, unit: true, companyId: true, sortOrder: true, createdAt: true },
@@ -376,7 +379,7 @@ export async function GET(
     // finding. `buildImportShareNote` returns null when there is nothing left to
     // disclose (every company measured), and the simulator returns a null report
     // for a non-FX scenario, so both no-caveat cases collapse here.
-    const assumptionNote = buildImportShareNote(sim.importShare)
+    const assumptionNote = buildDriverNote(sim.driverReports)
 
     // Build worst-hit (cheap, no AI) — ALWAYS returned so the client can render
     // the chips AND post it to the narrative endpoint (the latency split below).
@@ -464,6 +467,8 @@ export async function GET(
       // reader can check the prose rather than take it on trust. Null for a
       // non-FX scenario.
       importShare: sim.importShare,
+      // Phase 16.7 — the same evidence for every driver, not only the FX share.
+      driverReports: sim.driverReports,
       worstHit,
       narrative,
       mitigations,

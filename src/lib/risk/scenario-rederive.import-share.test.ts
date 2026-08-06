@@ -196,3 +196,83 @@ describe('simulateByDrivers — the import-share report', () => {
     expect(r1.importShare?.fromCatalogDefault).toEqual([...(r1.importShare?.fromCatalogDefault ?? [])].sort())
   })
 })
+
+/**
+ * Phase 16.7 — `cost_rigidity` is the second driver through the same path.
+ *
+ * `crisis-catalog.ts` ships `costRigidity: 0.8` on both drought scenarios, so
+ * "seeds and irrigation are already spent" was asserted of every company the
+ * shock touched — including a services arm, where a volume drop genuinely does
+ * scale costs down and 0.8 crushes a margin that would not have moved.
+ */
+const DROUGHT_SCENARIO = {
+  code: 'DROUGHT_30',
+  overrides: { shock: { revenueShock: -0.3, yieldShock: -0.3, costRigidity: 0.8 } },
+}
+
+const rigidityRow = (o: Partial<{ id: string; value: number; companyId: string | null }>) => ({
+  id: 'r1', key: 'cost_rigidity', value: 0.8, companyId: null, sortOrder: 0,
+  createdAt: new Date('2026-01-01T00:00:00Z'), ...o,
+})
+
+describe('simulateByDrivers — cost_rigidity (16.7)', () => {
+  it('a company stating low rigidity keeps the margin the catalogue would have crushed', async () => {
+    const h = harness()
+    await run([rigidityRow({ value: 0, companyId: 'c2' })], h, DROUGHT_SCENARIO)
+    // c1 falls back to the catalogue 0.8: cogs barely drops as revenue does.
+    // cogs 600 × (1 + (−0.3 × (1 − 0.8))) = 600 × 0.94 = 564
+    // revenue 1000 × 0.7 = 700 → ebitda 700 − 564 − 200 = −64
+    expect(h.seen.get('c1')?.ebitda).toBeCloseTo(-64, 6)
+    // c2 stated 0 — fully variable, so cogs scales with volume:
+    // 600 × 0.7 = 420 → 700 − 420 − 200 = 80
+    expect(h.seen.get('c2')?.ebitda).toBeCloseTo(80, 6)
+  })
+
+  it('reports rigidity provenance alongside the FX share, in registry order', async () => {
+    const r = await run([rigidityRow({ value: 0, companyId: 'c2' })], harness(), DROUGHT_SCENARIO)
+    // No FX lever in this scenario, so only the rigidity driver is active.
+    expect(r.driverReports.map((d) => d.driverKey)).toEqual(['cost_rigidity'])
+    expect(r.driverReports[0]).toMatchObject({
+      fromAssumption: [{ companyCode: 'EDEN', share: 0 }],
+      fromCatalogDefault: ['CPC'],
+      catalogDefault: 0.8,
+    })
+  })
+
+  it('rigidity has no measured tier — a real imported cost does not silence it', async () => {
+    const h = harness({ importedInputCostByCompany: { c1: 100 } })
+    const r = await run([], h, DROUGHT_SCENARIO)
+    expect(r.driverReports[0].measured).toEqual([])
+    expect(r.driverReports[0].fromCatalogDefault).toEqual(['CPC', 'EDEN'])
+  })
+
+  it('an out-of-range rigidity is refused the same way a share is', async () => {
+    const h = harness()
+    const r = await run([rigidityRow({ value: 80, companyId: 'c1' })], h, DROUGHT_SCENARIO)
+    expect(r.driverReports[0].rejected).toMatchObject([{ companyCode: 'CPC', value: 80 }])
+    // Fell back to 0.8, not 80.
+    expect(h.seen.get('c1')?.ebitda).toBeCloseTo(-64, 6)
+  })
+
+  it('a scenario pulling both levers resolves both drivers independently', async () => {
+    const h = harness()
+    const both = {
+      code: 'COMBO',
+      overrides: { shock: { fxShock: 0.2, assumedImportShare: 0.3, revenueShock: -0.3, costRigidity: 0.8 } },
+    }
+    const r = await run(
+      [row({ value: 0.7, companyId: 'c1' }), rigidityRow({ id: 'r2', value: 0, companyId: 'c1' })],
+      h,
+      both,
+    )
+    expect(r.driverReports.map((d) => d.driverKey)).toEqual(['import_share', 'cost_rigidity'])
+    expect(r.driverReports[0].fromAssumption).toEqual([{ companyCode: 'CPC', share: 0.7 }])
+    expect(r.driverReports[1].fromAssumption).toEqual([{ companyCode: 'CPC', share: 0 }])
+  })
+
+  it('a driver whose lever the scenario does not pull is not reported at all', async () => {
+    // The FX-only scenario must not claim it considered rigidity.
+    const r = await run([rigidityRow({ value: 0, companyId: 'c1' })])
+    expect(r.driverReports.map((d) => d.driverKey)).toEqual(['import_share'])
+  })
+})

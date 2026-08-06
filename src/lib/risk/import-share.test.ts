@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   resolveImportShare,
+  resolveCompanyDriver,
   buildImportShareNote,
+  buildDriverNote,
+  COMPANY_DRIVERS,
   resolveShockOverrides,
   type ImportShareReport,
   type ResolvedScalars,
@@ -72,13 +75,15 @@ describe('resolveImportShare — refuses to guess a percent scale', () => {
     expect(r.share).toBe(0.3)
     expect(r.source).toBe('catalog')
     expect(r.rejected).toMatchObject({ value: 70 })
-    expect(r.rejected?.reason).toMatch(/not a fraction/)
+    expect(r.rejected?.reason).toMatch(/is above 1/)
+    // The percent-scale hint is the actionable half of the message.
+    expect(r.rejected?.reason).toMatch(/70 means 70%/)
   })
 
   it('rejects a negative share', () => {
     const r = resolveImportShare({ importedInputCost: 0, assumption: -0.2, catalogDefault: 0.3 })
     expect(r.source).toBe('catalog')
-    expect(r.rejected?.reason).toMatch(/negative/)
+    expect(r.rejected?.reason).toMatch(/is below 0/)
   })
 
   it('carries the rejection through even when there is no literal to fall back on', () => {
@@ -243,5 +248,92 @@ describe('buildImportShareNote — bounded output', () => {
       fromCatalogDefault: Array.from({ length: 60 }, (_, i) => `CO${i}`),
     })!
     expect(note).toMatch(/60 companies have no stated share/)
+  })
+})
+
+describe('COMPANY_DRIVERS registry (16.7)', () => {
+  it('every entry feeds a real ScenarioShock field', () => {
+    for (const d of COMPANY_DRIVERS) {
+      expect(['assumedImportShare', 'costRigidity']).toContain(d.feeds)
+    }
+  })
+
+  it('keys are unique — a duplicate would make resolution order matter', () => {
+    const keys = COMPANY_DRIVERS.map((d) => d.key)
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+
+  it('every entry has a usable range and a reason to state when it is violated', () => {
+    for (const d of COMPANY_DRIVERS) {
+      expect(d.min).toBeLessThan(d.max)
+      expect(d.rangeNote.length).toBeGreaterThan(10)
+    }
+  })
+
+  it('deliberately does NOT wire drivers no lever consumes', () => {
+    // Guard, not decoration: `resolveShockOverrides` holds opex and da_total
+    // fixed and has no tax step, so a `tax_rate` driver would have nowhere to
+    // go. Adding one here without adding the lever would mean a driver that
+    // reports as "applied" and changes nothing. If a lever lands later, delete
+    // the key from this list in the same commit.
+    const keys = COMPANY_DRIVERS.map((d) => d.key)
+    for (const unconsumed of ['inflation', 'tax_rate', 'vat_rate', 'fx_usd', 'wage_growth']) {
+      expect(keys).not.toContain(unconsumed)
+    }
+  })
+})
+
+describe('resolveCompanyDriver — generic behaviour', () => {
+  const rigidity = COMPANY_DRIVERS.find((d) => d.key === 'cost_rigidity')!
+
+  it('has no measured tier unless the caller supplies one', () => {
+    const r = resolveCompanyDriver(rigidity, { assumption: 0.2, catalogDefault: 0.8 })
+    expect(r).toEqual({ value: 0.2, source: 'assumption' })
+  })
+
+  it('honours an explicit measured flag', () => {
+    const r = resolveCompanyDriver(rigidity, { measured: true, assumption: 0.2, catalogDefault: 0.8 })
+    expect(r).toEqual({ value: 0, source: 'measured' })
+  })
+
+  it('refuses an out-of-range value and names the direction', () => {
+    const high = resolveCompanyDriver(rigidity, { assumption: 80, catalogDefault: 0.8 })
+    expect(high.value).toBe(0.8)
+    expect(high.rejected?.reason).toMatch(/is above 1/)
+    const low = resolveCompanyDriver(rigidity, { assumption: -1, catalogDefault: 0.8 })
+    expect(low.rejected?.reason).toMatch(/is below 0/)
+  })
+})
+
+describe('buildDriverNote (16.7)', () => {
+  const base: ImportShareReport = {
+    measured: [], fromAssumption: [], fromCatalogDefault: [], unresolved: [],
+    rejected: [], catalogDefault: 0.3,
+  }
+
+  it('joins one sentence per driver, labelled', () => {
+    const note = buildDriverNote([
+      { ...base, driverKey: 'import_share', fromAssumption: [{ companyCode: 'CPC', share: 0.7 }] },
+      { ...base, driverKey: 'cost_rigidity', catalogDefault: 0.8, fromAssumption: [{ companyCode: 'EDEN', share: 0 }] },
+    ])!
+    expect(note).toMatch(/Imported-input share stated for 1 company \(CPC 70%\)/)
+    expect(note).toMatch(/Sunk-cost share stated for 1 company \(EDEN 0%\)/)
+  })
+
+  it('returns null when nothing needs disclosing', () => {
+    expect(buildDriverNote([])).toBeNull()
+    expect(buildDriverNote([{ ...base, measured: ['A'] }])).toBeNull()
+  })
+
+  it('tolerates a missing list rather than failing the whole response', () => {
+    // This builds a caveat. A simulation that produced real numbers must not
+    // 500 because the sentence describing its assumptions could not be built.
+    expect(buildDriverNote(undefined)).toBeNull()
+    expect(buildDriverNote(null)).toBeNull()
+  })
+
+  it('skips a null entry among real ones', () => {
+    const note = buildDriverNote([null, { ...base, fromCatalogDefault: ['A'] }])
+    expect(note).toMatch(/1 company has no stated share/)
   })
 })
