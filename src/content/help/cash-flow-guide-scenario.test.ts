@@ -156,6 +156,18 @@ describe('Cash Flow help-video scenario', () => {
     expect(safeFillHelper).toContain('loc.isVisible()');
     expect(safeFillHelper).not.toContain('page.mouse.click');
 
+    // `safeSelect` — the <select> sibling. The driver key became a picker so a
+    // finance user never types a slug; a helper that drives it needs the same
+    // guarantees as the other two.
+    const safeSelectHelper = producer.slice(
+      producer.indexOf('async safeSelect(sel, value)'),
+      producer.indexOf('async safeFill(sel, text)'),
+    );
+    expect(safeSelectHelper).toContain('typeof sel !== "string"');
+    expect(safeSelectHelper).toContain('count !== 1');
+    expect(safeSelectHelper).toContain('loc.isVisible()');
+    expect(safeSelectHelper).not.toContain('page.mouse.click');
+
     const recorder = producer.slice(
       producer.indexOf('async function recordSection'),
       producer.indexOf('async function performAction'),

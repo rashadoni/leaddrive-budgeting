@@ -44,11 +44,6 @@ const HELP_VIDEO_ENTRIES_RAW = [
   // (three minutes and the tab is still unclickable — the view renders every
   // one of 43,440 rows). Registering the slug without media would put a play
   // button on the page that 404s. Add the entry back with the recording.
-  // Registered with its media in the same commit, and only once all three
-  // languages exist: getHelpVideoAsset builds the filename from the viewer's
-  // locale with NO fallback, so a slug missing a language hands that viewer a
-  // play button that 404s. video-assets.test.ts enforces this.
-  { slug: "assumptions", routes: ["/budgeting?tab=assumptions"] },
   { slug: "comparison", routes: ["/budgeting?tab=comparison"] },
   { slug: "forecast", routes: ["/budgeting?tab=forecast"] },
   { slug: "plans", routes: ["/budgeting?tab=plans"] },

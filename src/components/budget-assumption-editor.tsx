@@ -26,6 +26,11 @@ import { Select } from "@/components/ui/select"
 import { Trash2, Loader2 } from "lucide-react"
 import { CATEGORY_META } from "@/lib/budgeting/assumption-categories"
 import { ASSUMPTION_PERIODS } from "@/lib/budgeting/assumption-input"
+import {
+  CUSTOM_ASSUMPTION_KEY,
+  findAssumptionKeyOption,
+  groupedAssumptionKeys,
+} from "@/lib/budgeting/assumption-keys"
 
 /** One row as the tab holds it — mirrors the API response, kept narrow. */
 export interface EditableAssumption {
@@ -150,6 +155,35 @@ export function BudgetAssumptionEditor({
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }))
 
+  const keyGroups = useMemo(() => groupedAssumptionKeys(), [])
+  const selectedKeyOption = findAssumptionKeyOption(form.key)
+  // A key that is set but not in the catalogue is a custom one — including a
+  // row imported from a workbook whose label produced a derived slug. Editing
+  // such a row must keep showing its key, not silently blank it.
+  const usingCustomKey = form.key !== "" && !selectedKeyOption
+
+  /**
+   * Picking a key also fills the category and the unit, because those follow
+   * from the driver and asking a person to restate them is how the three drift
+   * apart. Both stay editable afterwards.
+   */
+  function onKeyChange(next: string) {
+    if (next === CUSTOM_ASSUMPTION_KEY) {
+      // Clear so the free-text box starts empty rather than inheriting the
+      // slug of whatever was selected a moment ago.
+      set("key", "")
+      return
+    }
+    const opt = findAssumptionKeyOption(next)
+    setForm((f) => ({
+      ...f,
+      key: next,
+      category: opt?.category ?? f.category,
+      unit: opt?.unit ?? f.unit,
+      label: f.label.trim() === "" && opt ? t(`assumptionKeyLabel.${opt.labelKey}`) : f.label,
+    }))
+  }
+
   async function submit() {
     setError(null)
     const trimmedKey = form.key.trim()
@@ -263,16 +297,50 @@ export function BudgetAssumptionEditor({
             </Select>
           </div>
 
+          {/* The key is CHOSEN, not typed. A controller has no way of knowing
+              which slugs the product looks up, and a typo yields a row that
+              renders while nothing reads it — a silent failure. The options
+              carry plain-language names; the slug is shown only as a hint. */}
           <div className="space-y-1">
-            <label className="text-sm font-medium">{t("assumptionFieldKey")}</label>
-            <Input
+            <Select
               data-testid="assumption-field-key"
-              value={form.key}
-              onChange={(e) => set("key", e.target.value)}
-              placeholder="import_share"
-            />
-            {/* The key, not the label, is what a formula or scenario looks up. */}
-            <p className="text-[10px] text-muted-foreground">{t("assumptionFieldKeyHint")}</p>
+              label={t("assumptionFieldKey")}
+              value={usingCustomKey ? CUSTOM_ASSUMPTION_KEY : form.key}
+              onChange={(e) => onKeyChange(e.target.value)}
+            >
+              <option value="">{t("assumptionKeyPlaceholder")}</option>
+              <optgroup label={t("assumptionKeyGroupActive")}>
+                {keyGroups.active.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {t(`assumptionKeyLabel.${o.labelKey}`)}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label={t("assumptionKeyGroupDocumentation")}>
+                {keyGroups.documentationOnly.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {t(`assumptionKeyLabel.${o.labelKey}`)}
+                  </option>
+                ))}
+              </optgroup>
+              <option value={CUSTOM_ASSUMPTION_KEY}>{t("assumptionKeyCustom")}</option>
+            </Select>
+            {usingCustomKey && (
+              <Input
+                data-testid="assumption-field-key-custom"
+                value={form.key}
+                onChange={(e) => set("key", e.target.value)}
+                placeholder="my_driver"
+              />
+            )}
+            {/* Says what this choice will and will not do, in the same breath. */}
+            <p className="text-[10px] text-muted-foreground">
+              {selectedKeyOption
+                ? selectedKeyOption.readBy === "none"
+                  ? t("assumptionKeyReadByNone")
+                  : t("assumptionKeyReadByProduct", { key: selectedKeyOption.key })
+                : t("assumptionFieldKeyHint")}
+            </p>
           </div>
 
           <div className="space-y-1">

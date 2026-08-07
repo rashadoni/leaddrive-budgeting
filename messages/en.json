@@ -1704,7 +1704,30 @@
       "quarterly": "Quarterly",
       "annual": "Annual",
       "per_unit": "Per unit"
-    }
+    },
+    "assumptionKeyLabel": {
+      "import_share": "Imported share of cost",
+      "cost_rigidity": "Sunk (fixed) share of cost",
+      "fx_usd": "USD / AZN planning rate",
+      "fx_eur": "EUR / AZN planning rate",
+      "inflation": "Inflation",
+      "price_growth": "Selling-price growth",
+      "wage_growth": "Wage growth",
+      "tax_rate": "Profit tax rate",
+      "vat_rate": "VAT rate",
+      "interest_rate": "Interest rate",
+      "discount_rate": "Discount rate (WACC)",
+      "fx_try": "TRY / AZN rate",
+      "fx_rub": "RUB / AZN rate",
+      "yield_per_ha": "Yield per hectare",
+      "capacity_utilization": "Capacity utilisation"
+    },
+    "assumptionKeyPlaceholder": "— choose a driver —",
+    "assumptionKeyGroupActive": "Used in calculations",
+    "assumptionKeyGroupDocumentation": "Recorded as a premise (not yet calculated)",
+    "assumptionKeyCustom": "Other — enter my own key",
+    "assumptionKeyReadByProduct": "Read by the product as “{key}” — scenarios use this value.",
+    "assumptionKeyReadByNone": "Stored and shown on this tab. No calculation reads it yet — it documents the premise."
   },
   "onboardingDashboard": {
     "title": "Onboarding Completeness",
