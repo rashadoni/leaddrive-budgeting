@@ -1704,7 +1704,30 @@
       "quarterly": "Ежеквартально",
       "annual": "Годовое",
       "per_unit": "На единицу"
-    }
+    },
+    "assumptionKeyLabel": {
+      "import_share": "Доля импорта в затратах",
+      "cost_rigidity": "Доля невозвратных (постоянных) затрат",
+      "fx_usd": "Плановый курс USD / AZN",
+      "fx_eur": "Плановый курс EUR / AZN",
+      "inflation": "Инфляция",
+      "price_growth": "Рост отпускных цен",
+      "wage_growth": "Рост зарплат",
+      "tax_rate": "Ставка налога на прибыль",
+      "vat_rate": "Ставка НДС",
+      "interest_rate": "Процентная ставка",
+      "discount_rate": "Ставка дисконтирования (WACC)",
+      "fx_try": "Курс TRY / AZN",
+      "fx_rub": "Курс RUB / AZN",
+      "yield_per_ha": "Урожайность с гектара",
+      "capacity_utilization": "Загрузка мощностей"
+    },
+    "assumptionKeyPlaceholder": "— выберите драйвер —",
+    "assumptionKeyGroupActive": "Участвуют в расчётах",
+    "assumptionKeyGroupDocumentation": "Фиксируются как предпосылка (пока не считаются)",
+    "assumptionKeyCustom": "Другое — ввести свой ключ",
+    "assumptionKeyReadByProduct": "Продукт читает его как «{key}» — сценарии используют это значение.",
+    "assumptionKeyReadByNone": "Сохраняется и видно на вкладке. Ни один расчёт его пока не читает — это фиксация предпосылки."
   },
   "onboardingDashboard": {
     "title": "Полнота онбординга",

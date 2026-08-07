@@ -1704,7 +1704,30 @@
       "quarterly": "Rüblük",
       "annual": "İllik",
       "per_unit": "Vahidə görə"
-    }
+    },
+    "assumptionKeyLabel": {
+      "import_share": "Xərclərdə idxalın payı",
+      "cost_rigidity": "Batmış (sabit) xərclərin payı",
+      "fx_usd": "USD / AZN plan məzənnəsi",
+      "fx_eur": "EUR / AZN plan məzənnəsi",
+      "inflation": "İnflyasiya",
+      "price_growth": "Satış qiymətlərinin artımı",
+      "wage_growth": "Əmək haqqının artımı",
+      "tax_rate": "Mənfəət vergisi dərəcəsi",
+      "vat_rate": "ƏDV dərəcəsi",
+      "interest_rate": "Faiz dərəcəsi",
+      "discount_rate": "Diskont dərəcəsi (WACC)",
+      "fx_try": "TRY / AZN məzənnəsi",
+      "fx_rub": "RUB / AZN məzənnəsi",
+      "yield_per_ha": "Hektardan məhsuldarlıq",
+      "capacity_utilization": "Güc istifadəsi"
+    },
+    "assumptionKeyPlaceholder": "— sürücü seçin —",
+    "assumptionKeyGroupActive": "Hesablamalarda istifadə olunur",
+    "assumptionKeyGroupDocumentation": "Şərt kimi qeyd olunur (hələ hesablanmır)",
+    "assumptionKeyCustom": "Digər — öz açarımı daxil edim",
+    "assumptionKeyReadByProduct": "Məhsul onu «{key}» kimi oxuyur — ssenarilər bu dəyəri istifadə edir.",
+    "assumptionKeyReadByNone": "Saxlanılır və bu vərəqdə görünür. Hələ heç bir hesablama onu oxumur — bu, şərtin qeydidir."
   },
   "onboardingDashboard": {
     "title": "Onboarding Tamlığı",

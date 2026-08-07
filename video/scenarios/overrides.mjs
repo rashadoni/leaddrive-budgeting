@@ -594,14 +594,14 @@ export default {
       },
       {
         voice: {
-          az: "Ən vacib sahə — açar. Bu, ad deyil, düsturların və ssenarilərin sürücünü tapdığı sabit identifikatordur. İndi «import share» yazıram. Adı istənilən vaxt dəyişmək olar, açarı isə yox: devalvasiya ssenarisi məhz bu açarı axtarır. Açar səhv olsa, sətir cədvəldə görünəcək, amma heç bir hesablama onu oxumayacaq.",
-          en: "The most important field is the key. It is not a name but the stable identifier formulas and scenarios look the driver up by. I am typing import share now. The name can change at any time; the key cannot — the devaluation scenario looks for exactly this key. With a wrong key the row still appears in the table but no calculation ever reads it.",
-          ru: "Самое важное поле — ключ. Это не название, а стабильный идентификатор, по которому формулы и сценарии находят драйвер. Сейчас набираю «import share». Название можно менять когда угодно, ключ — нет: сценарий девальвации ищет именно этот ключ. С неверным ключом строка в таблице появится, но ни один расчёт её не прочитает.",
+          az: "Ən vacib sahə — sürücünün özü. Onu siyahıdan seçirsiniz, əl ilə yazmırsınız: siyahı iki hissəyə bölünüb — «hesablamalarda istifadə olunur» və «şərt kimi qeyd olunur». Birincidən seçim ssenariyə real təsir edir, ikincisi isə yalnız əsaslandırmanı saxlayır. Seçimdən sonra sistem kateqoriyanı və ölçü vahidini özü doldurur.",
+          en: "The most important field is the driver itself. You pick it from a list rather than typing it, and the list is split in two: used in calculations, and recorded as a premise. A choice from the first genuinely affects the scenario; the second only stores the reasoning. Picking one fills in the category and the unit for you.",
+          ru: "Самое важное поле — сам драйвер. Его выбирают из списка, а не печатают, и список разделён надвое: «участвуют в расчётах» и «фиксируются как предпосылка». Выбор из первой части реально влияет на сценарий, вторая только сохраняет обоснование. После выбора система сама подставит категорию и единицу измерения.",
         },
         do: async (p, l, h) => {
           await h.moveTo(AS_F_KEY);
           await h.holdUntil(0.25);
-          await h.safeFill(AS_F_KEY[0], "import_share");
+          await h.safeSelect(AS_F_KEY[0], "import_share");
           await h.holdUntil(0.6);
           await h.safeFill(AS_F_LABEL[0], "Idxal xərclərinin payı");
           await h.holdUntil(0.92);

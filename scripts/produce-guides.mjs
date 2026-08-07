@@ -1067,6 +1067,27 @@ function makeHelpers(page, scene, navigate) {
     // Same strictness as safeClick — one exact selector, exactly one match,
     // must be visible. A scenario using this is responsible for cancelling the
     // form afterwards; nothing here may ever type into a control that submits.
+    // Third sibling of safeClick/safeFill, for a <select>. Choosing an option
+    // is local state and issues no request, and the key field became a picker
+    // precisely so nobody has to type a slug — a take that still typed one
+    // would be demonstrating a control that no longer exists.
+    async safeSelect(sel, value) {
+      if (typeof sel !== "string") {
+        throw new Error("safeSelect requires one exact selector string");
+      }
+      const loc = page.locator(sel);
+      const count = await loc.count();
+      if (count !== 1) {
+        throw new Error(`safeSelect expected exactly one ${sel}, found ${count}`);
+      }
+      if (!(await loc.isVisible())) {
+        throw new Error(`safeSelect target is not visible: ${sel}`);
+      }
+      const { x, y } = await prepareClickTarget(loc, `safeSelect ${sel}`);
+      await loc.selectOption(String(value), { timeout: 20000 });
+      await pulse(page, x, y);
+      await page.waitForTimeout(400);
+    },
     async safeFill(sel, text) {
       if (typeof sel !== "string") {
         throw new Error("safeFill requires one exact selector string");
