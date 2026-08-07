@@ -194,13 +194,23 @@ describe('Cash Flow help-video scenario', () => {
     ).map((match) => match[1]);
 
     expect(safeTargets).toEqual([
-      // Assumptions guide: opens the create form and cancels it. Both are
-      // local view toggles — the dialog is client state and issues no request
-      // — and the recorder additionally aborts every POST/PUT/PATCH/DELETE, so
-      // a take physically cannot write. The scenario never references the save
-      // control; that is asserted separately below.
+      // Assumptions guide. The three TM_* targets are the crossing into the
+      // risk terminal: a signal chip and a scenario row are client-side view
+      // toggles, and Run crisis is a GET simulate that writes nothing. They
+      // appear TWICE because the take runs the same scenario before and after
+      // saving a driver — that repetition IS the demonstration, so a future
+      // edit that collapses it to one run should fail here and be argued for.
+      // The save itself is not in this list; it is a write and is pinned
+      // separately under mutatingClick below.
+      'TM_YEAR_2026[0]',
+      'TM_SIGNAL_DROUGHT[0]',
+      'TM_SCENARIO_DROUGHT[0]',
+      'TM_RUN_CRISIS[0]',
       'AS_ADD[0]',
-      'AS_CANCEL[0]',
+      'TM_YEAR_2026[0]',
+      'TM_SIGNAL_DROUGHT[0]',
+      'TM_SCENARIO_DROUGHT[0]',
+      'TM_RUN_CRISIS[0]',
       'WS_MATERIAL',
       'WS_MATRIX_BUTTON',
       'WS_LIST_BUTTON',
@@ -271,7 +281,15 @@ describe('Cash Flow help-video scenario', () => {
 
     // data-control walks eight admin screens in one take; each hop is performed
     // by the scene that is still speaking, in the order the narration names them.
+    // The assumptions guide then bounces four times between the tab and the risk
+    // terminal: that A→B→A→B shape is the guide's argument — the same scenario
+    // is run before and after a driver is saved so the two readings can be
+    // compared on camera — so the repetition is pinned rather than deduped.
     expect(routes).toEqual([
+      '/budgeting/terminal',
+      '/budgeting?tab=assumptions',
+      '/budgeting/terminal',
+      '/budgeting?tab=assumptions',
       '/budgeting/admin/indicator-backlog',
       '/budgeting/admin/indicator-health',
       '/budgeting/admin/statement-controls',
@@ -282,10 +300,14 @@ describe('Cash Flow help-video scenario', () => {
       '/budgeting/admin/companies-readiness',
     ]);
 
-    // Every destination is a GET-only admin report. Nothing here may reach the
+    // Every destination is a GET-only screen. Nothing here may reach the
     // importer, the deletion screen, or anything outside the app.
     for (const route of routes) {
-      expect(route.startsWith('/budgeting/admin/')).toBe(true);
+      expect(
+        route.startsWith('/budgeting/admin/')
+          || route === '/budgeting/terminal'
+          || route === '/budgeting?tab=assumptions',
+      ).toBe(true);
       expect(route).not.toMatch(/ai-import|delete-data|api\//);
     }
 
@@ -326,7 +348,14 @@ describe('Cash Flow help-video scenario', () => {
     // two more writes join the list. Both go through the guarded delete flow:
     // DD_CHECK computes the blast radius and deletes nothing, DD_CONFIRM_SUBMIT
     // is the deletion itself and can only follow it.
+    // 2026-08-07 — the assumptions guide joins them. It was rewritten from a
+    // narrated tour into the full cycle (save a driver → re-run the scenario →
+    // read the company's score again), because a take that only hovered the
+    // Add button demonstrated nothing about a section whose entire value is
+    // that what you write here changes a number somewhere else.
     expect(mutatingTargets).toEqual([
+      // The one row the assumptions guide saves for real.
+      'AS_SAVE[0]',
       // The deletion's dry check computes the blast radius and deletes nothing.
       // The confirmation itself is deliberately NOT in this list — see the note
       // in ai-import-guide-scenario.test.ts.

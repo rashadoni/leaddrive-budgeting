@@ -97,6 +97,7 @@ export function PeriodChips({
           <button
             key={y}
             type="button"
+            data-testid={`period-year-${value}`}
             onClick={() => onChange(value)}
             aria-pressed={isActive}
             className={`${chipBase} ${

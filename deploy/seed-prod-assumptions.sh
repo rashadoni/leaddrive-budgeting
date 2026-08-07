@@ -64,13 +64,14 @@ SQL
 
 if [ "$MODE" = "dry" ]; then
   echo
-  echo "Dry run. Would write 6 EXAMPLE rows into the plan named \"$PLAN_NAME\":"
+  echo "Dry run. Would write 7 EXAMPLE rows into the plan named \"$PLAN_NAME\":"
   echo "    import_share   plan default          0.30"
   echo "    import_share   AZSEKER-CPC           0.72"
   echo "    import_share   AZSEKER-AZSF          0.65"
   echo "    import_share   AZSEKER-EDEN          0.18"
   echo "    import_share   AZSEKER-PROMALT       0.00"
   echo "    cost_rigidity  AZSEKER-EDEN          0.80"
+  echo "    fx_usd         plan default          1.70   ← unblocks AZN_DEVAL_20"
   echo
   echo "Each row's notes begin with: $MARKER"
   echo "Re-run with --apply to back up and write, or --remove to delete them."
@@ -123,7 +124,16 @@ CROSS JOIN (VALUES
   ('codex_azsf_20260630',                     'fx',         'import_share',  'Idxal xərclərinin payı',  0.65, '%', 'Azərşəkər — xam şəkər idxalı',           2),
   ('cmqukprvq0005t59z4b2end2g',               'fx',         'import_share',  'Idxal xərclərinin payı',  0.18, '%', 'EDEN — yalnız dərman və gübrə',          3),
   ('cmqukprvt0007t59znbc41sh7',               'fx',         'import_share',  'Idxal xərclərinin payı',  0.00, '%', 'PROMALT — xammal daxili bazardan',       4),
-  ('cmqukprvq0005t59z4b2end2g',               'operations', 'cost_rigidity', 'Batmış xərclərin payı',   0.80, '%', 'EDEN — toxum və suvarma əvvəlcədən',     5)
+  ('cmqukprvq0005t59z4b2end2g',               'operations', 'cost_rigidity', 'Batmış xərclərin payı',   0.80, '%', 'EDEN — toxum və suvarma əvvəlcədən',     5),
+  -- 2026-08-07 — not decoration. `AZN_DEVAL_20` is a target scenario: it needs a
+  -- CURRENT AZN/USD level to derive its shock from, the CBAR feed on this
+  -- deployment has none, and without a level the endpoint answers 422 and the
+  -- flagship devaluation scenario simply refuses to run. `fx_usd` is the
+  -- sanctioned stand-in (FEED_ANCHOR_ASSUMPTIONS): plan-scoped only, and shown
+  -- in the brief as a violet "planning rate" chip so it can never be mistaken
+  -- for a market quote. 1.70 is the peg; replace it with the rate the holding
+  -- actually plans at.
+  (NULL::text,                                'fx',         'fx_usd',        'USD / AZN plan məzənnəsi', 1.70, 'AZN', 'plan məzənnəsi — devalvasiya ssenarisi üçün', 6)
 ) AS v(company_id, category, key, label, value, unit, note, ord);
 
 COMMIT;

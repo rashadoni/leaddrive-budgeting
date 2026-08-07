@@ -44,6 +44,11 @@ const HELP_VIDEO_ENTRIES_RAW = [
   // (three minutes and the tab is still unclickable — the view renders every
   // one of 43,440 rows). Registering the slug without media would put a play
   // button on the page that 404s. Add the entry back with the recording.
+  // Assumptions. The take crosses into the risk terminal and back, because the
+  // section's whole claim is that what you write here changes a number
+  // somewhere else — but it stays registered against the tab it teaches, so a
+  // viewer standing on the terminal is offered the terminal walkthrough.
+  { slug: "assumptions", routes: ["/budgeting?tab=assumptions"] },
   { slug: "comparison", routes: ["/budgeting?tab=comparison"] },
   { slug: "forecast", routes: ["/budgeting?tab=forecast"] },
   { slug: "plans", routes: ["/budgeting?tab=plans"] },
