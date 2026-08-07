@@ -1071,6 +1071,14 @@ function makeHelpers(page, scene, navigate) {
     // is local state and issues no request, and the key field became a picker
     // precisely so nobody has to type a slug — a take that still typed one
     // would be demonstrating a control that no longer exists.
+    //
+    // `value` may be a string (the option's value attribute) or
+    // `{ labelContains }`. The company scope picker is keyed by database id,
+    // and a scenario that hard-codes one silently stops selecting anything the
+    // day the stand is reseeded — so the scope is chosen by the visible company
+    // name instead. Playwright's own `{ label }` is an exact match and the
+    // options carry depth indentation and a trailing code, which is why this
+    // resolves the value itself rather than handing the label over.
     async safeSelect(sel, value) {
       if (typeof sel !== "string") {
         throw new Error("safeSelect requires one exact selector string");
@@ -1084,7 +1092,27 @@ function makeHelpers(page, scene, navigate) {
         throw new Error(`safeSelect target is not visible: ${sel}`);
       }
       const { x, y } = await prepareClickTarget(loc, `safeSelect ${sel}`);
-      await loc.selectOption(String(value), { timeout: 20000 });
+      let target = value;
+      if (value && typeof value === "object" && typeof value.labelContains === "string") {
+        const needle = value.labelContains;
+        const resolved = await loc.evaluate(
+          (el, text) =>
+            Array.from(el.options).find((o) => o.textContent.includes(text))?.value ?? null,
+          needle,
+        );
+        if (resolved === null) {
+          throw new Error(`safeSelect found no option containing ${JSON.stringify(needle)} in ${sel}`);
+        }
+        target = resolved;
+      }
+      const chosen = await loc.selectOption(String(target), { timeout: 20000 });
+      // selectOption resolves with the values it actually selected. An empty
+      // array means the option did not match — Playwright does not treat that
+      // as an error, so a take would carry on with the field untouched and the
+      // narration would be describing a choice nobody made.
+      if (!Array.isArray(chosen) || chosen.length === 0) {
+        throw new Error(`safeSelect matched no option in ${sel}: ${JSON.stringify(value)}`);
+      }
       await pulse(page, x, y);
       await page.waitForTimeout(400);
     },

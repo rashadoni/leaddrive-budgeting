@@ -462,40 +462,75 @@ const AS_DETAILS = ['[data-testid="assumptions-details-title"]', AS_ROOT[0], "ma
 const AS_ADD = ['[data-testid="assumptions-add"]', '[data-testid="assumptions-add-first"]', AS_ROOT[0]];
 const AS_ROW_PLAN = ['[data-assumption-scope="plan"]', '[data-testid="assumptions-row"]', AS_ROOT[0]];
 const AS_ROW_COMPANY = ['[data-assumption-scope="company"]', '[data-testid="assumptions-row"]', AS_ROOT[0]];
-const AS_ROW_IMPORT = ['[data-assumption-key="import_share"]', '[data-testid="assumptions-row"]', AS_ROOT[0]];
-const AS_DUP = ['[data-testid="assumptions-duplicate-warning"]', AS_DETAILS[0], AS_ROOT[0]];
-// Dialog — opened by AS_ADD, always closed again with AS_CANCEL. Nothing in
-// this scenario may touch AS_SAVE: the recorder clicks for real, and the guide
-// must not leave a row behind. Kept as a constant only so the scenario test can
-// assert it is never referenced inside a `do`.
+const AS_ROW_RIGIDITY = ['[data-assumption-key="cost_rigidity"]', '[data-testid="assumptions-row"]', AS_ROOT[0]];
+// Dialog — opened by AS_ADD. Unlike the first version of this guide, the take
+// now SAVES: AS_SAVE is driven with `mutatingClick`, which refuses to run under
+// READONLY, so this scenario can only ever be recorded against a throwaway
+// stand. See the block comment on the scenario itself.
 const AS_EDITOR = ['[data-testid="assumption-editor"]', "main"];
 const AS_F_KEY = ['[data-testid="assumption-field-key"]', AS_EDITOR[0]];
-const AS_F_LABEL = ['[data-testid="assumption-field-label"]', AS_EDITOR[0]];
 const AS_F_VALUE = ['[data-testid="assumption-field-value"]', AS_EDITOR[0]];
-const AS_F_UNIT = ['[data-testid="assumption-field-unit"]', AS_EDITOR[0]];
 const AS_F_SCOPE = ['[data-testid="assumption-field-scope"]', AS_EDITOR[0]];
 const AS_F_NOTES = ['[data-testid="assumption-field-notes"]', AS_EDITOR[0]];
-const AS_CANCEL = ['[data-testid="assumption-cancel"]', AS_EDITOR[0]];
+const AS_SAVE = ['[data-testid="assumption-save"]', AS_EDITOR[0]];
+
+// ── Risk terminal — where an assumption stops being a premise and becomes a
+// number. The guide crosses into it twice, before and after the save, and that
+// pair of readings is the whole point of the take.
+const TM_SIGNALS = ['[data-testid="signals-strip"]', "main"];
+// The terminal opens on the year it considers current, which is not always the
+// year the assumptions were written for — and an assumption is loaded by plan
+// year. Recorded once on 2025 by accident, the take ran a scenario that could
+// not see the row it had just saved and would have shown an unchanged number
+// while the narration claimed a change. The period is now chosen explicitly.
+const TM_YEAR_2026 = ['[data-testid="period-year-2026"]', '[data-testid="period-chips"]', "main"];
+const TM_SIGNAL_DROUGHT = ['[data-testid="signal-drought"]', TM_SIGNALS[0]];
+const TM_SCENARIO_DROUGHT = ['[data-testid="scenario-row-DROUGHT_2026"]', "main"];
+const TM_RUN_CRISIS = ['[data-testid="scenario-run-crisis"]', "main"];
+const TM_BRIEF = ['[data-testid="crisis-brief-panel"]', "main"];
+const TM_WORST_HIT = ['[data-testid="crisis-worst-hit"]', TM_BRIEF[0]];
+const TM_WORST_CPC = ['[data-testid="worst-hit-AZSEKER-CPC"]', TM_WORST_HIT[0]];
 
 export default {
-  // Assumptions (Fərziyyələr). Recorded against production, where the recorder
-  // runs READONLY — every `click` degrades to a hover. The narration is written
-  // for that: it never claims an action the take cannot perform. Nothing here
-  // opens the dialog or edits a row; the form is described while the cursor
-  // rests on the button that opens it, which is true in either mode.
+  // Assumptions (Fərziyyələr) — the FULL cycle, deliberately.
+  //
+  // The first take of this guide only talked: it hovered the Add button and
+  // described a form nobody saw filled, because it was recorded against
+  // production where the recorder degrades every click to a hover. The owner's
+  // verdict was blunt and correct — "ты тут никаких действий не сделал, только
+  // рассказываешь" — and then, more demanding still: save it for real and show
+  // what it did to the company's numbers, moving to the section where those
+  // numbers live.
+  //
+  // So this scenario WRITES. It saves a real assumption row and re-runs a real
+  // crisis simulation over it, which means it can only be recorded against a
+  // throwaway stand launched with ALLOW_MUTATIONS=1 — `mutatingClick` refuses
+  // under READONLY, so there is no way to point this at prod by accident.
+  //
+  // The demonstration is measured, not asserted (verified 2026-08-07 against a
+  // copy of the production database):
+  //
+  //   CPC under DROUGHT_2026, no sunk-cost share stated → 90 → 80,
+  //     gross margin 23.9% → −2.2%   (the catalogue's generic 0.8 applied)
+  //   the same company after `cost_rigidity = 0.20` is saved → 90 → 86,
+  //     gross margin no longer collapses
+  //
+  // Six points of a crisis score, from one row a controller typed. That is the
+  // whole argument for the section, and the take shows it happening rather
+  // than describing it.
   "assumptions": {
     route: "/budgeting?tab=assumptions",
     title: {
-      az: "Fərziyyələr — büdcənin sürücüləri",
+      az: "Fərziyyələr — büdcənin əsas amilləri",
       en: "Assumptions — the drivers a budget is built on",
-      ru: "Допущения — драйверы, на которых собран бюджет",
+      ru: "Допущения — предпосылки, на которых собран бюджет",
     },
     scenes: [
       {
         voice: {
-          az: "Bu, Fərziyyələr bölməsidir. Burada hesabat deyil, büdcənin qurulduğu ilkin şərtlər saxlanılır: valyuta məzənnələri, inflyasiya, sərfiyyat normaları, idxal xərclərinin payı. Hesabat «nə qədər» sualına cavab verir, bu bölmə isə «niyə məhz bu qədər» sualına. Onsuz heç bir planı idarə heyəti qarşısında müdafiə etmək mümkün deyil.",
-          en: "This is the Assumptions section. It holds no results — it holds the premises a budget was built from: exchange rates, inflation, consumption norms, the share of imported cost. A report answers how much; this section answers why that much. Without it no plan can be defended to a board.",
-          ru: "Это раздел «Допущения». Здесь не отчётность, а предпосылки, из которых собран бюджет: курсы валют, инфляция, нормы расхода, доля импортных затрат. Отчёт отвечает на вопрос «сколько», а этот раздел — «почему именно столько». Без него ни один план невозможно защитить на совете директоров.",
+          az: "Bu, Fərziyyələr bölməsidir. Burada hesabat deyil, büdcənin qurulduğu ilkin şərtlər saxlanılır: valyuta məzənnələri, sərfiyyat normaları, xərclərdə idxalın payı. Hesabat «nə qədər» sualına cavab verir, bu bölmə isə «niyə məhz bu qədər» sualına. Bu gün sadəcə danışmayacağam: bir amil yazacağam, yadda saxlayacağam və sonra sizə göstərəcəyəm ki, konkret şirkətin rəqəmləri necə dəyişdi.",
+          en: "This is the Assumptions section. It holds no results — it holds the premises a budget was built from: exchange rates, consumption norms, the share of imported cost. A report answers how much; this section answers why that much. Today I will not merely describe it: I will enter one driver, save it, and then show you how a specific company's numbers changed because of it.",
+          ru: "Это раздел «Допущения». Здесь не отчётность, а предпосылки, из которых собран бюджет: курсы валют, нормы расхода, доля импорта в затратах. Отчёт отвечает на вопрос «сколько», а этот раздел — «почему именно столько». Сегодня я не буду просто рассказывать: я впишу один драйвер, сохраню его и потом покажу, как из-за этого изменились цифры конкретной компании.",
         },
         do: async (p, l, h) => {
           await p.waitForSelector(AS_ROOT[0], { timeout: 20000 }).catch(() => {});
@@ -522,71 +557,82 @@ export default {
       },
       {
         voice: {
-          az: "Bunun praktik mənası nədir. Manatın devalvasiyası ssenarisi əvvəllər bütün şirkətlərə eyni otuz faizlik əmsalla vururdu. Amma şəkər zavodu xammalı xaricdən alır, daxili logistika isə demək olar ki, almır. Eyni zərbə «ən çox zərər görənlər» reytinqini tapıntıya yox, sabitin artefaktına çevirirdi.",
-          en: "Why that matters in practice. The manat devaluation scenario used to hit every company with the same thirty per cent coefficient. But a sugar refinery buys its raw material abroad while a domestic logistics arm barely does. One shared coefficient turned the worst-hit ranking into an artefact of the constant rather than a finding.",
-          ru: "Зачем это нужно на практике. Сценарий девальвации маната раньше бил по всем компаниям одним коэффициентом в тридцать процентов. Но сахарный завод покупает сырьё за рубежом, а внутренняя логистика — почти нет. Одинаковый удар превращал рейтинг пострадавших в артефакт константы, а не в находку.",
+          az: "İkinci amilə diqqət yetirin — batmış xərclərin payı. Bu, həcm düşəndə yerində qalan xərclərin hissəsidir. Kənd təsərrüfatında o yüksəkdir: toxum, gübrə və suvarma məhsuldan çox əvvəl xərclənir. Emal müəssisəsində isə əksinə ola bilər — həcm düşür, xammal alışı da düşür. Cədvəldə bu pay yalnız bir şirkət üçün göstərilib. Qalanları üçün sistem kataloqun ümumi dəyərini götürür. Məhz bunu indi düzəldəcəyik.",
+          en: "Look at the second driver — the sunk-cost share: how much of the cost stays put when volume falls. In farming it is high; seed, fertiliser and irrigation are spent long before the harvest. In a processing plant it can be the opposite — volume falls and raw-material purchasing falls with it. In this table the share is stated for one company only. For the others the system falls back to a generic catalogue value. That is exactly what we are about to fix.",
+          ru: "Обратите внимание на второй драйвер — долю невозвратных затрат. Это та часть затрат, которая остаётся на месте, когда падает объём. В сельском хозяйстве она высокая: семена, удобрения и полив тратятся задолго до урожая. А на перерабатывающем заводе может быть наоборот — падает объём, падают и закупки сырья. В таблице эта доля указана только для одной компании. Для остальных система берёт общее каталожное значение. Именно это мы сейчас и исправим.",
         },
         do: async (p, l, h) => {
-          await h.hover(AS_ROW_IMPORT);
-          await h.holdUntil(0.55);
-          await h.moveTo(AS_ROW_COMPANY);
-          await h.holdUntil(0.92);
-        },
-      },
-      {
-        voice: {
-          az: "İndi ekranda məhz bu görünür. Idxal payı hər şirkət üçün ayrıca göstərilib: emal zavodlarında yüksək, kənd təsərrüfatında xeyli aşağı. Devalvasiya ssenarisi indi hər şirkətə onun öz payı ilə vurur, ümumi əmsalla yox — və nəticədə alınan reytinq artıq tapıntıdır.",
-          en: "And that is exactly what is on screen now. The imported-input share is stated per company: high for the processing plants, much lower for the farming arm. The devaluation scenario now hits each company with its own share rather than one shared coefficient — and the ranking it produces is finally a finding.",
-          ru: "И именно это сейчас на экране. Доля импорта указана отдельно по каждой компании: у перерабатывающих заводов высокая, у аграрного подразделения заметно ниже. Сценарий девальвации теперь бьёт по каждой компании её собственной долей, а не общим коэффициентом — и полученный рейтинг наконец является находкой.",
-        },
-        do: async (p, l, h) => {
-          await h.moveTo(AS_ROW_IMPORT);
-          await h.holdUntil(0.35);
-          await h.hover(AS_ROW_COMPANY);
-          await h.holdUntil(0.7);
-          await h.hover(AS_ROW_PLAN);
-          await h.holdUntil(0.92);
-        },
-      },
-      {
-        voice: {
-          az: "Sıfıra ayrıca diqqət yetirin. Xammalı yalnız daxili bazardan alan şirkət üçün sıfır boşluq deyil — bu, mənalı bir bəyanatdır: «bizim idxal xərcimiz yoxdur». Sistem onu belə də oxuyur və həmin şirkətə holdinq defoltunu tətbiq etmir. Boş qoyulmuş sətir isə tam əksinə işləyir — defolt tətbiq olunur.",
-          en: "Pay attention to the zero. For a company that buys everything domestically, zero is not emptiness — it is a meaningful statement: we have no imported cost. The system reads it that way and does not apply the holding default to that company. A row left blank does the opposite: the default applies.",
-          ru: "Обратите внимание на ноль. Для компании, которая покупает всё на внутреннем рынке, ноль — это не пустота, а осмысленное утверждение: «импортных затрат у нас нет». Система читает его именно так и не применяет к этой компании холдинговый дефолт. А оставленная пустой строка работает наоборот — дефолт применится.",
-        },
-        do: async (p, l, h) => {
-          await h.moveTo(AS_ROW_COMPANY);
+          await h.moveTo(AS_ROW_RIGIDITY);
           await h.holdUntil(0.5);
-          await h.hover(AS_ROW_IMPORT);
+          await h.hover(AS_ROW_RIGIDITY);
           await h.holdUntil(0.92);
         },
       },
       {
         voice: {
-          az: "İkinci sürücü — batmış xərclərin payı. Bu, həcm düşəndə qalan xərclərin hissəsidir. Kənd təsərrüfatında o yüksəkdir: toxum, gübrə və suvarma məhsuldan çox əvvəl xərclənir, ona görə də quraqlıq marjanı sıxır. Xidmət bölməsində isə əksinə — həcm düşür, xərclər də düşür.",
-          en: "The second driver is the sunk-cost share: how much of the cost stays when volume falls. In farming it is high — seed, fertiliser and irrigation are spent long before the harvest, which is why a drought crushes the margin. In a services arm it is the opposite: volume falls and cost falls with it.",
-          ru: "Второй драйвер — доля невозвратных затрат: сколько затрат остаётся при падении объёма. В сельском хозяйстве она высокая: семена, удобрения и полив тратятся задолго до урожая, поэтому засуха сжимает маржу. В сервисном подразделении наоборот — падает объём, падают и затраты.",
+          az: "Amma əvvəlcə «əvvəl»i qeyd edək. Risk terminalına keçirəm. Birinci addım — dövrü seçmək: iki min iyirmi altıncı il, çünki fərziyyələr məhz həmin ilin planında yazılıb. Səhv il seçsəniz, hesablama sizin sətrinizi ümumiyyətlə görməyəcək. İndi quraqlıq ssenarisini cari fərziyyələrlə işə salacağam — bu, dəyişiklikdən əvvəlki vəziyyətdir.",
+          en: "But first let us record the before. I move to the risk terminal. Step one is the period: twenty twenty-six, because that is the plan year the assumptions are written against. Pick the wrong year and the calculation will not see your row at all. Now I run the drought scenario on the current assumptions — the state before any change.",
+          ru: "Но сначала зафиксируем «до». Перехожу в риск-терминал. Первый шаг — выбрать период: две тысячи двадцать шестой год, потому что допущения записаны именно в плане этого года. Выберете не тот год — расчёт вашу строку просто не увидит. Теперь запускаю сценарий засухи на текущих допущениях: это состояние до изменения.",
         },
         do: async (p, l, h) => {
-          await h.moveTo(AS_DETAILS);
-          await h.holdUntil(0.4);
-          await h.hover(AS_ROW_COMPANY);
-          await h.holdUntil(0.92);
-        },
-      },
-      {
-        voice: {
-          az: "İndi yeni sürücünü necə əlavə etməyi göstərim. Yuxarıdakı «Əlavə et» düyməsi formanı açır. Diqqət: formanı tam dolduracağıq, amma yadda saxlamayacağıq — sonda «Ləğv et» basılacaq və cədvəldə heç nə dəyişməyəcək.",
-          en: "Now let me show how a new driver is added. The Add button at the top opens the form. Note that we will fill it in completely but will not save it — at the end we press Cancel and nothing in the table changes.",
-          ru: "Теперь покажу, как добавляется новый драйвер. Кнопка «Добавить» сверху открывает форму. Внимание: заполним её полностью, но сохранять не будем — в конце нажмём «Отмена», и в таблице ничего не изменится.",
-        },
-        do: async (p, l, h) => {
-          await h.moveTo(AS_ADD);
           await h.holdUntil(0.3);
-          // Opening the dialog is a local view toggle — no request leaves the
-          // page — so safeClick is the sanctioned way to do it for real even
-          // against production. The scenario is responsible for the Cancel at
-          // the end, and never touches the save control.
+          await h.goto("/budgeting/terminal");
+          await p.waitForSelector(TM_SIGNALS[0], { timeout: 60000 }).catch(() => {});
+          await h.moveTo(TM_YEAR_2026);
+          await h.holdUntil(0.6);
+          await h.safeClick(TM_YEAR_2026[0]);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Yuxarıdakı zolaq — canlı siqnallar. Quraqlıq xəbərdarlığına klikləyirəm: sistem özü müvafiq ssenarini açır. Siyahıdan «Quraqlıq — məhsul mənfi otuz faiz» seçirəm və «Böhranı işə sal» düyməsini basıram. Bu, real hesablamadır: hər şirkət üçün gəlir, maya dəyəri və marja yenidən hesablanır.",
+          en: "The strip at the top is the live signal feed. I click the drought alert and the system opens the matching scenario itself. From the list I pick drought — harvest minus thirty per cent — and press Run crisis. This is a real computation: revenue, cost and margin are re-derived for every company.",
+          ru: "Полоса сверху — живые сигналы. Кликаю по предупреждению о засухе, и система сама открывает соответствующий сценарий. В списке выбираю «Засуха — урожай минус тридцать процентов» и нажимаю «Запустить кризис». Это реальный расчёт: для каждой компании заново выводятся выручка, себестоимость и маржа.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(TM_SIGNAL_DROUGHT);
+          await h.holdUntil(0.22);
+          await h.safeClick(TM_SIGNAL_DROUGHT[0]);
+          await p.waitForSelector(TM_SCENARIO_DROUGHT[0], { timeout: 30000 });
+          await h.holdUntil(0.45);
+          await h.safeClick(TM_SCENARIO_DROUGHT[0]);
+          await p.waitForSelector(TM_RUN_CRISIS[0], { timeout: 20000 });
+          await h.holdUntil(0.66);
+          await h.safeClick(TM_RUN_CRISIS[0]);
+          await p.waitForSelector(TM_BRIEF[0], { timeout: 180000 });
+          // Fail loudly rather than hover nothing: `h.hover` walks its fallback
+          // list, so a missing company chip would quietly land the cursor on the
+          // container and the narration would name a number that is not there.
+          await p.waitForSelector(TM_WORST_CPC[0], { timeout: 30000 });
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Nəticə hazırdır. Ən çox zərər görən şirkətlər arasında CPC var: kompozit balı doxsandan səksənə düşür. Bu rəqəmi yadda saxlayın — doxsandan səksənə. Bu hesablamada CPC üçün batmış xərclərin payı onun öz məlumatı deyil: şirkət heç nə bildirmədiyi üçün sistem kataloqun ümumi dəyərini — səksən faizi — tətbiq etdi.",
+          en: "The result is in. Among the worst-hit companies is CPC: its composite score falls from ninety to eighty. Remember that pair — ninety to eighty. In this run the sunk-cost share used for CPC is not its own figure: because the company has stated nothing, the system applied the catalogue's generic eighty per cent.",
+          ru: "Результат готов. Среди наиболее пострадавших — CPC: композитный балл падает с девяноста до восьмидесяти. Запомните эту пару — девяносто к восьмидесяти. В этом расчёте доля невозвратных затрат для CPC не её собственная: компания ничего не заявила, и система применила общее каталожное значение — восемьдесят процентов.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(TM_WORST_HIT);
+          await h.holdUntil(0.35);
+          await h.hover(TM_WORST_CPC);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "İndi bu şirkət üçün öz dəyərini yazaq. Fərziyyələr bölməsinə qayıdıram və «Əlavə et» düyməsini basıram — forma açılır.",
+          en: "Now let us state that company's own figure. I return to the Assumptions section and press Add — the form opens.",
+          ru: "Теперь впишем для этой компании её собственное значение. Возвращаюсь в раздел «Допущения» и нажимаю «Добавить» — открывается форма.",
+        },
+        do: async (p, l, h) => {
+          await h.holdUntil(0.25);
+          await h.goto("/budgeting?tab=assumptions");
+          await p.waitForSelector(AS_ROOT[0], { timeout: 30000 }).catch(() => {});
+          await h.moveTo(AS_ADD);
+          await h.holdUntil(0.6);
           await h.safeClick(AS_ADD[0]);
           await p.waitForSelector(AS_EDITOR[0], { timeout: 15000 });
           await h.holdUntil(0.92);
@@ -594,61 +640,103 @@ export default {
       },
       {
         voice: {
-          az: "Ən vacib sahə — sürücünün özü. Onu siyahıdan seçirsiniz, əl ilə yazmırsınız: siyahı iki hissəyə bölünüb — «hesablamalarda istifadə olunur» və «şərt kimi qeyd olunur». Birincidən seçim ssenariyə real təsir edir, ikincisi isə yalnız əsaslandırmanı saxlayır. Seçimdən sonra sistem kateqoriyanı və ölçü vahidini özü doldurur.",
-          en: "The most important field is the driver itself. You pick it from a list rather than typing it, and the list is split in two: used in calculations, and recorded as a premise. A choice from the first genuinely affects the scenario; the second only stores the reasoning. Picking one fills in the category and the unit for you.",
-          ru: "Самое важное поле — сам драйвер. Его выбирают из списка, а не печатают, и список разделён надвое: «участвуют в расчётах» и «фиксируются как предпосылка». Выбор из первой части реально влияет на сценарий, вторая только сохраняет обоснование. После выбора система сама подставит категорию и единицу измерения.",
+          az: "Ən vacib sahə — amilin özü. Onu siyahıdan seçirsiniz, əl ilə yazmırsınız. Siyahı iki hissəyə bölünüb: «hesablamalarda istifadə olunur» və «şərt kimi qeyd olunur». Birincidən seçim ssenariyə real təsir edir, ikincisi isə yalnız əsaslandırmanı saxlayır. «Batmış xərclərin payı»nı seçirəm — sistem kateqoriyanı və ölçü vahidini özü doldurur.",
+          en: "The most important field is the driver itself. You pick it from a list rather than typing it, and the list is split in two: used in calculations, and recorded as a premise. A choice from the first genuinely affects the scenario; the second only stores the reasoning. I pick the sunk-cost share — the system fills in the category and the unit for me.",
+          ru: "Самое важное поле — сам драйвер. Его выбирают из списка, а не печатают, и список разделён надвое: «участвуют в расчётах» и «фиксируются как предпосылка». Выбор из первой части реально влияет на сценарий, вторая только сохраняет обоснование. Выбираю «Доля невозвратных затрат» — система сама подставляет категорию и единицу измерения.",
         },
         do: async (p, l, h) => {
           await h.moveTo(AS_F_KEY);
-          await h.holdUntil(0.25);
-          await h.safeSelect(AS_F_KEY[0], "import_share");
-          await h.holdUntil(0.6);
-          await h.safeFill(AS_F_LABEL[0], "Idxal xərclərinin payı");
+          await h.holdUntil(0.3);
+          await h.safeSelect(AS_F_KEY[0], "cost_rigidity");
           await h.holdUntil(0.92);
         },
       },
       {
         voice: {
-          az: "Dəyər və ölçü vahidi. Burada əsas tələ var: pay kəsr kimi yazılır. Sıfır tam yeddi yazıram — yetmiş yox. Yetmiş yazsanız, sistem sükutla yenidən hesablamayacaq: dəyəri istifadə etməkdən imtina edəcək və səbəbini açıq deyəcək, çünki xərcləri yetmişə vurmaq bütün reytinqi alt-üst edərdi.",
-          en: "Value and unit. Here is the main trap: a share is written as a fraction. I am typing zero point seven — not seventy. If you type seventy the system will not silently rescale it: it refuses to use the value and says why, because multiplying cost by seventy would overturn the whole ranking.",
-          ru: "Значение и единица. Здесь главная ловушка: доля пишется дробью. Набираю ноль целых семь десятых — не семьдесят. Если написать семьдесят, система не пересчитает молча: она откажется использовать значение и прямо скажет почему, потому что умножение затрат на семьдесят перевернуло бы весь рейтинг.",
+          az: "Dəyər və tətbiq sahəsi. Burada əsas tələ var: pay kəsr kimi yazılır. Sıfır tam iki yazıram — iyirmi yox. İyirmi yazsanız, sistem sükutla yenidən hesablamayacaq: dəyəri istifadə etməkdən imtina edəcək və səbəbini açıq deyəcək. Tətbiq sahəsində CPC şirkətini seçirəm — dəyər yalnız ona aid olacaq. Aşağıdakı «Niyə» sahəsi rəqəmin özündən vacibdir: mənbə, metod, kimin razılaşdırdığı. Məhz bunu idarə heyətində soruşurlar.",
+          en: "Value and scope. Here is the main trap: a share is written as a fraction. I type zero point two — not twenty. If you type twenty the system will not silently rescale it; it refuses the value and says why. For scope I select the company CPC, so the value applies to it alone. The Why field below matters more than the number itself: the source, the method, who agreed it. That is exactly what a board asks about.",
+          ru: "Значение и область применения. Здесь главная ловушка: доля пишется дробью. Набираю ноль целых две десятых — не двадцать. Если написать двадцать, система не пересчитает молча: она откажется от значения и прямо скажет почему. В области применения выбираю компанию CPC — значение будет действовать только для неё. Поле «Почему» ниже важнее самого числа: источник, метод, кто согласовал. Именно это спрашивают на совете директоров.",
         },
         do: async (p, l, h) => {
           await h.moveTo(AS_F_VALUE);
-          await h.holdUntil(0.25);
-          await h.safeFill(AS_F_VALUE[0], "0.7");
-          await h.holdUntil(0.62);
-          await h.safeFill(AS_F_UNIT[0], "%");
+          await h.holdUntil(0.2);
+          await h.safeFill(AS_F_VALUE[0], "0.2");
+          await h.holdUntil(0.45);
+          await h.safeSelect(AS_F_SCOPE[0], { labelContains: "CPC" });
+          await h.holdUntil(0.66);
+          await h.safeFill(AS_F_NOTES[0], "Xammal alışı həcmlə birlikdə azalır — satınalma müqavilələri üzrə");
           await h.holdUntil(0.92);
         },
       },
       {
         voice: {
-          az: "Tətbiq sahəsi. Defolt olaraq «Bütün plan» seçilir — dəyər plandakı bütün şirkətlərə aid olur. Siyahıdan şirkət seçmək sətri yalnız həmin şirkət üçün əvəzetməyə çevirir. Əvəzetməni yalnız şirkət həqiqətən fərqləndiyi yerdə yaradın. Aşağıdakı «Niyə» sahəsi isə rəqəmin özündən vacibdir: mənbə, metod, kimin razılaşdırdığı. Məhz bunu idarə heyətində soruşurlar.",
-          en: "Scope. It defaults to the whole plan, so the value applies to every company in it. Picking a company turns the row into an override for that company alone — create one only where a company genuinely differs. The Why field below matters more than the number itself: the source, the method, who agreed it. That is exactly what a board asks about.",
-          ru: "Область применения. По умолчанию «Весь план» — значение действует на все компании в нём. Выбор компании превращает строку в переопределение только для неё; заводите его там, где компания действительно отличается. Поле «Почему» ниже важнее самого числа: источник, метод, кто согласовал. Именно это спрашивают на совете директоров.",
+          az: "İndi yadda saxlayıram. Bu, real yazıdır — sətir cədvəldə öz tətbiq sahəsi nişanı ilə görünür və bundan sonra bütün hesablamalar onu oxuyur.",
+          en: "Now I save it. This is a real write — the row appears in the table with its own scope badge, and from this moment every calculation reads it.",
+          ru: "Теперь сохраняю. Это настоящая запись — строка появляется в таблице со своим бейджем области применения, и с этого момента её читают все расчёты.",
         },
         do: async (p, l, h) => {
-          await h.moveTo(AS_F_SCOPE);
+          await h.moveTo(AS_SAVE);
           await h.holdUntil(0.3);
-          await h.hover(AS_F_SCOPE);
+          await h.mutatingClick(AS_SAVE[0]);
+          await p.waitForSelector(AS_EDITOR[0], { state: "detached", timeout: 20000 }).catch(() => {});
+          await h.holdUntil(0.7);
+          await h.moveTo(AS_ROW_RIGIDITY);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "İndi ən vacib hissə. Terminala qayıdıram və eyni quraqlıq ssenarisini yenidən işə salıram — heç nə dəyişmədi, yalnız bir sətir əlavə olundu.",
+          en: "Now the part that matters. I go back to the terminal and run the very same drought scenario again — nothing else changed, only that one row was added.",
+          ru: "Теперь самое главное. Возвращаюсь в терминал и запускаю тот же самый сценарий засухи ещё раз — ничего больше не изменилось, добавилась только одна строка.",
+        },
+        do: async (p, l, h) => {
+          await h.holdUntil(0.2);
+          await h.goto("/budgeting/terminal");
+          await p.waitForSelector(TM_SIGNALS[0], { timeout: 60000 }).catch(() => {});
+          await h.safeClick(TM_YEAR_2026[0]);
+          await h.holdUntil(0.35);
+          await h.safeClick(TM_SIGNAL_DROUGHT[0]);
+          await p.waitForSelector(TM_SCENARIO_DROUGHT[0], { timeout: 30000 });
           await h.holdUntil(0.5);
-          await h.safeFill(AS_F_NOTES[0], "Satınalma müqavilələri üzrə orta");
+          await h.safeClick(TM_SCENARIO_DROUGHT[0]);
+          await p.waitForSelector(TM_RUN_CRISIS[0], { timeout: 20000 });
+          await h.holdUntil(0.66);
+          await h.safeClick(TM_RUN_CRISIS[0]);
+          await p.waitForSelector(TM_BRIEF[0], { timeout: 180000 });
+          // Fail loudly rather than hover nothing: `h.hover` walks its fallback
+          // list, so a missing company chip would quietly land the cursor on the
+          // container and the narration would name a number that is not there.
+          await p.waitForSelector(TM_WORST_CPC[0], { timeout: 30000 });
           await h.holdUntil(0.92);
         },
       },
       {
         voice: {
-          az: "İndi «Ləğv et» basıram — heç nə saxlanılmadı, cədvəl olduğu kimi qaldı. İşdə bu yerdə «Yadda saxla» basılır və sətir öz tətbiq sahəsi nişanı ilə cədvəldə görünür. Yekun sadədir: buradakı bir neçə sətir ssenariləri kalkulyatordan əsaslandırılmış hesablamaya çevirir.",
-          en: "Now I press Cancel — nothing was saved and the table is unchanged. In real work you press Save at this point and the row appears in the table with its own scope badge. The takeaway is simple: a handful of rows here turn the scenarios from a calculator into a grounded calculation.",
-          ru: "Теперь нажимаю «Отмена» — ничего не сохранено, таблица осталась прежней. В работе на этом месте нажимают «Сохранить», и строка появляется в таблице с бейджем своей области применения. Вывод простой: несколько строк здесь превращают сценарии из калькулятора в обоснованный расчёт.",
+          az: "Baxın. CPC-nin balı artıq doxsandan səksənə deyil, doxsandan səksən altıya düşür. Altı bal fərq. Şirkət eynidir, ssenari eynidir, məlumatlar eynidir — dəyişən yalnız odur ki, şirkət öz xərc quruluşunu bəyan etdi. Ümumi kataloq dəyəri onu daha ağır göstərirdi.",
+          en: "Look at it. CPC no longer falls from ninety to eighty — it falls from ninety to eighty-six. Six points of difference. Same company, same scenario, same data; the only thing that changed is that the company stated its own cost structure. The generic catalogue value had been making it look worse than it is.",
+          ru: "Смотрите. CPC теперь падает не с девяноста до восьмидесяти, а с девяноста до восьмидесяти шести. Разница в шесть баллов. Компания та же, сценарий тот же, данные те же — изменилось только то, что компания заявила собственную структуру затрат. Общее каталожное значение делало её положение хуже, чем оно есть.",
         },
         do: async (p, l, h) => {
-          await h.moveTo(AS_CANCEL);
+          await h.moveTo(TM_WORST_HIT);
           await h.holdUntil(0.3);
-          await h.safeClick(AS_CANCEL[0]);
-          await h.holdUntil(0.65);
-          await h.moveTo(AS_ROW_IMPORT);
+          await h.hover(TM_WORST_CPC);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Yekun sadədir. Fərziyyələr bölməsi hesabat deyil — ssenarilərin oxuduğu mənbədir. Doldurulmayan sətir yoxa çıxmır: onun yerinə ümumi dəyər tətbiq olunur və nəticə sizin biznesiniz haqqında yox, defolt haqqında olur. Buradakı bir neçə sətir ssenariləri kalkulyatordan əsaslandırılmış hesablamaya çevirir.",
+          en: "The takeaway is simple. Assumptions is not a report — it is the source scenarios read. A row you do not fill in does not disappear: a generic value stands in for it, and the answer stops being about your business and becomes about a default. A handful of rows here turn the scenarios from a calculator into a grounded calculation.",
+          ru: "Вывод простой. «Допущения» — это не отчёт, а источник, который читают сценарии. Незаполненная строка не исчезает: вместо неё подставляется общее значение, и ответ перестаёт быть про ваш бизнес и становится про дефолт. Несколько строк здесь превращают сценарии из калькулятора в обоснованный расчёт.",
+        },
+        do: async (p, l, h) => {
+          await h.holdUntil(0.25);
+          await h.goto("/budgeting?tab=assumptions");
+          await p.waitForSelector(AS_ROOT[0], { timeout: 30000 }).catch(() => {});
+          await h.moveTo(AS_ROOT);
+          await h.holdUntil(0.6);
+          await h.hover(AS_ROW_RIGIDITY);
           await h.holdUntil(0.92);
         },
       },

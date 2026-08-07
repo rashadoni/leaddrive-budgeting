@@ -269,7 +269,15 @@ export function ScenarioPanel() {
   const setScenarioBrief = useTerminalStore((s) => s.setScenarioBrief);
 
   // Crisis Brief (B2 drivers mode) local state
-  const [aiLang, setAiLang] = useState<AiLang>("ru");
+  // Default the brief to the language the reader is already using. It was
+  // hard-coded to "ru", which meant an Azerbaijani or English user ran a
+  // scenario and got a Russian wall of text under an interface that had been
+  // speaking their language a second earlier — and the toggle sitting next to
+  // it made that look deliberate rather than a default nobody chose. Anything
+  // outside the three supported brief languages still lands on Russian.
+  const [aiLang, setAiLang] = useState<AiLang>(
+    locale === "az" || locale === "en" ? locale : "ru",
+  );
   const [briefState, setBriefState] = useState<BriefState>({ kind: "idle" });
   const [cascadeNonce, setCascadeNonce] = useState(0);
   // Sequence-B run phases: while 'running' the panel collapses to a small
@@ -1077,12 +1085,19 @@ export function ScenarioPanel() {
                       </div>
                     )}
 
-                    {/* Worst-hit companies */}
+                    {/* Worst-hit companies.
+                        The per-company testid is what lets a guide take (and a
+                        test) point at ONE company's before→after pair. Without
+                        it the only handle was a Tailwind colour class, which
+                        renames itself the first time the palette moves. */}
                     {worstHitCompanies.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2" data-testid="crisis-worst-hit">
                         {worstHitCompanies.map((c) => (
                           <span
                             key={c.companyId}
+                            data-testid={`worst-hit-${c.companyCode}`}
+                            data-baseline-score={c.baselineScore}
+                            data-scenario-score={c.scenarioScore}
                             className="inline-flex items-baseline gap-1.5 rounded border border-red-500/25 bg-red-500/10 px-2 py-1 text-xs"
                           >
                             <span className="font-mono text-gray-400">{c.companyCode}</span>
