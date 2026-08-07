@@ -3750,7 +3750,12 @@
         "__other__": "🧪 Other (multiplier)"
       },
       "plannedSourceTitle": "Baseline is the holding's stated planning rate, not a market quote — the live feed had no level for this metric.",
-      "plannedBadge": "planning rate"
+      "plannedBadge": "planning rate",
+      "compareDrivers": "What do our own drivers change?",
+      "comparingDrivers": "Comparing…",
+      "compareHeading": "Without the drivers this holding has stated, the same scenario gives:",
+      "compareNoDifference": "Nothing changes — no company in this run has stated a driver the scenario reads.",
+      "compareFootnote": "A comparison, not a setting. Nothing was switched off and no row was changed: the numbers above are still the ones on the map. Left value = the catalogue's generic constant, right = the company's own stated figure."
     },
     "scenarioForm": {
       "editTitle": "Edit: {code}",

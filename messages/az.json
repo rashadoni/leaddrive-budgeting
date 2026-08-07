@@ -3750,7 +3750,12 @@
         "__other__": "🧪 Digər (multiplikator)"
       },
       "plannedSourceTitle": "Baza holdinqin bəyan etdiyi plan məzənnəsidir, bazar kotirovkası deyil — canlı lentdə bu metrika üzrə səviyyə yoxdur.",
-      "plannedBadge": "plan məzənnəsi"
+      "plannedBadge": "plan məzənnəsi",
+      "compareDrivers": "Bizim fərziyyələr nəyi dəyişir?",
+      "comparingDrivers": "Müqayisə olunur…",
+      "compareHeading": "Holdinqin bəyan etdiyi amillər olmadan eyni ssenari belə nəticə verir:",
+      "compareNoDifference": "Heç nə dəyişmir — bu hesablamada heç bir şirkət ssenarinin oxuduğu amili bəyan etməyib.",
+      "compareFootnote": "Bu, müqayisədir, parametr deyil. Heç nə söndürülməyib və heç bir sətir dəyişdirilməyib: yuxarıdakı rəqəmlər xəritədəki rəqəmlərdir. Solda — kataloqun ümumi dəyəri, sağda — şirkətin öz bəyan etdiyi dəyər."
     },
     "scenarioForm": {
       "editTitle": "Redaktə: {code}",

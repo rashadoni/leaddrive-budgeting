@@ -147,6 +147,10 @@ export async function GET(
 
   const mode = searchParams.get('mode')
   const language = (searchParams.get('lang') as BriefLanguage | null) ?? 'ru'
+  // 'catalog' re-runs the same scenario as if no company had stated a driver.
+  // Anything else — including absent — is the normal run. Parsed here rather
+  // than read as a boolean so a future third baseline has somewhere to go.
+  const driverBaseline = searchParams.get('driverBaseline') === 'catalog' ? 'catalog' : 'stated'
 
   // ── Driver re-derivation path (Phase 1 "Crisis Brief", B2) ────────────────
   if (mode === 'drivers') {
@@ -388,7 +392,24 @@ export async function GET(
         value: iv.value,
         status: iv.status as never,
       })),
-      assumptions: assumptionRows,
+      // `?driverBaseline=catalog` answers ONE question: what do the holding's
+      // own stated drivers change? It re-runs on the catalogue's generic
+      // constants — every company falls back exactly as one that has stated
+      // nothing — so the caller can put the two answers side by side.
+      //
+      // It is a COMPARISON, not a switch: nothing is stored, nothing is
+      // disabled, and the stated rows are untouched. A per-row on/off toggle
+      // was the obvious alternative and was rejected on the owner's instinct
+      // that it would confuse — a row visible in the table while no
+      // calculation reads it is the exact silent failure the key picker was
+      // built to remove, and "off" would have meant three different things
+      // depending on the row's tier.
+      //
+      // Feed ANCHORS are deliberately not dropped. `fx_usd` is not a driver:
+      // it supplies the current level a target scenario derives its shock
+      // from, and without it `AZN_DEVAL_20` answers 422 — so dropping it would
+      // not produce a comparison, it would produce no scenario to compare.
+      assumptions: driverBaseline === 'catalog' ? [] : assumptionRows,
     })
 
     const deltaMap: Record<string, string> = {}
@@ -468,6 +489,9 @@ export async function GET(
 
     return NextResponse.json({
       mode: 'drivers',
+      // Echoed so a rendered comparison can never mislabel which half it is
+      // holding — the two responses are otherwise shaped identically.
+      driverBaseline,
       scenarioId: scenario.id,
       scenarioCode: scenario.code,
       scenarioNameRu: scenario.nameRu ?? scenario.nameEn,

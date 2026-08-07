@@ -490,6 +490,12 @@ const TM_RUN_CRISIS = ['[data-testid="scenario-run-crisis"]', "main"];
 const TM_BRIEF = ['[data-testid="crisis-brief-panel"]', "main"];
 const TM_WORST_HIT = ['[data-testid="crisis-worst-hit"]', TM_BRIEF[0]];
 const TM_WORST_CPC = ['[data-testid="worst-hit-AZSEKER-CPC"]', TM_WORST_HIT[0]];
+// The comparison — a second run of the SAME scenario on the catalogue's
+// generic constants, shown beside the real one. It answers the question the
+// owner actually had when asking for an on/off switch ("what do our own
+// premises change?") without any state to be confused about.
+const TM_COMPARE = ['[data-testid="crisis-compare-button"]', TM_BRIEF[0]];
+const TM_COMPARE_CPC = ['[data-testid="compare-AZSEKER-CPC"]', '[data-testid="crisis-comparison"]'];
 
 export default {
   // Assumptions (Fərziyyələr) — the FULL cycle, deliberately.
@@ -721,6 +727,36 @@ export default {
           await h.moveTo(TM_WORST_HIT);
           await h.holdUntil(0.3);
           await h.hover(TM_WORST_CPC);
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Bir sual da qalır: bizim öz fərziyyələrimiz ümumiyyətlə nəyi dəyişir? Bunun üçün ayrıca düymə var. O, eyni ssenarini kataloqun ümumi dəyərləri ilə yenidən hesablayır və hər iki cavabı yan-yana göstərir. Diqqət edin: heç nə söndürülmür və heç bir sətir dəyişmir — bu, sadəcə müqayisədir, parametr deyil.",
+          en: "One question is left: what do our own assumptions change at all? There is a separate button for it. It re-runs the same scenario on the catalogue's generic values and puts both answers side by side. Note what it does not do: nothing is switched off and no row is altered — this is a comparison, not a setting.",
+          ru: "Остаётся один вопрос: а что вообще меняют наши собственные допущения? Для этого есть отдельная кнопка. Она пересчитывает тот же сценарий на общих каталожных значениях и показывает оба ответа рядом. Обратите внимание, чего она не делает: ничего не выключается и ни одна строка не меняется — это сравнение, а не настройка.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(TM_COMPARE);
+          await h.holdUntil(0.35);
+          await h.safeClick(TM_COMPARE[0]);
+          // Fail loudly rather than narrate an empty box: with CPC's driver
+          // saved a moment ago there MUST be exactly one differing company, and
+          // if there is not, the save did not reach the calculation.
+          await p.waitForSelector(TM_COMPARE_CPC[0], { timeout: 60000 });
+          await h.holdUntil(0.92);
+        },
+      },
+      {
+        voice: {
+          az: "Nəticə budur: kataloqun ümumi dəyəri ilə CPC səksən bal alardı, öz göstəricisi ilə isə səksən altı. Digər şirkətlər siyahıda yoxdur — çünki onlar heç nə bəyan etməyib və hər iki halda eyni rəqəmi verir. Yəni siyahı yalnız sizin bəyanatınızın həqiqətən dəyişdirdiyi yeri göstərir.",
+          en: "And there it is: on the catalogue's generic value CPC would score eighty; on its own stated figure, eighty-six. The other companies are absent from the list — they stated nothing, so both runs give them the same number. The list therefore shows only where your own statement actually changed the answer.",
+          ru: "Вот и ответ: на общем каталожном значении CPC получила бы восемьдесят, на собственном заявленном — восемьдесят шесть. Остальных компаний в списке нет: они ничего не заявляли, и оба расчёта дают им одно и то же число. То есть список показывает только то место, где ваше заявление действительно изменило ответ.",
+        },
+        do: async (p, l, h) => {
+          await h.moveTo(TM_COMPARE_CPC);
+          await h.holdUntil(0.5);
+          await h.hover(TM_COMPARE_CPC);
           await h.holdUntil(0.92);
         },
       },

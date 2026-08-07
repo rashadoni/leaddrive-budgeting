@@ -211,6 +211,10 @@ describe('Cash Flow help-video scenario', () => {
       'TM_SIGNAL_DROUGHT[0]',
       'TM_SCENARIO_DROUGHT[0]',
       'TM_RUN_CRISIS[0]',
+      // The comparison re-runs the scenario on catalogue constants. It is a
+      // GET that stores nothing and changes no row, which is why it belongs in
+      // the READONLY-safe list rather than beside the save.
+      'TM_COMPARE[0]',
       'WS_MATERIAL',
       'WS_MATRIX_BUTTON',
       'WS_LIST_BUTTON',
