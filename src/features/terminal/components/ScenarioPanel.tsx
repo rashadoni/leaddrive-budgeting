@@ -197,6 +197,24 @@ type BriefState =
   | { kind: "unsupported" }
   | { kind: "error"; message: string };
 
+/** One company whose score differs once its own stated drivers are used. */
+interface ComparisonRow {
+  companyCode: string;
+  /** Score under the holding's stated drivers — what the terminal shows. */
+  stated: number | null;
+  /** Score if the company had stated nothing (catalogue constants). */
+  catalog: number | null;
+}
+
+type ComparisonState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  // `rows` may legitimately be empty: that is the honest answer "your stated
+  // drivers changed nothing here", and it must render as that sentence rather
+  // than as an absent section, or a nil result looks like a failed run.
+  | { kind: "done"; rows: ComparisonRow[] }
+  | { kind: "error"; message: string };
+
 // Scenario-code → crisis category (for the grouped selector). Scenarios not in
 // the catalog (legacy multiplier scenarios) fall into the "Other" group.
 const CATEGORY_BY_CODE = new Map<string, CrisisCategory>(CRISIS_CATALOG.map((s) => [s.code, s.category]));
@@ -279,6 +297,7 @@ export function ScenarioPanel() {
     locale === "az" || locale === "en" ? locale : "ru",
   );
   const [briefState, setBriefState] = useState<BriefState>({ kind: "idle" });
+  const [comparison, setComparison] = useState<ComparisonState>({ kind: "idle" });
   const [cascadeNonce, setCascadeNonce] = useState(0);
   // Sequence-B run phases: while 'running' the panel collapses to a small
   // non-blocking pill so the HeatMap cascade is VISIBLE; the brief shows only
@@ -520,6 +539,7 @@ export function ScenarioPanel() {
     );
     if (plan.blockedReason !== null) return;
     setBriefState({ kind: "loading" });
+    setComparison({ kind: "idle" });
     setCascadePhase("none");
     setNarrativeState("idle");
     setBriefSlow(false);
@@ -589,6 +609,64 @@ export function ScenarioPanel() {
       });
     }
   }, [selectedScenario, briefState.kind, selectedPeriod, aiLang, clearScenarioDelta, setScenarioBrief, postNarrative, t]);
+
+  // ── "What do our own stated drivers change?" ────────────────────────────
+  //
+  // Re-runs the SAME scenario on the catalogue's generic constants, so the two
+  // answers can be read side by side. It is a comparison, never a switch:
+  // nothing is stored and no row is disabled, which is why a company that has
+  // stated nothing shows an identical pair and simply drops out of the list.
+  //
+  // Deliberately does not touch `scenarioBrief` or the HeatMap overlay — the
+  // map keeps showing the real, stated-driver result while this sits beside it.
+  // A comparison that silently repainted the terminal would be the confusion a
+  // per-row toggle was rejected for.
+  const runComparison = useCallback(async () => {
+    if (!selectedScenario || comparison.kind === "loading") return;
+    const scenarioId = selectedScenario.id;
+    const plan = planDisplayedPeriod(
+      selectedPeriod,
+      getMatrixSync(selectedPeriod),
+      currentBakuYear(),
+    );
+    if (plan.blockedReason !== null) return;
+    setComparison({ kind: "loading" });
+    const controller = new AbortController();
+    const timeoutTimer = setTimeout(() => controller.abort(), SIM_TIMEOUT_MS);
+    try {
+      const res = await fetch(
+        `/api/scenarios/${scenarioId}/simulate?mode=drivers&period=${plan.period}`
+        + `&narrative=0&driverBaseline=catalog`,
+        { signal: controller.signal },
+      );
+      clearTimeout(timeoutTimer);
+      if (!res.ok) throw new Error(`simulate ${res.status}`);
+      const data = await res.json();
+      const catalogByCompany = new Map<string, number | null>(
+        ((data.byCompany ?? []) as { companyCode: string; scenarioScore: number | null }[])
+          .map((c) => [c.companyCode, c.scenarioScore]),
+      );
+      // Pair each company's stated-driver result with its catalogue-default one
+      // and keep only the ones that actually differ. A company that never
+      // stated a driver produces the same number twice, and listing it would
+      // pad the answer with rows that say nothing.
+      const rows = (scenarioBrief?.byCompany ?? [])
+        .map((c) => ({
+          companyCode: c.companyCode,
+          stated: c.scenarioScore,
+          catalog: catalogByCompany.get(c.companyCode) ?? null,
+        }))
+        .filter((r) => r.stated !== null && r.catalog !== null && r.stated !== r.catalog);
+      setComparison({ kind: "done", rows });
+    } catch (e: unknown) {
+      clearTimeout(timeoutTimer);
+      const aborted = e instanceof DOMException && e.name === "AbortError";
+      setComparison({
+        kind: "error",
+        message: aborted ? t("scenarioPanel.crisisTimeout") : e instanceof Error ? e.message : String(e),
+      });
+    }
+  }, [selectedScenario, comparison.kind, selectedPeriod, scenarioBrief, t]);
 
   // Staggered worst-first cascade — reveal the overlay deltaMap incrementally so
   // the HeatMap visibly "reacts". One run per cascadeNonce; cleans up its timer.
@@ -732,7 +810,7 @@ export function ScenarioPanel() {
             {activeScenarioLabel && (
               <button
                 type="button"
-                onClick={() => { clearScenarioDelta(); setCascadePhase("none"); setBriefState({ kind: "idle" }); setNarrativeState("idle"); }}
+                onClick={() => { clearScenarioDelta(); setCascadePhase("none"); setBriefState({ kind: "idle" }); setComparison({ kind: "idle" }); setNarrativeState("idle"); }}
                 className="rounded border border-red-500/30 bg-red-500/10 text-red-400 px-2 py-1 text-xs hover:bg-red-500/20"
               >
                 {t("scenarioPanel.reset", { label: activeScenarioLabel })}
@@ -793,7 +871,7 @@ export function ScenarioPanel() {
                               onClick={() => {
                                 setSelectedId(s.id);
                                 setSimState({ kind: "idle" });
-                                setBriefState({ kind: "idle" });
+                                setBriefState({ kind: "idle" }); setComparison({ kind: "idle" });
                                 setCascadePhase("none");
                                 setNarrativeState("idle");
                               }}
@@ -1030,7 +1108,7 @@ export function ScenarioPanel() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => { clearScenarioDelta(); setCascadePhase("none"); setBriefState({ kind: "idle" }); setNarrativeState("idle"); }}
+                        onClick={() => { clearScenarioDelta(); setCascadePhase("none"); setBriefState({ kind: "idle" }); setComparison({ kind: "idle" }); setNarrativeState("idle"); }}
                         className="rounded border border-white/10 px-3 py-1 text-xs text-gray-400 hover:bg-white/5 shrink-0"
                         data-testid="crisis-revert"
                       >
@@ -1109,6 +1187,66 @@ export function ScenarioPanel() {
                         ))}
                       </div>
                     )}
+
+                    {/* What our own stated drivers change.
+                        Sits BELOW the result and never replaces it: the numbers
+                        above stay the ones the terminal and the HeatMap are
+                        showing, and this is an aside about where they came
+                        from. */}
+                    <div className="pt-1" data-testid="crisis-comparison">
+                      {comparison.kind !== "done" && (
+                        <button
+                          type="button"
+                          onClick={runComparison}
+                          disabled={comparison.kind === "loading"}
+                          className="inline-flex items-center gap-1.5 rounded border border-violet-500/40 bg-violet-500/10 px-2.5 py-1 text-[11px] font-semibold text-violet-300 hover:bg-violet-500/20 disabled:opacity-50 transition-colors"
+                          data-testid="crisis-compare-button"
+                        >
+                          📝 {comparison.kind === "loading"
+                            ? t("scenarioPanel.comparingDrivers")
+                            : t("scenarioPanel.compareDrivers")}
+                        </button>
+                      )}
+                      {comparison.kind === "error" && (
+                        <p className="mt-1 text-xs text-red-500" data-testid="crisis-comparison-error">
+                          {comparison.message}
+                        </p>
+                      )}
+                      {comparison.kind === "done" && (
+                        <div className="rounded border border-violet-500/25 bg-violet-500/[0.06] p-2.5 space-y-2">
+                          <p className="text-[11px] text-violet-300/90">
+                            {t("scenarioPanel.compareHeading")}
+                          </p>
+                          {comparison.rows.length === 0 ? (
+                            <p className="text-xs text-gray-400" data-testid="crisis-comparison-empty">
+                              {t("scenarioPanel.compareNoDifference")}
+                            </p>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              {comparison.rows.map((r) => (
+                                <span
+                                  key={r.companyCode}
+                                  data-testid={`compare-${r.companyCode}`}
+                                  data-stated-score={r.stated ?? ""}
+                                  data-catalog-score={r.catalog ?? ""}
+                                  className="inline-flex items-baseline gap-1.5 rounded border border-violet-500/25 bg-violet-500/10 px-2 py-1 text-xs"
+                                >
+                                  <span className="font-mono text-gray-400">{r.companyCode}</span>
+                                  <span className="text-gray-400 tabular-nums">{r.catalog}</span>
+                                  <span className="text-gray-500">→</span>
+                                  <span className={`font-semibold tabular-nums ${bandColor(r.stated)}`}>
+                                    {r.stated}
+                                  </span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <p className="text-[10px] text-gray-500 leading-relaxed">
+                            {t("scenarioPanel.compareFootnote")}
+                          </p>
+                        </div>
+                      )}
+                    </div>
 
                     {/* AI narrative + mitigations */}
                     {scenarioBrief.narrative ? (
