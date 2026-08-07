@@ -78,7 +78,19 @@ function subscribeToStoredState(onStoreChange: () => void) {
   }
 }
 
-export function HelpVideoLauncher() {
+/**
+ * `inlineCard: false` suppresses the in-flow card WITHOUT unmounting the
+ * launcher. The distinction matters: the `budgetpro:open-help-video` listener
+ * lives in this component, so a layout that simply stopped rendering it would
+ * turn the header's video button into a control that dispatches an event
+ * nobody hears — the exact dead-control failure `help-video-button.tsx` was
+ * written to fix. Mounted-but-cardless keeps the header button working and the
+ * modal reachable; only the strip of vertical space goes away.
+ *
+ * Used by the Risk Terminal, where the four panels are sized against the
+ * viewport and a card above them takes height off every one of them.
+ */
+export function HelpVideoLauncher({ inlineCard = true }: { inlineCard?: boolean } = {}) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const searchKey = searchParams.toString()
@@ -155,6 +167,13 @@ export function HelpVideoLauncher() {
       writeStoredState(currentStorageKey, { expandedSeen: true })
       setSessionMode({ key: currentStorageKey, mode: "expanded" })
     }
+  }
+
+  // Card suppressed for this surface — the header button is the way in. The
+  // modal below is still reachable, which is why this returns only here rather
+  // than at the top of the component.
+  if (mode === "thumbnail" && !inlineCard) {
+    return null
   }
 
   if (mode === "thumbnail") {

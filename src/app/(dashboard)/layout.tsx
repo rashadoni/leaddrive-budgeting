@@ -52,12 +52,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {/* Section help video — an in-flow card at the top of the content
                 (never a floating overlay), so it doesn't cover the work area.
                 Expands into a modal on click. Renders null on routes with no
-                mapped video (e.g. the full-bleed terminal). */}
+                mapped video.
+
+                On the full-bleed terminal the card is suppressed: those four
+                panels are sized against the viewport, so a strip above them is
+                height taken off every panel at once, and the owner asked for it
+                back. The launcher stays MOUNTED with `inlineCard={false}` —
+                unmounting it would silence the `budgetpro:open-help-video`
+                listener and leave the header's video button dispatching into
+                nothing. The icon beside the language switcher is the way in
+                there. */}
             <div
               data-testid="dashboard-help-video-slot"
               className={isBoardDeck ? "print:hidden" : ""}
             >
-              <HelpVideoLauncher />
+              <HelpVideoLauncher inlineCard={!isFullBleed} />
             </div>
             {children}
           </main>
