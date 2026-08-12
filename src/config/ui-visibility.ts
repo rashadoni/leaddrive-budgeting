@@ -1,6 +1,11 @@
 /**
- * Temporary presentation trims — requested 2026-08-11, to be reverted on the
- * owner's word.
+ * Temporary presentation trims — requested 2026-08-11, RESTORED 2026-08-12 on
+ * the owner's word: production keeps the full navigation, and only the P&L
+ * chart fixes ship.
+ *
+ * Every flag is back to `true`, i.e. the pre-trim behaviour. The file stays
+ * because the wiring it documents is what makes the next trim a flag flip
+ * rather than a re-excavation of six components.
  *
  * These flags hide existing, working surfaces. Nothing is deleted: every route,
  * component and calculation stays in place and reachable by URL, so flipping a
@@ -22,14 +27,14 @@
  * "FORECASTS", …). With this off the sub-items render as one flat list; the
  * grouping still governs their ORDER, so the list reads the same top to bottom.
  */
-export const SHOW_NAV_GROUP_HEADINGS = false
+export const SHOW_NAV_GROUP_HEADINGS = true
 
 /**
  * The Risk Terminal entry in the main navigation. The route itself
  * (`/budgeting/terminal`) is untouched and still works for anyone who has the
  * link, and its help video stays registered — this hides the menu item only.
  */
-export const SHOW_RISK_TERMINAL_NAV = false
+export const SHOW_RISK_TERMINAL_NAV = true
 
 /**
  * The two infographic cards at the top of the P&L tab: the waterfall chart and
@@ -50,19 +55,19 @@ export const SHOW_PL_CHARTS = true
  * still reach them. Every `/budgeting/admin/*` route keeps its own admin guard
  * and continues to serve; this is a menu change, not an access change.
  */
-export const SHOW_ADMIN_NAV_GROUPS = false
+export const SHOW_ADMIN_NAV_GROUPS = true
 
 /**
  * Secondary top-level destinations: Trade Tower, Board Deck, Onboarding and
  * Alerts. Their routes are untouched and still reachable by URL.
  */
-export const SHOW_SECONDARY_NAV = false
+export const SHOW_SECONDARY_NAV = true
 
 /**
  * The "Configuration" item at the foot of the Budgeting sub-navigation. It is
  * the only member of its group, so hiding it removes the group entirely.
  */
-export const SHOW_BUDGET_CONFIG_NAV = false
+export const SHOW_BUDGET_CONFIG_NAV = true
 
 /**
  * The AI Import button in the Budgeting page header. The sidebar's own
@@ -73,5 +78,5 @@ export const SHOW_BUDGET_CONFIG_NAV = false
  * this flag: without them there is no way to choose which plan or company the
  * page is showing, so hiding them would not trim the screen, it would break it.
  */
-export const SHOW_AI_IMPORT_BUTTON = false
+export const SHOW_AI_IMPORT_BUTTON = true
 

@@ -86,6 +86,7 @@ type NavItem = {
 // here now resolves to a real az/ru string in messages/*.json. Do not
 // re-introduce identical en/az/ru values for nav labels.
 const navItems: NavItem[] = [
+  { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },
   { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
   { href: "/budgeting/audit", icon: ScrollText, labelKey: "auditLog", minRole: "manager" },
   // 2026-07-20 reorder: the Admin Tools row is intentionally NOT in this array —
@@ -93,11 +94,6 @@ const navItems: NavItem[] = [
   // visible admin groups) so the whole admin block sits at the bottom. See the
   // `hasRole(userRole, "admin")` block in the JSX below.
   { href: "/guide", icon: BookText, labelKey: "guide" },
-  // 2026-08-12 — Import moved from first to just above Settings, and its
-  // label shortened from "Data import" to "Import". It led the menu because
-  // it is where a new tenant starts; for a tenant whose data is already in,
-  // it is a maintenance action and reads better beside the other ones.
-  { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },
   { href: "/settings", icon: Settings, labelKey: "settings" },
 ]
 
@@ -157,10 +153,7 @@ const budgetSubNav = [
   {
     groupKey: "navGroupForecasts",
     items: [
-      // 2026-08-11 — was `navSales`, identical to the Finance item. The group
-      // headings used to tell the two apart; with the headings hidden the menu
-      // showed two rows reading "Sales" and no way to know which was which.
-      { value: "sales-forecast", icon: TrendingUp, labelKey: "navSalesForecast" },
+      { value: "sales-forecast", icon: TrendingUp, labelKey: "navSales" },
       { value: "expense-forecast", icon: TrendingDown, labelKey: "navExpenses" },
       { value: "rolling", icon: CalendarRange, labelKey: "navRolling" },
     ],
