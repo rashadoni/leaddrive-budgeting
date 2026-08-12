@@ -39,6 +39,7 @@ import {
 } from "@/lib/budgeting/correction-summary"
 // Phase 8 D1 (2026-05-29) — pure formatters extracted to a sibling.
 import { fmtNum, fmtCurrency, pctOfRev, varianceStr, varianceClass } from "./budget-pnl-format"
+import { SHOW_PL_CHARTS } from "@/config/ui-visibility"
 
 // Phase 3.3 v1.4 — PnlRow IS a DrillRow with parentCode required.
 // Single source of truth: re-use the base shape, narrow parentCode.
@@ -762,6 +763,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         </div>
       </div>
 
+      {/* Same SHOW_PL_CHARTS flag as the plan-side P&L: both screens are "the
+          P&L", and simplifying one while leaving the other full of charts would
+          be an inconsistency nobody asked for. */}
+      {SHOW_PL_CHARTS && (
       <PnlPerformanceCharts
         monthly={monthlyPerformance}
         budgetCoverage={budgetCoverage}
@@ -770,8 +775,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         hasActuals={comparisonHasActuals}
         notices={comparisonMissingData}
       />
+      )}
 
       {/* Charts Row */}
+      {SHOW_PL_CHARTS && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Revenue vs COGS */}
         <div className="lg:col-span-2 rounded-xl border bg-card p-4">
@@ -847,7 +854,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         </div>
       </div>
 
+      )}
+
       {/* Waterfall Chart */}
+      {SHOW_PL_CHARTS && (
       <div className="rounded-xl border bg-card p-4">
         <h3 className="text-sm font-semibold text-foreground mb-3">{t("pnlWaterfallTitle")}</h3>
         <ResponsiveContainer width="100%" height={220} minWidth={0}>
@@ -873,6 +883,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      )}
 
       {/* P&L Table */}
       <div className="rounded-xl border bg-card">

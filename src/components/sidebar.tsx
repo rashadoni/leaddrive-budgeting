@@ -35,7 +35,13 @@ import {
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { ADMIN_GROUPS, SIDEBAR_ADMIN_GROUPS } from "@/lib/nav/admin-tools"
-import { SHOW_NAV_GROUP_HEADINGS, SHOW_RISK_TERMINAL_NAV } from "@/config/ui-visibility"
+import {
+  SHOW_NAV_GROUP_HEADINGS,
+  SHOW_RISK_TERMINAL_NAV,
+  SHOW_ADMIN_NAV_GROUPS,
+  SHOW_SECONDARY_NAV,
+  SHOW_BUDGET_CONFIG_NAV,
+} from "@/config/ui-visibility"
 
 type NavItem = {
   href: string
@@ -82,10 +88,6 @@ type NavItem = {
 const navItems: NavItem[] = [
   { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },
   { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
-  { href: "/budgeting/trade", icon: Store, labelKey: "tradeTower" },
-  { href: "/budgeting/board-deck", icon: Presentation, labelKey: "boardDeck" },
-  { href: "/budgeting/onboarding", icon: Upload, labelKey: "onboarding" },
-  { href: "/budgeting/alerts", icon: Bell, labelKey: "alerts" },
   { href: "/budgeting/audit", icon: ScrollText, labelKey: "auditLog", minRole: "manager" },
   // 2026-07-20 reorder: the Admin Tools row is intentionally NOT in this array —
   // it renders at the very foot of the nav (below Guide + Settings + the two
@@ -99,6 +101,19 @@ const navItems: NavItem[] = [
 // hiding it is a flag flip and not a deleted line somebody has to remember to
 // type back in the right position. Position 1 is deliberate: it sat directly
 // after Data Import, and restoring it must not quietly reorder the menu.
+// 2026-08-11 — Trade Tower, Board Deck, Onboarding and Alerts are appended
+// rather than listed inline, for the same reason as the Risk Terminal row: the
+// restore puts them back in their original order without anyone reconstructing
+// it from memory. They sat between Budgeting and Audit Log.
+if (SHOW_SECONDARY_NAV) {
+  navItems.splice(navItems.findIndex((i) => i.href === "/budgeting/audit"), 0,
+    { href: "/budgeting/trade", icon: Store, labelKey: "tradeTower" },
+    { href: "/budgeting/board-deck", icon: Presentation, labelKey: "boardDeck" },
+    { href: "/budgeting/onboarding", icon: Upload, labelKey: "onboarding" },
+    { href: "/budgeting/alerts", icon: Bell, labelKey: "alerts" },
+  )
+}
+
 if (SHOW_RISK_TERMINAL_NAV) {
   navItems.splice(1, 0, { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" })
 }
@@ -134,7 +149,10 @@ const budgetSubNav = [
   {
     groupKey: "navGroupForecasts",
     items: [
-      { value: "sales-forecast", icon: TrendingUp, labelKey: "navSales" },
+      // 2026-08-11 — was `navSales`, identical to the Finance item. The group
+      // headings used to tell the two apart; with the headings hidden the menu
+      // showed two rows reading "Sales" and no way to know which was which.
+      { value: "sales-forecast", icon: TrendingUp, labelKey: "navSalesForecast" },
       { value: "expense-forecast", icon: TrendingDown, labelKey: "navExpenses" },
       { value: "rolling", icon: CalendarRange, labelKey: "navRolling" },
     ],
@@ -285,6 +303,7 @@ export function Sidebar() {
               {item.href === "/budgeting" && isBudgetingSection && budgetExpanded && !collapsed && (
                 <div className={cn("mt-1 ml-2 border-l border-white/10 pl-2", SHOW_NAV_GROUP_HEADINGS ? "space-y-3" : "space-y-0")}>
                   {budgetSubNav
+                    .filter((group) => SHOW_BUDGET_CONFIG_NAV || group.groupKey !== "navGroupSettings")
                     .map((group) => (
                       <div key={group.groupKey}>
                         {SHOW_NAV_GROUP_HEADINGS && (
@@ -337,7 +356,7 @@ export function Sidebar() {
             existing /budgeting/admin/* route + admin-only page guard — only nav
             LOCATION/ORDER changed. `aiImport` stays the top-level shortcut, so
             it's filtered out here to avoid a duplicate row. */}
-        {hasRole(userRole, "admin") && (
+        {hasRole(userRole, "admin") && SHOW_ADMIN_NAV_GROUPS && (
           <>
             {SIDEBAR_ADMIN_GROUPS.map((group) => {
               const items = group.tools.filter(
