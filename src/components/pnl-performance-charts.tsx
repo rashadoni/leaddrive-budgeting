@@ -211,7 +211,15 @@ export function PnlPerformanceCharts({
         {actualSpan && (
           <p
             data-testid="pnl-span-mismatch"
-            className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+            /* Neutral, not amber. It used to be styled as a warning because it
+               WAS one — it apologised for comparing twelve months against five.
+               Now the comparison is like for like and this line only states the
+               basis, which is a footnote. Amber on a correct screen teaches
+               people to ignore amber. It stays rather than going away entirely
+               because the KPI tile above still shows the full-year figure, and
+               without this line the two would look like the same number
+               disagreeing with itself. */
+            className="mt-2 text-[11px] text-muted-foreground"
           >
             {t("pnlSpanMismatch", {
               actual: tParam(t, actualSpan.key, actualSpan.params),
