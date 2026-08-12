@@ -67,6 +67,7 @@ import { BarChart2, Settings2, Info } from "lucide-react"
 
 
 import { makePlSection } from "./pl-tab-section"
+import { SHOW_PL_CHARTS } from "@/config/ui-visibility"
 export function PLTab({ planId, companyId }: { planId: string; companyId?: string | null }) {
   const t = useTranslations("budgeting")
   const { data: analytics, isLoading: analyticsLoading } = useBudgetAnalytics(planId, companyId)
@@ -364,7 +365,12 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
         />
       </div>
 
-      {/* ── P&L INFOGRAPHICS: Waterfall + Expense Donut ── */}
+      {/* ── P&L INFOGRAPHICS: Waterfall + Expense Donut ──
+          Hidden behind SHOW_PL_CHARTS (2026-08-11). Both charts derive from the
+          same totals as the KPI tiles and the table below, so nothing is lost
+          from the page when they are off — only the space they occupied, which
+          was pushing the actual P&L table below the fold on a laptop. */}
+      {SHOW_PL_CHARTS && (
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* P&L Waterfall Chart — 3/5 width */}
         <Card className="lg:col-span-3 border-0 shadow-md">
@@ -628,6 +634,7 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
           </CardContent>
         </Card>
       </div>
+      )}
 
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{t("plTitle")}</h2>

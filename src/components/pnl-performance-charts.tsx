@@ -83,15 +83,46 @@ export function PnlPerformanceCharts({
     () => bridge.map((step) => ({ ...step, label: t(BRIDGE_LABEL_KEYS[step.key]) })),
     [bridge, t],
   )
+  /**
+   * 2026-08-12 — the summary totals are now LIKE FOR LIKE.
+   *
+   * They used to sum all twelve months on both sides. On this client's data the
+   * budget runs Jan–Dec and the actuals stop at May, so the variance tile read
+   * `−13.9M AZN · 2%` when most of that gap was simply the seven months that
+   * had not happened yet. Both figures were correct and the comparison between
+   * them was meaningless; a caveat underneath said so, which is the weakest
+   * possible fix — it asks the reader to mentally discount a number the page
+   * just told them.
+   *
+   * So the budget side is now summed over the months the ACTUALS cover, and
+   * the variance is a real one: how the months that have happened performed
+   * against what they were budgeted to do.
+   *
+   * The monthly chart below is deliberately NOT filtered. Seeing the remaining
+   * budgeted months stand empty is information — it shows what is still ahead —
+   * and it is the totals, not the bars, that were making the false claim.
+   *
+   * Falls back to the full twelve months when coverage is unknown or the two
+   * sides already agree, so nothing changes on a complete year.
+   */
+  const comparableMonths = useMemo(() => {
+    if (!hasActuals || actualCoverage == null || actualCoverage.count === 0) return null
+    if (budgetCoverage != null && actualCoverage.count === budgetCoverage.count) return null
+    return new Set(actualCoverage.months)
+  }, [hasActuals, actualCoverage, budgetCoverage])
+
   const annual = useMemo(
     () => selectedData.reduce(
-      (acc, row) => ({
-        budget: acc.budget + row.budget,
-        actual: acc.actual + row.actual,
-      }),
+      (acc, row, index) => {
+        const inScope = comparableMonths == null || comparableMonths.has(index + 1)
+        return {
+          budget: acc.budget + (inScope ? row.budget : 0),
+          actual: acc.actual + row.actual,
+        }
+      },
       { budget: 0, actual: 0 },
     ),
-    [selectedData],
+    [selectedData, comparableMonths],
   )
   const annualActual = hasActuals ? annual.actual : null
   const annualVariance = hasActuals ? annual.actual - annual.budget : null

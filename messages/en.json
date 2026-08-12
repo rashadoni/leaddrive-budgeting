@@ -34,6 +34,7 @@
     "navGroupSettings": "Settings",
     "navPnl": "P&L",
     "navSales": "Sales",
+    "navSalesForecast": "Sales forecast",
     "navCogs": "COGS",
     "navBalanceSheet": "Balance Sheet",
     "navCashFlow": "Cash Flow",
@@ -1667,7 +1668,7 @@
       "partialRange": "{from}–{to} · {count} of 12 months",
       "partialMonths": "{months} · {count} of 12 months"
     },
-    "pnlSpanMismatch": "Not like for like: the actual covers {actual}, the budget covers all {budgetCount}. Most of the variance below is months that have not happened yet.",
+    "pnlSpanMismatch": "Compared like for like over {actual}. The budget is taken for the same months, so the variance is the performance of the months that have happened — not the ones still ahead. The monthly chart below still shows the full {budgetCount}.",
     "corrections": {
       "includes": "{count, plural, one {This total includes # manual correction} other {This total includes # manual corrections}} — figures entered by a person, not read from the workbook.",
       "includesAndNeedsReview": "{count, plural, one {This total includes # manual correction} other {This total includes # manual corrections}}, and {needsReview, plural, one {# of them needs review} other {# of them need review}}: a later import rewrote the same cell, so the correction may now be counted twice. Nothing was changed automatically — open the corrections list and decide."

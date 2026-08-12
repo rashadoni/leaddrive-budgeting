@@ -35,6 +35,13 @@ import {
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { ADMIN_GROUPS, SIDEBAR_ADMIN_GROUPS } from "@/lib/nav/admin-tools"
+import {
+  SHOW_NAV_GROUP_HEADINGS,
+  SHOW_RISK_TERMINAL_NAV,
+  SHOW_ADMIN_NAV_GROUPS,
+  SHOW_SECONDARY_NAV,
+  SHOW_BUDGET_CONFIG_NAV,
+} from "@/config/ui-visibility"
 
 type NavItem = {
   href: string
@@ -80,12 +87,7 @@ type NavItem = {
 // re-introduce identical en/az/ru values for nav labels.
 const navItems: NavItem[] = [
   { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },
-  { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" },
   { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
-  { href: "/budgeting/trade", icon: Store, labelKey: "tradeTower" },
-  { href: "/budgeting/board-deck", icon: Presentation, labelKey: "boardDeck" },
-  { href: "/budgeting/onboarding", icon: Upload, labelKey: "onboarding" },
-  { href: "/budgeting/alerts", icon: Bell, labelKey: "alerts" },
   { href: "/budgeting/audit", icon: ScrollText, labelKey: "auditLog", minRole: "manager" },
   // 2026-07-20 reorder: the Admin Tools row is intentionally NOT in this array —
   // it renders at the very foot of the nav (below Guide + Settings + the two
@@ -94,6 +96,31 @@ const navItems: NavItem[] = [
   { href: "/guide", icon: BookText, labelKey: "guide" },
   { href: "/settings", icon: Settings, labelKey: "settings" },
 ]
+
+// The hidden rows below are SPLICED IN rather than listed inline, so that
+// restoring one is a flag flip instead of a deleted line somebody has to
+// remember to retype in the right position.
+//
+// Every insertion point is anchored to a neighbour rather than to a literal
+// index: Import moved down the list on 2026-08-12, and a hard-coded index would
+// have silently relocated the Risk Terminal row on the day someone restored it.
+
+// Trade Tower, Board Deck, Onboarding and Alerts sat between Budgeting and
+// Audit Log, in this order.
+if (SHOW_SECONDARY_NAV) {
+  navItems.splice(navItems.findIndex((i) => i.href === "/budgeting/audit"), 0,
+    { href: "/budgeting/trade", icon: Store, labelKey: "tradeTower" },
+    { href: "/budgeting/board-deck", icon: Presentation, labelKey: "boardDeck" },
+    { href: "/budgeting/onboarding", icon: Upload, labelKey: "onboarding" },
+    { href: "/budgeting/alerts", icon: Bell, labelKey: "alerts" },
+  )
+}
+
+// The Risk Terminal sat directly ABOVE Budgeting.
+if (SHOW_RISK_TERMINAL_NAV) {
+  navItems.splice(navItems.findIndex((i) => i.href === "/budgeting"), 0,
+    { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" })
+}
 
 const topLevelAdminToolHrefs = new Set(["/budgeting/admin/ai-import"])
 
@@ -275,13 +302,16 @@ export function Sidebar() {
                   finance tabs visible even when the underlying table is empty;
                   the page-level empty states explain what is missing. */}
               {item.href === "/budgeting" && isBudgetingSection && budgetExpanded && !collapsed && (
-                <div className="mt-1 ml-2 space-y-3 border-l border-white/10 pl-2">
+                <div className={cn("mt-1 ml-2 border-l border-white/10 pl-2", SHOW_NAV_GROUP_HEADINGS ? "space-y-3" : "space-y-0")}>
                   {budgetSubNav
+                    .filter((group) => SHOW_BUDGET_CONFIG_NAV || group.groupKey !== "navGroupSettings")
                     .map((group) => (
                       <div key={group.groupKey}>
-                        <p className="px-2 py-1 text-[9px] font-semibold text-white/40 uppercase tracking-wider">
-                          {t(group.groupKey as never)}
-                        </p>
+                        {SHOW_NAV_GROUP_HEADINGS && (
+                          <p className="px-2 py-1 text-[9px] font-semibold text-white/40 uppercase tracking-wider">
+                            {t(group.groupKey as never)}
+                          </p>
+                        )}
                         {group.items.map((sub) => {
                           // Planner tabs only now (admin moved to its own row):
                           //   value        → /budgeting?tab=<value>
@@ -327,7 +357,7 @@ export function Sidebar() {
             existing /budgeting/admin/* route + admin-only page guard — only nav
             LOCATION/ORDER changed. `aiImport` stays the top-level shortcut, so
             it's filtered out here to avoid a duplicate row. */}
-        {hasRole(userRole, "admin") && (
+        {hasRole(userRole, "admin") && SHOW_ADMIN_NAV_GROUPS && (
           <>
             {SIDEBAR_ADMIN_GROUPS.map((group) => {
               const items = group.tools.filter(
@@ -336,7 +366,10 @@ export function Sidebar() {
               if (items.length === 0) return null
               return (
                 <div key={group.key} className="pt-2">
-                  {!collapsed && (
+                  {/* Same flag as the budgeting sub-nav: two lonely headings
+                      left behind in the admin block would read as an oversight
+                      rather than a choice. */}
+                  {!collapsed && SHOW_NAV_GROUP_HEADINGS && (
                     <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-white/40 uppercase tracking-wider">
                       {t2(group.key as never)}
                     </p>

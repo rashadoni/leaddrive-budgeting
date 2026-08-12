@@ -107,6 +107,7 @@ import { COGSCalculator } from "@/components/cogs-calculator"
 import { BudgetBalanceSheet } from "@/components/budget-balance-sheet"
 import { BudgetAssumptions } from "@/components/budget-assumptions"
 import { toast } from "sonner"
+import { SHOW_AI_IMPORT_BUTTON } from "@/config/ui-visibility"
 
 const PIE_COLORS = BUDGET_COLORS.pie
 
@@ -456,6 +457,11 @@ export default function BudgetingPage() {
             </select>
           )}
           {DATA_IMPORT_TABS.has(activeTab) ? (
+            // The flag nests INSIDE this branch on purpose. Folding it into the
+            // ternary condition would fall through to the "create plan" button
+            // on import tabs — a swap, not a hiding, and a different screen
+            // from the one that was asked for.
+            SHOW_AI_IMPORT_BUTTON ? (
             <Button
               size="sm"
               onClick={() => router.push(`/budgeting/admin/ai-import?year=${importYear}`)}
@@ -463,6 +469,7 @@ export default function BudgetingPage() {
             >
               <Upload className="h-4 w-4 mr-1" /> {tAdmin("tools.aiImport.title")}
             </Button>
+            ) : null
           ) : (
             <Button
               size="sm"

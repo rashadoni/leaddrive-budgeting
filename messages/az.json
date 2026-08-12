@@ -34,6 +34,7 @@
     "navGroupSettings": "Parametrlər",
     "navPnl": "P&L",
     "navSales": "Satış",
+    "navSalesForecast": "Satış proqnozu",
     "navCogs": "COGS",
     "navBalanceSheet": "Balans hesabatı",
     "navCashFlow": "Pul axını",
@@ -1667,7 +1668,7 @@
       "partialRange": "{from}–{to} · 12 aydan {count}-i",
       "partialMonths": "{months} · 12 aydan {count}-i"
     },
-    "pnlSpanMismatch": "Bərabər olmayan dövrlərin müqayisəsi: fakt {actual}, büdcə isə bütün {budgetCount} ayı əhatə edir. Aşağıdakı kənarlaşmanın böyük hissəsi hələ baş verməmiş aylardır.",
+    "pnlSpanMismatch": "Müqayisə eyni əsasda aparılır — {actual} üzrə. Büdcə həmin aylar üçün götürülüb, ona görə kənarlaşma keçmiş ayların nəticəsini göstərir, hələ olmamış ayları yox. Aşağıdakı qrafikdə bütün {budgetCount} ay qalır.",
     "corrections": {
       "includes": "{count, plural, one {Bu yekuna # əl düzəlişi daxildir} other {Bu yekuna # əl düzəlişi daxildir}} — kitabdan oxunmuş deyil, insan tərəfindən daxil edilmiş rəqəmlər.",
       "includesAndNeedsReview": "{count, plural, one {Bu yekuna # əl düzəlişi daxildir} other {Bu yekuna # əl düzəlişi daxildir}} və {needsReview, plural, one {onlardan #-i baxış tələb edir} other {onlardan #-i baxış tələb edir}}: sonrakı idxal eyni xananı yenidən yazdı, ona görə düzəliş indi iki dəfə sayıla bilər. Avtomatik heç nə dəyişdirilmədi — düzəlişlər siyahısını açın və qərar verin."
