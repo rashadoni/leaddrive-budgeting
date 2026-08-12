@@ -35,6 +35,7 @@ import {
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { ADMIN_GROUPS, SIDEBAR_ADMIN_GROUPS } from "@/lib/nav/admin-tools"
+import { SHOW_NAV_GROUP_HEADINGS, SHOW_RISK_TERMINAL_NAV } from "@/config/ui-visibility"
 
 type NavItem = {
   href: string
@@ -80,7 +81,6 @@ type NavItem = {
 // re-introduce identical en/az/ru values for nav labels.
 const navItems: NavItem[] = [
   { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },
-  { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" },
   { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
   { href: "/budgeting/trade", icon: Store, labelKey: "tradeTower" },
   { href: "/budgeting/board-deck", icon: Presentation, labelKey: "boardDeck" },
@@ -94,6 +94,14 @@ const navItems: NavItem[] = [
   { href: "/guide", icon: BookText, labelKey: "guide" },
   { href: "/settings", icon: Settings, labelKey: "settings" },
 ]
+
+// 2026-08-11 — the Risk Terminal row is inserted rather than listed inline, so
+// hiding it is a flag flip and not a deleted line somebody has to remember to
+// type back in the right position. Position 1 is deliberate: it sat directly
+// after Data Import, and restoring it must not quietly reorder the menu.
+if (SHOW_RISK_TERMINAL_NAV) {
+  navItems.splice(1, 0, { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" })
+}
 
 const topLevelAdminToolHrefs = new Set(["/budgeting/admin/ai-import"])
 
@@ -275,13 +283,15 @@ export function Sidebar() {
                   finance tabs visible even when the underlying table is empty;
                   the page-level empty states explain what is missing. */}
               {item.href === "/budgeting" && isBudgetingSection && budgetExpanded && !collapsed && (
-                <div className="mt-1 ml-2 space-y-3 border-l border-white/10 pl-2">
+                <div className={cn("mt-1 ml-2 border-l border-white/10 pl-2", SHOW_NAV_GROUP_HEADINGS ? "space-y-3" : "space-y-0")}>
                   {budgetSubNav
                     .map((group) => (
                       <div key={group.groupKey}>
-                        <p className="px-2 py-1 text-[9px] font-semibold text-white/40 uppercase tracking-wider">
-                          {t(group.groupKey as never)}
-                        </p>
+                        {SHOW_NAV_GROUP_HEADINGS && (
+                          <p className="px-2 py-1 text-[9px] font-semibold text-white/40 uppercase tracking-wider">
+                            {t(group.groupKey as never)}
+                          </p>
+                        )}
                         {group.items.map((sub) => {
                           // Planner tabs only now (admin moved to its own row):
                           //   value        → /budgeting?tab=<value>
@@ -336,7 +346,10 @@ export function Sidebar() {
               if (items.length === 0) return null
               return (
                 <div key={group.key} className="pt-2">
-                  {!collapsed && (
+                  {/* Same flag as the budgeting sub-nav: two lonely headings
+                      left behind in the admin block would read as an oversight
+                      rather than a choice. */}
+                  {!collapsed && SHOW_NAV_GROUP_HEADINGS && (
                     <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-white/40 uppercase tracking-wider">
                       {t2(group.key as never)}
                     </p>
