@@ -37,7 +37,7 @@ export const SHOW_RISK_TERMINAL_NAV = false
  * every number remains on the page — what goes away is the decorative half of
  * the screen, which is also the half that pushes the table below the fold.
  */
-export const SHOW_PL_CHARTS = false
+export const SHOW_PL_CHARTS = true
 
 /**
  * The two admin blocks at the foot of the nav — "Data control" (statement

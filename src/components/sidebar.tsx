@@ -86,7 +86,6 @@ type NavItem = {
 // here now resolves to a real az/ru string in messages/*.json. Do not
 // re-introduce identical en/az/ru values for nav labels.
 const navItems: NavItem[] = [
-  { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },
   { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
   { href: "/budgeting/audit", icon: ScrollText, labelKey: "auditLog", minRole: "manager" },
   // 2026-07-20 reorder: the Admin Tools row is intentionally NOT in this array —
@@ -94,17 +93,24 @@ const navItems: NavItem[] = [
   // visible admin groups) so the whole admin block sits at the bottom. See the
   // `hasRole(userRole, "admin")` block in the JSX below.
   { href: "/guide", icon: BookText, labelKey: "guide" },
+  // 2026-08-12 — Import moved from first to just above Settings, and its
+  // label shortened from "Data import" to "Import". It led the menu because
+  // it is where a new tenant starts; for a tenant whose data is already in,
+  // it is a maintenance action and reads better beside the other ones.
+  { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },
   { href: "/settings", icon: Settings, labelKey: "settings" },
 ]
 
-// 2026-08-11 — the Risk Terminal row is inserted rather than listed inline, so
-// hiding it is a flag flip and not a deleted line somebody has to remember to
-// type back in the right position. Position 1 is deliberate: it sat directly
-// after Data Import, and restoring it must not quietly reorder the menu.
-// 2026-08-11 — Trade Tower, Board Deck, Onboarding and Alerts are appended
-// rather than listed inline, for the same reason as the Risk Terminal row: the
-// restore puts them back in their original order without anyone reconstructing
-// it from memory. They sat between Budgeting and Audit Log.
+// The hidden rows below are SPLICED IN rather than listed inline, so that
+// restoring one is a flag flip instead of a deleted line somebody has to
+// remember to retype in the right position.
+//
+// Every insertion point is anchored to a neighbour rather than to a literal
+// index: Import moved down the list on 2026-08-12, and a hard-coded index would
+// have silently relocated the Risk Terminal row on the day someone restored it.
+
+// Trade Tower, Board Deck, Onboarding and Alerts sat between Budgeting and
+// Audit Log, in this order.
 if (SHOW_SECONDARY_NAV) {
   navItems.splice(navItems.findIndex((i) => i.href === "/budgeting/audit"), 0,
     { href: "/budgeting/trade", icon: Store, labelKey: "tradeTower" },
@@ -114,8 +120,10 @@ if (SHOW_SECONDARY_NAV) {
   )
 }
 
+// The Risk Terminal sat directly ABOVE Budgeting.
 if (SHOW_RISK_TERMINAL_NAV) {
-  navItems.splice(1, 0, { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" })
+  navItems.splice(navItems.findIndex((i) => i.href === "/budgeting"), 0,
+    { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" })
 }
 
 const topLevelAdminToolHrefs = new Set(["/budgeting/admin/ai-import"])

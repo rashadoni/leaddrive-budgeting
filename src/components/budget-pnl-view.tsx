@@ -12,7 +12,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList,
   AreaChart, Area, ComposedChart, Line, Cell,
 } from "recharts"
 import { TrendingUp, TrendingDown, DollarSign, Percent, BarChart2, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownRight, Info, Pencil } from "lucide-react"
@@ -385,23 +385,60 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   // `name` stays English — it is the drill key consumed by drillToSection's
   // lookup table. `label` is what the axis + tooltip render, so it is the
   // translated one.
-  const waterfallData = [
-    { name: "Revenue", label: t("plRevenue"), value: totalRevenue, fill: "#10b981" },
-    { name: "COGS", label: t("cogs"), value: -totalCogs, fill: "#ef4444" },
-    { name: "Gross Profit", label: t("pnlWfGrossProfit"), value: grossProfit, fill: "#3b82f6" },
-    { name: "OpEx", label: t("pnlOpEx"), value: -totalOpex, fill: "#f59e0b" },
+  const waterfallRaw: { name: string; label: string; value: number; fill: string; isTotal: boolean }[] = [
+    { name: "Revenue", label: t("plRevenue"), value: totalRevenue, fill: "#10b981", isTotal: true },
+    { name: "COGS", label: t("cogs"), value: -totalCogs, fill: "#ef4444", isTotal: false },
+    { name: "Gross Profit", label: t("pnlWfGrossProfit"), value: grossProfit, fill: "#3b82f6", isTotal: true },
+    { name: "OpEx", label: t("pnlOpEx"), value: -totalOpex, fill: "#f59e0b", isTotal: false },
     ...(totalOtherOperating !== 0
       ? [{
           name: "Other Operating",
           label: t("pnlWfOtherOperating"),
           value: totalOtherOperating,
           fill: totalOtherOperating >= 0 ? "#14b8a6" : "#ef4444",
+          isTotal: false,
         }]
       : []),
-    { name: "EBITDA", label: t("pnlWfEbitda"), value: ebitda, fill: ebitda >= 0 ? "#8b5cf6" : "#ef4444" },
-    ...(totalBelowEbitda > 0 ? [{ name: "D&A/Tax", label: t("pnlDaTaxShort"), value: -totalBelowEbitda, fill: "#94a3b8" }] : []),
-    { name: "Net Profit", label: t("pnlNetProfit"), value: netProfit, fill: netProfit >= 0 ? "#10b981" : "#ef4444" },
+    { name: "EBITDA", label: t("pnlWfEbitda"), value: ebitda, fill: ebitda >= 0 ? "#8b5cf6" : "#ef4444", isTotal: true },
+    ...(totalBelowEbitda > 0 ? [{ name: "D&A/Tax", label: t("pnlDaTaxShort"), value: -totalBelowEbitda, fill: "#94a3b8", isTotal: false }] : []),
+    { name: "Net Profit", label: t("pnlNetProfit"), value: netProfit, fill: netProfit >= 0 ? "#10b981" : "#ef4444", isTotal: true },
   ]
+
+  /**
+   * 2026-08-12 — a real cascading waterfall, on the owner's request and to the
+   * shape every finance reader expects (his reference was an Excel waterfall).
+   *
+   * Every bar used to grow from zero, which turns the chart into a plain bar
+   * chart of unrelated magnitudes: COGS and OpEx stood as tall columns next to
+   * Revenue, and nothing on screen showed that one is subtracted from the
+   * other. The point of a waterfall is precisely that linkage.
+   *
+   * Recharts has no waterfall primitive, so this is the standard construction:
+   * two stacked bars per row, the first transparent and carrying the OFFSET,
+   * the second coloured and carrying the MAGNITUDE.
+   *
+   *   subtotals (Revenue, Gross profit, EBITDA, Net profit) sit on the ground —
+   *     they are positions, not movements, so their offset is 0 (or the value
+   *     itself when negative, so a loss hangs below the axis);
+   *   flows (COGS, OpEx, other operating, D&A/tax) float between the running
+   *     total before and after them, so the eye follows the staircase.
+   *
+   * `value` is kept on every row: it is the signed figure the tooltip and the
+   * label print, and `name` remains the English drill key.
+   */
+  const waterfallData = (() => {
+    let running = 0
+    return waterfallRaw.map((row) => {
+      if (row.isTotal) {
+        running = row.value
+        return { ...row, base: Math.min(0, row.value), span: Math.abs(row.value) }
+      }
+      const before = running
+      const after = running + row.value
+      running = after
+      return { ...row, base: Math.min(before, after), span: Math.abs(row.value) }
+    })
+  })()
 
   const monthlyPerformance: Record<PnlPerformanceMetric, ReturnType<typeof buildPnlPerformancePoint>[]> = {
     revenue: MONTHS.map((month, i) => buildPnlPerformancePoint({
@@ -476,10 +513,32 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     monthLabel,
   )
 
+  // 2026-08-12 — the bridge is summed LIKE FOR LIKE, same reason as the summary
+  // tiles above it: it walks from budget EBITDA to actual EBITDA, and taking
+  // twelve months of budget against five of actuals made the first bar of that
+  // walk a number the last bar could never reach. The gap was not performance,
+  // it was seven months that had not happened.
+  //
+  // The budget side is therefore restricted to the months the actuals cover.
+  // When both sides span the same months — a complete year, or no actuals at
+  // all — the set is null and every month counts, so nothing changes.
+  const comparableMonthSet: Set<number> | null =
+    comparisonHasActuals && actualCoverage.count > 0 && actualCoverage.count !== budgetCoverage.count
+      ? new Set(actualCoverage.months)
+      : null
+  const inComparableScope = (side: "budget" | "actual", monthIndex0: number) =>
+    side === "actual" || comparableMonthSet == null || comparableMonthSet.has(monthIndex0 + 1)
+
   const sumSeries = (metric: PnlPerformanceMetric, key: "budget" | "actual") =>
-    monthlyPerformance[metric].reduce((sum, point) => sum + point[key], 0)
+    monthlyPerformance[metric].reduce(
+      (sum, point, index) => sum + (inComparableScope(key, index) ? point[key] : 0),
+      0,
+    )
   const sumComparisonMonthly = (side: "budget" | "actual", key: keyof Omit<PnlComparisonBuckets, "hasRows">) =>
-    MONTHS.reduce((sum, _month, index) => sum + comparisonValue(side, key, index + 1, 0), 0)
+    MONTHS.reduce(
+      (sum, _month, index) => sum + (inComparableScope(side, index) ? comparisonValue(side, key, index + 1, 0) : 0),
+      0,
+    )
   const ebitdaBridge = buildEbitdaBridge({
     budget: {
       revenue: sumSeries("revenue", "budget"),
@@ -865,12 +924,39 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
             <CartesianGrid strokeDasharray="3 3" className="opacity-30" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
-            <Tooltip formatter={((v: number) => fmtCurrency(Math.abs(v)) + " AZN") as never} />
+            {/* The tooltip reads the row's own signed `value`, not the stack
+                members: `base` is scaffolding and `span` is an absolute, so
+                printing either would show the reader a number that appears
+                nowhere in their P&L. */}
+            <Tooltip
+              cursor={{ fill: "rgba(148,163,184,0.12)" }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null
+                const row = payload[0].payload as { label: string; value: number }
+                return (
+                  <div className="rounded-lg border border-border bg-popover/95 px-3 py-2 text-xs shadow-lg backdrop-blur-sm">
+                    <div className="font-medium text-foreground">{row.label}</div>
+                    <div className="tabular-nums text-muted-foreground">
+                      {row.value < 0 ? "−" : ""}{fmtCurrency(Math.abs(row.value))} AZN
+                    </div>
+                  </div>
+                )
+              }}
+            />
+            {/* Transparent riser — positions the visible bar; never itself seen. */}
+            <Bar dataKey="base" stackId="wf" fill="transparent" isAnimationActive={false} />
             {/* Phase 3.3 — Cell onClick fires drillToSection with the
                 category name; auto-expands the table section + scrolls
                 to it + briefly pulses the section header. cursor:pointer
                 tells users the bars are clickable. */}
-            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+            <Bar dataKey="span" stackId="wf" radius={[4, 4, 0, 0]}>
+              <LabelList
+                dataKey="value"
+                position="top"
+                style={{ fontSize: 11, fontWeight: 600 }}
+                className="fill-foreground"
+                formatter={((v: number) => (v < 0 ? "(" : "") + fmtNum(Math.abs(v)) + (v < 0 ? ")" : "")) as never}
+              />
               {waterfallData.map((entry, i) => (
                 <Cell
                   key={i}
