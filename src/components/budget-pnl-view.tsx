@@ -943,8 +943,19 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
                 )
               }}
             />
-            {/* Transparent riser — positions the visible bar; never itself seen. */}
-            <Bar dataKey="base" stackId="wf" fill="transparent" isAnimationActive={false} />
+            {/* Transparent riser — positions the visible bar; never itself seen.
+                It carries its OWN Cells rather than a plain `fill`: Recharts
+                applies the Cell list to every Bar in a stack, so the coloured
+                Cells declared on `span` below were painting this riser too. The
+                result was a COGS column running all the way to the axis with a
+                seam across it where the two segments met, instead of a bar
+                floating between 58.9M and 20.2M. Found by reading the rendered
+                SVG — the riser's rects carried #ef4444, #f59e0b, #14b8a6. */}
+            <Bar dataKey="base" stackId="wf" isAnimationActive={false}>
+              {waterfallData.map((_e, i) => (
+                <Cell key={`riser-${i}`} fill="transparent" stroke="none" />
+              ))}
+            </Bar>
             {/* Phase 3.3 — Cell onClick fires drillToSection with the
                 category name; auto-expands the table section + scrolls
                 to it + briefly pulses the section header. cursor:pointer
