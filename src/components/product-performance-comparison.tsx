@@ -54,9 +54,44 @@ export function ProductPerformanceComparison({
   const tCommon = useTranslations("common")
   const MONTHS = useMemo(() => t("monthsShort").split(","), [t])
   const volumeLabel = volumeVarianceLabel ?? t("varianceVolume")
+  /**
+   * 2026-08-13 — like for like, same rule as the P&L tab.
+   *
+   * This screen had the identical flaw: a twelve-month sales budget compared
+   * against five months of actuals, printing `49.5M / 8.5M / −41.0M` with the
+   * gap read as underperformance when most of it is months that have not
+   * happened. The owner found it after the P&L was fixed, which is the useful
+   * kind of finding — the same mistake was made twice, in two components.
+   *
+   * The budget lines are scoped to the months that carry actuals BEFORE
+   * anything is derived from them, so the tiles, the per-product table and the
+   * monthly chart all agree by construction rather than by three separate
+   * filters that can drift apart.
+   *
+   * A month counts when it carries a non-zero actual — same reading as
+   * `coverageOf` on the P&L side, where zero is treated as absent because the
+   * monthly maps are dense and zero-filled. With no actuals at all, or a full
+   * twelve, nothing is scoped and the screen behaves as before.
+   */
+  const actualMonths = useMemo(() => {
+    const months = new Set<number>()
+    for (const line of actualLines) if (line.amount !== 0) months.add(line.month)
+    return months
+  }, [actualLines])
+  const budgetMonths = useMemo(() => {
+    const months = new Set<number>()
+    for (const line of budgetLines) if (line.amount !== 0) months.add(line.month)
+    return months
+  }, [budgetLines])
+  const scopeToActuals = actualMonths.size > 0 && actualMonths.size !== budgetMonths.size
+  const scopedBudgetLines = useMemo(
+    () => (scopeToActuals ? budgetLines.filter((line) => actualMonths.has(line.month)) : budgetLines),
+    [scopeToActuals, budgetLines, actualMonths],
+  )
+
   const rows = useMemo(
-    () => buildProductVarianceRows({ budgetLines, actualLines }),
-    [budgetLines, actualLines],
+    () => buildProductVarianceRows({ budgetLines: scopedBudgetLines, actualLines }),
+    [scopedBudgetLines, actualLines],
   )
   const coverage = useMemo(() => productVarianceCoverage(rows), [rows])
   // 11.90 — the server sends a code and the reader's locale turns it into a
@@ -70,12 +105,15 @@ export function ProductPerformanceComparison({
     ),
     ...coverage.missingCodes.map((code) => t(`productVarianceMissing.${code}`)),
   ])
-  const monthlyData = useMemo(() => MONTHS.map((month, index) => {
-    const m = index + 1
-    const budget = budgetLines.filter((line) => line.month === m).reduce((sum, line) => sum + line.amount, 0)
-    const actual = actualLines.filter((line) => line.month === m).reduce((sum, line) => sum + line.amount, 0)
-    return { month, budget, actual, variance: actual - budget }
-  }), [MONTHS, budgetLines, actualLines])
+  const monthlyData = useMemo(() => MONTHS
+    .map((month, index) => {
+      const m = index + 1
+      const budget = scopedBudgetLines.filter((line) => line.month === m).reduce((sum, line) => sum + line.amount, 0)
+      const actual = actualLines.filter((line) => line.month === m).reduce((sum, line) => sum + line.amount, 0)
+      return { month, monthNumber: m, budget, actual, variance: actual - budget }
+    })
+    .filter((row) => !scopeToActuals || actualMonths.has(row.monthNumber)),
+    [MONTHS, scopedBudgetLines, actualLines, scopeToActuals, actualMonths])
   const totals = rows.reduce(
     (acc, row) => ({
       budget: acc.budget + row.budgetAmount,

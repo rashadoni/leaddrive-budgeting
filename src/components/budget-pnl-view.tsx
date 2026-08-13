@@ -529,6 +529,27 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const inComparableScope = (side: "budget" | "actual", monthIndex0: number) =>
     side === "actual" || comparableMonthSet == null || comparableMonthSet.has(monthIndex0 + 1)
 
+  /**
+   * 2026-08-13 — every monthly chart on this tab now stops at the last month
+   * that carries actuals, on the owner's instruction: "все графики должны
+   * выглядеть до фактических месяцев".
+   *
+   * I had argued to leave these two alone because they show the selected PLAN
+   * and carry no actual series, so cutting them hides budget rather than
+   * correcting a comparison. He asked for it anyway, and it is his screen: a
+   * reader scanning the tab should not have to notice that the first chart
+   * stops in May while the two beneath it run to December.
+   *
+   * Nothing is hardcoded to five months. The scope is derived from which
+   * months actually carry actual figures, so a file loaded through September
+   * moves every chart to September by itself. With no actuals at all — or a
+   * complete year — the set is null and all twelve months render.
+   */
+  const scopedToActuals = <T,>(rows: T[]): T[] =>
+    comparableMonthSet == null ? rows : rows.filter((_r, i) => comparableMonthSet.has(i + 1))
+  const chartDataScoped = scopedToActuals(chartData)
+  const marginDataScoped = scopedToActuals(marginData)
+
   const sumSeries = (metric: PnlPerformanceMetric, key: "budget" | "actual") =>
     monthlyPerformance[metric].reduce(
       (sum, point, index) => sum + (inComparableScope(key, index) ? point[key] : 0),
@@ -843,7 +864,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         <div className="lg:col-span-2 rounded-xl border bg-card p-4">
           <h3 className="text-sm font-semibold text-foreground mb-3">{t("pnlChartRevenueVsCogs")}</h3>
           <ResponsiveContainer width="100%" height={280} minWidth={0}>
-            <ComposedChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+            <ComposedChart data={chartDataScoped} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
@@ -889,7 +910,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
             )}
           </div>
           <ResponsiveContainer width="100%" height={280} minWidth={0}>
-            <AreaChart data={marginData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+            <AreaChart data={marginDataScoped} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v + "%"} />
