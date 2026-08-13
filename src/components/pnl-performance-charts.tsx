@@ -111,6 +111,28 @@ export function PnlPerformanceCharts({
     return new Set(actualCoverage.months)
   }, [hasActuals, actualCoverage, budgetCoverage])
 
+  /**
+   * 2026-08-13 — the monthly chart is cut to the comparable months too.
+   *
+   * The previous pass scoped only the summary tiles and left the chart at
+   * twelve, on the reasoning that empty future months show what is still
+   * ahead. The owner's instruction was broader and he was right to repeat it:
+   * a chart with twelve budget bars beside five actual bars invites exactly
+   * the eyeball comparison the tiles were fixed to stop making. One screen
+   * cannot answer the same question two different ways.
+   *
+   * Only the comparison chart is cut. The plan-only charts further down
+   * (revenue vs COGS, margin trends) carry no actual series, so trimming them
+   * would hide seven months of budget that legitimately exist rather than
+   * correct a comparison.
+   */
+  const chartData = useMemo(
+    () => (comparableMonths == null
+      ? selectedData
+      : selectedData.filter((_row, index) => comparableMonths.has(index + 1))),
+    [selectedData, comparableMonths],
+  )
+
   const annual = useMemo(
     () => selectedData.reduce(
       (acc, row, index) => {
@@ -230,7 +252,7 @@ export function PnlPerformanceCharts({
 
         <div className="mt-4 min-w-0">
           <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={0}>
-            <ComposedChart data={selectedData} margin={{ top: 8, right: 18, left: 4, bottom: 0 }}>
+            <ComposedChart data={chartData} margin={{ top: 8, right: 18, left: 4, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={fmtK} />
