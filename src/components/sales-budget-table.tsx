@@ -83,6 +83,15 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
     () => toVarianceLines(data?.comparison?.actualLines ?? []),
     [data?.comparison?.actualLines],
   )
+  // Must sit with the other hooks, ABOVE the loading and empty-state returns:
+  // declared below them it runs conditionally, and React refuses — "Rendered
+  // more hooks than during the previous render", which is how the sales tab
+  // white-screened the first time this trim was written.
+  const actualMonthsSet = useMemo(() => {
+    const months = new Set<number>()
+    for (const line of comparisonActualLines) if (line.amount !== 0) months.add(line.month)
+    return months
+  }, [comparisonActualLines])
 
   if (isLoading) {
     return (
@@ -150,6 +159,21 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
     color: p.color,
   }))
 
+  /**
+   * 2026-08-13 — cut to the months carrying actuals, same rule as every other
+   * monthly chart on the budgeting tabs.
+   *
+   * This one plots the SELECTED PLAN by product and has no actual series of
+   * its own, so on its own terms twelve months is correct. It is trimmed
+   * anyway because it sits on the same screen as the budget-vs-actual chart
+   * above it: leaving one at five months and the other at twelve invites the
+   * reader to compare two axes that do not line up.
+   *
+   * Derived from `comparisonActualLines`, the same data the comparison above
+   * uses, so the two can never disagree about where the actuals stop.
+   */
+  const scopeMonths = actualMonthsSet.size > 0 && actualMonthsSet.size < MONTHS.length
+
   // Monthly revenue stacked bar chart + total trend line
   const monthlyData = MONTHS.map((m, i) => {
     const entry: any = { month: m }
@@ -160,8 +184,9 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
       total += amount
     })
     entry.Total = total
+    entry.__month = i + 1
     return entry
-  })
+  }).filter((row: any) => !scopeMonths || actualMonthsSet.has(row.__month))
 
   const toggleProduct = (code: string) => {
     setExpandedProducts(prev => {
