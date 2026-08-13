@@ -102,6 +102,18 @@ export function COGSCalculator({ planId }: { planId: string }) {
     () => toVarianceLines(data?.comparison?.actualLines ?? []),
     [data?.comparison?.actualLines],
   )
+  // 2026-08-13 — same scoping rule as the P&L and sales tabs: the monthly
+  // charts stop at the last month carrying actuals.
+  //
+  // Declared HERE, above the loading and empty-state returns below, and not
+  // beside the charts where it is used. Putting it there makes it conditional
+  // and React refuses the render outright — that is how the sales tab
+  // white-screened when this same trim was written for it an hour ago.
+  const actualMonthsSet = useMemo(() => {
+    const months = new Set<number>()
+    for (const line of comparisonActualLines) if (line.amount !== 0) months.add(line.month)
+    return months
+  }, [comparisonActualLines])
 
   if (isLoading) {
     return (
@@ -210,6 +222,8 @@ export function COGSCalculator({ planId }: { planId: string }) {
   }))
 
   // Monthly stacked bar + total trend
+  const scopeMonths = actualMonthsSet.size > 0 && actualMonthsSet.size < MONTHS.length
+
   const monthlyData: MonthlyDataRow[] = MONTHS.map((m, i) => {
     const entry: MonthlyDataRow = { month: m, Total: 0 }
     let total = 0
@@ -219,14 +233,16 @@ export function COGSCalculator({ planId }: { planId: string }) {
       total += cost
     })
     entry.Total = total
+    entry.__month = i + 1
     return entry
-  })
+  }).filter((row) => !scopeMonths || actualMonthsSet.has(row.__month as number))
 
   // Cost trend (total COGS per month)
   const trendData = MONTHS.map((m, i) => ({
     month: m,
+    __month: i + 1,
     COGS: productList.reduce((s, p) => s + (p.months[i + 1]?.cost || 0), 0),
-  }))
+  })).filter((row) => !scopeMonths || actualMonthsSet.has(row.__month))
 
   const toggleProduct = (name: string) => {
     setExpandedProducts(prev => {
