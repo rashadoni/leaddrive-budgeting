@@ -87,6 +87,16 @@ const statementValues = (g: Values, t: ImportTranslator) => ({
 })
 
 /**
+ * `{code}` → a short cause clause. The orchestrator emits the CODE (never the
+ * provider's raw message, which embeds billing state — see the classify catch
+ * in `multi-file-orchestrator.ts`), so these lines are assembled here.
+ */
+const causeValues = (g: Values, t: ImportTranslator) => ({
+  ...g,
+  cause: t(`msg.aiCause.${g.code}`),
+})
+
+/**
  * Fragments that appear *inside* a wrapped sheet warning, joined by " · " by
  * `multi-file-orchestrator.ts`. Tried before the whole-line rules because the
  * detail localizer recurses through the same table.
@@ -169,6 +179,18 @@ const LINE_RULES: Rule[] = [
     re: /^(?<file>.+?): sheet "(?<sheet>.+?)" parse error — (?<error>.+)$/s,
     key: "msg.sheetParseError",
   },
+  {
+    re: /^(?<file>.+?): classify failed \((?<code>ai_[a-z_]+)\)$/,
+    key: "msg.classifyFailedCode",
+    values: causeValues,
+  },
+  {
+    re: /^Classification failed \((?<code>ai_[a-z_]+)\)$/,
+    key: "msg.classificationFailedCode",
+    values: causeValues,
+  },
+  // Legacy shape: the raw provider message used to be interpolated here. Kept
+  // so an older stored warning still renders, but nothing emits it any more.
   {
     re: /^(?<file>.+?): classify failed — (?<error>.+)$/s,
     key: "msg.classifyFailed",

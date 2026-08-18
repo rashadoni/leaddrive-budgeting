@@ -1337,6 +1337,66 @@ describe("runMultiFileImport", () => {
     expect(mainGroup?.committed).toBe(true)
   })
 
+  it("a provider failure NEVER puts the raw message in the response", async () => {
+    // 2026-08-18 — screenshotted on production. The file card rendered
+    // `Classification failed: 400 {"type":"error"… "Your credit balance is too
+    // low to access the Anthropic API. Please go to Plans & Billing…"}`
+    // verbatim, and the warning below it repeated the whole payload. That is
+    // internal billing state shown to an enterprise client — the exact leak
+    // `src/lib/ai/ai-error.ts` was written on 2026-06-04 to stop. The
+    // sanitizer guarded the API routes' catch blocks; this path never went
+    // through it, and the catch here carried a comment claiming the raw
+    // message "never reaches the browser" while three lines shipped it.
+    //
+    // This asserts the STRUCTURAL property — a stable code cannot leak —
+    // rather than the wording of any one screen.
+    const RAW =
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":' +
+      '"Your credit balance is too low to access the Anthropic API. Please go ' +
+      'to Plans & Billing to upgrade or purchase credits."},' +
+      '"request_id":"req_011Ce9xr2GrKtprjZPoJ4W8z"}'
+
+    const prisma = stubPrisma({ companies: [{ id: "c1", code: "AZSEKER-CPC" }] })
+    const client: SheetClassifierAnthropicLike = {
+      messages: { create: vi.fn(async () => { throw new Error(RAW) }) },
+    }
+    const result = await runMultiFileImport(
+      {
+        files: [{ filename: "actual-budget-v1.xlsx", workbook: fakeWorkbook("X") }],
+        organizationId: "org1",
+        year: 2026,
+      },
+      {
+        prisma,
+        anthropicClient: client,
+        model: "claude-test",
+        registry: buildRegistryWith({ PLF: plfHandler(2) }),
+        XLSX: fakeXLSX,
+      },
+    )
+
+    // Everything the browser can see, in one string.
+    const wire = JSON.stringify(result)
+    for (const leak of [
+      "credit balance",
+      "Plans & Billing",
+      "purchase credits",
+      "request_id",
+      "req_011Ce9xr2GrKtprjZPoJ4W8z",
+      "invalid_request_error",
+      "api.anthropic",
+    ]) {
+      expect(wire, `leaked: ${leak}`).not.toContain(leak)
+    }
+
+    // …and the cause is still carried, as a code the client can localize.
+    const file = result.perFile.find((f) => f.filename === "actual-budget-v1.xlsx")!
+    expect(file.error).toBe("ai_credits")
+    expect(result.completeness.aiOutage).toBe("ai_credits")
+    expect(file.fileTypeResult.reasoning).toBe("Classification failed (ai_credits)")
+    expect(result.warnings).toContain("actual-budget-v1.xlsx: classify failed (ai_credits)")
+  })
+
   it("unknown file-type is skipped, not committed", async () => {
     const prisma = stubPrisma()
     const client = stubClientPerCall([

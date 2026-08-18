@@ -31,6 +31,7 @@ import {
 import { buildWarningSheetFacts } from "./warning-facts"
 import {
   asImportTranslator,
+  isAiOutageCode,
   localizeAiOutage,
   localizeImportMessage,
   localizeVerdict,
@@ -3297,6 +3298,26 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
               {templateSaveStatus}
             </div>
           )}
+          {/* 2026-08-18 (second pass) — the outage banner also belongs HERE.
+              Pass one put it only on the apply-completeness result, so at
+              Step 1 — which is where the owner actually was, screenshot in
+              hand — there was no banner at all and the file card carried the
+              provider's raw billing text instead. `f.error` is the classified
+              code now, so the whole preview can say the one true thing once
+              rather than repeating it per file. */}
+          {(() => {
+            const outage = previewResult.perFile
+              .map((f) => f.error)
+              .find((c) => isAiOutageCode(c))
+            return outage && isAiOutageCode(outage) ? (
+              <div
+                className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                data-testid="preview-ai-outage"
+              >
+                {localizeAiOutage(tShared, outage, "classify")}
+              </div>
+            ) : null
+          })()}
           {previewResult.perFile.map((f) => {
             const impacts =
               previewResult.sheetImpactsByFilename?.[f.filename] ?? []
@@ -3372,7 +3393,15 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
                 )}
                 {f.error && (
                   <p className="text-xs text-red-700">
-                    ⚠ {localizeImportMessage(tShared, f.error)}
+                    {/* A bare code would render as the token «ai_credits»;
+                        the full sentence lives in the banner above, so this
+                        stays a short per-file attribution. */}
+                    ⚠{" "}
+                    {isAiOutageCode(f.error)
+                      ? tShared("msg.classificationFailedCode", {
+                          cause: tShared(`msg.aiCause.${f.error}`),
+                        })
+                      : localizeImportMessage(tShared, f.error)}
                   </p>
                 )}
                 {impacts.length > 0 && (

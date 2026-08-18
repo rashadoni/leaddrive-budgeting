@@ -1003,10 +1003,19 @@ function buildCompleteness(
   // An AI-service failure is not a data problem, and the two must not read the
   // same on screen. Classified from the errors we already collected; the first
   // service-level code wins, since one outage explains every file at once.
+  // `f.error` now IS the code (see the classify catch above). Passing it back
+  // through `classifyAiError` would match none of its patterns and downgrade
+  // every outage to `ai_unavailable` — the credit case would stop naming the
+  // balance, which is the one thing the reader has to act on.
   const aiOutage: AiErrorCode | null =
     perFile
-      .map((f) => (f.error ? classifyAiError(f.error) : null))
-      .find((code) => code === "ai_credits" || code === "ai_rate_limit" || code === "ai_unavailable") ?? null
+      .map((f) => f.error)
+      .find(
+        (code): code is AiErrorCode =>
+          code === "ai_credits" ||
+          code === "ai_rate_limit" ||
+          code === "ai_unavailable",
+      ) ?? null
   const unclassifiedFiles = perGroup
     .filter((g) => g.fileType === "unknown")
     .flatMap((g) => g.filenames)
@@ -1157,15 +1166,32 @@ export async function runMultiFileImport(
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
+        const code = classifyAiError(msg)
         // Log server-side: production carried no trace of a failed import at
         // all, so the first diagnosis had to be made by probing the provider by
-        // hand. The raw message stays here and never reaches the browser.
+        // hand.
         getLogger("ai-import:multi").error("classify failed", {
           filename: file.filename,
-          code: classifyAiError(msg),
+          code,
           raw: msg,
         })
-        warnings.push(`${file.filename}: classify failed — ${msg}`)
+        // 2026-08-18 (second pass) — ONLY THE CODE CROSSES THE WIRE.
+        //
+        // The previous version of this block carried a comment claiming the
+        // raw message "never reaches the browser" while the very next lines
+        // put it in `warnings`, in `error`, and — via `fileTypeResults` below
+        // — in `reasoning`. Screenshotted on production: the file card
+        // rendered `Classification failed: 400 {"type":"error"… "Your credit
+        // balance is too low to access the Anthropic API. Please go to Plans
+        // & Billing…"}` verbatim, twice. That is internal billing state shown
+        // to an enterprise client, which is exactly what `ai-error.ts` was
+        // written on 2026-06-04 to stop — the sanitizer guarded the API
+        // routes' catch blocks and this path never went through it.
+        //
+        // A stable code cannot leak, so the guarantee is now structural
+        // rather than a promise in a comment. The raw string is one `docker
+        // compose logs` away for whoever is debugging.
+        warnings.push(`${file.filename}: classify failed (${code})`)
         return {
           filename: file.filename,
           classifications: [],
@@ -1177,7 +1203,7 @@ export async function runMultiFileImport(
             modelName: deps.model,
             promptVersion: "n/a",
           },
-          error: msg,
+          error: code,
           templateApplied: undefined,
         }
       }
@@ -1192,7 +1218,7 @@ export async function runMultiFileImport(
       fileTypeResults.set(cr.filename, {
         fileType: "unknown",
         confidence: 0,
-        reasoning: `Classification failed: ${cr.error}`,
+        reasoning: `Classification failed (${cr.error})`,
         sheetCounts: {
           plf: 0,
           bs: 0,
