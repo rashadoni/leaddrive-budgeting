@@ -47,6 +47,7 @@
 import type { PrismaClient } from "@prisma/client"
 import type * as XLSXType from "xlsx"
 import { getLogger } from "@/lib/log"
+import { classifyAiError, type AiErrorCode } from "@/lib/ai/ai-error"
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
 const recomputeLog = getLogger("ai-import:multi-file:recompute")
@@ -515,6 +516,21 @@ export interface MultiFileImportResult {
       filenames: string[]
       reason: string
     }>
+    /**
+     * 2026-08-18 — set when the classifier failed because the AI SERVICE was
+     * unreachable, not because anything was wrong with the workbook.
+     *
+     * Without this the screen blamed the file. On production the Anthropic
+     * balance ran out and every upload came back "file type unknown / manual
+     * review required", which sent the owner looking for a defect in a
+     * perfectly good spreadsheet. The workbook had opened, the sheets had been
+     * read; only the model call failed.
+     *
+     * Carries the stable code from `classifyAiError` (`ai_credits`,
+     * `ai_rate_limit`, `ai_unavailable`) — never the provider's raw message,
+     * which embeds billing state.
+     */
+    aiOutage: AiErrorCode | null
   }
   /** Non-fatal issues observed. */
   warnings: string[]
@@ -984,6 +1000,13 @@ function buildCompleteness(
   const filesWithErrors = perFile
     .filter((f) => f.error !== null)
     .map((f) => f.filename)
+  // An AI-service failure is not a data problem, and the two must not read the
+  // same on screen. Classified from the errors we already collected; the first
+  // service-level code wins, since one outage explains every file at once.
+  const aiOutage: AiErrorCode | null =
+    perFile
+      .map((f) => (f.error ? classifyAiError(f.error) : null))
+      .find((code) => code === "ai_credits" || code === "ai_rate_limit" || code === "ai_unavailable") ?? null
   const unclassifiedFiles = perGroup
     .filter((g) => g.fileType === "unknown")
     .flatMap((g) => g.filenames)
@@ -1004,6 +1027,7 @@ function buildCompleteness(
     filesWithErrors,
     unclassifiedFiles,
     groupsNotCommitted,
+    aiOutage,
   }
 }
 
@@ -1133,6 +1157,14 @@ export async function runMultiFileImport(
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
+        // Log server-side: production carried no trace of a failed import at
+        // all, so the first diagnosis had to be made by probing the provider by
+        // hand. The raw message stays here and never reaches the browser.
+        getLogger("ai-import:multi").error("classify failed", {
+          filename: file.filename,
+          code: classifyAiError(msg),
+          raw: msg,
+        })
         warnings.push(`${file.filename}: classify failed — ${msg}`)
         return {
           filename: file.filename,
@@ -1529,6 +1561,7 @@ export async function runMultiFileImport(
             reason: `Routing safety gate — ${reasons.length} issue(s); aborted before any DB write`,
           },
         ],
+        aiOutage: null,
       },
       warnings: [
         ...warnings,
@@ -1584,6 +1617,7 @@ export async function runMultiFileImport(
             reason: `Year gate — requested ${input.year}, workbooks contain ${seen.join(", ")}`,
           },
         ],
+        aiOutage: null,
       },
       warnings: [
         ...warnings,
@@ -1621,6 +1655,7 @@ export async function runMultiFileImport(
             reason: `Cross-file conflict gate — ${conflicts.length} cell(s) disagree across files; aborted before any DB write`,
           },
         ],
+        aiOutage: null,
       },
       warnings: [
         ...warnings,

@@ -281,6 +281,8 @@ interface MultiFileApiResponse {
       filenames: string[]
       reason: string
     }>
+    /** Set when the classifier failed because the AI service was unreachable. */
+    aiOutage?: "ai_credits" | "ai_rate_limit" | "ai_unavailable" | "ai_bad_response" | null
   }
   warnings: string[]
   error?: string
@@ -1771,6 +1773,19 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
         data-testid="apply-incomplete"
       >
         <div className="font-semibold">🔴 {t("result.incompleteTitle")}</div>
+        {/* 2026-08-18 — name the real cause first when the AI service was the
+            thing that failed. Every line below this says "file type unknown /
+            manual review required", which reads as a defect in the workbook.
+            On production the Anthropic balance ran out and that wording sent
+            the owner hunting through a spreadsheet that was perfectly fine. */}
+        {c.aiOutage && (
+          <p
+            className="mt-2 rounded border border-amber-300 bg-amber-50 px-2.5 py-2 font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+            data-testid="apply-incomplete-ai-outage"
+          >
+            {t(`result.aiOutage.${c.aiOutage}` as never)}
+          </p>
+        )}
         <ul className="mt-2 space-y-1 list-disc list-inside">
           {lines.map((l, i) => (
             <li key={i} className="break-words">
