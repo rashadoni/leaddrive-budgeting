@@ -55,6 +55,12 @@ export type SheetDataType =
   // what makes this the safe shape rather than a sentinel company code, which
   // would look like a real company to all twelve of them.
   | "BS_ELIMINATIONS"
+  // 2026-08-18 — the P&L half of the same block, which 14.8 left open.
+  // Identical contract: no entity, `companyId: null`, `isElimination: true`,
+  // and only the GROUP P&L reads it. Without it the group EBITDA is simply
+  // the four entities added together — 271,160 against the workbook's own
+  // 255,942 on `actual-budget-v1.xlsx`.
+  | "PLF_ELIMINATIONS"
   | "CF"
   | "KPI_FARMING"
   | "KPI_PROCESSING"

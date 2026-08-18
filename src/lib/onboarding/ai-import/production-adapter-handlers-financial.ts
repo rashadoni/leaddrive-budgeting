@@ -33,7 +33,11 @@ import {
   parseProMaltSalesSheet,
 } from "../adapters/azseker-workbook-sales"
 import { parseSalesPlanSheet } from "../adapters/azseker-farming-strategy"
-import { runImportBatch, type ImportBatchRow } from "../import-batch"
+import {
+  runImportBatch,
+  ELIMINATION_RECON_ENTITY,
+  type ImportBatchRow,
+} from "../import-batch"
 import { runBalanceSheetBatch, type BsImportRow } from "../bs-import-batch"
 import { runCashFlowBatch, type CfImportRow } from "../cf-import-batch"
 import { runKpiBatch, type KpiImportRow } from "../kpi-import-batch"
@@ -1317,3 +1321,179 @@ export function makeKpiHandler(
 // ──────────────────────────────────────────────────────────────────────
 // LAND_REGISTRY handler — writes Company.settings via tx
 // ──────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────
+// PLF_ELIMINATIONS — the group's intragroup eliminations, P&L side (2026-08-18)
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Write the client's own INTRAGROUP ELIMINATIONS block from a P&L sheet.
+ *
+ * A sibling of `makePlfHandler` for the same reason `makeBsEliminationsHandler`
+ * is a sibling of `makeBsHandler` (Phase 14.8): almost every line of the entity
+ * handler is about placing rows on a company, and this handler's defining
+ * property is that it must never do so. Sharing the function would mean an
+ * `if (isElimination)` beside each of those lines, on the one path where a miss
+ * puts the group's whole intercompany reversal onto a single company.
+ *
+ * What it holds that the entity handler does not:
+ *
+ *  1. `companyId: null` + `isElimination: true`, always. There is no entity to
+ *     resolve, so there is nothing to guess wrong.
+ *  2. Recon keys carry `ELIMINATION_RECON_ENTITY` where an entity code would
+ *     be. There is one elimination contributor per plan, and the read-back in
+ *     `import-batch.ts` rebuilds the same key, so expected and actual
+ *     intersect — a bare code would work today and collide the moment
+ *     anything else lands without a company.
+ *  3. A sheet it cannot read is SKIPPED, never `blocked`. A blocked adapter
+ *     aborts the entire workbook at the routing gate; 14.8 learned that the
+ *     expensive way, when eight uncoded lines on a 2025 balance sheet stopped
+ *     an import that had nothing to do with eliminations. The cost of skipping
+ *     is exactly what the product had before this existed — an un-eliminated
+ *     group P&L — and that state is disclosed rather than silent.
+ *
+ * The parse is the ordinary `parsePlfPlSheet`: the elimination block is written
+ * in the same chart of accounts as the entities. Measured on
+ * `actual-budget-v1.xlsx`, the fact block is eight posting rows — revenue
+ * −337,016 against cost +321,798 — summing to exactly the −15,217.94 its own
+ * `PLF.08` and `PLF.10` state. Only where the money LANDS differs, which is
+ * this handler's whole job.
+ */
+export function makePlfEliminationsHandler(
+  prisma: PrismaClient,
+  ctxRef: { value: OrgContext | null },
+  ensureCtx: () => Promise<OrgContext>,
+): AdapterHandler {
+  return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
+    const ctx = await ensureCtx()
+    const parsed = parsePlfPlSheet(input.workbook, input.sheetName, input.XLSX, {
+      preferYear: input.year,
+    })
+
+    const skip = (reason: string, extra: string[] = []): AdapterRunResult => ({
+      summary: `PLF eliminations "${input.sheetName}" not imported — ${reason}`,
+      itemCount: 0,
+      warnings: [
+        ...parsed.warnings.map((w) => `row ${w.row}: ${w.reason}`),
+        ...extra,
+        `The rest of this workbook still imports; the group P&L stays UN-ELIMINATED ` +
+          `for this plan, which is what it was before.`,
+      ],
+      applyToDb: async () => ({ rowsInserted: 0 }),
+    })
+
+    if (parsed.lines.length === 0) {
+      return skip("the sheet parsed to zero rows")
+    }
+    // An ambiguous cost-sign convention stops THIS sheet. An elimination whose
+    // signs are a coin flip does not reduce the group's result, it corrupts it
+    // — and unlike an entity sheet there is no second opinion to catch it,
+    // because nothing else posts to these rows.
+    if (parsed.signConvention?.blockedReason) {
+      return skip(parsed.signConvention.blockedReason)
+    }
+
+    const rows: ImportBatchRow[] = []
+    const expectedSums = new Map<ReconciliationKey, number>()
+    const accountSpecs = new Map<
+      string,
+      { code: string; name: string; accountType: string }
+    >()
+    let lineOrdinal = 0
+
+    for (const line of parsed.lines) {
+      lineOrdinal++
+      if (!accountSpecs.has(line.code)) {
+        accountSpecs.set(line.code, {
+          code: line.code,
+          name: line.label,
+          accountType: line.accountType,
+        })
+      }
+      for (let m = 0; m < 12; m++) {
+        const amount = line.perMonth[m]
+        if (!Number.isFinite(amount) || amount === 0) continue
+        const period = `${input.year}-${String(m + 1).padStart(2, "0")}`
+        rows.push({
+          companyId: null,
+          isElimination: true,
+          category: line.code,
+          lineType: line.accountType,
+          period,
+          monthIndex: m,
+          plannedAmount: amount,
+          currencyCode: "AZN",
+          exchangeRate: null,
+          planId: ctx.planId,
+          // Placeholder — overwritten in applyToDb via resolveOrCreateAccountId.
+          accountId: "",
+          sourceCell: buildSourceCell({
+            channel: "multi-import",
+            sheetName: input.sheetName,
+            code: line.code,
+            ordinal: lineOrdinal,
+            period,
+          }),
+        })
+        const key = buildReconKey(ELIMINATION_RECON_ENTITY, line.code, period)
+        expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
+      }
+    }
+
+    if (rows.length === 0) {
+      return skip("every parsed cell was zero")
+    }
+
+    return {
+      summary: `${parsed.lines.length} PLF elimination lines for the group (no company)`,
+      itemCount: rows.length,
+      warnings: parsed.warnings.map((w) => `row ${w.row}: ${w.reason}`),
+      expectedSums,
+      applyToDb: async (tx: Prisma.TransactionClient) => {
+        const coaCache = createCoACache()
+        preWarmCoACache(
+          coaCache,
+          ctx.organizationId,
+          Array.from(ctx.coaByCode.entries()).map(([code, id]) => ({ code, id })),
+        )
+        const accountIdByLineCode = new Map<string, string>()
+        for (const spec of accountSpecs.values()) {
+          const id = await resolveOrCreateAccountId(tx, coaCache, {
+            organizationId: ctx.organizationId,
+            code: spec.code,
+            defaultName: spec.name,
+            defaultAccountType: spec.accountType,
+          })
+          accountIdByLineCode.set(spec.code, id)
+        }
+        const resolvedRows: ImportBatchRow[] = rows.map((r) => {
+          const accountId = accountIdByLineCode.get(r.category)
+          if (!accountId) {
+            throw new Error(
+              `[PLF_ELIMINATIONS] accountId not resolved for lineCode="${r.category}" — upsert pass missed it`,
+            )
+          }
+          return { ...r, accountId }
+        })
+        const result = await runImportBatch(tx, {
+          organizationId: ctx.organizationId,
+          label: `WB P&L eliminations ${input.year}`,
+          actorUserId: "ai-multi-import",
+          sourceDocument: `multi-import:${input.sheetName}`,
+          // No company scope: the clean-slate for this batch is
+          // `isElimination: true`, derived inside runImportBatch from the rows
+          // themselves. Passing a company list here would be a claim this
+          // batch cannot make.
+          companyIds: [],
+          periodScope: buildPeriodScope(input.year),
+          rows: resolvedRows,
+          expectedSums,
+        })
+        return {
+          rowsInserted: result.metrics.rowsInserted,
+          reconciliation: result.reconciliation,
+        }
+      },
+    } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }
+  }
+}

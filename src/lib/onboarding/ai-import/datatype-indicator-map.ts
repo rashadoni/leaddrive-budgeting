@@ -133,6 +133,12 @@ const DATATYPE_RULES: Record<SheetDataType, DataTypeRule> = {
     note: "не принадлежит ни одной компании: элиминация гасит расчёты МЕЖДУ участниками группы. Читается только в групповом виде баланса, из карточки компании исключается",
     match: (i) => i.startsWith("balanceSheetLine"),
   },
+  PLF_ELIMINATIONS: {
+    writes:
+      "BudgetLine с isElimination=true и companyId=null (внутригрупповые элиминации клиента, P&L)",
+    note: "не принадлежит ни одной компании: элиминация гасит доходы и расходы МЕЖДУ участниками группы. Читается только в групповом P&L, из карточки компании исключается",
+    match: (i) => i.startsWith("budgetLine"),
+  },
   CF: {
     writes: "CashFlowEntry.plannedAmount (cash flow 12 месяцев)",
     note: "ни один seeded индикатор пока не читает CashFlowEntry напрямую — данные сохраняются для FCF / Operating CF в будущем",

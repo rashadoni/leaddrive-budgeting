@@ -503,6 +503,15 @@ model BudgetLine {
   // (Organization). Nullable for backward compat; backfilled at 7.A end.
   companyId      String?
   company        Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  /// 2026-08-18 — an INTRAGROUP ELIMINATION row, from the `EJE` block the
+  /// client ships inside its own P&L sheets. It cancels revenue and cost
+  /// BETWEEN group members, so it belongs to no company: `companyId` is null
+  /// and this says why it is null rather than legacy-unscoped. The P&L read
+  /// takes these rows at GROUP level only — a per-company query filters on
+  /// `companyId` and excludes them by construction — and the import scopes an
+  /// elimination batch clean-slate on this flag, which is disjoint from every
+  /// entity row. Mirrors `BalanceSheetLine.isElimination` (Phase 14.8).
+  isElimination  Boolean           @default(false)
   vatIncluded    Boolean           @default(false)
   vatRate        Float?
   amountExVat    Float?
@@ -587,6 +596,7 @@ model BudgetLine {
 
   @@index([organizationId])
   @@index([planId])
+  @@index([planId, isElimination])
   @@index([parentId])
   @@index([costTypeId])
   @@index([departmentId])

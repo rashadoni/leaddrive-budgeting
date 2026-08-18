@@ -551,13 +551,19 @@ export function applyBuColumnSplit(
    * handler writes it with `companyId: null, isElimination: true`, and only
    * the group-level balance-sheet read admits those rows.
    *
-   * BS only, and only ONE such block. A P&L elimination is a different
-   * question with a different answer (11.83 settled the adjustment half of it
-   * and deliberately left the elimination half alone), and two EJE blocks on
-   * one sheet would each clean-slate the other's rows — the write path resets
-   * per (plan × scope × year) once per sheet, which is the 2026-06-11
-   * collateral-wipe shape. Both cases fall through to the old skip-with-a-
-   * warning path, which is what they got before this existed.
+   * 2026-08-18 — and now the P&L too, which 14.8 deliberately left open.
+   * Same shape, same reasoning: `PLF_ELIMINATIONS`, no `entityCode`, written
+   * with `companyId: null, isElimination: true`, and taken by the group P&L
+   * read only. The gap it closes is measurable on the client's own file —
+   * consolidated EBITDA 271,160 against the workbook's own 255,942, because
+   * the block that nets 15,218 of intercompany result out of the four
+   * entities was dropped here.
+   *
+   * Still only ONE such block per sheet: two would each clean-slate the
+   * other's rows — the write path resets per (plan × scope × year) once per
+   * sheet, which is the 2026-06-11 collateral-wipe shape — so that case falls
+   * through to the old skip-with-a-warning path, which is what it got before
+   * this existed.
    *
    * `isIntragroupEliminationBuValue` and NOT `skipReason === "elimination"`.
    * `skipReason` comes from `isEliminationLikeEntityValue`, which answers "is
@@ -569,7 +575,7 @@ export function applyBuColumnSplit(
    * consolidated balance sheet balances too.
    */
   const eliminationBlocks =
-    dataType === "BS"
+    dataType === "BS" || dataType === "PLF"
       ? split.blocks.filter(
           (b) =>
             !b.entityCode &&
@@ -596,7 +602,7 @@ export function applyBuColumnSplit(
       workbook.SheetNames.push(elimName)
       out.sheetMapEntries.push({
         match: elimName,
-        dataType: "BS_ELIMINATIONS",
+        dataType: dataType === "PLF" ? "PLF_ELIMINATIONS" : "BS_ELIMINATIONS",
         ...(planKind ? { planKind } : {}),
         role: "source",
         // No entityCode, deliberately. See the note above.
@@ -612,7 +618,8 @@ export function applyBuColumnSplit(
       out.warnings.push(
         `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) is the group's ` +
           `intragroup-elimination block — imported as eliminations, belonging to no company. ` +
-          `The group balance sheet is consolidated with it; each company's own sheet excludes it.`,
+          `The group ${dataType === "PLF" ? "P&L" : "balance sheet"} is consolidated with it; ` +
+          `each company's own ${dataType === "PLF" ? "result" : "sheet"} excludes it.`,
       )
       continue
     }

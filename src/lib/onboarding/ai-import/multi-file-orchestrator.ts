@@ -182,7 +182,10 @@ export function eliminationsCarryEntity(
   dataType: string,
   effectiveEntityCode: string | null,
 ): boolean {
-  return dataType === "BS_ELIMINATIONS" && effectiveEntityCode !== null
+  return (
+    (dataType === "BS_ELIMINATIONS" || dataType === "PLF_ELIMINATIONS") &&
+    effectiveEntityCode !== null
+  )
 }
 
 /** Apply-order dependency graph (lower index = applied first). See
