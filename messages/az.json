@@ -4284,7 +4284,13 @@
         "recomputeLine": "Recompute: {ok}/{total} uğurlu",
         "backlogClosed": "Indicator Backlog-dan {n} bənd bağlandı",
         "andMore": "… daha {n}",
-        "openBacklog": "Indicator Backlog-u aç →"
+        "openBacklog": "Indicator Backlog-u aç →",
+        "aiOutage": {
+          "ai_credits": "Süni intellekt xidməti əlçatan deyil: hesabda vəsait qalmayıb. Faylla hər şey qaydasındadır — kitab açıldı və vərəqlər oxundu, yalnız fayl tipini müəyyən edən addım işləmədi. Anthropic balansını artırın və idxalı təkrarlayın; faylda heç nə dəyişdirmək lazım deyil.",
+          "ai_rate_limit": "Süni intellekt xidməti hazırda sorğu sayını məhdudlaşdırır. Faylla hər şey qaydasındadır — yalnız fayl tipini müəyyən edən addım işləmədi. Bir neçə dəqiqə gözləyib idxalı təkrarlayın.",
+          "ai_unavailable": "Süni intellekt xidmətinə müraciət alınmadı. Faylla hər şey qaydasındadır — yalnız fayl tipini müəyyən edən addım işləmədi. İdxalı təkrarlayın; təkrarlanarsa, xidmətin vəziyyətini yoxlayın.",
+          "ai_bad_response": "Süni intellekt xidməti sistemin oxuya bilmədiyi formada cavab verdi. Bu, sizin faylınızda deyil, bizim tərəfimizdə qüsurdur. Jurnala yazılıb."
+        }
       },
       "step3": {
         "title": "Addım 3 — İdxal tamamlandı",

@@ -4284,7 +4284,13 @@
         "recomputeLine": "Recompute: {ok}/{total} OK",
         "backlogClosed": "Closed {n} items from Indicator Backlog",
         "andMore": "… and {n} more",
-        "openBacklog": "Open Indicator Backlog →"
+        "openBacklog": "Open Indicator Backlog →",
+        "aiOutage": {
+          "ai_credits": "The AI service is unavailable: the account is out of credit. The file itself is fine — the workbook opened and its sheets were read; only the step that identifies the file type could not run. Top up the Anthropic balance and repeat the import; nothing needs changing in the file.",
+          "ai_rate_limit": "The AI service is rate-limited right now. The file itself is fine — only the step that identifies the file type could not run. Wait a few minutes and repeat the import.",
+          "ai_unavailable": "The AI service could not be reached. The file itself is fine — only the step that identifies the file type could not run. Repeat the import; if it persists, check the service status.",
+          "ai_bad_response": "The AI service answered in a shape this system could not read. This is a defect on our side, not in your file. It has been logged."
+        }
       },
       "step3": {
         "title": "Step 3 — Import complete",
