@@ -10,6 +10,7 @@ import {
   computePlannedForLine,
 } from "@/lib/budgeting/cost-model-map";
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter";
+import { resolvePnlEliminationScope } from "@/lib/onboarding/ai-import/pnl-elimination-scope";
 import { getEffectivePlanned as getEffectivePlannedPure } from "@/lib/budgeting/effective-planned";
 import { currentBakuYearMonth } from "@/lib/risk/periods";
 import { computeElapsedMonthIndices } from "@/lib/budgeting/elapsed-months";
@@ -115,15 +116,40 @@ export async function GET(req: NextRequest) {
     // Phase 8 fix: honor soft-delete — exclude superseded (clean-slate /
     // re-import) budget lines so analytics totals match the P&L endpoint and
     // the recompute-driven terminal (both already filter deletedAt).
+    /**
+     * 2026-08-18 — the same elimination rule the P&L read follows, stated
+     * rather than inherited from the shape of the WHERE.
+     *
+     * Org-wide, this route applies no company filter, so once the client's
+     * `EJE` block imports its null-company rows land here by construction:
+     * the total becomes a real consolidation without anyone having decided
+     * that, and without the reader being told. Directionally right and
+     * silently arrived at is the exact state that produced this whole series
+     * of defects, so the decision is now explicit and travels on the
+     * response.
+     *
+     * `restricted: false` because this route deliberately does not call
+     * `getCompanyScope` (see the tx-hold note above) — it has no per-company
+     * RBAC narrowing to react to. That is a pre-existing gap, unchanged here
+     * and not papered over: the value passed is the truth about what this
+     * route knows.
+     */
+    const elimination = resolvePnlEliminationScope({
+      filterKind: companyFilter.kind === "single" ? "single" : "all",
+      restricted: false,
+    });
+
     const lineWhere: {
       planId: string;
       organizationId: string;
       deletedAt: null;
       companyId?: { in: string[] };
+      isElimination?: boolean;
     } = {
       planId,
       organizationId: orgId,
       deletedAt: null,
+      ...(elimination.includeEliminations ? {} : { isElimination: false }),
     };
     if (companyFilter.kind === "single") {
       if (companyFilter.companyIds.length === 0) {
@@ -137,6 +163,7 @@ export async function GET(req: NextRequest) {
             totalExpensePlanned: 0,
             totalCOGSPlanned: 0,
             byCategory: [],
+            basis: "single_entity" as const,
             _emptyReason: "subgroup_no_children",
           },
         });
@@ -1238,6 +1265,7 @@ export async function GET(req: NextRequest) {
         totalCOGSActual,
         grossProfit: grossProfitPlanned,
         grossProfitActual,
+        basis: elimination.basis,
         byCategory,
         perCategoryActualsAvailable,
         byDepartment,
