@@ -602,11 +602,13 @@ export function parsePlfPlSheet(
   // 2026-08-18 — a block with NO posting rows but a stated bottom line is not
   // an unknown layout; it is money the file states only as subtotals. Left
   // alone, the handler's zero-rows branch sends the sheet to the paid dynamic
-  // detector, which finds the same zero leaves, and the block vanishes from
-  // consolidation — BU "EJE" on `actual-budget-v1.xlsx`: stated EBITDA
-  // -15,218, dashboard EBITDA silently 15,218 ABOVE the file's own bottom
-  // line, while the budget side of the same BU imported fine. Derive flagged
-  // lines from the stated subtotals instead. Only on a ZERO-leaf parse: a
+  // detector, which finds the same zero leaves, and the block contributes
+  // nothing while the cross-foot that measured the gap never travels. PREVENTIVE:
+  // no block in `actual-budget-v1.xlsx` is subtotal-only (the EJE block that
+  // looked it has eight posting rows summing to its stated -15,217.94; it is
+  // absent from the dashboard because P&L eliminations are un-imported, which
+  // is a different question). See plf-subtotal-only.ts for the full
+  // correction. Only on a ZERO-leaf parse: a
   // block with real rows that disagrees with its own subtotal keeps the
   // CROSS-FOOT warning below, because a plug line there would bury genuine
   // mapping bugs. Legacy-chart sheets keep the old path — their codes are

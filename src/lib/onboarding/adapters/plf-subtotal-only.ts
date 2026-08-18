@@ -2,21 +2,27 @@
  * Subtotal-only PLF blocks — derive flagged lines from the sheet's own
  * subtotal rows when a block parses to ZERO posting rows (2026-08-18).
  *
- * The case that forced this, measured on `actual-budget-v1.xlsx`:
+ * ## What this is, and what it is NOT
  *
- * The fact sheet's BU block "EJE" has every leaf row at zero, yet the block's
- * own `PLF.08` (EBITDA) and `PLF.10` (NET) rows state -15,218. The BU splitter
- * dutifully produced a virtual sheet; this parser dutifully parsed 0 leaves;
- * the handler read "0 rows on a non-empty sheet" as "unknown layout" and sent
- * a perfectly well-understood sheet to the paid dynamic detector — which
- * found the same zero leaves. The block vanished. The consolidated dashboard
- * showed EBITDA 271,160 while the file's own bottom line says 255,942, and
- * budget-vs-fact compared different sets of companies, because the BUDGET
- * sheet's EJE block has a real posting row and imported fine.
+ * This is PREVENTIVE. No block in `actual-budget-v1.xlsx` is subtotal-only —
+ * that was a misreading during the 2026-08-18 audit, corrected the same day
+ * and recorded here so the correction outlives the mistake. The EJE fact
+ * block looked empty because it states no section subtotals (`PLF.01`,
+ * `PLF.02` …), only `PLF.08` and `PLF.10`; an aggregation that read the
+ * SECTION rows saw zeros and concluded there were no posting rows. There are
+ * eight, and they sum to -15,217.94 — exactly the stated bottom line. That
+ * block parses fine. It never reaches the dashboard for an unrelated,
+ * deliberate reason: it is the group's intragroup-elimination block, and the
+ * P&L half of eliminations is still un-imported (see bs-eliminations.ts for
+ * the balance-sheet half that Phase 14.8 shipped).
  *
- * The cross-foot (plf-crossfoot.ts) had already measured the gap at parse
- * time — parsed total 0 against a stated bottom line of -15,218 — but the
- * zero-rows branch in the handler returned before that warning could travel.
+ * What remains real is the HOLE this closes. When a block does parse to zero
+ * leaves on a non-empty sheet, the handler reads that as "unknown layout" and
+ * spends an LLM call on the dynamic detector, which finds the same zero
+ * leaves; the block then contributes nothing, and the cross-foot warning that
+ * measured the gap never travels because the zero-rows branch returns first.
+ * A sheet that states money only in its subtotals is not a mystery to solve
+ * with a model — it is money to derive, flag and report.
  *
  * What this derives
  * ─────────────────
@@ -44,6 +50,12 @@
  * patched — a plug line there would bury real mapping bugs. That case keeps
  * the CROSS-FOOT warning and an operator decision. The zero-rows precondition
  * is the caller's; this module only checks the stated rows are material.
+ *
+ * Nor does it touch eliminations. An elimination block that parses to zero
+ * leaves would be derived here like any other, but it is dropped by the
+ * splitter before this runs; giving eliminations a P&L home is a separate
+ * question with its own answer, and this module must not become a side door
+ * that half-answers it.
  *
  * Values stay in the FILE's own sign convention — the caller's flip pass
  * treats derived lines exactly like parsed ones. The derivation identity

@@ -1,12 +1,14 @@
 /**
- * 2026-08-18 — the EJE case: a BU block whose ONLY money is in its own
- * subtotal rows.
+ * 2026-08-18 — a BU block whose ONLY money is in its own subtotal rows.
  *
- * On `actual-budget-v1.xlsx` the fact sheet's EJE block parses to zero
- * posting rows while its own PLF.08/PLF.10 state -15,218. The old pipeline
- * read that as "unknown layout", paid the dynamic detector to find the same
- * zero leaves, and dropped the block — consolidated EBITDA landed 15,218
- * ABOVE the file's own bottom line, and nobody was told.
+ * PREVENTIVE, and the fixtures are synthetic on purpose: no block in
+ * `actual-budget-v1.xlsx` is subtotal-only. The EJE fact block was briefly
+ * believed to be one — it states no SECTION subtotals, so an aggregation
+ * reading those rows saw zeros — but it has eight posting rows summing to its
+ * stated -15,217.94, and its absence from the dashboard is the unrelated,
+ * still-open question of P&L eliminations. The hole these tests guard is
+ * real regardless: a zero-leaf parse on a non-empty sheet currently buys an
+ * LLM call that finds the same nothing, and the block contributes nothing.
  *
  * These tests pin the policy, both halves:
  *   - zero posting rows + material stated subtotals → derived `.DV` lines
