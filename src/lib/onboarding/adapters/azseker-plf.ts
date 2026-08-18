@@ -69,6 +69,7 @@ import {
 } from "../cf-bridge"
 import { plfNature, plfOtherOperatingSide } from "../../budgeting/plf-chart"
 import { crossFootPlfSheet, type CrossFootResult } from "./plf-crossfoot"
+import { synthesizeSubtotalOnlyLines } from "./plf-subtotal-only"
 import {
   resolveLegacyAccount,
   type LegacyMappingKind,
@@ -112,6 +113,13 @@ export interface ParsedPlfLine {
    */
   presentMonths: boolean[]
   totalAnnual: number
+  /**
+   * 2026-08-18 — true when this line was NOT read from a posting row but
+   * derived from the block's own subtotal rows, because the block has no
+   * posting rows at all (see plf-subtotal-only.ts). The label says which
+   * subtotal; the code carries a `.DV` suffix so the ledger shows it too.
+   */
+  derived?: true
   /**
    * Set when the row came off a sheet written under a SUPERSEDED chart of
    * accounts and this parse re-pointed it at the current one.
@@ -586,11 +594,48 @@ export function parsePlfPlSheet(
   // 11.88 — cross-foot BEFORE the flip, while the leaves are still in the
   // file's own sign convention, because `PLF.10` is written in that convention
   // too. Comparing after the flip would compare two different quantities.
-  const crossFoot = crossFootPlfSheet(
+  let crossFoot = crossFootPlfSheet(
     lines.map((l) => l.perMonth.reduce((a, b) => a + b, 0)),
     aoa,
     header.monthCols,
   )
+  // 2026-08-18 — a block with NO posting rows but a stated bottom line is not
+  // an unknown layout; it is money the file states only as subtotals. Left
+  // alone, the handler's zero-rows branch sends the sheet to the paid dynamic
+  // detector, which finds the same zero leaves, and the block vanishes from
+  // consolidation — BU "EJE" on `actual-budget-v1.xlsx`: stated EBITDA
+  // -15,218, dashboard EBITDA silently 15,218 ABOVE the file's own bottom
+  // line, while the budget side of the same BU imported fine. Derive flagged
+  // lines from the stated subtotals instead. Only on a ZERO-leaf parse: a
+  // block with real rows that disagrees with its own subtotal keeps the
+  // CROSS-FOOT warning below, because a plug line there would bury genuine
+  // mapping bugs. Legacy-chart sheets keep the old path — their codes are
+  // translated before typing, and a derived `.DV` code has no 2025 mapping.
+  if (lines.length === 0 && legacyChartYear === null) {
+    const synth = synthesizeSubtotalOnlyLines(aoa, header.monthCols)
+    if (synth) {
+      for (const dl of synth.lines) lines.push({ ...dl, derived: true })
+      warnings.push({
+        row: 0,
+        reason:
+          `SUBTOTAL-ONLY BLOCK: this sheet parses to zero posting rows, but its ` +
+          `own subtotal rows state money (${synth.statedSummary}). Derived ` +
+          `${synth.lines.length} flagged line(s) (.DV codes) from those subtotals so ` +
+          `consolidation matches the sheet's own bottom line; the detail behind them ` +
+          `does not exist in the file. Ask the workbook owner to break these amounts ` +
+          `into posting rows.`,
+      })
+      // The cross-foot above measured the EMPTY parse (total 0 against the
+      // stated bottom line). Re-measure over the derived lines so the result
+      // this parse returns describes what it actually produced — equality
+      // with the sheet's own PLF.10, by construction.
+      crossFoot = crossFootPlfSheet(
+        lines.map((l) => l.perMonth.reduce((a, b) => a + b, 0)),
+        aoa,
+        header.monthCols,
+      )
+    }
+  }
   for (const line of lines) {
     const flip =
       line.accountType === "cogs"
