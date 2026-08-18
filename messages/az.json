@@ -139,7 +139,8 @@
     "alerts": "Siqnallar",
     "tradeTower": "Trade nəzarət mərkəzi",
     "toggleBudgetingSubmenu": "Büdcə alt menyusunu aç/bağla",
-    "toggleAdminSubmenu": "Admin alt menyusunu aç/bağla"
+    "toggleAdminSubmenu": "Admin alt menyusunu aç/bağla",
+    "navProductMargin": "Məhsul marjası"
   },
   "common": {
     "toggleTheme": "Temanı dəyiş",
@@ -6249,6 +6250,33 @@
       "conflict": "Məlumat dəyişib — yeniləyib təkrar edin",
       "validation": "Daxil edilən dəyərləri yoxlayın",
       "generic": "Xəta baş verdi — yenidən cəhd edin"
+    }
+  },
+  "productMargin": {
+    "title": "Məhsul üzrə ümumi marja",
+    "subtitle": "Hər məhsul üçün (gəlir − maya dəyəri) / gəlir. Maya dəyəri bilinmirsə, rəqəm yerinə səbəb göstərilir.",
+    "period": "Aylar: {period} · {count} ay",
+    "product": "Məhsul",
+    "revenue": "Gəlir",
+    "cost": "Maya dəyəri",
+    "grossProfit": "Ümumi mənfəət",
+    "margin": "Marja",
+    "groupTotal": "Maya dəyəri məlum olan məhsullar üzrə",
+    "notCounted": "Cədvələ daxil olmayanlar",
+    "revenueWithoutCost": "{amount} gəlirin maya dəyəri göstərilməyib — marjası bilinmir.",
+    "contraRevenue": "Qaytarmalar və endirimlər: {amount} — konkret məhsula aid edilə bilmir.",
+    "unpairedCost": "{name} ({code}): {amount} — gəliri olmayan maya dəyəri.",
+    "loading": "Yüklənir…",
+    "failed": "Məlumat alınmadı.",
+    "empty": "Bu plan üzrə məhsul sətri yoxdur.",
+    "reason": {
+      "no_cost_data": "maya dəyəri yoxdur",
+      "no_revenue": "gəlir yoxdur"
+    },
+    "basis": {
+      "consolidated_computed": "Konsolidasiya edilmiş (qrupdaxili əməliyyatlar çıxılıb)",
+      "sum_of_entities": "Şirkətlərin cəmi (qrupdaxili çıxılmayıb)",
+      "single_entity": "Tək şirkət"
     }
   }
 }
