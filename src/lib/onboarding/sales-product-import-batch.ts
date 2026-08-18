@@ -39,6 +39,15 @@ export interface SalesProductBatchPlan {
   unit?: string
   /** Optional revenue-account code hint per product slug. */
   revenueAccountCodeBySlug?: ReadonlyMap<string, string>
+  /**
+   * 2026-08-18 — the chart account per-product COGS is booked to.
+   *
+   * `COGSBudgetLine.accountId` is NOT NULL, and a per-product cost is the same
+   * money the P&L already carries under its COGS section — so it points at the
+   * client's own account rather than a parallel chart invented here. Absent =
+   * the caller has no cost to write, and the cost pass is skipped entirely.
+   */
+  cogsAccountId?: string
 }
 
 export interface SalesProductBatchResult {
@@ -46,6 +55,8 @@ export interface SalesProductBatchResult {
     productsUpserted: number
     rowsInserted: number
     rowsArchived: number
+    /** 2026-08-18 — per-product COGS rows written (0 when the source states none). */
+    costRowsInserted: number
   }
   warnings: string[]
   /** Post-write DB readback, reconciled per (plan, product, month) on
@@ -65,7 +76,7 @@ export async function runSalesProductBatch(
   if (plan.rows.length === 0) {
     // NO-OP, deliberately: never clean-slate on an empty parse.
     return {
-      metrics: { productsUpserted: 0, rowsInserted: 0, rowsArchived: 0 },
+      metrics: { productsUpserted: 0, rowsInserted: 0, rowsArchived: 0, costRowsInserted: 0 },
       warnings,
     }
   }
@@ -125,6 +136,73 @@ export async function runSalesProductBatch(
   })
   await tx.salesBudgetLine.createMany({ data: payload })
 
+  // ── 3b. Per-product cost, when the source states it ──────────────────
+  //
+  // 2026-08-18 — `Sales Budget CPC 2026` ships a `COGS, ₼` banner beside the
+  // volumes, and nothing read it, so the product table could say what was sold
+  // and never what it cost. Written here rather than in a batch of its own
+  // because it shares this one's identity resolution: the same `ProductLine`
+  // upsert, the same entity-namespaced codes, the same clean-slate scope.
+  //
+  // Rows whose `cost` is UNDEFINED are skipped, not written as zero. The
+  // farming sheets state tonnes and no money at all, and a zero cost renders
+  // as a 100% margin on wheat — a fabrication that looks exactly like an
+  // answer. Absent stays absent all the way to the screen.
+  const costRows = plan.rows.filter((r) => r.cost !== undefined)
+  let costRowsWritten = 0
+  if (costRows.length > 0 && plan.cogsAccountId) {
+    await tx.cOGSBudgetLine.deleteMany({
+      where: {
+        organizationId: plan.organizationId,
+        planId: plan.planId,
+        year: plan.year,
+        productLineId: { in: productIds },
+      },
+    })
+    const costPayload = costRows.map((r) => ({
+      organizationId: plan.organizationId,
+      planId: plan.planId,
+      productLineId: productIdByCode.get(r.identity.code)!,
+      accountId: plan.cogsAccountId!,
+      year: r.year,
+      month: r.month,
+      productionQty: r.quantity,
+      totalCost: r.cost!,
+    }))
+    await tx.cOGSBudgetLine.createMany({ data: costPayload })
+
+    // Same rule as the sales write below: trust it only once it reads back.
+    const costBack = await tx.cOGSBudgetLine.findMany({
+      where: {
+        organizationId: plan.organizationId,
+        planId: plan.planId,
+        year: plan.year,
+        productLineId: { in: productIds },
+      },
+      select: { totalCost: true },
+    })
+    if (costBack.length !== costPayload.length) {
+      throw new Error(
+        `[sales-product] COGS readback row-count mismatch: wrote ${costPayload.length}, ` +
+          `read ${costBack.length} (plan=${plan.planId} year=${plan.year})`,
+      )
+    }
+    const intended = costPayload.reduce((a, r) => a + r.totalCost, 0)
+    const stored = costBack.reduce((a, r) => a + r.totalCost, 0)
+    if (Math.abs(intended - stored) > 0.005) {
+      throw new Error(
+        `[sales-product] COGS readback drift: intended ${intended.toFixed(2)}, ` +
+          `stored ${stored.toFixed(2)} (plan=${plan.planId} year=${plan.year})`,
+      )
+    }
+    costRowsWritten = costPayload.length
+  } else if (costRows.length > 0 && !plan.cogsAccountId) {
+    warnings.push(
+      `${costRows.length} product-month cost value(s) were parsed but no COGS account was ` +
+        `resolved, so none were stored — per-product margin stays unavailable for this import.`,
+    )
+  }
+
   // ── 4. Readback reconciliation (the write is only trusted once re-read) ──
   const written = await tx.salesBudgetLine.findMany({
     where: {
@@ -182,6 +260,7 @@ export async function runSalesProductBatch(
   return {
     metrics: {
       productsUpserted: productIdByCode.size,
+      costRowsInserted: costRowsWritten,
       rowsInserted: payload.length,
       rowsArchived: del.count,
     },

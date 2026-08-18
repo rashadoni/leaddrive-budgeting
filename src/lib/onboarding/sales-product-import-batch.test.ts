@@ -109,7 +109,14 @@ describe("runSalesProductBatch", () => {
   it("an empty parse is a NO-OP — never a clean-slate", async () => {
     const { tx } = makeTx()
     const res = await runSalesProductBatch(tx, { ...BASE, rows: [] })
-    expect(res.metrics).toEqual({ productsUpserted: 0, rowsInserted: 0, rowsArchived: 0 })
+    // 2026-08-18 — costRowsInserted joined the metrics when per-product COGS
+    // began importing; zero here for the same reason as every other count.
+    expect(res.metrics).toEqual({
+      productsUpserted: 0,
+      rowsInserted: 0,
+      rowsArchived: 0,
+      costRowsInserted: 0,
+    })
     expect(
       (tx as unknown as { salesBudgetLine: { deleteMany: { mock: { calls: unknown[] } } } })
         .salesBudgetLine.deleteMany.mock.calls,

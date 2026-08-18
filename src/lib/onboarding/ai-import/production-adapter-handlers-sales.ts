@@ -108,12 +108,31 @@ export function makeProductSalesHandler(
       expectedSums,
       applyToDb: async (tx: Prisma.TransactionClient) => {
         const ctx = await ensureCtx()
+        /**
+         * 2026-08-18 — the account per-product cost is booked to.
+         *
+         * Only needed when the sheet actually states costs (`Sales Budget CPC`
+         * does; the farming sheets do not), so it is resolved lazily and its
+         * absence is not an error on a sheet that has nothing to book.
+         *
+         * Taken from the client's own chart rather than created here: this is
+         * the same money `PLF.02` already carries, and a product cost sitting
+         * on an account the P&L does not know would reconcile against nothing.
+         * `PLF.02` itself is the section subtotal — never a posting account —
+         * so the first `PLF.02.*` leaf in the chart is the booking target.
+         */
+        const cogsAccountId = parsed.rows.some((r) => r.cost !== undefined)
+          ? [...ctx.coaByCode.entries()]
+              .filter(([code]) => code.startsWith("PLF.02."))
+              .sort(([a], [b]) => a.localeCompare(b))[0]?.[1]
+          : undefined
         const result = await runSalesProductBatch(tx, {
           organizationId: ctx.organizationId,
           planId: ctx.planId,
           year: input.year,
           rows: parsed.rows,
           unit: "ton",
+          ...(cogsAccountId ? { cogsAccountId } : {}),
         })
 
         // Counterparty snapshot — ACTUALS only: concentration is a realized
