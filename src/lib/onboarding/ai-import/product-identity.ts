@@ -83,6 +83,24 @@ const CANONICAL_BY_LABEL: Record<string, string> = {
  */
 const LOCATION_RE = /\s*\((export|ixrac)\)\s*$/i
 
+/**
+ * A sales-channel cell → the location qualifier used in product codes.
+ *
+ * Only EXPORT earns a qualifier: the domestic channel is the unmarked default
+ * on BOTH sides of the comparison (a budget "For PL" value without `(Export)`
+ * is domestic), so marking it would invent a third code for money that already
+ * has one. Anything unrecognised returns undefined and the row keeps the plain
+ * product code — a channel this table does not know must not silently mint a
+ * parallel product.
+ */
+export function normalizeSalesChannel(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const v = value.trim().toLowerCase()
+  if (!v) return undefined
+  if (/^(export|ixrac|ixracat|експорт|экспорт)$/.test(v)) return "EXPORT"
+  return undefined
+}
+
 /** Uppercase ASCII slug; keeps AZ letters transliterated so codes stay portable. */
 export function slugifyProductLabel(label: string): string {
   const translit: Record<string, string> = {
@@ -121,12 +139,34 @@ export interface ProductIdentity {
 export function resolveProductIdentity(
   rawLabel: string,
   entityCode: string,
+  opts?: {
+    /**
+     * 2026-08-18 — the sales CHANNEL, when the sheet states it in a column
+     * instead of inside the label.
+     *
+     * Budget sheets carry it as a `(Export)` suffix on the "For PL" value, so
+     * the label alone was enough. The transactional actuals state it in a
+     * `Seqment` column (Azerbaijan / Export) that the parser did not read at
+     * all, so every export sale folded into the domestic product while the
+     * export BUDGET kept its own `__EXPORT` code. On the Satış tab that is one
+     * product wearing two rows: "Qlükoza" fact 3.2M (domestic + export) vs
+     * budget 1.8M (domestic only), and "Glucose" fact 0 vs budget 862k — the
+     * export half of the same product, permanently un-actualled. Measured on
+     * `actual-budget-v1.xlsx`, Jan–May 2026: export glucose 1,190,426 AZN and
+     * export starch 871,612 AZN sat on the wrong side of that line.
+     *
+     * Passed explicitly rather than sniffed from the label, because a channel
+     * column and a label suffix are different evidence and only the caller
+     * knows which one it is holding.
+     */
+    channel?: string
+  },
 ): ProductIdentity {
   let label = rawLabel.trim()
   for (const re of LABEL_AFFIXES) label = label.replace(re, "")
   label = label.trim()
 
-  let location: string | undefined
+  let location: string | undefined = normalizeSalesChannel(opts?.channel)
   const locMatch = label.match(LOCATION_RE)
   if (locMatch) {
     location = "EXPORT"
