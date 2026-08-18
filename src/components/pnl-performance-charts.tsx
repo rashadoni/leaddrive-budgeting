@@ -19,6 +19,7 @@ import { Activity, BarChart3 } from "lucide-react"
 import { BUDGET_COLORS, fmtK } from "@/lib/budget-chart-theme"
 import { cn } from "@/lib/utils"
 import type { PeriodCoverage } from "@/lib/budgeting/period-coverage"
+import { varPct } from "@/lib/budgeting/var-pct"
 import { coverageNotice, tParam } from "@/lib/budgeting/period-coverage"
 import type {
   EbitdaBridgeStep,
@@ -148,7 +149,14 @@ export function PnlPerformanceCharts({
   )
   const annualActual = hasActuals ? annual.actual : null
   const annualVariance = hasActuals ? annual.actual - annual.budget : null
-  const annualExecution = hasActuals && annual.budget !== 0 ? executionPercent(annual.actual, annual.budget) : null
+  // 2026-08-18 — this suffix sits on the VARIANCE tile, so it must be the
+  // variance percent. A local re-implementation of the execution percent
+  // (the exact drift exec-pct.ts was extracted to end) lived here without
+  // the [0,200] clamp or the zero guard: EBITDA budget −632k / fact +271k
+  // rendered "KƏNARLAŞMA +903k · 243%" — an unclamped execution number
+  // wearing a deviation label. `varPct` is the canonical deviation formula
+  // (+143% for the same pair) and returns null on a zero budget.
+  const annualVariancePct = hasActuals ? varPct(annual.actual, annual.budget) : null
   /**
    * 11.92 — the two sides do not necessarily cover the same months, and until
    * now nothing said so. On the client's 2026 data the budget runs Jan–Dec and
@@ -226,7 +234,7 @@ export function PnlPerformanceCharts({
             value={annualVariance}
             tone={varianceIsFavorable ? "positive" : "negative"}
             emptyLabel={t("pnlWaitingForActuals")}
-            suffix={annualExecution == null ? "" : ` · ${annualExecution.toFixed(0)}%`}
+            suffix={annualVariancePct == null ? "" : ` · ${annualVariancePct >= 0 ? "+" : ""}${annualVariancePct.toFixed(0)}%`}
             signed
           />
         </div>
@@ -483,9 +491,3 @@ function monthShort(points: PnlPerformancePoint[], month1Based: number): string 
   return points[month1Based - 1]?.month ?? String(month1Based)
 }
 
-function executionPercent(actual: number, budget: number): number {
-  if (budget < 0) {
-    return 100 + ((actual - budget) / Math.abs(budget)) * 100
-  }
-  return (actual / budget) * 100
-}
