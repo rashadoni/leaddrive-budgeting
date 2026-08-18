@@ -152,6 +152,12 @@ const TX_AMOUNT = /(net\s+satış|net\s+satis|satış,\s*azn|satis,\s*azn|net\s+
 const TX_QTY = /(net\s+miqdar|satış,\s*ton|satis,\s*ton|net\s+quantity)/i
 const TX_PRODUCT_GROUP = /^(məhsul qrupu|mehsul qrupu|product group)$/i
 const TX_PRODUCT = /^(product|məhsul|mehsul)$/i
+/**
+ * The sales-channel column. `Seqment` on the CPC actuals holds
+ * Azerbaijan / Export — the same split the budget states as a `(Export)`
+ * suffix on its "For PL" value. Optional: a sheet without it is single-channel.
+ */
+const TX_SEGMENT = /^(seqment|segment|сегмент)$/i
 
 /**
  * Deterministic shape detection from the sheet's own cells — NOT the LLM.
@@ -504,6 +510,9 @@ function parseTransactions(
   // fall back to the individual product when the sheet has no group column.
   const groupCol = findCol(TX_PRODUCT_GROUP)
   const productCol = groupCol >= 0 ? groupCol : findCol(TX_PRODUCT)
+  // Optional — absent on a single-channel sheet, in which case every row is
+  // domestic and the identity carries no qualifier, exactly as before.
+  const segmentCol = findCol(TX_SEGMENT)
   if (periodCol < 0 || amountCol < 0 || qtyCol < 0 || productCol < 0) {
     return {
       shape: "transactions",
@@ -528,7 +537,9 @@ function parseTransactions(
     }
     const label = row[productCol]
     if (typeof label !== "string" || !label.trim()) continue
-    const identity = resolveProductIdentity(label, entityCode)
+    const identity = resolveProductIdentity(label, entityCode, {
+      ...(segmentCol >= 0 ? { channel: String(row[segmentCol] ?? "") } : {}),
+    })
     if (!identity.known) unknown.add(label.trim())
     const amount = num(row[amountCol]) ?? 0
     const qty = num(row[qtyCol]) ?? 0
