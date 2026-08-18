@@ -397,3 +397,71 @@ export function localizeImportMessage(
 
   return applyRules(DETAIL_RULES, t, trimmed) ?? raw
 }
+
+/* ────────────────────────────────────────────────────────────────────
+ * AI outage codes → the reader's language.
+ *
+ * 2026-08-18 — the AI routes have always classified a provider failure
+ * (`aiErrorBody` → `{error: "ai_unavailable", code}`), but only the multi-file
+ * screen ever read `code`. The other three forms did
+ * `throw new Error(body?.error ?? …)`, and `body.error` is the fixed literal
+ * `"ai_unavailable"` for back-compat — so the classification was computed,
+ * shipped over the wire, and dropped on the floor. Measured on production the
+ * day the Anthropic balance hit zero: the single-file screen said only
+ * «ai_unavailable», which names neither the cause nor the remedy and reads as
+ * a defect in the user's workbook.
+ *
+ * The catalogue text lives in `adminAiImport.shared.msg.aiOutage` — one copy,
+ * used by every import screen. It was under `multi.result` until this change;
+ * a second copy for the other forms would have drifted.
+ * ──────────────────────────────────────────────────────────────────── */
+
+export const AI_ERROR_CODES = [
+  "ai_credits",
+  "ai_rate_limit",
+  "ai_unavailable",
+  "ai_bad_response",
+] as const
+
+export type AiOutageCode = (typeof AI_ERROR_CODES)[number]
+
+/**
+ * Which AI step failed — the message names it so «the file is fine» stays
+ * true and specific. `classify` = sheet-type detection (`/api/import/ai-auto`,
+ * `ai-auto-multi`); `analyze` = column mapping (`/api/onboarding/import/
+ * analyze*`). Naming the wrong step would send the reader to the wrong screen.
+ */
+export type AiOutageStep = "classify" | "analyze"
+
+export function isAiOutageCode(value: unknown): value is AiOutageCode {
+  return (
+    typeof value === "string" &&
+    (AI_ERROR_CODES as readonly string[]).includes(value)
+  )
+}
+
+/** Localized sentence for a known code. Callers hold a recognised code. */
+export function localizeAiOutage(
+  t: ImportTranslator,
+  code: AiOutageCode,
+  step: AiOutageStep,
+): string {
+  return t(`msg.aiOutage.${code}`, { step: t(`msg.aiStep.${step}`) })
+}
+
+/**
+ * The localized outage sentence for an AI route's error body, or `null` when
+ * the body is not an AI outage — the caller then falls back to its existing
+ * error text. Returning `null` rather than a generic string is deliberate: a
+ * validation failure (bad year, missing file) must keep its own precise
+ * message instead of being relabelled as a provider outage.
+ */
+export function aiOutageFromBody(
+  t: ImportTranslator,
+  body: unknown,
+  step: AiOutageStep,
+): string | null {
+  if (!body || typeof body !== "object") return null
+  const code = (body as { code?: unknown }).code
+  return isAiOutageCode(code) ? localizeAiOutage(t, code, step) : null
+}

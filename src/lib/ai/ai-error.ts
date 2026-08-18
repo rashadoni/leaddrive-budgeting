@@ -11,6 +11,8 @@
  * localized message and never renders the raw provider string.
  */
 
+import { getLogger } from "@/lib/log"
+
 export type AiErrorCode =
   | "ai_credits"
   | "ai_rate_limit"
@@ -67,10 +69,24 @@ export function classifyAiError(raw: string): AiErrorCode {
  * reading `body.error`); `code` carries the classification for operators /
  * a future admin surface. NEVER includes the raw provider message.
  */
-export function aiErrorBody(err: unknown): {
+export function aiErrorBody(
+  err: unknown,
+  /** Log scope — name the failing feature, e.g. `"ai-import:single"`. */
+  scope = "ai",
+): {
   error: "ai_unavailable"
   code: AiErrorCode
 } {
   const raw = err instanceof Error ? err.message : String(err)
-  return { error: "ai_unavailable", code: classifyAiError(raw) }
+  const code = classifyAiError(raw)
+  // 2026-08-18 — this file's header has always said AI routes MUST log the raw
+  // error server-side. None of the fourteen call sites did. When the Anthropic
+  // balance hit zero on production the app logs carried no trace of it at all,
+  // so the cause had to be found by curling the provider from the host by hand.
+  // Logging HERE rather than at each call site is what makes that guarantee
+  // real: the sanitizer is the one choke point every AI route already funnels
+  // through, so a route added later cannot forget. Silent under vitest unless
+  // LOG_IN_TESTS=1 (`src/lib/log.ts`).
+  getLogger(scope).error("AI call failed", { code, raw })
+  return { error: "ai_unavailable", code }
 }

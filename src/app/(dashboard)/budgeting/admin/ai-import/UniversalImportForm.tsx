@@ -28,6 +28,7 @@ import {
   type SheetClassificationCandidate,
 } from "./sheet-selection"
 import {
+  aiOutageFromBody,
   asImportTranslator,
   localizeImportMessage,
 } from "./import-message-i18n"
@@ -357,7 +358,14 @@ export function UniversalImportForm({ preferredYear }: { preferredYear?: number 
       if (companyId) fd.append("companyId", companyId)
       const res = await fetch("/api/onboarding/import/analyze", { method: "POST", body: fd })
       const body = await res.json().catch(() => null)
-      if (!res.ok || !body?.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+      if (!res.ok || !body?.ok)
+      // A provider outage names its own cause and remedy; anything else
+      // keeps the route's own message (a bad year must not read as an outage).
+      throw new Error(
+        aiOutageFromBody(tShared, body, "analyze") ??
+          body?.error ??
+          `HTTP ${res.status}`,
+      )
       const a = body as AnalyzeResponse
       setAnalysis(a)
       // Multi-currency: when the AI tagged >1 currency on the amount columns,
@@ -418,7 +426,14 @@ export function UniversalImportForm({ preferredYear }: { preferredYear?: number 
       fd.append("year", String(targetYear))
       const res = await fetch("/api/import/ai-auto", { method: "POST", body: fd })
       const body = await res.json().catch(() => null)
-      if (!res.ok || !body?.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+      if (!res.ok || !body?.ok)
+      // A provider outage names its own cause and remedy; anything else
+      // keeps the route's own message (a bad year must not read as an outage).
+      throw new Error(
+        aiOutageFromBody(tShared, body, "classify") ??
+          body?.error ??
+          `HTTP ${res.status}`,
+      )
       const cls = (body.classifications ?? []) as Classification[]
       setClassifications(cls)
       const best = pickDefaultAnalysisSheet(cls, targetYear)

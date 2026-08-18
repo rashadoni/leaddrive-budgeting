@@ -31,6 +31,7 @@ import {
 import { buildWarningSheetFacts } from "./warning-facts"
 import {
   asImportTranslator,
+  localizeAiOutage,
   localizeImportMessage,
   localizeVerdict,
 } from "./import-message-i18n"
@@ -1783,7 +1784,7 @@ export function MultiFileForm({ initialYear }: { initialYear?: number } = {}) {
             className="mt-2 rounded border border-amber-300 bg-amber-50 px-2.5 py-2 font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
             data-testid="apply-incomplete-ai-outage"
           >
-            {t(`result.aiOutage.${c.aiOutage}` as never)}
+            {localizeAiOutage(tShared, c.aiOutage, "classify")}
           </p>
         )}
         <ul className="mt-2 space-y-1 list-disc list-inside">

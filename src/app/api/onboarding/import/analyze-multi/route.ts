@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
       totalOut += proposal.usage?.outputTokens ?? 0
     }
   } catch (err) {
-    return NextResponse.json({ ok: false, ...aiErrorBody(err) }, { status: 500 })
+    return NextResponse.json({ ok: false, ...aiErrorBody(err, "ai-import:analyze") }, { status: 500 })
   }
 
   if (totalIn > 0 || totalOut > 0) {
