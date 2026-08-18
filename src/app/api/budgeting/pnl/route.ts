@@ -188,6 +188,7 @@ export async function GET(req: NextRequest) {
         monthlyActualOtherOperating: {},
         monthlyActualBelowEbitda: {}, monthlyActualDa: {}, actualByKey: {},
         actualMonthlyByKey: {}, sectionActuals: {}, year, hasActuals: false,
+        basis: "single_entity" as const,
         _emptyReason: "subgroup_no_children",
       })
     }
@@ -494,6 +495,20 @@ export async function GET(req: NextRequest) {
   // empty + non-empty paths now share the additive key.
   return NextResponse.json({
     success: true,
+    /**
+     * 2026-08-18 — WHAT this aggregate is, not just what it totals.
+     *
+     * `consolidated_computed` — entities plus the client's own intragroup
+     * eliminations: a real consolidated P&L. `sum_of_entities` — companies
+     * added together with nothing eliminated, which is NOT a consolidation
+     * and must never be shown as one. `single_entity` — one company's own
+     * result, where group eliminations do not belong.
+     *
+     * The balance sheet has said this since 14.8 and the P&L could not, so
+     * two numbers that differ by the whole group's intercompany reversal
+     * looked equally authoritative on screen.
+     */
+    basis: elimination.basis,
     sections: PNL_SECTIONS,
     rows: pnlRows,
     monthlyRevenue,
