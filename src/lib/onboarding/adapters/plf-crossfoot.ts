@@ -129,3 +129,39 @@ export function crossFootPlfSheet(
     statedSubtotals,
   }
 }
+
+/**
+ * The sentence an import report owes its reader when the sheet stated no
+ * total of its own (2026-08-18).
+ *
+ * `crossFootPlfSheet` has said since 11.88 that a missing total leaves "the
+ * ABSENCE of a check, and the caller should say so rather than treating
+ * silence as agreement". No caller did: the parser warns only on `mismatch`,
+ * which is false when there is nothing to disagree WITH, so a workbook
+ * carrying no subtotals produced a clean report while the strongest guarantee
+ * in the pipeline had quietly not applied.
+ *
+ * Returned as a string for the import report rather than pushed into the
+ * parser's `warnings`, which is a PROBLEM channel whose emptiness means
+ * "clean parse" — the same reason `signConvention` travels on the result.
+ * This is not a defect in the file; it is a limit on what was established.
+ *
+ * `null` when a total WAS stated (the check ran and speaks for itself) or
+ * when nothing parsed (an empty sheet fails loudly elsewhere, and a second
+ * message would bury the first).
+ */
+export function crossFootAbsenceNotice(
+  crossFoot: CrossFootResult,
+  lineCount: number,
+): string | null {
+  if (crossFoot.sheetTotal !== null || lineCount === 0) return null
+  return (
+    `CROSS-FOOT NOT AVAILABLE: this sheet states no ${TOTAL_ROW_CODE} ` +
+    `(NET PROFIT / (LOSS)) row, so the ${lineCount} imported line(s) totalling ` +
+    `${crossFoot.parsedTotal.toFixed(2)} could not be checked against the ` +
+    `sheet's own arithmetic. Nothing is known to be wrong — but nothing was ` +
+    `verified either, and a row dropped while parsing would leave no trace. ` +
+    `Compare the totals by hand, or add the subtotal rows to the workbook so ` +
+    `future imports can check themselves.`
+  )
+}

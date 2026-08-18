@@ -17,6 +17,7 @@ import { runDynamicPlfAdapter } from "./dynamic-plf-adapter"
 import { runDynamicBsAdapter } from "./dynamic-bs-adapter"
 import { runDynamicCfAdapter } from "./dynamic-cf-adapter"
 import { parsePlfPlSheet, parsePlfCfSheet, parsePlfEbitdaSubtotalAllYears } from "../adapters/azseker-plf"
+import { crossFootAbsenceNotice } from "../adapters/plf-crossfoot"
 import {
   isCashFlowBridgeActivity,
   isCashFlowMovementActivity,
@@ -238,10 +239,19 @@ export function makePlfHandler(
       }
     }
 
+    // 2026-08-18 — a sheet that states no total of its own leaves the
+    // cross-foot unrun, and the report has to say that rather than look clean.
+    // See `crossFootAbsenceNotice`; it returns null whenever the check did run.
+    const crossFootNotice = parsed.crossFoot
+      ? crossFootAbsenceNotice(parsed.crossFoot, parsed.lines.length)
+      : null
     return {
       summary: `${parsed.lines.length} PLF lines for ${input.entityCode}`,
       itemCount: rows.length,
-      warnings: parsed.warnings.map((w) => `row ${w.row}: ${w.reason}`),
+      warnings: [
+        ...parsed.warnings.map((w) => `row ${w.row}: ${w.reason}`),
+        ...(crossFootNotice ? [crossFootNotice] : []),
+      ],
       // 2026-07-29 (11.9b follow-up) — an AMBIGUOUS cost-sign convention must
       // reach the orchestrator's gate, not just the warnings list.
       //
