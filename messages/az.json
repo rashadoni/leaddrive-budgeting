@@ -4540,7 +4540,15 @@
           "ai_rate_limit": "Süni intellekt xidməti hazırda sorğu sayını məhdudlaşdırır. Faylla hər şey qaydasındadır — yalnız {step} addım işləmədi. Bir neçə dəqiqə gözləyib idxalı təkrarlayın.",
           "ai_unavailable": "Süni intellekt xidmətinə müraciət alınmadı. Faylla hər şey qaydasındadır — yalnız {step} addım işləmədi. İdxalı təkrarlayın; təkrarlanarsa, xidmətin vəziyyətini yoxlayın.",
           "ai_bad_response": "Süni intellekt xidməti sistemin oxuya bilmədiyi formada cavab verdi. Bu, sizin faylınızda deyil, bizim tərəfimizdə qüsurdur. Jurnala yazılıb."
-        }
+        },
+        "aiCause": {
+          "ai_credits": "Anthropic hesabında vəsait qalmayıb",
+          "ai_rate_limit": "süni intellekt xidməti sorğu sayını məhdudlaşdırır",
+          "ai_unavailable": "süni intellekt xidmətinə müraciət alınmadı",
+          "ai_bad_response": "süni intellekt xidməti oxunmayan formada cavab verdi"
+        },
+        "classifyFailedCode": "{file}: faylın tipini müəyyən etmək alınmadı — {cause}",
+        "classificationFailedCode": "Fayl tipi müəyyən edilmədi — {cause}. Kitabla hər şey qaydasındadır."
       }
     }
   },

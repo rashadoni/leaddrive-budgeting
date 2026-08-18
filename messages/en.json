@@ -4540,7 +4540,15 @@
           "ai_rate_limit": "The AI service is rate-limited right now. The file itself is fine — only the step that {step} could not run. Wait a few minutes and repeat the import.",
           "ai_unavailable": "The AI service could not be reached. The file itself is fine — only the step that {step} could not run. Repeat the import; if it persists, check the service status.",
           "ai_bad_response": "The AI service answered in a shape this system could not read. This is a defect on our side, not in your file. It has been logged."
-        }
+        },
+        "aiCause": {
+          "ai_credits": "the Anthropic account is out of credit",
+          "ai_rate_limit": "the AI service is rate-limited",
+          "ai_unavailable": "the AI service could not be reached",
+          "ai_bad_response": "the AI service answered in an unreadable shape"
+        },
+        "classifyFailedCode": "{file}: the file type could not be determined — {cause}",
+        "classificationFailedCode": "File type not determined — {cause}. Nothing is wrong with the workbook."
       }
     }
   },

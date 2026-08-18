@@ -23,6 +23,7 @@ import {
   aiOutageFromBody,
   isAiOutageCode,
   localizeAiOutage,
+  localizeImportMessage,
   type ImportTranslator,
 } from "./import-message-i18n"
 
@@ -112,6 +113,56 @@ describe("the outage sentence reaches every import screen", () => {
       )
       expect(multi.aiOutage).toBeUndefined()
     }
+  })
+})
+
+describe("the code-carrying shapes render as a cause, not as a token", () => {
+  // The orchestrator emits `(ai_credits)` instead of the provider's raw
+  // message. If the localizer does not recognise the shape it returns the
+  // input verbatim by contract — which would print the bare token to the user.
+  it("renders the per-file warning in all three languages", () => {
+    for (const [lang, catalogue] of [["en", en], ["ru", ru], ["az", az]] as const) {
+      const out = localizeImportMessage(
+        translator(catalogue as unknown as Record<string, unknown>),
+        "actual-budget-v1.xlsx: classify failed (ai_credits)",
+      )
+      expect(out, lang).toContain("actual-budget-v1.xlsx")
+      expect(out, lang).not.toContain("ai_credits")
+      expect(out, lang).not.toContain("classify failed")
+    }
+  })
+
+  it("renders the file-type reasoning line", () => {
+    const out = localizeImportMessage(translator(ru), "Classification failed (ai_credits)")
+    expect(out).toContain("средства")
+    expect(out).not.toContain("ai_credits")
+  })
+
+  it("still renders a NON-outage reasoning untouched", () => {
+    // The localizer's contract is that an unrecognised shape survives byte-
+    // identical. The new rules must not swallow neighbouring messages.
+    const raw = "Sheet shape mix doesn't match any known file type for \"x.xlsx\" (counts: )"
+    expect(localizeImportMessage(translator(en), raw)).not.toBe("")
+  })
+
+  it("never renders the provider's billing text, whatever it is handed", () => {
+    // Belt and braces: even if a raw string reached the client from an older
+    // stored warning, the screen must not be the place that decides to show it
+    // — this pins that the NEW shape carries no provider text at all.
+    const out = localizeImportMessage(translator(en), "x.xlsx: classify failed (ai_credits)")
+    expect(out).not.toMatch(/credit balance|Plans & Billing|request_id/)
+  })
+})
+
+describe("the preview screen shows the outage where the failure is seen", () => {
+  it("renders the banner at preview time, not only after apply", () => {
+    // Pass one put the banner only on the apply-completeness result. The owner
+    // was at Step 1 (AI analizi) and saw no banner at all — just the raw error
+    // on the file card. Pinned at source level: the preview block must render
+    // it from the per-file codes.
+    const src = readFileSync(join(HERE, "MultiFileForm.tsx"), "utf8")
+    expect(src).toContain('data-testid="preview-ai-outage"')
+    expect(src).toContain('data-testid="apply-incomplete-ai-outage"')
   })
 })
 
