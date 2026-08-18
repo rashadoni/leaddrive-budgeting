@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     // Sanitized — the classifier is an Anthropic call; never leak the raw
     // provider message (can carry billing text) to the import screen.
-    return NextResponse.json({ ok: false, ...aiErrorBody(err) }, { status: 500 })
+    return NextResponse.json({ ok: false, ...aiErrorBody(err, "ai-import:single") }, { status: 500 })
   }
 
   // Record token spend

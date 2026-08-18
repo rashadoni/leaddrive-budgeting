@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
       proposal = await runMapper(mapperInput, { orgId })
     } catch (err) {
       // Sanitised — never leak raw provider/billing text to the import screen.
-      return NextResponse.json({ ok: false, ...aiErrorBody(err) }, { status: 500 })
+      return NextResponse.json({ ok: false, ...aiErrorBody(err, "ai-import:analyze") }, { status: 500 })
     }
     // Skip usage recording on a 24h-cache hit (runMapper returns zero-token
     // usage when it serves a cached proposal) — no LLM call happened.

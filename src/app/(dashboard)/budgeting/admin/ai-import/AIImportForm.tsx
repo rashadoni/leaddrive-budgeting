@@ -15,6 +15,7 @@ import { useState, useRef, type DragEvent, type ChangeEvent } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { localizedName } from "@/lib/i18n/localized-name"
 import {
+  aiOutageFromBody,
   asImportTranslator,
   localizeImportMessage,
   localizeVerdict,
@@ -194,7 +195,13 @@ export function AIImportForm({ initialYear }: { initialYear?: number }) {
       })
       if (!res.ok) {
         const body = await res.json().catch(() => null)
-        throw new Error(body?.error ?? `HTTP ${res.status}`)
+        // A provider outage names its own cause and remedy; anything else
+        // keeps the route's own message (a bad year must not read as an outage).
+        throw new Error(
+          aiOutageFromBody(tShared, body, "classify") ??
+            body?.error ??
+            `HTTP ${res.status}`,
+        )
       }
       setPreview((await res.json()) as ClassifyResponse)
     } catch (e) {

@@ -17,6 +17,7 @@ import type { ColumnMappingProposal, MappingProposal, SourceColumn } from "@/lib
 import { buildUserOverrides } from "@/features/onboarding/lib/proposal-overrides"
 import { MappingReviewTable } from "@/features/onboarding/components/MappingReviewTable"
 import {
+  aiOutageFromBody,
   asImportTranslator,
   localizeImportMessage,
 } from "./import-message-i18n"
@@ -135,7 +136,14 @@ export function MultiSheetImportForm() {
       fd.append("file", file)
       const res = await fetch("/api/import/ai-auto", { method: "POST", body: fd })
       const body = await res.json().catch(() => null)
-      if (!res.ok || !body?.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+      if (!res.ok || !body?.ok)
+      // A provider outage names its own cause and remedy; anything else
+      // keeps the route's own message (a bad year must not read as an outage).
+      throw new Error(
+        aiOutageFromBody(tShared, body, "classify") ??
+          body?.error ??
+          `HTTP ${res.status}`,
+      )
       const cls = (body.classifications ?? []) as Classification[]
       setClassifications(cls)
       setSelected(cls.filter((c) => c.dataType === "PLF").map((c) => c.sheetName))
@@ -160,7 +168,14 @@ export function MultiSheetImportForm() {
       fd.append("sheetNames", selected.join(","))
       const res = await fetch("/api/onboarding/import/analyze-multi", { method: "POST", body: fd })
       const body = await res.json().catch(() => null)
-      if (!res.ok || !body?.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+      if (!res.ok || !body?.ok)
+      // A provider outage names its own cause and remedy; anything else
+      // keeps the route's own message (a bad year must not read as an outage).
+      throw new Error(
+        aiOutageFromBody(tShared, body, "analyze") ??
+          body?.error ??
+          `HTTP ${res.status}`,
+      )
       const a = body as AnalyzeMultiResponse
       setAnalysis(a)
       const initial: Record<string, ColumnMappingProposal[]> = {}
