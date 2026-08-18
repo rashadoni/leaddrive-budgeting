@@ -367,7 +367,10 @@ describe("applyBuColumnSplit", () => {
     expect(wb.SheetNames).not.toContain("PLF Actual 2025")
   })
 
-  it("splits one known entity plus an EJE block so elimination rows are skipped", () => {
+  it("splits one known entity plus an EJE block onto their own sheets", () => {
+    // 2026-08-18 — the elimination block used to be skipped here. It now gets
+    // a sheet of its own (`PLF_ELIMINATIONS`), so this asserts TWO entries: the
+    // entity's, unchanged, and the group's.
     const wb = wbWith("PLF Actual 2025", makeConsolidated([["CPC", 5], ["EJE", 5]]))
     const res = applyBuColumnSplit(wb, XLSX, {
       sheetName: "PLF Actual 2025",
@@ -376,22 +379,28 @@ describe("applyBuColumnSplit", () => {
       aliasMap,
     })
     expect(res.applied).toBe(true)
-    expect(res.sheetMapEntries).toHaveLength(1)
+    expect(res.sheetMapEntries).toHaveLength(2)
+    expect(
+      res.sheetMapEntries.find((e) => e.dataType === "PLF_ELIMINATIONS")?.entityCode,
+    ).toBeUndefined()
+    // The elimination block is reported FIRST: the splitter materialises it
+    // ahead of the entity blocks so its sheet name is claimed before any
+    // `[ENTITY]` name can collide with it.
     expect(res.mapping).toEqual([
+      {
+        sheetName: "PLF Actual 2025 [ELIMINATIONS]",
+        entityCode: null,
+        buValue: "EJE",
+        rowCount: 5,
+        action: "write",
+        reason: "elimination",
+      },
       {
         sheetName: "PLF Actual 2025 [AZSEKER-CPC]",
         entityCode: "AZSEKER-CPC",
         buValue: "CPC",
         rowCount: 5,
         action: "write",
-      },
-      {
-        sheetName: "PLF Actual 2025",
-        entityCode: null,
-        buValue: "EJE",
-        rowCount: 5,
-        action: "skip",
-        reason: "elimination",
       },
     ])
     expect(wb.SheetNames).not.toContain("PLF Actual 2025")
@@ -519,14 +528,20 @@ describe("elimination block routing (14.8)", () => {
     expect(out.applied).toBe(true)
   })
 
-  it("still SKIPS the elimination block on a P&L sheet", () => {
-    // 11.83 settled the ADJUSTMENT half of the P&L question and deliberately
-    // left the elimination half alone. This must not change it by accident.
+  it("writes the elimination block on a P&L sheet too, under its own dataType", () => {
+    // 2026-08-18 — 14.8 shipped the BS half and left this open, so the group
+    // P&L was the four entities added together: 271,160 against the client
+    // workbook's own 255,942. Same contract as the BS half, different
+    // dataType, so nothing can route a P&L elimination into a balance sheet.
     const out = splitBs([["CPC", 5], ["EDEN", 5], ["EJE", 4]], "PLF")
     expect(out.sheetMapEntries.some((e) => e.dataType === "BS_ELIMINATIONS")).toBe(false)
+    const elim = out.sheetMapEntries.find((e) => e.dataType === "PLF_ELIMINATIONS")!
+    expect(elim.entityCode).toBeUndefined()
     const eje = out.mapping.filter((m) => m.buValue === "EJE")
     expect(eje).toHaveLength(1)
-    expect(eje[0].action).toBe("skip")
+    expect(eje[0].action).toBe("write")
+    expect(eje[0].entityCode).toBeNull()
+    expect(eje[0].reason).toBe("elimination")
   })
 
   it("refuses TWO elimination blocks rather than importing either", () => {

@@ -5,6 +5,7 @@ import { getSession } from "@/lib/api-auth"
 import { withOrgScope } from "@/lib/db/with-org-scope"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
+import { resolvePnlEliminationScope } from "@/lib/onboarding/ai-import/pnl-elimination-scope"
 import { looksLikeCode } from "@/lib/import/keywords"
 import {
   deriveRoleFromCode,
@@ -134,7 +135,28 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const blWhere: { organizationId: string; deletedAt: null; companyId?: { in: string[] } } = {
+  /**
+   * 2026-08-18 — the group's intragroup eliminations, and who may see them.
+   *
+   * These rows carry `companyId: null` (see `BudgetLine.isElimination`). An
+   * unrestricted org-wide query has no company filter and would sweep them in
+   * by accident; every narrowed query has one and would drop them silently.
+   * Neither is a decision anyone made, and the second hands two people with
+   * the same entitlement two different EBITDAs. So decide explicitly, then
+   * write a WHERE that says it: entity rows for the companies in scope, OR
+   * the elimination rows when — and only when — this query is the whole group.
+   */
+  const elimination = resolvePnlEliminationScope({
+    filterKind: companyFilter.kind === "single" ? "single" : "all",
+    restricted: scope.ids != null,
+  })
+
+  const blWhere: {
+    organizationId: string
+    deletedAt: null
+    companyId?: { in: string[] }
+    isElimination?: boolean
+  } = {
     organizationId: orgId,
     deletedAt: null,
   }
@@ -142,6 +164,14 @@ export async function GET(req: NextRequest) {
   if (companyFilter.kind === "all" && scope.ids != null) {
     blWhere.companyId = { in: Array.from(scope.ids) }
   }
+  if (!elimination.includeEliminations) {
+    // Excluded for a single company and for any restricted view. The client's
+    // EJE block nets result across ALL of its entities at once, so applying it
+    // to a subset would subtract trades with companies that are not on screen.
+    blWhere.isElimination = false
+  }
+  // The remaining case — an unrestricted org-wide read — carries no company
+  // filter at all, so the null-company elimination rows are already in scope.
   if (companyFilter.kind === "single") {
     if (companyFilter.companyIds.length === 0) {
       // Sub-group with no children — return empty rows; year stays correct.

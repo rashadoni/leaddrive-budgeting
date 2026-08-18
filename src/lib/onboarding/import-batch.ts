@@ -70,6 +70,16 @@ import {
 const logger = getLogger("lib:import-batch")
 
 /**
+ * The entity slot in a reconciliation key for rows that belong to no company.
+ *
+ * An elimination has no entity code, and `buildReconKey` needs three
+ * components. A literal that cannot collide with a real company code keeps the
+ * expected and actual key spaces intersecting — which is the whole point of
+ * the read-back — without inventing a pseudo-entity anywhere else.
+ */
+export const ELIMINATION_RECON_ENTITY = "__ELIMINATIONS__"
+
+/**
  * The minimal shape of a budget-line row we expect from the parsing
  * layer. Adapter writers can extend this if they need extra columns,
  * but the wrapper only requires these four for the reset/write/
@@ -77,7 +87,27 @@ const logger = getLogger("lib:import-batch")
  * to preserve the "no in-place math" guarantee.
  */
 export interface ImportBatchRow {
-  companyId: string
+  /**
+   * 2026-08-18 — null ONLY on an intragroup-elimination row, which belongs to
+   * no company by construction (see `isElimination`). Every other row must
+   * carry one: a null company widens the clean-slate scope below to every
+   * company on the plan, which is the 2026-06-11 collateral-wipe shape.
+   */
+  companyId: string | null
+  /**
+   * 2026-08-18 — an INTRAGROUP ELIMINATION row, from the `EJE` block the
+   * client ships inside its own P&L sheets. It cancels revenue and cost
+   * BETWEEN group members, so it is nobody's standalone result and carries no
+   * `companyId`.
+   *
+   * Mirrors `BsImportRow.isElimination` (Phase 14.8) down to the scoping rule:
+   * an elimination batch clean-slates on `isElimination: true`, which is
+   * exactly as narrow as a company scope and provably disjoint from entity
+   * rows. Mixing both in one batch is refused rather than resolved, because
+   * the two scopes cannot be expressed at once — the splitter gives the EJE
+   * block its own virtual sheet, so each gets its own batch.
+   */
+  isElimination?: boolean
   /**
    * Phase 2.1 session 3 (2026-05-26) — `category` String field on the
    * row carries a free-form display label used by orchestrator's
@@ -297,7 +327,57 @@ export async function runImportBatch(
       // `{ in: [] }` → no-op. Period/year granularity stays caller-controlled
       // via `periodFilter` (intentional full-year reset semantic); only the
       // company dimension — the over-deletion vector — is derived.
-      const footprintCompanyIds = [...new Set(plan.rows.map((r) => r.companyId))]
+      const footprintCompanyIds = [
+        ...new Set(
+          plan.rows
+            .map((r) => r.companyId)
+            .filter((id): id is string => id !== null),
+        ),
+      ]
+
+      // 2026-08-18 — the elimination batch is the one legitimate null-company
+      // batch, and it gets a scope of its own rather than an exemption.
+      //
+      // `companyId: { in: [] }` (which is what a batch of null-company rows
+      // would produce above) archives NOTHING, so an elimination re-import
+      // would insert alongside the previous run's rows instead of replacing
+      // them — a silently doubling group elimination, which is worse than the
+      // un-eliminated total it replaced. `isElimination: true` is as narrow as
+      // a company scope and disjoint from every entity row, so it replaces
+      // exactly what the last elimination import wrote.
+      //
+      // A batch mixing both is refused, not resolved: one clean-slate cannot
+      // express two disjoint scopes, and guessing which one to widen is how
+      // collateral wipes happen.
+      const eliminationRows = plan.rows.filter((r) => r.isElimination === true)
+      const isEliminationBatch =
+        eliminationRows.length > 0 && eliminationRows.length === plan.rows.length
+      if (eliminationRows.length > 0 && !isEliminationBatch) {
+        throw new Error(
+          "[import-batch] refusing to reset: this batch mixes " +
+            `${eliminationRows.length} elimination row(s) with ` +
+            `${plan.rows.length - eliminationRows.length} entity row(s). An elimination ` +
+            "belongs to no company, so the two cannot share one clean-slate scope. " +
+            "Import the elimination block as its own sheet.",
+        )
+      }
+      const nullCompanyRows = plan.rows.filter((r) => r.companyId === null).length
+      if (nullCompanyRows > 0 && !isEliminationBatch) {
+        throw new Error(
+          `[import-batch] refusing to reset: ${nullCompanyRows} row(s) carry no companyId ` +
+            "and are not flagged as eliminations, so the archive scope would widen to EVERY " +
+            "company on this plan. Resolve the entity before importing.",
+        )
+      }
+      /**
+       * The company dimension of the clean-slate. `isElimination: false` is
+       * stated beside the company filter even though it is redundant today —
+       * elimination rows carry no company — so that an entity import can never
+       * archive the group's eliminations if that ever stops being true.
+       */
+      const companyScope = isEliminationBatch
+        ? { isElimination: true }
+        : { companyId: { in: footprintCompanyIds }, isElimination: false }
 
       let archived = 0
       let purged = 0
@@ -306,7 +386,7 @@ export async function runImportBatch(
         const purgeResult = await tx.budgetLine.deleteMany({
           where: {
             organizationId: plan.organizationId,
-            companyId: { in: footprintCompanyIds },
+            ...companyScope,
             deletedAt: { not: null },
             ...notAManualCorrection,
             ...planFilter,
@@ -319,12 +399,13 @@ export async function runImportBatch(
       // belt-and-suspenders tripwire): count LIVE rows within this import's
       // own footprint BEFORE archiving, independently from the archive WHERE.
       const footprintLiveCount =
-        footprintCompanyIds.length === 0 || planIds.length === 0
+        (footprintCompanyIds.length === 0 && !isEliminationBatch) ||
+        planIds.length === 0
           ? 0
           : await tx.budgetLine.count({
               where: {
                 organizationId: plan.organizationId,
-                companyId: { in: footprintCompanyIds },
+                ...companyScope,
                 planId: { in: planIds },
                 deletedAt: null,
                 // Excluded here too, or the tripwire below compares an archive
@@ -340,7 +421,7 @@ export async function runImportBatch(
       const archiveResult = await tx.budgetLine.updateMany({
         where: {
           organizationId: plan.organizationId,
-          companyId: { in: footprintCompanyIds },
+          ...companyScope,
           deletedAt: null,
           ...notAManualCorrection,
           ...planFilter,
@@ -353,7 +434,9 @@ export async function runImportBatch(
         table: "BudgetLine",
         archivedCount: archived,
         footprintLiveCount,
-        footprint: `plans=[${planIds.join(",")}] companies=[${footprintCompanyIds.join(",")}]`,
+        footprint: isEliminationBatch
+          ? `plans=[${planIds.join(",")}] eliminations`
+          : `plans=[${planIds.join(",")}] companies=[${footprintCompanyIds.join(",")}]`,
       })
 
       // Insert new rows. `createMany` is one round-trip per chunk; a
@@ -364,6 +447,7 @@ export async function runImportBatch(
         organizationId: plan.organizationId,
         planId: r.planId,
         companyId: r.companyId,
+        isElimination: r.isElimination === true,
         lineType: r.lineType,
         plannedAmount: r.plannedAmount,
         currencyCode: r.currencyCode,
@@ -409,6 +493,12 @@ export async function runImportBatch(
     const affected: Array<{ companyId: string; period: string }> = []
     const seen = new Set<string>()
     for (const r of plan.rows) {
+      // 2026-08-18 — an elimination row has no company, and the indicator
+      // recompute is per-company by construction. Skipping it here is not a
+      // gap being hidden: group-level indicators are recomputed from the P&L
+      // read, which includes eliminations, while a per-company indicator must
+      // not move because of a row that belongs to no company.
+      if (r.companyId === null) continue
       const k = `${r.companyId}::${r.period}`
       if (seen.has(k)) continue
       seen.add(k)
@@ -483,7 +573,21 @@ async function defaultReadActualSums(
   // matching the derive-delete-from-write archive scope. Reading by the
   // (possibly broader) caller `plan.companyIds` would surface a surviving
   // sibling company as a spurious reconciliation "extra".
-  const footprintCompanyIds = [...new Set(plan.rows.map((r) => r.companyId))]
+  const footprintCompanyIds = [
+    ...new Set(
+      plan.rows.map((r) => r.companyId).filter((id): id is string => id !== null),
+    ),
+  ]
+  // 2026-08-18 — an elimination batch has no companyId to narrow by. Without
+  // its own scope the read-back would match `{ in: [] }`, come back empty,
+  // report every expected sum as `missing`, and turn a batch that wrote
+  // perfectly into an unconditional red. Same scope as the archive above, for
+  // the same reason the two have always been kept in step.
+  const eliminationOnly =
+    plan.rows.length > 0 && plan.rows.every((r) => r.isElimination === true)
+  const readScope = eliminationOnly
+    ? { isElimination: true }
+    : { companyId: { in: footprintCompanyIds }, isElimination: false }
   // 2026-07-31 (11.51) — scope the read-back to the plan(s) this batch wrote.
   //
   // The clean-slate above has been plan-scoped since 2026-06-16 (`planFilter`),
@@ -514,7 +618,7 @@ async function defaultReadActualSums(
     where: {
       organizationId: plan.organizationId,
       planId: { in: footprintPlanIds },
-      companyId: { in: footprintCompanyIds },
+      ...readScope,
       deletedAt: null,
       // Same three-valued-logic trap as the archive filter above: `origin` is
       // nullable and every imported row has it NULL, so a bare `not` matches
@@ -525,6 +629,7 @@ async function defaultReadActualSums(
     },
     select: {
       companyId: true,
+      isElimination: true,
       plannedAmount: true,
       monthIndex: true,
       plan: { select: { year: true } },
@@ -546,8 +651,16 @@ async function defaultReadActualSums(
 
   const out = new Map<ReconciliationKey, number>()
   for (const r of rows) {
-    if (!r.companyId) continue
-    const code = codeById.get(r.companyId)
+    // 2026-08-18 — an elimination row has no company, so its key carries the
+    // ELIMINATIONS namespace where an entity code would be. The handler builds
+    // the expected key the same way; a bare code would be fine today (one
+    // contributor per plan) but would collide the moment anything else lands
+    // without a company.
+    const code = r.isElimination
+      ? ELIMINATION_RECON_ENTITY
+      : r.companyId
+        ? codeById.get(r.companyId)
+        : undefined
     if (!code) continue
     const period =
       r.monthIndex !== null && r.monthIndex !== undefined

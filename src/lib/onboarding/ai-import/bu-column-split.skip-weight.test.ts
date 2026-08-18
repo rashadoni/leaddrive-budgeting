@@ -9,6 +9,13 @@
  * are 1,949,279,114 by absolute value on `BS Actual 2026` and 1,080,354 on
  * `PLF Actual 2026`. Same family as 11.91 and 11.92: the behaviour is right and
  * the sentence around it was not there.
+ *
+ * 2026-08-18 — the fixture moved from `PLF` to `CF`. Balance-sheet and P&L
+ * elimination blocks are now IMPORTED rather than skipped, so neither can
+ * exercise a skip warning any more; cash flow is the statement where an
+ * elimination is still excluded, which is exactly the case this disclosure
+ * exists for. The behaviour under test is unchanged — only the statement that
+ * still reaches it.
  */
 import { describe, it, expect } from "vitest"
 import * as XLSX from "xlsx"
@@ -49,7 +56,7 @@ function workbook(eliminationAmount: number): XLSX.WorkBook {
 function skipWarning(amount: number): string {
   const out = applyBuColumnSplit(workbook(amount), XLSX, {
     sheetName: "Sheet1",
-    dataType: "PLF",
+    dataType: "CF",
     planKind: "actual",
     aliasMap: ALIASES,
   })
@@ -99,7 +106,7 @@ describe("a skipped elimination discloses its weight", () => {
     const out = applyBuColumnSplit(
       { SheetNames: ["S"], Sheets: { S: ws } },
       XLSX,
-      { sheetName: "S", dataType: "PLF", planKind: "actual", aliasMap: ALIASES },
+      { sheetName: "S", dataType: "CF", planKind: "actual", aliasMap: ALIASES },
     )
     const w = out.warnings.find((x) => /skipped \(not imported\)/.test(x))
     if (w) {
