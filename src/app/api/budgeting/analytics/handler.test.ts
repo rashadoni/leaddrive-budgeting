@@ -11,7 +11,11 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-const { prismaMock } = vi.hoisted(() => ({
+const { prismaMock, scopeMock } = vi.hoisted(() => ({
+  // 2026-08-18 — the route now resolves the caller's company scope before it
+  // opens its tx. Unrestricted here, which is what every assertion below
+  // already assumed when the route could not narrow at all.
+  scopeMock: { getCompanyScope: vi.fn(async () => ({ ids: null, bypassed: true })) },
   prismaMock: {
     budgetPlan: { findFirst: vi.fn() },
     budgetLine: { findMany: vi.fn() },
@@ -25,6 +29,7 @@ const { prismaMock } = vi.hoisted(() => ({
 }))
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
+vi.mock("@/lib/rbac/company-scope", () => scopeMock)
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 vi.mock("@/lib/db/with-org-scope", () => ({
   withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),

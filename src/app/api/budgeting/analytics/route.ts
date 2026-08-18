@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { getOrgId } from "@/lib/api-auth";
+import { getSession } from "@/lib/api-auth";
+import { getCompanyScope } from "@/lib/rbac/company-scope";
 import { withOrgScope } from "@/lib/db/with-org-scope";
 import { loadAndCompute } from "@/lib/cost-model/db";
 import {
@@ -92,17 +93,38 @@ type BudgetActualRow = Prisma.BudgetActualGetPayload<true>;
  * full rationale.
  */
 export async function GET(req: NextRequest) {
-  const orgId = await getOrgId(req);
-  if (!orgId)
+  const session = await getSession(req);
+  if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const orgId = session.orgId;
 
   const planId = req.nextUrl.searchParams.get("planId");
   if (!planId)
     return NextResponse.json({ error: "planId required" }, { status: 400 });
 
+  /**
+   * 2026-08-18 — per-company RBAC, which this route did not have.
+   *
+   * It checked the organisation and nothing else, so a user restricted to one
+   * sub-group saw org-wide totals here while every sibling surface honoured
+   * their scope. The reason recorded for skipping it was tx-hold time; that
+   * was measured on production and does not survive:
+   *
+   *   getCompanyScope user lookup     0.045 ms  (index)
+   *   getCompanyScope company lookup  0.064 ms  (index, 7 rows)
+   *   the aggregation this tx holds   ~40 ms    (the note that was here)
+   *
+   * and both go to ZERO tx-hold now the call sits ABOVE `withOrgScope` —
+   * which is where `company-scope.ts` says it belongs ("runs BEFORE a route
+   * opens its withOrgScope tx", on the BYPASSRLS admin client). The identity
+   * was already being resolved as well: `getOrgId` called `getSession` and
+   * discarded everything but the org id.
+   */
+  const scope = await getCompanyScope(orgId, session.userId, session.role);
+
   // Stage 3 RLS — all reads run in one org-scoped tx; the pure aggregation
   // (~40ms measured for 2700 lines) stays inside the closure, which is
-  // acceptable tx-hold time. getCompanyScope is not used here.
+  // acceptable tx-hold time.
   return withOrgScope(orgId, async (tx) => {
     // Turn 30: per-daughter-company filter. Sub-group level=1 expands to
     // children's operational ids; op-co level=2 is single-element filter.
@@ -134,9 +156,23 @@ export async function GET(req: NextRequest) {
      * and not papered over: the value passed is the truth about what this
      * route knows.
      */
+    // A single company outside the caller's scope is a 404, not an empty
+    // total: mirroring `pnl/route.ts`, an out-of-scope id must be
+    // indistinguishable from one that does not exist.
+    if (companyFilter.kind === "single" && scope.ids != null) {
+      const permitted = companyFilter.companyIds.filter((id) => scope.ids!.has(id));
+      if (permitted.length === 0) {
+        return NextResponse.json({ error: "Company not found" }, { status: 404 });
+      }
+      companyFilter.companyIds = permitted;
+    }
+
     const elimination = resolvePnlEliminationScope({
       filterKind: companyFilter.kind === "single" ? "single" : "all",
-      restricted: false,
+      // Now the truth about what this route knows, rather than a stand-in for
+      // not knowing: a restricted caller gets a labelled sum, never the
+      // group's eliminations, exactly as on the P&L.
+      restricted: scope.ids != null,
     });
 
     const lineWhere: {
@@ -151,6 +187,11 @@ export async function GET(req: NextRequest) {
       deletedAt: null,
       ...(elimination.includeEliminations ? {} : { isElimination: false }),
     };
+    // Org-wide read by a restricted caller: narrow to the companies they may
+    // see. (The single-company branch below is already narrowed above.)
+    if (companyFilter.kind !== "single" && scope.ids != null) {
+      lineWhere.companyId = { in: Array.from(scope.ids) };
+    }
     if (companyFilter.kind === "single") {
       if (companyFilter.companyIds.length === 0) {
         // Sub-group with no children — no data to aggregate. Return empty
