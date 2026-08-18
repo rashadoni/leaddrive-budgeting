@@ -45,6 +45,13 @@ export interface ProductMonthRow {
   quantity: number
   /** NET revenue (discounts already applied). */
   amount: number
+  /**
+   * 2026-08-18 — cost of goods sold for this product-month, when the source
+   * states it per product. Undefined means the file said nothing, which is
+   * NOT the same as zero: farming products in this workbook carry sales and
+   * no cost at all, and a zero there would render as a 100% margin on wheat.
+   */
+  cost?: number
   /** Explicit price when the source states one; else derived by the caller. */
   explicitUnitPrice?: number
 }
@@ -143,6 +150,16 @@ function monthColumns(
 const BANNER_VOLUME = /sales\s+volumes?/i
 const BANNER_GROSS = /gross\s+revenue/i
 const BANNER_DISCOUNT = /discounts?/i
+/**
+ * 2026-08-18 — the cost side, which the client states per product and the
+ * parser walked past.
+ *
+ * Anchored so it cannot swallow `GROSS PROFIT` or `GROSS PROFIT MARGIN, %`,
+ * which sit in the same banner row: those are the sheet's own arithmetic over
+ * this block, and importing a computed column beside the inputs it is
+ * computed from is how a total gets counted twice.
+ */
+const BANNER_COGS = /^\s*cogs\b/i
 const GRID_TON = /^(satış|satis|sales)\s+plan\s*,\s*ton/i
 const GRID_AZN = /^(satış|satis|sales)\s+plan\s*,\s*azn/i
 const GRID_PRICE = /^(satış|satis|sales)\s+plan\s*,\s*(qiymət|qiymet|price)/i
@@ -309,7 +326,10 @@ function parseBudgetBanner(
   }
 
   // Banner start columns, in document order → each section spans until the next.
-  const banners: Array<{ col: number; kind: "qty" | "gross" | "discount" | "other" }> = []
+  const banners: Array<{
+    col: number
+    kind: "qty" | "gross" | "discount" | "cogs" | "other"
+  }> = []
   ;(aoa[bannerRow] ?? []).forEach((v, c) => {
     if (typeof v !== "string") return
     const kind = BANNER_VOLUME.test(v)
@@ -318,11 +338,13 @@ function parseBudgetBanner(
         ? "gross"
         : BANNER_DISCOUNT.test(v)
           ? "discount"
-          : "other"
+          : BANNER_COGS.test(v)
+            ? "cogs"
+            : "other"
     banners.push({ col: c, kind })
   })
   banners.sort((a, b) => a.col - b.col)
-  const spanOf = (kind: "qty" | "gross" | "discount") => {
+  const spanOf = (kind: "qty" | "gross" | "discount" | "cogs") => {
     const i = banners.findIndex((b) => b.kind === kind)
     if (i < 0) return null
     const start = banners[i].col
@@ -332,6 +354,7 @@ function parseBudgetBanner(
   const qtySpan = spanOf("qty")
   const grossSpan = spanOf("gross")
   const discSpan = spanOf("discount")
+  const cogsSpan = spanOf("cogs")
   if (!qtySpan || !grossSpan) {
     return {
       shape: "budget_banner",
@@ -367,6 +390,9 @@ function parseBudgetBanner(
   const discMonths = discSpan
     ? monthColumns(aoa[headerRow], year, discSpan.start, discSpan.end)
     : []
+  const cogsMonths = cogsSpan
+    ? monthColumns(aoa[headerRow], year, cogsSpan.start, cogsSpan.end)
+    : []
   if (qtyMonths.length === 0 || grossMonths.length === 0) {
     return {
       shape: "budget_banner",
@@ -382,12 +408,14 @@ function parseBudgetBanner(
   const add = (
     identity: ProductIdentity,
     month: number,
-    field: "quantity" | "amount",
+    field: "quantity" | "amount" | "cost",
     v: number,
   ) => {
     const key = `${identity.code}:${month}`
     const row = byKey.get(key) ?? { identity, month, year, quantity: 0, amount: 0 }
-    row[field] += v
+    // `cost` is deliberately absent until a COGS cell is actually seen: a file
+    // that states no cost must stay distinguishable from one stating zero.
+    row[field] = (row[field] ?? 0) + v
     byKey.set(key, row)
   }
 
@@ -409,11 +437,20 @@ function parseBudgetBanner(
       const v = num(aoa[r]?.[col])
       if (v) add(identity, month, "amount", v)
     }
+    // Cost is stored NEGATIVE in this workbook, the same convention the P&L
+    // uses; it reaches `cost` as a positive cost so a consumer never has to
+    // guess which way round it is.
+    for (const [col, month] of cogsMonths) {
+      const v = num(aoa[r]?.[col])
+      if (v) add(identity, month, "cost", Math.abs(v))
+    }
   }
 
   return {
     shape: "budget_banner",
-    rows: [...byKey.values()].filter((r) => r.quantity !== 0 || r.amount !== 0),
+    rows: [...byKey.values()].filter(
+      (r) => r.quantity !== 0 || r.amount !== 0 || (r.cost ?? 0) !== 0,
+    ),
     warnings,
     unknownLabels: [...unknown],
   }

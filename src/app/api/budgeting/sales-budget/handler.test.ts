@@ -18,6 +18,8 @@ const { prismaMock } = vi.hoisted(() => ({
       upsert: vi.fn(),
     },
     budgetLine: { findMany: vi.fn() },
+    // 2026-08-18 — the route reads per-product cost to compute gross margin.
+    cOGSBudgetLine: { findMany: vi.fn() },
     budgetPlan: { findFirst: vi.fn() },
     organization: { findUnique: vi.fn() },
     auditEvent: { create: vi.fn() },
@@ -37,6 +39,9 @@ const ORG_ID = "org_demo"
 
 beforeEach(() => {
   prismaMock.salesBudgetLine.findMany.mockReset().mockResolvedValue([])
+  // No cost rows by default: every assertion here predates per-product margin
+  // and asserts nothing about it, so the honest default is "no cost data".
+  prismaMock.cOGSBudgetLine.findMany.mockReset().mockResolvedValue([])
   prismaMock.salesBudgetLine.create.mockReset().mockResolvedValue({ id: "sb1" })
   prismaMock.salesBudgetLine.upsert.mockReset().mockResolvedValue({ id: "sb1" })
   prismaMock.budgetLine.findMany.mockReset().mockResolvedValue([])

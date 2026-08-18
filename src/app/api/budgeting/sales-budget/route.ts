@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { buildMissingData } from "@/lib/budgeting/missing-data"
+import { summarizeProductMargins } from "@/lib/budgeting/product-margin"
 import type { Prisma } from "@prisma/client"
 import { getOrgId } from "@/lib/api-auth"
 // Stage 3 RLS — `prisma` kept for lockedResponse 423-audit + the
@@ -51,10 +52,54 @@ export async function GET(req: NextRequest) {
   const budgetRows = activePlan.kind === "budget" ? current : counterpart
   const actualRows = activePlan.kind === "actual" ? current : counterpart
 
+  /**
+   * 2026-08-18 — gross margin per product, which the owner asked for and the
+   * product table could not answer: it knew what was sold and never what it
+   * cost, because the `COGS` banner in the client's own sheet went unread.
+   *
+   * Cost is looked up per product for THIS plan. A product with no cost row
+   * stays `undefined` — never 0 — so the summariser returns `marginPct: null`
+   * with a reason and the tab can say "no cost data" instead of publishing a
+   * 100% margin on wheat, which is what a zero would render as.
+   */
+  const costRows = await tx.cOGSBudgetLine.findMany({
+    where: { organizationId: orgId, planId },
+    select: { productLineId: true, totalCost: true },
+  })
+  const costByProduct = new Map<string, number>()
+  for (const c of costRows) {
+    costByProduct.set(c.productLineId, (costByProduct.get(c.productLineId) ?? 0) + c.totalCost)
+  }
+  const revenueByProduct = new Map<
+    string,
+    { code: string; name: string; revenue: number }
+  >()
+  for (const line of current.lines) {
+    // `SalesRow` is a union: the Prisma row (typed without the include) and
+    // the budget-line fallback. Narrow with `in` rather than casting — a cast
+    // here would compile happily against a row that has no product at all.
+    const pl = "productLine" in line ? line.productLine : undefined
+    if (!pl) continue
+    const acc = revenueByProduct.get(pl.id) ?? { code: pl.code, name: pl.name, revenue: 0 }
+    acc.revenue += line.amount ?? 0
+    revenueByProduct.set(pl.id, acc)
+  }
+  const margins = summarizeProductMargins(
+    [...revenueByProduct.entries()].map(([productLineId, v]) => ({
+      productCode: v.code,
+      productName: v.name,
+      revenue: v.revenue,
+      ...(costByProduct.has(productLineId)
+        ? { cost: costByProduct.get(productLineId)! }
+        : {}),
+    })),
+  )
+
   return NextResponse.json({
     lines: current.lines,
     source: current.source,
     fallbackReason: current.fallbackReason,
+    margins,
     meta: {
       activePlan,
       comparisonPlan: counterpartPlan,
