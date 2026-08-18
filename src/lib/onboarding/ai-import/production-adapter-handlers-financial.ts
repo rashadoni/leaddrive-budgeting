@@ -1366,8 +1366,49 @@ export function makePlfEliminationsHandler(
 ): AdapterHandler {
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
     const ctx = await ensureCtx()
+    /**
+     * The file's cost-sign convention, read from the ENTITY blocks and never
+     * from this one.
+     *
+     * An elimination block is a reversal: its cost rows are credits, so they
+     * carry the opposite sign to every other block in the same file.
+     * Classifying it in isolation therefore reads the convention backwards.
+     * Measured on production the day this shipped: the EJE block's three cost
+     * rows are all positive, `resolveCostSigns` concluded "positive costs
+     * (debit convention)", declined to flip, and 321,798 of cost CREDIT landed
+     * as cost. That moves group EBITDA by twice the amount — 643,596 — and put
+     * -388k on screen where the workbook's own PLF.08 says 255,942.
+     *
+     * 11.36 already stated the rule for exactly this shape: the convention is
+     * a property of the FILE, so somebody who can see the whole file decides
+     * once and passes the verdict down. `reporting-pack-detail.ts` does that by
+     * re-parsing the unsplit sheet; here the splitter has already removed it,
+     * but it leaves the sibling entity sheets under the same parent name, and
+     * they are the same file and the same statement.
+     *
+     * A block whose siblings cannot answer keeps its own verdict and says so:
+     * a wrong-but-loud flip is recoverable, a silent one is what this comment
+     * exists because of.
+     */
+    const siblingPrefix = input.sheetName.replace(/ \[ELIMINATIONS\](?: #\d+)?$/, " [")
+    const siblingConvention = (() => {
+      for (const name of input.workbook.SheetNames) {
+        if (name === input.sheetName || !name.startsWith(siblingPrefix)) continue
+        const sib = parsePlfPlSheet(input.workbook, name, input.XLSX, {
+          preferYear: input.year,
+        })
+        const c = sib.signConvention
+        if (!c || c.blockedReason) continue
+        // "no evidence" is a sheet of zeroes, not an answer.
+        if (c.cogsConvention === "no_evidence" && c.expenseConvention === "no_evidence") continue
+        return { convention: c, from: name }
+      }
+      return null
+    })()
+
     const parsed = parsePlfPlSheet(input.workbook, input.sheetName, input.XLSX, {
       preferYear: input.year,
+      ...(siblingConvention ? { signOverride: siblingConvention.convention } : {}),
     })
 
     const skip = (reason: string, extra: string[] = []): AdapterRunResult => ({
@@ -1447,7 +1488,16 @@ export function makePlfEliminationsHandler(
     return {
       summary: `${parsed.lines.length} PLF elimination lines for the group (no company)`,
       itemCount: rows.length,
-      warnings: parsed.warnings.map((w) => `row ${w.row}: ${w.reason}`),
+      warnings: [
+        ...parsed.warnings.map((w) => `row ${w.row}: ${w.reason}`),
+        siblingConvention
+          ? `Cost signs read from "${siblingConvention.from}" (an elimination is a reversal, ` +
+            `so its own rows cannot state the file's convention): ` +
+            `${siblingConvention.convention.notes.join("; ")}`
+          : `No sibling entity block could state this file's cost-sign convention, so this ` +
+            `elimination block classified its own — and a reversal classifies backwards. ` +
+            `Check the signs on the group P&L before trusting them.`,
+      ],
       expectedSums,
       applyToDb: async (tx: Prisma.TransactionClient) => {
         const coaCache = createCoACache()
