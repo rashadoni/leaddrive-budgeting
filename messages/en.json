@@ -6295,6 +6295,14 @@
     "budgetSide": "Budget",
     "actualSide": "Actual",
     "gap": "Gap",
-    "points": "pts"
+    "points": "pts",
+    "rateEffect": "Margins",
+    "mixEffect": "Sales mix",
+    "unattributed": "Unattributed",
+    "drivenByMix": "The gap is mostly mix: products earn roughly what was planned, but a different basket is being sold.",
+    "drivenByRate": "The gap is mostly rate: the basket barely moved, the products themselves earn less than planned.",
+    "drivenByBoth": "Margins and sales mix contributed to the gap in roughly equal measure.",
+    "drivenByNeither": "Neither margins nor mix moved appreciably.",
+    "shareShift": "{product}: share of revenue {from} → {to}, worth {points} pts of margin"
   }
 }

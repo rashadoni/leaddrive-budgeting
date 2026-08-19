@@ -52,7 +52,23 @@ interface ComparedSide {
   reason?: "no_cost_data" | "no_revenue"
 }
 
+interface MixRate {
+  products: {
+    productCode: string
+    productName: string
+    budgetShare: number | null
+    actualShare: number | null
+    ratePoints: number | null
+    mixPoints: number | null
+  }[]
+  ratePoints: number
+  mixPoints: number
+  unattributedPoints: number
+  gapPoints: number | null
+}
+
 interface MarginComparison {
+  mixRate: MixRate
   products: {
     productCode: string
     productName: string
@@ -445,6 +461,12 @@ function ComparisonCard({
           </div>
         </div>
 
+        {/* Rates or the basket. Without this the reader sees a shortfall and
+            guesses; on the client's own months the answer is almost entirely
+            basket, and someone would otherwise be sent to renegotiate prices
+            that were never the problem. */}
+        <WhyMoved m={c.mixRate} t={t} />
+
         {gaps.length > 0 && (
           <ResponsiveContainer width="100%" height={Math.max(180, gaps.length * 30)}>
             <BarChart data={gaps} layout="vertical" margin={{ left: 8, right: 24 }}>
@@ -512,6 +534,79 @@ function ComparisonCard({
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function WhyMoved({
+  m,
+  t,
+}: {
+  m: MixRate
+  t: ReturnType<typeof useTranslations<"productMargin">>
+}) {
+  if (m.gapPoints === null) return null
+  const rate = Math.abs(m.ratePoints)
+  const mix = Math.abs(m.mixPoints)
+  // Only call a driver when it clearly dominates; a near-tie is its own answer.
+  const verdict =
+    rate + mix === 0 ? "drivenByNeither" : mix > rate * 2 ? "drivenByMix" : rate > mix * 2 ? "drivenByRate" : "drivenByBoth"
+  const movers = [...m.products]
+    .filter((p) => p.mixPoints !== null)
+    .sort((a, b) => (a.mixPoints as number) - (b.mixPoints as number))
+    .slice(0, 3)
+
+  return (
+    <div className="rounded-lg border p-4 space-y-3">
+      <div className="flex flex-wrap gap-6">
+        <Points label={t("rateEffect")} value={m.ratePoints} t={t} />
+        <Points label={t("mixEffect")} value={m.mixPoints} t={t} />
+        {/* Shown only when the split genuinely does not cover the gap, so its
+            presence always means something. */}
+        {Math.abs(m.unattributedPoints) >= 0.05 && (
+          <Points label={t("unattributed")} value={m.unattributedPoints} t={t} />
+        )}
+      </div>
+      <p className="text-sm">{t(verdict)}</p>
+      {movers.length > 0 && movers[0].mixPoints! < 0 && (
+        <ul className="text-xs text-muted-foreground space-y-1">
+          {movers
+            .filter((p) => (p.mixPoints as number) < 0)
+            .map((p) => (
+              <li key={p.productCode}>
+                {t("shareShift", {
+                  product: p.productName,
+                  from: `${((p.budgetShare ?? 0) * 100).toFixed(1)}%`,
+                  to: `${((p.actualShare ?? 0) * 100).toFixed(1)}%`,
+                  points: (p.mixPoints as number).toFixed(2),
+                })}
+              </li>
+            ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function Points({
+  label,
+  value,
+  t,
+}: {
+  label: string
+  value: number
+  t: ReturnType<typeof useTranslations<"productMargin">>
+}) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div
+        className="text-lg font-semibold tabular-nums"
+        style={{ color: value < 0 ? BUDGET_COLORS.negative : BUDGET_COLORS.positive }}
+      >
+        {value >= 0 ? "+" : ""}
+        {value.toFixed(2)} {t("points")}
+      </div>
+    </div>
   )
 }
 
