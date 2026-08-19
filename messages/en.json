@@ -142,7 +142,8 @@
     "toggleAdminSubmenu": "Toggle admin sub-menu",
     "navProductMargin": "Product margin",
     "navBalanceRatios": "Ratios",
-    "navYearEnd": "Year end"
+    "navYearEnd": "Year end",
+    "navChartHygiene": "Dictionary cleanup"
   },
   "common": {
     "toggleTheme": "Toggle theme",
@@ -6401,5 +6402,23 @@
       "otherLongLiabilities": "Other long-term liabilities",
       "contributions": "Owners' contributions"
     }
+  },
+  "chartHygiene": {
+    "title": "Dictionary cleanup",
+    "intro": "Entries here hold no row in any plan. They move no figure — that is what makes them dead — yet they appear in every list. Tick and archive; the entry is hidden, not deleted.",
+    "accountsTitle": "Chart of accounts",
+    "productsTitle": "Product lines",
+    "summary": "{dead} dead of {total} active · {live} carry rows",
+    "retire": "Archive ({count})",
+    "retired": "Archived: {count}",
+    "refusedHeading": "Refused: {count}",
+    "refusedNoLongerDead": "no longer dead — {rows} rows",
+    "refusedNotEligible": "entry not found or already archived",
+    "nothingDead": "Nothing dead here.",
+    "shadow_of_live_sibling": ".R shadow of a live account",
+    "duplicate_name": "name already used",
+    "loading": "Loading…",
+    "failed": "Failed.",
+    "archivedRows": "{rows} archived rows"
   }
 }

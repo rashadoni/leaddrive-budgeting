@@ -142,7 +142,8 @@
     "toggleAdminSubmenu": "Развернуть подменю администрирования",
     "navProductMargin": "Маржа по продуктам",
     "navBalanceRatios": "Коэффициенты",
-    "navYearEnd": "Итог года"
+    "navYearEnd": "Итог года",
+    "navChartHygiene": "Уборка справочников"
   },
   "common": {
     "toggleTheme": "Переключить тему",
@@ -6401,5 +6402,23 @@
       "otherLongLiabilities": "Прочие долгосрочные обязательства",
       "contributions": "Взносы собственников"
     }
+  },
+  "chartHygiene": {
+    "title": "Уборка справочников",
+    "intro": "Здесь записи, у которых нет ни одной строки ни в одном плане. Они не двигают ни одной суммы — именно поэтому они мёртвые, — но попадаются в каждом списке. Отметьте и архивируйте; запись не удаляется, а скрывается.",
+    "accountsTitle": "План счетов",
+    "productsTitle": "Продуктовые линии",
+    "summary": "{dead} мёртвых из {total} активных · {live} со строками",
+    "retire": "Архивировать ({count})",
+    "retired": "Архивировано: {count}",
+    "refusedHeading": "Отказано: {count}",
+    "refusedNoLongerDead": "уже не мёртвая — строк: {rows}",
+    "refusedNotEligible": "запись не найдена или уже в архиве",
+    "nothingDead": "Мёртвых записей нет.",
+    "shadow_of_live_sibling": "тень .R живого счёта",
+    "duplicate_name": "имя повторяется",
+    "loading": "Загрузка…",
+    "failed": "Не удалось.",
+    "archivedRows": "в архиве строк: {rows}"
   }
 }

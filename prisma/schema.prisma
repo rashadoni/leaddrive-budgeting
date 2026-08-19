@@ -2270,6 +2270,15 @@ enum AuditAction {
   // audit trail for compliance (wrong industry → wrong composite score).
   // Metadata: { from: string|null, to: string|null, companyCode: string }.
   company_industry_change
+  // 2026-08-19 — admin retired dead chart/product entries from the
+  // hygiene screen. Deactivation is a soft flag on a shared dictionary:
+  // nothing fails loudly when an entry stops appearing, so the trail is
+  // the only way to answer "where did that account go". Metadata:
+  // { kind: "account" | "product", approved: [{code,name}],
+  //   refused: [{code,reason,rows}] } — refusals are recorded too, since
+  // an attempt to retire something that had just gained rows is itself
+  // worth seeing.
+  chart_entry_deactivate
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to
