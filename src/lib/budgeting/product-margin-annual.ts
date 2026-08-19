@@ -69,7 +69,9 @@ export interface AnnualProgressRow {
 }
 
 function rate(revenue: number, cost: number | null): number | null {
-  if (cost === null || revenue === 0) return null
+  // A negative denominator inverts the ratio and returns a plausible-looking
+  // number built from two minuses; see `negative_revenue` in product-margin.ts.
+  if (cost === null || revenue <= 0) return null
   // A zero cost is not a 100% margin; see `zero_cost` in product-margin.ts.
   if (cost === 0) return null
   return ((revenue - cost) / revenue) * 100

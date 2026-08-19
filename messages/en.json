@@ -6275,7 +6275,8 @@
     "reason": {
       "no_cost_data": "no cost data",
       "no_revenue": "no revenue",
-      "zero_cost": "cost is zero — no data"
+      "zero_cost": "cost is zero — no data",
+      "negative_revenue": "revenue is negative — no margin"
     },
     "basis": {
       "consolidated_computed": "Consolidated (intragroup eliminated)",
@@ -6319,7 +6320,10 @@
     "progress": "Progress",
     "planRate": "Plan margin",
     "deliveredRate": "Actual margin",
-    "plannedLater": "planned for later months"
+    "plannedLater": "planned for later months",
+    "noMarginData": "no margin data",
+    "noCostData": "no data",
+    "nothingDelivered": "Nothing was sold in the selected months, so there is nothing to compare."
   },
   "balanceRatios": {
     "title": "Balance sheet ratios",

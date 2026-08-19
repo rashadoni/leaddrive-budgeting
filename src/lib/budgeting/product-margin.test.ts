@@ -88,3 +88,57 @@ describe("per-product gross margin", () => {
     expect(s.revenueWithoutCost).toBe(0)
   })
 })
+
+describe("a ratio is withheld when the denominator cannot carry one", () => {
+  it("refuses the plausible-looking percent that two minuses produce", () => {
+    // Production, 2025 eliminations: corn at −7,346,866 of revenue against
+    // −4,861,905 of cost. The formula returns +33.8% — a confident, wrong
+    // number that looks like a healthy margin and announces nothing.
+    const s = summarizeProductMargins([
+      { productCode: "CORN", productName: "Corn", revenue: -7_346_866, cost: -4_861_905 },
+    ])
+    expect(s.products[0].marginPct).toBeNull()
+    expect(s.products[0].reason).toBe("negative_revenue")
+  })
+
+  it("keeps those amounts in the group, where they reconcile to the P&L", () => {
+    // Withholding the RATIO must not remove the money: an elimination is part
+    // of the consolidated arithmetic even though its own ratio is meaningless.
+    const s = summarizeProductMargins([
+      { productCode: "A", productName: "Sold", revenue: 1_000, cost: 600 },
+      { productCode: "E", productName: "Elimination", revenue: -200, cost: -120 },
+    ])
+    expect(s.knownRevenue).toBe(800)
+    expect(s.knownCost).toBe(480)
+    expect(s.knownMarginPct).toBeCloseTo(40, 5)
+  })
+
+  it("still reports the gross profit of a negative-revenue row", () => {
+    const s = summarizeProductMargins([
+      { productCode: "E", productName: "Elimination", revenue: -200, cost: -120 },
+    ])
+    expect(s.products[0].grossProfit).toBe(-80)
+    expect(s.products[0].cost).toBe(-120)
+  })
+
+  it("does not invent a 100% margin when no cost was posted", () => {
+    // Farming Services: 6,250 of revenue against a cost account summing to 0.
+    const s = summarizeProductMargins([
+      { productCode: "F", productName: "Farming Services", revenue: 6_250, cost: 0 },
+    ])
+    expect(s.products[0].marginPct).toBeNull()
+    expect(s.products[0].reason).toBe("zero_cost")
+    // And it must not drag the group toward 100% either.
+    expect(s.knownRevenue).toBe(0)
+    expect(s.revenueWithoutCost).toBe(6_250)
+  })
+
+  it("keeps a real loss, which is not an invented number", () => {
+    // Laboratory Services: 71,452 against 137,580 of genuine cost. Withholding
+    // this would hide a loss, which is the opposite failure.
+    const s = summarizeProductMargins([
+      { productCode: "L", productName: "Lab", revenue: 71_452, cost: 137_580 },
+    ])
+    expect(s.products[0].marginPct).toBeCloseTo(-92.5, 1)
+  })
+})
