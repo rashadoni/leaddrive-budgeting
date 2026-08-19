@@ -6325,7 +6325,10 @@
     "noCostData": "no data",
     "nothingDelivered": "Nothing was sold in the selected months, so there is nothing to compare.",
     "noCostProducts": "Products with no computable margin ({count})",
-    "chartLegend": "Length is gross profit in money, colour is the {target}% target, the label is the margin. Products with no cost are not drawn."
+    "chartLegend": "Length is gross profit in money, colour is the {target}% target, the label is the margin. Products with no cost are not drawn.",
+    "allProducts": "All products",
+    "byProduct": "By product",
+    "resetOne": "Reset"
   },
   "balanceRatios": {
     "title": "Balance sheet ratios",
