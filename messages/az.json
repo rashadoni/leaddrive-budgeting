@@ -6277,6 +6277,18 @@
       "consolidated_computed": "Konsolidasiya edilmiş (qrupdaxili əməliyyatlar çıxılıb)",
       "sum_of_entities": "Şirkətlərin cəmi (qrupdaxili çıxılmayıb)",
       "single_entity": "Tək şirkət"
-    }
+    },
+    "was": "əvvəl {value}",
+    "whatIf": "Nə olar, əgər…",
+    "simulated": "simulyasiya",
+    "reset": "Sıfırla",
+    "priceKnob": "Qiymət",
+    "costKnob": "Maya dəyəri",
+    "targetKnob": "Hədəf marja",
+    "whatIfNote": "Bu yalnız simulyasiyadır — heç nə yadda saxlanmır. Həcm sürgüsü yoxdur, çünki qiymət və vahid maya dəyəri dəyişmədikdə marja faizi həcmdən asılı deyil.",
+    "chartTitle": "Məhsullar üzrə marja",
+    "toTarget": "Hədəfə ({target}%)",
+    "meetsTarget": "hədəf tutulub",
+    "needs": "qiymət {price} və ya maya dəyəri {cost}"
   }
 }

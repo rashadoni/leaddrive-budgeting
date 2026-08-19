@@ -6277,6 +6277,18 @@
       "consolidated_computed": "Consolidated (intragroup eliminated)",
       "sum_of_entities": "Sum of entities (intragroup not eliminated)",
       "single_entity": "Single entity"
-    }
+    },
+    "was": "was {value}",
+    "whatIf": "What if…",
+    "simulated": "simulation",
+    "reset": "Reset",
+    "priceKnob": "Price",
+    "costKnob": "Cost of sales",
+    "targetKnob": "Target margin",
+    "whatIfNote": "A simulation only — nothing is saved. There is deliberately no volume slider: at a constant price and unit cost, margin percent does not move with volume.",
+    "chartTitle": "Margin by product",
+    "toTarget": "To target ({target}%)",
+    "meetsTarget": "target met",
+    "needs": "price {price} or cost {cost}"
   }
 }
