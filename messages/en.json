@@ -6328,7 +6328,15 @@
     "chartLegend": "Length is gross profit in money, colour is the {target}% target, the label is the margin. Products with no cost are not drawn.",
     "allProducts": "All products",
     "byProduct": "By product",
-    "resetOne": "Reset"
+    "resetOne": "Reset",
+    "yoyTitle": "Against the same months of {year}",
+    "yoyNote": "Both years are cut to the same months, so the comparison is like for like. Products with no usable cost are left out.",
+    "yoyPrior": "{year}",
+    "yoyCurrent": "This year",
+    "revenueChange": "revenue {pct}",
+    "yoyNotComparable": "{count} products cannot be compared: last year used a different chart of accounts (processing was one line, now it is seven).",
+    "emptyBudgetPlan": "This year's budget plan holds no lines — there is nothing to compare against. That is not the same as actual matching plan.",
+    "emptyAnnualPlan": "The annual plan holds no lines, so there is nothing to compare against."
   },
   "balanceRatios": {
     "title": "Balance sheet ratios",

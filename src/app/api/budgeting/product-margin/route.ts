@@ -7,6 +7,7 @@ import { resolvePnlEliminationScope } from "@/lib/onboarding/ai-import/pnl-elimi
 import { buildProductMarginsFromAccounts } from "@/lib/budgeting/product-margin-accounts"
 import { buildMarginComparison } from "@/lib/budgeting/product-margin-compare"
 import { buildAnnualProgress, type AnnualSide } from "@/lib/budgeting/product-margin-annual"
+import { buildYoyComparison, type YoySide } from "@/lib/budgeting/product-margin-yoy"
 import { decomposeMixAndRate } from "@/lib/budgeting/product-margin-mix"
 
 /**
@@ -164,7 +165,20 @@ export async function GET(req: NextRequest) {
       if (actualMonths.length === 0) return null
 
       const window = { in: actualMonths }
-      const [budgetTotals, actualTotals, budgetYearTotals] = await Promise.all([
+      // Last year's actuals for the SAME months. Cut to the same window for
+      // the same reason the budget is: five months against twelve would be a
+      // volume comparison dressed as a performance one.
+      const priorPlan = await tx.budgetPlan.findFirst({
+        where: {
+          organizationId: orgId,
+          year: actualPlan.year - 1,
+          kind: "actual",
+          deletedAt: null,
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true, year: true },
+      })
+      const [budgetTotals, actualTotals, budgetYearTotals, priorTotals] = await Promise.all([
         tx.budgetLine.groupBy({
           by: ["accountId"],
           where: { ...where, planId: budgetPlan.id, monthIndex: window },
@@ -184,10 +198,19 @@ export async function GET(req: NextRequest) {
           where: { ...where, planId: budgetPlan.id },
           _sum: { plannedAmount: true },
         }),
+        priorPlan
+          ? tx.budgetLine.groupBy({
+              by: ["accountId"],
+              where: { ...where, planId: priorPlan.id, monthIndex: window },
+              _sum: { plannedAmount: true },
+            })
+          : Promise.resolve([]),
       ])
       const ids = [
         ...new Set(
-          [...budgetTotals, ...actualTotals, ...budgetYearTotals].map((t) => t.accountId),
+          [...budgetTotals, ...actualTotals, ...budgetYearTotals, ...priorTotals].map(
+            (t) => t.accountId,
+          ),
         ),
       ]
       const cmpAccounts = await tx.chartOfAccount.findMany({
@@ -214,8 +237,26 @@ export async function GET(req: NextRequest) {
           cost: pr.cost,
         }))
 
+      const yoySides = (rows: ReturnType<typeof rowsOf>): YoySide[] =>
+        buildProductMarginsFromAccounts(rows).products.map((pr) => ({
+          productCode: pr.productCode,
+          productName: pr.productName,
+          revenue: pr.revenue,
+          cost: pr.cost,
+          marginPct: pr.marginPct,
+        }))
+
       return {
         ...cmp,
+        // Null rather than an empty shape when there is no prior year at all:
+        // "we have nothing to compare with" and "nothing changed" are not the
+        // same sentence, and the card must not be able to print the second.
+        yoy: priorPlan
+          ? {
+              priorYear: priorPlan.year,
+              ...buildYoyComparison(yoySides(rowsOf(priorTotals)), yoySides(rowsOf(actualTotals))),
+            }
+          : null,
         annual: buildAnnualProgress(
           asSides(rowsOf(budgetYearTotals)),
           asSides(rowsOf(budgetTotals)),

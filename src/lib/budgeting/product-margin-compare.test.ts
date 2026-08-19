@@ -142,3 +142,41 @@ describe("the basket the headline compares", () => {
     expect(none.common.actual.marginPct).toBeNull()
   })
 })
+
+describe("a plan that exists and holds nothing", () => {
+  const ACTUALS = [
+    { code: "PLF.01.02.01", name: "Glucose", amount: 3_581_237 },
+    { code: "PLF.02.02.01", name: "Glucose cost", amount: 2_389_537 },
+  ]
+
+  it("yields no comparable basket rather than a zero one", () => {
+    // The client's "Azərşəkər 2025 Budget" is a real plan row with zero lines.
+    // The card drew "Büdcə — 0 · Fərq +0" on it, which reads as "actual equals
+    // plan" — the opposite of what an absent plan means.
+    const c = buildMarginComparison([], ACTUALS)
+    expect(c.common.productCodes).toHaveLength(0)
+    expect(c.common.gapPoints).toBeNull()
+    expect(c.common.budget.marginPct).toBeNull()
+  })
+
+  it("reports the empty side as empty revenue, so a surface can tell which it is", () => {
+    // "No budget" and "nothing sold" need different words on screen, and this
+    // is what separates them.
+    const noBudget = buildMarginComparison([], ACTUALS)
+    expect(noBudget.budget.knownRevenue).toBe(0)
+    expect(noBudget.actual.knownRevenue).toBe(3_581_237)
+
+    const noActuals = buildMarginComparison(ACTUALS, [])
+    expect(noActuals.budget.knownRevenue).toBe(3_581_237)
+    expect(noActuals.actual.knownRevenue).toBe(0)
+  })
+
+  it("does not file everything as sold-outside-the-plan when there is no plan", () => {
+    // With no plan at all, "outside the plan" is just "sold", and presenting
+    // the whole business under that heading would be a category error.
+    const c = buildMarginComparison([], ACTUALS)
+    expect(c.common.productCodes).toHaveLength(0)
+    // The data still carries it; the surface is what must not draw the block.
+    expect(c.outsidePlan.revenue).toBe(3_581_237)
+  })
+})

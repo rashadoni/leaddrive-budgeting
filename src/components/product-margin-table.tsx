@@ -64,6 +64,32 @@ interface BasketTotals {
   marginPct: number | null
 }
 
+interface YoyTotals {
+  revenue: number
+  cost: number
+  grossProfit: number
+  marginPct: number | null
+}
+
+interface YoyBlock {
+  priorYear: number
+  prior: YoyTotals
+  current: YoyTotals
+  marginGapPoints: number | null
+  revenueChange: number | null
+  products: {
+    productCode: string
+    productName: string
+    priorRevenue: number
+    priorMarginPct: number
+    currentRevenue: number
+    currentMarginPct: number
+    marginGapPoints: number
+    revenueChange: number | null
+  }[]
+  notComparable: number
+}
+
 interface AnnualRow {
   productCode: string
   productName: string
@@ -100,8 +126,9 @@ interface MarginComparison {
     actual: ComparedSide | null
     gapPoints: number | null
   }[]
-  budget: { knownMarginPct: number | null }
-  actual: { knownMarginPct: number | null }
+  budget: { knownRevenue: number; knownMarginPct: number | null }
+  actual: { knownRevenue: number; knownMarginPct: number | null }
+  budgetPlan?: { name: string; year: number } | null
   gapPoints: number | null
   common: {
     productCodes: string[]
@@ -113,6 +140,8 @@ interface MarginComparison {
     products: { productCode: string; productName: string; revenue: number; marginPct: number | null }[]
   }
   annual: AnnualRow[]
+  /** Null when no prior-year actuals exist at all. */
+  yoy: YoyBlock | null
   monthsCompared: number[]
 }
 
@@ -413,6 +442,7 @@ export function ProductMarginTable({
           at 28% and is delivering 1.1%. It sits ABOVE the sliders because it
           is the reading; the sliders are what you do about it. */}
       {data.comparison && <ComparisonCard c={data.comparison} t={t} />}
+      {data.comparison?.yoy && <YoyCard y={data.comparison.yoy} t={t} />}
       {data.comparison && data.comparison.annual.length > 0 && (
         <AnnualCard rows={data.comparison.annual} t={t} />
       )}
@@ -684,6 +714,16 @@ function ComparisonCard({
    * not a pricing one — and it now has its own block rather than being folded
    * into a percentage that looks like performance.
    */
+  /**
+   * A plan can EXIST and hold nothing. The client's "Azərşəkər 2025 Budget"
+   * has zero lines, and on that plan this card drew "Büdcə —, 0 · Fərq +0",
+   * which reads as "actual equals plan" — the opposite of the truth, which is
+   * that there is no plan to compare against. Nothing here is wrong with the
+   * arithmetic; the arithmetic simply has nothing to say, and saying so is a
+   * different sentence from saying zero.
+   */
+  const nothingToCompare = c.common.productCodes.length === 0
+  const emptyBudget = c.budget.knownRevenue === 0
   const b = c.common.budget
   const a = c.common.actual
   const gp = a.grossProfit - b.grossProfit
@@ -714,6 +754,11 @@ function ComparisonCard({
           </p>
         </div>
 
+        {nothingToCompare ? (
+          <p className="text-sm text-muted-foreground">
+            {emptyBudget ? t("emptyBudgetPlan") : t("nothingDelivered")}
+          </p>
+        ) : (
         <div className="flex flex-wrap gap-8 text-sm">
           <div>
             <div className="text-xs text-muted-foreground">{t("budgetSide")}</div>
@@ -764,12 +809,11 @@ function ComparisonCard({
             </div>
           </div>
         </div>
-
-        {rows.length === 0 && (
-          <p className="text-sm text-muted-foreground">{t("nothingDelivered")}</p>
         )}
 
-        {c.outsidePlan.products.length > 0 && (
+        {/* With no comparable basket, "sold outside the plan" is just "sold",
+            and the mix decomposition has nothing to decompose. */}
+        {!nothingToCompare && c.outsidePlan.products.length > 0 && (
           <div className="rounded-md border p-3 space-y-1 text-sm">
             <div className="font-medium">{t("outsidePlanTitle")}</div>
             <p className="text-xs text-muted-foreground">{t("outsidePlanNote")}</p>
@@ -794,9 +838,9 @@ function ComparisonCard({
         )}
 
         {/* Rates or the basket, within the compared set. */}
-        <WhyMoved m={c.mixRate} t={t} />
+        {!nothingToCompare && <WhyMoved m={c.mixRate} t={t} />}
 
-        {gaps.length > 0 && (
+        {!nothingToCompare && gaps.length > 0 && (
           <ResponsiveContainer width="100%" height={Math.max(180, gaps.length * 30)}>
             <BarChart data={gaps} layout="vertical" margin={{ left: 8, right: 24 }}>
               <CartesianGrid {...GRID_STYLE} horizontal={false} vertical />
@@ -821,6 +865,7 @@ function ComparisonCard({
           </ResponsiveContainer>
         )}
 
+        {!nothingToCompare && (
         <Disclosure label={t("byProduct")} count={rows.length}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -879,6 +924,146 @@ function ComparisonCard({
           </table>
         </div>
         </Disclosure>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * This year against last, on the same months.
+ *
+ * The screen could compare against a plan two ways and against last year not
+ * at all — so the best figure in the client's data went unsaid: on the same
+ * five months revenue went 6,970,782 → 12,611,333 while the margin moved 19.2%
+ * → 21.5%. More revenue at a better rate.
+ *
+ * Per product it says much less, and says so out loud. The 2025 chart carried
+ * the whole processing business as ONE line; the 2026 chart splits it into
+ * seven. Ten of thirteen priced products have no counterpart, and the count is
+ * printed beside the three that do — a table of three, unexplained, would read
+ * as the whole business.
+ */
+function YoyCard({
+  y,
+  t,
+}: {
+  y: YoyBlock
+  t: ReturnType<typeof useTranslations<"productMargin">>
+}) {
+  const rows = disambiguate(y.products)
+  const pct = (v: number | null) => (v === null ? "—" : `${v.toFixed(1)}%`)
+  return (
+    <Card>
+      <CardContent className="p-6 space-y-4">
+        <div>
+          <h3 className="font-medium">{t("yoyTitle", { year: y.priorYear })}</h3>
+          <p className="text-xs text-muted-foreground pt-1">{t("yoyNote")}</p>
+        </div>
+
+        <div className="flex flex-wrap gap-8 text-sm">
+          <div>
+            <div className="text-xs text-muted-foreground">{t("yoyPrior", { year: y.priorYear })}</div>
+            <div className="text-lg font-semibold tabular-nums">{pct(y.prior.marginPct)}</div>
+            <div className="text-xs text-muted-foreground tabular-nums">
+              {money.format(y.prior.revenue)}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">{t("yoyCurrent")}</div>
+            <div
+              className="text-lg font-semibold tabular-nums"
+              style={{ color: relativeTone(y.current.marginPct, y.prior.marginPct) }}
+            >
+              {pct(y.current.marginPct)}
+            </div>
+            <div className="text-xs text-muted-foreground tabular-nums">
+              {money.format(y.current.revenue)}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">{t("gap")}</div>
+            <div
+              className="text-lg font-semibold tabular-nums"
+              style={{
+                color:
+                  y.marginGapPoints === null
+                    ? undefined
+                    : y.marginGapPoints < 0
+                      ? BUDGET_COLORS.negative
+                      : BUDGET_COLORS.positive,
+              }}
+            >
+              {y.marginGapPoints === null
+                ? "—"
+                : `${arrow(y.marginGapPoints)} ${y.marginGapPoints >= 0 ? "+" : ""}${y.marginGapPoints.toFixed(1)} ${t("points")}`}
+            </div>
+            {y.revenueChange !== null && (
+              <div className="text-xs text-muted-foreground tabular-nums">
+                {t("revenueChange", {
+                  pct: `${y.revenueChange >= 0 ? "+" : ""}${(y.revenueChange * 100).toFixed(0)}%`,
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Never a bare table of three. The reader is told how much of the
+            business it does not cover, and why. */}
+        {y.notComparable > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {t("yoyNotComparable", { count: y.notComparable })}
+          </p>
+        )}
+
+        {rows.length > 0 && (
+          <Disclosure label={t("byProduct")} count={rows.length}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b">
+                  <tr className="text-left">
+                    <th className="py-2 font-medium">{t("product")}</th>
+                    <th className="py-2 font-medium text-right">{y.priorYear}</th>
+                    <th className="py-2 font-medium text-right">{t("yoyCurrent")}</th>
+                    <th className="py-2 font-medium text-right">{t("gap")}</th>
+                    <th className="py-2 font-medium text-right">{t("revenue")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((p) => (
+                    <tr key={p.productCode} className="border-b last:border-0">
+                      <td className="py-2">{p.label}</td>
+                      <td className="py-2 text-right tabular-nums">
+                        <Pct value={p.priorMarginPct} noData={t("noMarginData")} />
+                      </td>
+                      <td className="py-2 text-right tabular-nums">
+                        <Pct value={p.currentMarginPct} noData={t("noMarginData")} />
+                      </td>
+                      <td className="py-2 text-right tabular-nums">
+                        <span
+                          style={{
+                            color:
+                              p.marginGapPoints < 0
+                                ? BUDGET_COLORS.negative
+                                : BUDGET_COLORS.positive,
+                          }}
+                        >
+                          {arrow(p.marginGapPoints)} {p.marginGapPoints >= 0 ? "+" : ""}
+                          {p.marginGapPoints.toFixed(1)}
+                        </span>
+                      </td>
+                      <td className="py-2 text-right tabular-nums text-muted-foreground">
+                        {p.revenueChange === null
+                          ? "—"
+                          : `${p.revenueChange >= 0 ? "+" : ""}${(p.revenueChange * 100).toFixed(0)}%`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Disclosure>
+        )}
       </CardContent>
     </Card>
   )
@@ -903,6 +1088,9 @@ function AnnualCard({
   t: ReturnType<typeof useTranslations<"productMargin">>
 }) {
   const labelled = disambiguate(rows)
+  // Same trap as the comparison card: an annual plan that exists and holds
+  // nothing would draw a table of dashes rather than say it is empty.
+  const noPlan = rows.every((r) => r.planRevenue === 0)
   return (
     <Card>
       <CardContent className="p-6 space-y-3">
@@ -910,6 +1098,8 @@ function AnnualCard({
           <h3 className="font-medium">{t("annualTitle")}</h3>
           <p className="text-xs text-muted-foreground pt-1">{t("annualNote")}</p>
         </div>
+        {noPlan && <p className="text-sm text-muted-foreground">{t("emptyAnnualPlan")}</p>}
+        {!noPlan && (
         <Disclosure label={t("byProduct")} count={labelled.length}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -971,6 +1161,7 @@ function AnnualCard({
           </table>
         </div>
         </Disclosure>
+        )}
       </CardContent>
     </Card>
   )

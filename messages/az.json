@@ -6328,7 +6328,15 @@
     "chartLegend": "Uzunluq — ümumi mənfəət (pul), rəng — {target}% hədəfə münasibət, yazı — marja faizi. Maya dəyəri bilinməyən məhsullar burada göstərilmir.",
     "allProducts": "Bütün məhsullar",
     "byProduct": "Məhsullar üzrə",
-    "resetOne": "Sıfırla"
+    "resetOne": "Sıfırla",
+    "yoyTitle": "{year}-ci ilin eyni aylarına qarşı",
+    "yoyNote": "Hər iki il eyni aylara kəsilib, ona görə də müqayisə düzgündür. Maya dəyəri bilinməyən məhsullar hesaba daxil deyil.",
+    "yoyPrior": "{year}",
+    "yoyCurrent": "Bu il",
+    "revenueChange": "gəlir {pct}",
+    "yoyNotComparable": "{count} məhsulu müqayisə etmək mümkün deyil: keçən il hesablar planı başqa idi (emal bir sətir idi, indi yeddi).",
+    "emptyBudgetPlan": "Bu ilin büdcə planında heç bir sətir yoxdur — müqayisə etmək üçün heç nə yoxdur. Bu, «fakt plana bərabərdir» demək deyil.",
+    "emptyAnnualPlan": "İllik planda sətir yoxdur, ona görə də plana qarşı müqayisə mümkün deyil."
   },
   "balanceRatios": {
     "title": "Balans əmsalları",
