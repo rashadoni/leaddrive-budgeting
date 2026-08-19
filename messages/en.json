@@ -6289,6 +6289,12 @@
     "chartTitle": "Margin by product",
     "toTarget": "To target ({target}%)",
     "meetsTarget": "target met",
-    "needs": "price {price} or cost {cost}"
+    "needs": "price {price} or cost {cost}",
+    "comparisonTitle": "Margin: budget against actual",
+    "comparedOn": "Compared on months {period} · {count} months — both sides cut to the months the actuals carry",
+    "budgetSide": "Budget",
+    "actualSide": "Actual",
+    "gap": "Gap",
+    "points": "pts"
   }
 }

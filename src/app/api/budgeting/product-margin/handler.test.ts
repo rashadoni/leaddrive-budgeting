@@ -60,6 +60,15 @@ const TOTALS = [
   { accountId: "a4", _sum: { plannedAmount: 34_635 } },
 ]
 
+const BUDGET_PLAN = { id: "plan_2", name: "Azərşəkər 2026 Budget", year: 2026, kind: "budget" }
+
+/** Every groupBy the route made, with the args it used. */
+function groupByCalls() {
+  return prismaMock.budgetLine.groupBy.mock.calls as Array<
+    [{ by: string[]; where: Record<string, unknown> }]
+  >
+}
+
 function stubHappyPath(monthIndexes = [0, 1, 2, 3, 4]) {
   prismaMock.budgetPlan.findFirst.mockResolvedValue(PLAN)
   prismaMock.chartOfAccount.findMany.mockResolvedValue(ACCOUNTS)
@@ -174,5 +183,66 @@ describe("GET /api/budgeting/product-margin", () => {
       makeRequest("http://x/api/budgeting/product-margin?planId=plan_1&companyId=co_other"),
     )
     expect(res.status).toBe(404)
+  })
+})
+
+describe("budget against actual, like for like", () => {
+  beforeEach(() => {
+    prismaMock.chartOfAccount.findMany.mockResolvedValue(ACCOUNTS)
+    prismaMock.budgetLine.groupBy.mockImplementation(async (args: { by: string[] }) =>
+      args.by.includes("monthIndex") ? [0, 1, 2, 3, 4].map((monthIndex) => ({ monthIndex })) : TOTALS,
+    )
+  })
+
+  it("cuts the budget side to the months the actuals actually carry", async () => {
+    // The whole point: five months of delivery must not be set against twelve
+    // months of plan. Both comparison reads carry the actual's month window.
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce(PLAN)
+      .mockResolvedValueOnce(BUDGET_PLAN)
+
+    const res = await GET(makeRequest("http://x/api/budgeting/product-margin?planId=plan_1"))
+    const body = await res.json()
+
+    const windowed = groupByCalls().filter(
+      ([a]) => a.by.includes("accountId") && a.where.monthIndex !== undefined,
+    )
+    expect(windowed).toHaveLength(2)
+    for (const [a] of windowed) {
+      expect(a.where.monthIndex).toEqual({ in: [0, 1, 2, 3, 4] })
+    }
+    // One read per side, and they are the two different plans.
+    expect(new Set(windowed.map(([a]) => a.where.planId))).toEqual(
+      new Set(["plan_1", "plan_2"]),
+    )
+    // Stated back 1-based, so January–May is not reported as February–June.
+    expect(body.comparison.monthsCompared).toEqual([1, 2, 3, 4, 5])
+  })
+
+  it("says nothing rather than guessing when there is no counterpart plan", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce(PLAN)
+      .mockResolvedValueOnce(null)
+
+    const res = await GET(makeRequest("http://x/api/budgeting/product-margin?planId=plan_1"))
+    const body = await res.json()
+    expect(body.comparison).toBeNull()
+    // And the main table is unaffected — the screen still answers its own question.
+    expect(body.products.length).toBeGreaterThan(0)
+  })
+
+  it("says nothing when the actuals side is empty", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce(PLAN)
+      .mockResolvedValueOnce(BUDGET_PLAN)
+    prismaMock.budgetLine.groupBy.mockImplementation(async (args: { by: string[] }) =>
+      args.by.includes("monthIndex") ? [] : TOTALS,
+    )
+
+    const res = await GET(makeRequest("http://x/api/budgeting/product-margin?planId=plan_1"))
+    expect((await res.json()).comparison).toBeNull()
   })
 })

@@ -45,6 +45,27 @@ import {
   isSimulating, NO_CHANGE, type MarginKnobs,
 } from "@/lib/budgeting/product-margin-whatif"
 
+interface ComparedSide {
+  revenue: number
+  cost: number | null
+  marginPct: number | null
+  reason?: "no_cost_data" | "no_revenue"
+}
+
+interface MarginComparison {
+  products: {
+    productCode: string
+    productName: string
+    budget: ComparedSide | null
+    actual: ComparedSide | null
+    gapPoints: number | null
+  }[]
+  budget: { knownMarginPct: number | null }
+  actual: { knownMarginPct: number | null }
+  gapPoints: number | null
+  monthsCompared: number[]
+}
+
 interface ProductMarginResponse {
   success: true
   plan: { id: string; name: string; year: number; kind: string }
@@ -56,6 +77,7 @@ interface ProductMarginResponse {
   contraRevenue: number
   contraRevenueAccounts: { code: string; name: string; amount: number }[]
   unpairedCostAccounts: { code: string; name: string; amount: number }[]
+  comparison: MarginComparison | null
   monthsCovered: number[]
   basis: "consolidated_computed" | "sum_of_entities" | "single_entity"
 }
@@ -181,6 +203,12 @@ export function ProductMarginTable({
           </CardContent>
         </Card>
       </div>
+
+      {/* Budget against actual, on equal months. This is the sentence the
+          client asked for and the reason the split exists: cotton was planned
+          at 28% and is delivering 1.1%. It sits ABOVE the sliders because it
+          is the reading; the sliders are what you do about it. */}
+      {data.comparison && <ComparisonCard c={data.comparison} t={t} />}
 
       {/* The what-if. Volume is deliberately absent: at a constant price and
           unit cost the margin PERCENT does not move with volume, so a volume
@@ -367,6 +395,144 @@ export function ProductMarginTable({
       )}
     </div>
   )
+}
+
+function ComparisonCard({
+  c,
+  t,
+}: {
+  c: MarginComparison
+  t: ReturnType<typeof useTranslations<"productMargin">>
+}) {
+  const months = c.monthsCompared
+  const period = months.length > 0 ? `${months[0]}–${months[months.length - 1]}` : "—"
+  const gaps = c.products
+    .filter((p) => p.gapPoints !== null)
+    .map((p) => ({ name: shortLabel(p.productName), gap: p.gapPoints as number }))
+
+  return (
+    <Card>
+      <CardContent className="p-6 space-y-4">
+        <div>
+          <h3 className="font-medium">{t("comparisonTitle")}</h3>
+          {/* Never let the window be inferred. Five months of delivery against
+              twelve months of plan is the failure this whole block avoids. */}
+          <p className="text-xs text-muted-foreground pt-1">
+            {t("comparedOn", { period, count: months.length })}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-6 text-sm">
+          <Figure label={t("budgetSide")} pct={c.budget.knownMarginPct} />
+          <Figure label={t("actualSide")} pct={c.actual.knownMarginPct} />
+          <div>
+            <div className="text-xs text-muted-foreground">{t("gap")}</div>
+            <div
+              className="text-lg font-semibold tabular-nums"
+              style={{
+                color:
+                  c.gapPoints === null
+                    ? undefined
+                    : c.gapPoints < 0
+                      ? BUDGET_COLORS.negative
+                      : BUDGET_COLORS.positive,
+              }}
+            >
+              {c.gapPoints === null
+                ? "—"
+                : `${c.gapPoints >= 0 ? "+" : ""}${c.gapPoints.toFixed(1)} ${t("points")}`}
+            </div>
+          </div>
+        </div>
+
+        {gaps.length > 0 && (
+          <ResponsiveContainer width="100%" height={Math.max(180, gaps.length * 30)}>
+            <BarChart data={gaps} layout="vertical" margin={{ left: 8, right: 24 }}>
+              <CartesianGrid {...GRID_STYLE} horizontal={false} vertical />
+              <XAxis type="number" tick={AXIS_TICK} />
+              <YAxis type="category" dataKey="name" width={150} tick={AXIS_TICK} />
+              <Tooltip
+                formatter={(v) =>
+                  typeof v === "number" ? `${v >= 0 ? "+" : ""}${v.toFixed(1)}` : String(v ?? "")
+                }
+                contentStyle={{ fontSize: 12 }}
+              />
+              <ReferenceLine x={0} stroke={BUDGET_COLORS.neutral} />
+              <Bar dataKey="gap" radius={[0, 3, 3, 0]}>
+                {gaps.map((g) => (
+                  <Cell
+                    key={g.name}
+                    fill={g.gap < 0 ? BUDGET_COLORS.negative : BUDGET_COLORS.positive}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b">
+              <tr className="text-left">
+                <th className="py-2 font-medium">{t("product")}</th>
+                <th className="py-2 font-medium text-right">{t("budgetSide")}</th>
+                <th className="py-2 font-medium text-right">{t("actualSide")}</th>
+                <th className="py-2 font-medium text-right">{t("gap")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.products.map((p) => (
+                <tr key={p.productCode} className="border-b last:border-0">
+                  <td className="py-2">{p.productName}</td>
+                  <td className="py-2 text-right tabular-nums">
+                    <Pct value={p.budget?.marginPct ?? null} />
+                  </td>
+                  <td className="py-2 text-right tabular-nums">
+                    <Pct value={p.actual?.marginPct ?? null} />
+                  </td>
+                  <td className="py-2 text-right tabular-nums">
+                    {p.gapPoints === null ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span
+                        style={{
+                          color:
+                            p.gapPoints < 0 ? BUDGET_COLORS.negative : BUDGET_COLORS.positive,
+                        }}
+                      >
+                        {p.gapPoints >= 0 ? "+" : ""}
+                        {p.gapPoints.toFixed(1)}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function Figure({ label, pct }: { label: string; pct: number | null }) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div
+        className="text-lg font-semibold tabular-nums"
+        style={{ color: pct === null ? undefined : tone(pct) }}
+      >
+        {pct === null ? "—" : `${pct.toFixed(1)}%`}
+      </div>
+    </div>
+  )
+}
+
+/** A margin that is not known must not render as a number. */
+function Pct({ value }: { value: number | null }) {
+  if (value === null) return <span className="text-muted-foreground">—</span>
+  return <span style={{ color: tone(value) }}>{value.toFixed(1)}%</span>
 }
 
 function Knob({

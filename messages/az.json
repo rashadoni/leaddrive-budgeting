@@ -6289,6 +6289,12 @@
     "chartTitle": "Məhsullar üzrə marja",
     "toTarget": "Hədəfə ({target}%)",
     "meetsTarget": "hədəf tutulub",
-    "needs": "qiymət {price} və ya maya dəyəri {cost}"
+    "needs": "qiymət {price} və ya maya dəyəri {cost}",
+    "comparisonTitle": "Büdcə və fakt üzrə marja",
+    "comparedOn": "Müqayisə {period} ayları üzrə · {count} ay — hər iki tərəf faktın olduğu aylara kəsilib",
+    "budgetSide": "Büdcə",
+    "actualSide": "Fakt",
+    "gap": "Fərq",
+    "points": "f.b."
   }
 }
