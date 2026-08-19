@@ -6,6 +6,7 @@ import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { resolvePnlEliminationScope } from "@/lib/onboarding/ai-import/pnl-elimination-scope"
 import { buildProductMarginsFromAccounts } from "@/lib/budgeting/product-margin-accounts"
 import { buildMarginComparison } from "@/lib/budgeting/product-margin-compare"
+import { buildAnnualProgress, type AnnualSide } from "@/lib/budgeting/product-margin-annual"
 import { decomposeMixAndRate } from "@/lib/budgeting/product-margin-mix"
 
 /**
@@ -163,7 +164,7 @@ export async function GET(req: NextRequest) {
       if (actualMonths.length === 0) return null
 
       const window = { in: actualMonths }
-      const [budgetTotals, actualTotals] = await Promise.all([
+      const [budgetTotals, actualTotals, budgetYearTotals] = await Promise.all([
         tx.budgetLine.groupBy({
           by: ["accountId"],
           where: { ...where, planId: budgetPlan.id, monthIndex: window },
@@ -174,8 +175,21 @@ export async function GET(req: NextRequest) {
           where: { ...where, planId: actualPlan.id, monthIndex: window },
           _sum: { plannedAmount: true },
         }),
+        // The SAME budget plan with no month filter. Crops are planned wholly
+        // into the second half of the year, so the windowed figures above
+        // contain nothing for them and the card built from those figures
+        // cannot show a cotton plan of 28% against 1.1% delivered.
+        tx.budgetLine.groupBy({
+          by: ["accountId"],
+          where: { ...where, planId: budgetPlan.id },
+          _sum: { plannedAmount: true },
+        }),
       ])
-      const ids = [...new Set([...budgetTotals, ...actualTotals].map((t) => t.accountId))]
+      const ids = [
+        ...new Set(
+          [...budgetTotals, ...actualTotals, ...budgetYearTotals].map((t) => t.accountId),
+        ),
+      ]
       const cmpAccounts = await tx.chartOfAccount.findMany({
         where: { id: { in: ids } },
         select: { id: true, code: true, name: true },
@@ -189,14 +203,33 @@ export async function GET(req: NextRequest) {
         })
 
       const cmp = buildMarginComparison(rowsOf(budgetTotals), rowsOf(actualTotals))
+
+      // Reuses the revenue↔cost pairing rather than re-deriving it, so the
+      // annual view cannot pair products differently from the windowed one.
+      const asSides = (rows: ReturnType<typeof rowsOf>): AnnualSide[] =>
+        buildProductMarginsFromAccounts(rows).products.map((pr) => ({
+          productCode: pr.productCode,
+          productName: pr.productName,
+          revenue: pr.revenue,
+          cost: pr.cost,
+        }))
+
       return {
         ...cmp,
+        annual: buildAnnualProgress(
+          asSides(rowsOf(budgetYearTotals)),
+          asSides(rowsOf(budgetTotals)),
+          asSides(rowsOf(actualTotals)),
+        ),
         // Free: no extra query, the decomposition is arithmetic on what the
         // comparison already computed.
+        // Decomposed over the COMMON basket, so mix + rate reconcile to the
+        // gap the card prints. Fed the whole basket it decomposes a different
+        // number than the headline shows, and the reader has no way to tell.
         mixRate: decomposeMixAndRate(
-          cmp.products,
-          cmp.budget.knownMarginPct,
-          cmp.actual.knownMarginPct,
+          cmp.products.filter((pr) => pr.gapPoints !== null),
+          cmp.common.budget.marginPct,
+          cmp.common.actual.marginPct,
         ),
         budgetPlan,
         actualPlan,

@@ -76,3 +76,69 @@ describe("budget against actual", () => {
     expect(buildMarginComparison(BUDGET, []).gapPoints).toBeNull()
   })
 })
+
+describe("the basket the headline compares", () => {
+  /**
+   * The client's January–May 2026, reduced to the shape that matters: three
+   * products planned and delivered, one crop delivered against a plan that
+   * lives in the second half of the year.
+   */
+  const B = [
+    { code: "PLF.01.02.01", name: "Glucose", amount: 2_654_310 },
+    { code: "PLF.02.02.01", name: "Glucose cost", amount: 1_783_956 },
+    { code: "PLF.01.02.02", name: "Corn Starch", amount: 1_847_560 },
+    { code: "PLF.02.02.02", name: "Corn Starch cost", amount: 1_227_183 },
+  ]
+  const A = [
+    { code: "PLF.01.02.01", name: "Glucose", amount: 3_581_237 },
+    { code: "PLF.02.02.01", name: "Glucose cost", amount: 2_389_537 },
+    { code: "PLF.01.02.02", name: "Corn Starch", amount: 2_260_091 },
+    { code: "PLF.02.02.02", name: "Corn Starch cost", amount: 1_561_466 },
+    // Cotton: sold, but the plan puts it in June–December, so nothing here.
+    { code: "PLF.01.01.05", name: "Cotton", amount: 1_387_524 },
+    { code: "PLF.02.01.05", name: "Cotton cost", amount: 1_371_625 },
+  ]
+
+  const c = buildMarginComparison(B, A)
+
+  it("holds the common basket to products known on both sides", () => {
+    expect(c.common.productCodes.sort()).toEqual(["PLF.01.02.01", "PLF.01.02.02"])
+  })
+
+  it("does not let an unplanned product move the compared margin", () => {
+    // Whole-basket actual is dragged down by cotton at 1.1%; the common
+    // basket is not. This is the −3.6 vs −0.1 point difference in miniature.
+    expect(c.actual.knownMarginPct).toBeCloseTo(26.37, 2)
+    expect(c.common.actual.marginPct).toBeCloseTo(32.36, 2)
+    expect(c.common.budget.marginPct).toBeCloseTo(33.11, 2)
+    expect(c.common.gapPoints).toBeCloseTo(-0.75, 2)
+  })
+
+  it("reports the unplanned delivery separately, with its money", () => {
+    expect(c.outsidePlan.products.map((p) => p.productCode)).toEqual(["PLF.01.01.05"])
+    expect(c.outsidePlan.revenue).toBe(1_387_524)
+    expect(c.outsidePlan.grossProfit).toBe(15_899)
+    expect(c.outsidePlan.marginPct).toBeCloseTo(1.1, 1)
+  })
+
+  it("carries the money, not only the rate, for both compared sides", () => {
+    // The card said margin fell while gross profit rose; it could not show
+    // that, because only percentages reached the surface.
+    expect(c.common.budget.grossProfit).toBe(2_654_310 - 1_783_956 + (1_847_560 - 1_227_183))
+    expect(c.common.actual.grossProfit).toBe(3_581_237 - 2_389_537 + (2_260_091 - 1_561_466))
+    expect(c.common.actual.grossProfit).toBeGreaterThan(c.common.budget.grossProfit)
+  })
+
+  it("weighs the basket by money and not by product count", () => {
+    // Corn Starch's 30.9% must not weigh the same as Glucose's 33.3%.
+    const mean = (33.3 + 30.9) / 2
+    expect(c.common.actual.marginPct).not.toBeCloseTo(mean, 1)
+  })
+
+  it("leaves the common basket empty when nothing is comparable", () => {
+    const none = buildMarginComparison([], A)
+    expect(none.common.productCodes).toHaveLength(0)
+    expect(none.common.gapPoints).toBeNull()
+    expect(none.common.actual.marginPct).toBeNull()
+  })
+})

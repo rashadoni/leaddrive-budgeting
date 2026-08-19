@@ -47,12 +47,73 @@ export interface ComparedProduct {
   gapPoints: number | null
 }
 
+export interface BasketTotals {
+  revenue: number
+  cost: number
+  grossProfit: number
+  marginPct: number | null
+}
+
 export interface MarginComparison {
   products: ComparedProduct[]
   budget: { knownRevenue: number; knownCost: number; knownMarginPct: number | null }
   actual: { knownRevenue: number; knownCost: number; knownMarginPct: number | null }
-  /** Group margin gap in percentage points, null if either side has none. */
+  /**
+   * Whole-basket gap: each side over its own set of products. Kept because it
+   * reconciles to the P&L, but it is NOT the headline — see `common`.
+   */
   gapPoints: number | null
+  /**
+   * Both sides restricted to the products that carry a known margin on BOTH.
+   * This is the comparison a reader believes they are being shown.
+   *
+   * Measured on the client's January–May 2026: the whole-basket reading is
+   * 25.1% against 21.6%, a gap of −3.6 points, and it is quoted as
+   * performance. On the eight products present in both plans it is 25.1%
+   * against 25.0% — one tenth of a point. The other 3.5 points are products
+   * the plan does not contain in this window at all, and calling that a
+   * margin miss sends someone to renegotiate prices that never moved.
+   */
+  common: {
+    productCodes: string[]
+    budget: BasketTotals
+    actual: BasketTotals
+    gapPoints: number | null
+  }
+  /**
+   * Delivered against no plan in this window. Reported with its money rather
+   * than folded into a percentage, because the reader's question about it is
+   * "how much and at what rate", not "how many points".
+   */
+  outsidePlan: BasketTotals & {
+    products: Array<{
+      productCode: string
+      productName: string
+      revenue: number
+      marginPct: number | null
+    }>
+  }
+}
+
+const EMPTY: BasketTotals = { revenue: 0, cost: 0, grossProfit: 0, marginPct: null }
+
+function basket(sides: ReadonlyArray<ComparedSide>): BasketTotals {
+  let revenue = 0
+  let cost = 0
+  for (const s of sides) {
+    if (s.cost === null) continue
+    revenue += s.revenue
+    cost += s.cost
+  }
+  const grossProfit = revenue - cost
+  return {
+    revenue,
+    cost,
+    grossProfit,
+    // Weighted by money, never the mean of the per-product percentages: a
+    // 6,250 line would otherwise weigh as much as a 3.6M one.
+    marginPct: revenue === 0 ? null : (grossProfit / revenue) * 100,
+  }
 }
 
 function sideOf(p: ProductMargin | undefined): ComparedSide | null {
@@ -114,6 +175,17 @@ export function buildMarginComparison(
     knownMarginPct: s.knownMarginPct,
   })
 
+  // Known on BOTH sides. `gapPoints !== null` is exactly that condition, so
+  // the basket cannot drift from the per-product gaps shown beside it.
+  const paired = products.filter((p) => p.gapPoints !== null)
+  const commonBudget = basket(paired.map((p) => p.budget as ComparedSide))
+  const commonActual = basket(paired.map((p) => p.actual as ComparedSide))
+
+  const orphans = products.filter(
+    (p) => p.gapPoints === null && p.actual != null && p.actual.marginPct !== null,
+  )
+  const orphanTotals = basket(orphans.map((p) => p.actual as ComparedSide))
+
   return {
     products,
     budget: pick(budget),
@@ -122,5 +194,23 @@ export function buildMarginComparison(
       budget.knownMarginPct === null || actual.knownMarginPct === null
         ? null
         : actual.knownMarginPct - budget.knownMarginPct,
+    common: {
+      productCodes: paired.map((p) => p.productCode),
+      budget: commonBudget,
+      actual: commonActual,
+      gapPoints:
+        commonBudget.marginPct === null || commonActual.marginPct === null
+          ? null
+          : commonActual.marginPct - commonBudget.marginPct,
+    },
+    outsidePlan: {
+      ...(orphans.length === 0 ? EMPTY : orphanTotals),
+      products: orphans.map((p) => ({
+        productCode: p.productCode,
+        productName: p.productName,
+        revenue: p.actual?.revenue ?? 0,
+        marginPct: p.actual?.marginPct ?? null,
+      })),
+    },
   }
 }

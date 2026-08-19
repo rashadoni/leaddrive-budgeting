@@ -44,6 +44,19 @@ export type ProductMarginReason =
   | "no_cost_data"
   /** Cost is known but revenue is zero, so the ratio has no denominator. */
   | "no_revenue"
+  /**
+   * A cost account exists for this product and sums to exactly zero, which
+   * arithmetic turns into a 100% margin. Nothing in this business sells at
+   * 100% gross margin, so a zero here means the costs were not posted, not
+   * that they were nil — measured case: Farming Services, 6,250 of revenue
+   * against a cost account summing to 0, rendering as "100.0%".
+   *
+   * The cost is still reported as 0 (that IS what the books say); only the
+   * RATIO is withheld. A genuinely costless product would be misreported by
+   * this rule, and that is the intended trade: a withheld ratio sends someone
+   * to check the mapping, while a 100% margin sends them nowhere.
+   */
+  | "zero_cost"
 
 export interface ProductMargin {
   productCode: string
@@ -90,6 +103,10 @@ function marginOf(input: ProductMarginInput): ProductMargin {
     // Cost with no revenue: the profit is real (negative), the RATIO is not.
     return { ...base, cost: input.cost, grossProfit, marginPct: null, reason: "no_revenue" }
   }
+  if (input.cost === 0) {
+    // See `zero_cost`. Money kept, ratio withheld.
+    return { ...base, cost: 0, grossProfit, marginPct: null, reason: "zero_cost" }
+  }
   return {
     ...base,
     cost: input.cost,
@@ -106,7 +123,10 @@ export function summarizeProductMargins(
   let knownCost = 0
   let revenueWithoutCost = 0
   for (const p of products) {
-    if (p.cost === null) {
+    // A cost we do not believe must not enter the group ratio. `no_revenue`
+    // stays in: its cost is real and belongs in the group's numerator, it
+    // simply has no denominator of its own.
+    if (p.cost === null || p.reason === "zero_cost") {
       revenueWithoutCost += p.revenue
       continue
     }
