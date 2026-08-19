@@ -39,7 +39,13 @@ interface BsLine {
 }
 interface BsResponse {
   all: BsLine[]
-  meta?: { sourceYear?: number | null; basis?: string; sourcePlanId?: string }
+  meta?: {
+    sourceYear?: number | null
+    basis?: string
+    sourcePlanId?: string
+    /** The balance-sheet route falls back when the chosen plan carries none. */
+    fellBack?: boolean
+  }
 }
 interface PnlResponse {
   monthlyActualRevenue?: Record<number, number>
@@ -143,6 +149,14 @@ export function BalanceRatiosPanel({
           <p className="text-xs text-muted-foreground pt-2">
             {t("asOf", { month: model.month, year: model.year })}
           </p>
+          {/* There is no budget balance sheet for this client, so choosing the
+              budget plan silently serves the actuals. The numbers are right and
+              the label above them is not, which is worse than either. */}
+          {bs.data?.meta?.fellBack && (
+            <div className="pt-2">
+              <Badge variant="secondary">{t("fellBack")}</Badge>
+            </div>
+          )}
         </CardContent>
       </Card>
 
