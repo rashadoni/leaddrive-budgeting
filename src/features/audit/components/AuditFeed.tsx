@@ -81,6 +81,8 @@ const ALL_ACTIONS = [
   "trade_campaign_review",
   // R8 — manual ledger posting or void.
   "trade_spend_entry",
+  // 2026-08-19 — dead chart / product entries retired from the hygiene screen.
+  "chart_entry_deactivate",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.
