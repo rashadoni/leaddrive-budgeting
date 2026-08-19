@@ -56,6 +56,7 @@
  */
 import type { PrismaClient, Prisma } from "@prisma/client"
 import { archiveStamp } from "@/lib/server/soft-delete"
+import { diffImportRows, type ImportDiff } from "./import-diff"
 import { assertNoCollateralDeletion } from "./collateral-guard"
 import { MANUAL_CORRECTION_ORIGIN } from "@/lib/budgeting/manual-correction"
 import { getLogger } from "@/lib/log"
@@ -170,6 +171,17 @@ export interface ImportBatchPhaseMetrics {
 }
 
 export interface ImportBatchResult {
+  /**
+   * What this run changed, measured against what was stored BEFORE the
+   * clean-slate archived it.
+   *
+   * A row count alone cannot answer "did anything move" — it is identical
+   * whether the numbers changed or not, which is how eight re-imports of the
+   * same workbook in two days produced no signal at all, and how one run that
+   * silently rolled back went unnoticed until someone read the Postgres
+   * insert/delete counters.
+   */
+  diff: ImportDiff
   batchId: string
   startedAt: string
   finishedAt: string
@@ -379,6 +391,37 @@ export async function runImportBatch(
         ? { isElimination: true }
         : { companyId: { in: footprintCompanyIds }, isElimination: false }
 
+      /**
+       * Read the live rows in exactly the scope about to be archived, and
+       * compare them with what is about to be written. This must happen HERE:
+       * one statement earlier there is no scope to read, one later the rows
+       * are gone.
+       *
+       * Same WHERE as the archive below, deliberately — a diff computed over a
+       * different population than the one being replaced would be reassuring
+       * and wrong.
+       */
+      const storedForDiff = await tx.budgetLine.findMany({
+        where: {
+          organizationId: plan.organizationId,
+          ...companyScope,
+          deletedAt: null,
+          ...notAManualCorrection,
+          ...planFilter,
+          ...periodFilter,
+        },
+        select: { accountId: true, companyId: true, monthIndex: true, plannedAmount: true },
+      })
+      const diff = diffImportRows(
+        storedForDiff,
+        plan.rows.map((r) => ({
+          accountId: r.accountId,
+          companyId: r.companyId,
+          monthIndex: r.monthIndex,
+          plannedAmount: r.plannedAmount,
+        })),
+      )
+
       let archived = 0
       let purged = 0
       if (plan.purgeArchivedFirst) {
@@ -480,10 +523,10 @@ export async function runImportBatch(
         })
       }
 
-      return { resetArchived: archived, resetPurged: purged, rowsInserted: inserted }
+      return { resetArchived: archived, resetPurged: purged, rowsInserted: inserted, diff }
   }
   // Execute write phase either via existing outer tx or new one.
-  const { resetArchived, resetPurged, rowsInserted } = isOuterTx
+  const { resetArchived, resetPurged, rowsInserted, diff } = isOuterTx
     ? await writePhase(dbHandle as Prisma.TransactionClient)
     : await (prismaOrTx as PrismaClient).$transaction(writePhase)
 
@@ -538,6 +581,7 @@ export async function runImportBatch(
 
   const finishedAt = new Date()
   return {
+    diff,
     batchId,
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
