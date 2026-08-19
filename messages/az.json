@@ -140,7 +140,8 @@
     "tradeTower": "Trade nəzarət mərkəzi",
     "toggleBudgetingSubmenu": "Büdcə alt menyusunu aç/bağla",
     "toggleAdminSubmenu": "Admin alt menyusunu aç/bağla",
-    "navProductMargin": "Məhsul marjası"
+    "navProductMargin": "Məhsul marjası",
+    "navBalanceRatios": "Əmsallar"
   },
   "common": {
     "toggleTheme": "Temanı dəyiş",
@@ -6304,5 +6305,41 @@
     "drivenByBoth": "Fərqə həm marjalar, həm də satış strukturu təxminən eyni dərəcədə təsir edib.",
     "drivenByNeither": "Nə marjalar, nə struktur nəzərəçarpan dərəcədə dəyişməyib.",
     "shareShift": "{product}: paket payı {from} → {to}, marjaya {points} f.b."
+  },
+  "balanceRatios": {
+    "title": "Balans əmsalları",
+    "subtitle": "Likvidlik, kapital strukturu və dövriyyə kapitalı — idxal edilmiş balans üzrə.",
+    "asOf": "{year}-ci ilin {month}-ci ayının sonuna",
+    "position": "Mövqe",
+    "workingCapital": "Dövriyyə kapitalı",
+    "totalAssets": "Aktivlərin cəmi",
+    "equity": "Kapital",
+    "currentLiabilities": "Qısamüddətli öhdəliklər",
+    "netDebt": "Xalis borc",
+    "netCash": "Xalis borc mənfidir: pul vəsaitləri borcdan çoxdur.",
+    "daysUnit": "gün",
+    "doesNotBalance": "Balans tutmur",
+    "balanceCheck": "Aktivlər ilə kapital və öhdəliklər arasında fərq: {amount}. Bütün əmsallar bu balansın üzərində qurulub.",
+    "unmapped": "Cədvəldə tanınmayan hesablar",
+    "biologicalNote": "Qısamüddətli bioloji aktivlər ehtiyat dövriyyəsinə daxil edilmir: onları saymaq bu müştəridə göstəricini 499 günə qaldırırdı, bu isə tədarük problemi yox, becərmə mövsümüdür.",
+    "loading": "Yüklənir…",
+    "failed": "Məlumat alınmadı.",
+    "empty": "Bu plan üzrə balans sətri yoxdur.",
+    "ratio": {
+      "current": "Cari likvidlik",
+      "quick": "Sürətli likvidlik",
+      "equityRatio": "Kapitalın payı",
+      "netDebtToEquity": "Xalis borc / kapital",
+      "dso": "Debitor borcun dövriyyəsi",
+      "dio": "Ehtiyatların dövriyyəsi",
+      "dpo": "Kreditor borcun dövriyyəsi",
+      "cashCycle": "Pul dövriyyəsi"
+    },
+    "hint": {
+      "current": "1.5-dən yuxarı — rahat",
+      "quick": "1.0-dan yuxarı — rahat",
+      "equityRatio": "0.5-dən yuxarı — rahat",
+      "netDebtToEquity": "aşağı olması yaxşıdır"
+    }
   }
 }
