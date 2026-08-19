@@ -6274,7 +6274,8 @@
     "empty": "This plan has no product lines.",
     "reason": {
       "no_cost_data": "no cost data",
-      "no_revenue": "no revenue"
+      "no_revenue": "no revenue",
+      "zero_cost": "cost is zero — no data"
     },
     "basis": {
       "consolidated_computed": "Consolidated (intragroup eliminated)",
@@ -6306,7 +6307,19 @@
     "drivenByRate": "The gap is mostly rate: the basket barely moved, the products themselves earn less than planned.",
     "drivenByBoth": "Margins and sales mix contributed to the gap in roughly equal measure.",
     "drivenByNeither": "Neither margins nor mix moved appreciably.",
-    "shareShift": "{product}: share of revenue {from} → {to}, worth {points} pts of margin"
+    "shareShift": "{product}: share of revenue {from} → {to}, worth {points} pts of margin",
+    "comparableCount": "{count} comparable products",
+    "outsidePlanTitle": "Sold with no plan in these months",
+    "outsidePlanNote": "These products have no plan in the selected months, so they are not in the comparison above. See the annual table below.",
+    "atMargin": "margin {pct}",
+    "annualTitle": "Against the annual plan",
+    "annualNote": "A margin is a rate and compares across unequal periods. Revenue does not: it is shown as progress against the annual plan, never as a variance. The harvest crops are planned wholly into June–December.",
+    "annualPlan": "Annual plan",
+    "delivered": "Delivered",
+    "progress": "Progress",
+    "planRate": "Plan margin",
+    "deliveredRate": "Actual margin",
+    "plannedLater": "planned for later months"
   },
   "balanceRatios": {
     "title": "Balance sheet ratios",

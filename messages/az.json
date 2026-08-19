@@ -6274,7 +6274,8 @@
     "empty": "Bu plan üzrə məhsul sətri yoxdur.",
     "reason": {
       "no_cost_data": "maya dəyəri yoxdur",
-      "no_revenue": "gəlir yoxdur"
+      "no_revenue": "gəlir yoxdur",
+      "zero_cost": "maya dəyəri sıfırdır — məlumat yoxdur"
     },
     "basis": {
       "consolidated_computed": "Konsolidasiya edilmiş (qrupdaxili əməliyyatlar çıxılıb)",
@@ -6298,7 +6299,7 @@
     "budgetSide": "Büdcə",
     "actualSide": "Fakt",
     "gap": "Fərq",
-    "points": "f.b.",
+    "points": "f.p.",
     "rateEffect": "Marjalar",
     "mixEffect": "Satış strukturu",
     "unattributed": "Bölüşdürülməyən",
@@ -6306,7 +6307,19 @@
     "drivenByRate": "Fərqin böyük hissəsi marjalara görədir: səbət demək olar ki, dəyişməyib, məhsulların özü planlaşdırılandan az qazanır.",
     "drivenByBoth": "Fərqə həm marjalar, həm də satış strukturu təxminən eyni dərəcədə təsir edib.",
     "drivenByNeither": "Nə marjalar, nə struktur nəzərəçarpan dərəcədə dəyişməyib.",
-    "shareShift": "{product}: paket payı {from} → {to}, marjaya {points} f.b."
+    "shareShift": "{product}: paket payı {from} → {to}, marjaya {points} f.p.",
+    "comparableCount": "{count} müqayisə oluna bilən məhsul",
+    "outsidePlanTitle": "Bu aylarda planda olmayan satış",
+    "outsidePlanNote": "Bu məhsullar üçün seçilmiş aylarda plan yoxdur, ona görə də yuxarıdakı müqayisəyə daxil edilmir. Aşağıdakı illik cədvələ baxın.",
+    "atMargin": "marja {pct}",
+    "annualTitle": "İllik plana qarşı",
+    "annualNote": "Marja nisbətdir, ona görə də müxtəlif dövrlər üçün müqayisə edilə bilər. Gəlir isə yox: o, fərq kimi deyil, illik planın icrası kimi göstərilir. Payız məhsulları bütövlükdə iyun–dekabra planlaşdırılıb.",
+    "annualPlan": "İllik plan",
+    "delivered": "Çatdırılıb",
+    "progress": "İcra",
+    "planRate": "Plan marjası",
+    "deliveredRate": "Faktiki marja",
+    "plannedLater": "plan ilin sonrakı aylarında"
   },
   "balanceRatios": {
     "title": "Balans əmsalları",

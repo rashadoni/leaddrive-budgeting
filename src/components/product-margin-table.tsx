@@ -49,7 +49,26 @@ interface ComparedSide {
   revenue: number
   cost: number | null
   marginPct: number | null
-  reason?: "no_cost_data" | "no_revenue"
+  reason?: "no_cost_data" | "no_revenue" | "zero_cost"
+}
+
+interface BasketTotals {
+  revenue: number
+  cost: number
+  grossProfit: number
+  marginPct: number | null
+}
+
+interface AnnualRow {
+  productCode: string
+  productName: string
+  planRevenue: number
+  planMarginPct: number | null
+  actualRevenue: number
+  actualMarginPct: number | null
+  marginGapPoints: number | null
+  revenueProgress: number | null
+  plannedLater: boolean
 }
 
 interface MixRate {
@@ -79,6 +98,16 @@ interface MarginComparison {
   budget: { knownMarginPct: number | null }
   actual: { knownMarginPct: number | null }
   gapPoints: number | null
+  common: {
+    productCodes: string[]
+    budget: BasketTotals
+    actual: BasketTotals
+    gapPoints: number | null
+  }
+  outsidePlan: BasketTotals & {
+    products: { productCode: string; productName: string; revenue: number; marginPct: number | null }[]
+  }
+  annual: AnnualRow[]
   monthsCompared: number[]
 }
 
@@ -115,6 +144,51 @@ function tone(pct: number): string {
  */
 function shortLabel(name: string): string {
   return name.replace(/^revenue\s+from\s+(the\s+)?(sales?\s+of\s+)?/i, "").trim() || name
+}
+
+/**
+ * On a comparison card the plan is a reference, not an achievement, so the
+ * delivered figure is coloured against IT and not against an absolute scale.
+ * With `tone()` here the client's card painted 25.1% and 21.6% both green: the
+ * two numbers being compared read as equally healthy, and only the gap beneath
+ * them was red.
+ */
+function relativeTone(value: number | null, baseline: number | null): string | undefined {
+  if (value === null || baseline === null) return undefined
+  const d = value - baseline
+  if (Math.abs(d) < 0.05) return BUDGET_COLORS.neutral
+  return d < 0 ? BUDGET_COLORS.negative : BUDGET_COLORS.positive
+}
+
+/**
+ * Colour is never allowed to be the only signal. Roughly one man in twelve
+ * cannot separate this red from this green, and these cards get printed into
+ * board packs in black and white.
+ */
+function arrow(delta: number): string {
+  if (Math.abs(delta) < 0.05) return "="
+  return delta < 0 ? "▼" : "▲"
+}
+
+/**
+ * Two of the client's accounts are both named "Revenue from Sale of Other
+ * Products" (PLF.01.99 and PLF.02.99) and shortened to the same label, which
+ * put two indistinguishable rows on the chart axis and in the tooltip. Where a
+ * label repeats, the account code settles it; where it does not, nothing is
+ * added.
+ */
+function disambiguate<T extends { productCode: string; productName: string }>(
+  items: ReadonlyArray<T>,
+): Array<T & { label: string }> {
+  const count = new Map<string, number>()
+  for (const i of items) {
+    const l = shortLabel(i.productName)
+    count.set(l, (count.get(l) ?? 0) + 1)
+  }
+  return items.map((i) => {
+    const l = shortLabel(i.productName)
+    return { ...i, label: (count.get(l) ?? 0) > 1 ? `${l} (${i.productCode})` : l }
+  })
 }
 
 export function ProductMarginTable({
@@ -225,6 +299,9 @@ export function ProductMarginTable({
           at 28% and is delivering 1.1%. It sits ABOVE the sliders because it
           is the reading; the sliders are what you do about it. */}
       {data.comparison && <ComparisonCard c={data.comparison} t={t} />}
+      {data.comparison && data.comparison.annual.length > 0 && (
+        <AnnualCard rows={data.comparison.annual} t={t} />
+      )}
 
       {/* The what-if. Volume is deliberately absent: at a constant price and
           unit cost the margin PERCENT does not move with volume, so a volume
@@ -422,49 +499,115 @@ function ComparisonCard({
 }) {
   const months = c.monthsCompared
   const period = months.length > 0 ? `${months[0]}–${months[months.length - 1]}` : "—"
-  const gaps = c.products
-    .filter((p) => p.gapPoints !== null)
-    .map((p) => ({ name: shortLabel(p.productName), gap: p.gapPoints as number }))
+  /**
+   * The headline is the COMMON basket, not each side's own.
+   *
+   * On the client's January–May the whole-basket reading is 25.1% against
+   * 21.6% and was printed as a 3.6-point miss. On the eight products both
+   * plans contain it is 25.1% against 25.0%. The missing 3.5 points are crops
+   * sold ahead of the season they are budgeted for, which is a phasing fact,
+   * not a pricing one — and it now has its own block rather than being folded
+   * into a percentage that looks like performance.
+   */
+  const b = c.common.budget
+  const a = c.common.actual
+  const gp = a.grossProfit - b.grossProfit
+  const gaps = disambiguate(
+    c.products.filter((p) => p.gapPoints !== null),
+  ).map((p) => ({ name: p.label, gap: p.gapPoints as number }))
+  const rows = disambiguate(c.products)
 
   return (
     <Card>
       <CardContent className="p-6 space-y-4">
         <div>
           <h3 className="font-medium">{t("comparisonTitle")}</h3>
-          {/* Never let the window be inferred. Five months of delivery against
-              twelve months of plan is the failure this whole block avoids. */}
+          {/* Never let the window OR the basket be inferred. Five months of
+              delivery against twelve months of plan was the first trap; a
+              fourteen-product actual against an eight-product plan was the
+              second, and it survived the first fix. */}
           <p className="text-xs text-muted-foreground pt-1">
-            {t("comparedOn", { period, count: months.length })}
+            {t("comparedOn", { period, count: months.length })} ·{" "}
+            {t("comparableCount", { count: c.common.productCodes.length })}
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-6 text-sm">
-          <Figure label={t("budgetSide")} pct={c.budget.knownMarginPct} />
-          <Figure label={t("actualSide")} pct={c.actual.knownMarginPct} />
+        <div className="flex flex-wrap gap-8 text-sm">
+          <div>
+            <div className="text-xs text-muted-foreground">{t("budgetSide")}</div>
+            {/* The plan is the baseline, so it carries no verdict colour. */}
+            <div className="text-lg font-semibold tabular-nums">
+              {b.marginPct === null ? "—" : `${b.marginPct.toFixed(1)}%`}
+            </div>
+            <div className="text-xs text-muted-foreground tabular-nums">
+              {money.format(b.grossProfit)}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">{t("actualSide")}</div>
+            <div
+              className="text-lg font-semibold tabular-nums"
+              style={{ color: relativeTone(a.marginPct, b.marginPct) }}
+            >
+              {a.marginPct === null ? "—" : `${a.marginPct.toFixed(1)}%`}
+            </div>
+            <div className="text-xs text-muted-foreground tabular-nums">
+              {money.format(a.grossProfit)}
+            </div>
+          </div>
           <div>
             <div className="text-xs text-muted-foreground">{t("gap")}</div>
             <div
               className="text-lg font-semibold tabular-nums"
               style={{
                 color:
-                  c.gapPoints === null
+                  c.common.gapPoints === null
                     ? undefined
-                    : c.gapPoints < 0
-                      ? BUDGET_COLORS.negative
-                      : BUDGET_COLORS.positive,
+                    : Math.abs(c.common.gapPoints) < 0.05
+                      ? BUDGET_COLORS.neutral
+                      : c.common.gapPoints < 0
+                        ? BUDGET_COLORS.negative
+                        : BUDGET_COLORS.positive,
               }}
             >
-              {c.gapPoints === null
+              {c.common.gapPoints === null
                 ? "—"
-                : `${c.gapPoints >= 0 ? "+" : ""}${c.gapPoints.toFixed(1)} ${t("points")}`}
+                : `${arrow(c.common.gapPoints)} ${c.common.gapPoints >= 0 ? "+" : ""}${c.common.gapPoints.toFixed(1)} ${t("points")}`}
+            </div>
+            {/* The card used to show only the rate. Margin fell while gross
+                profit rose, and nothing on screen could say so. */}
+            <div className="text-xs text-muted-foreground tabular-nums">
+              {gp >= 0 ? "+" : ""}
+              {money.format(gp)}
             </div>
           </div>
         </div>
 
-        {/* Rates or the basket. Without this the reader sees a shortfall and
-            guesses; on the client's own months the answer is almost entirely
-            basket, and someone would otherwise be sent to renegotiate prices
-            that were never the problem. */}
+        {c.outsidePlan.products.length > 0 && (
+          <div className="rounded-md border p-3 space-y-1 text-sm">
+            <div className="font-medium">{t("outsidePlanTitle")}</div>
+            <p className="text-xs text-muted-foreground">{t("outsidePlanNote")}</p>
+            <div className="tabular-nums">
+              {money.format(c.outsidePlan.revenue)}
+              {c.outsidePlan.marginPct !== null && (
+                <span className="text-muted-foreground">
+                  {" · "}
+                  {t("atMargin", { pct: `${c.outsidePlan.marginPct.toFixed(1)}%` })}
+                </span>
+              )}
+            </div>
+            <ul className="text-xs text-muted-foreground">
+              {disambiguate(c.outsidePlan.products).map((p) => (
+                <li key={p.productCode}>
+                  {p.label} — {money.format(p.revenue)}
+                  {p.marginPct !== null && ` · ${p.marginPct.toFixed(1)}%`}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Rates or the basket, within the compared set. */}
         <WhyMoved m={c.mixRate} t={t} />
 
         {gaps.length > 0 && (
@@ -497,15 +640,21 @@ function ComparisonCard({
             <thead className="border-b">
               <tr className="text-left">
                 <th className="py-2 font-medium">{t("product")}</th>
+                {/* Without size on the row, cotton at 1,387,524 and farming
+                    services at 6,250 carried identical visual weight. */}
+                <th className="py-2 font-medium text-right">{t("revenue")}</th>
                 <th className="py-2 font-medium text-right">{t("budgetSide")}</th>
                 <th className="py-2 font-medium text-right">{t("actualSide")}</th>
                 <th className="py-2 font-medium text-right">{t("gap")}</th>
               </tr>
             </thead>
             <tbody>
-              {c.products.map((p) => (
+              {rows.map((p) => (
                 <tr key={p.productCode} className="border-b last:border-0">
-                  <td className="py-2">{p.productName}</td>
+                  <td className="py-2">{p.label}</td>
+                  <td className="py-2 text-right tabular-nums text-muted-foreground">
+                    {money.format(p.actual?.revenue ?? p.budget?.revenue ?? 0)}
+                  </td>
                   <td className="py-2 text-right tabular-nums">
                     <Pct value={p.budget?.marginPct ?? null} />
                   </td>
@@ -522,8 +671,98 @@ function ComparisonCard({
                             p.gapPoints < 0 ? BUDGET_COLORS.negative : BUDGET_COLORS.positive,
                         }}
                       >
-                        {p.gapPoints >= 0 ? "+" : ""}
+                        {arrow(p.gapPoints)} {p.gapPoints >= 0 ? "+" : ""}
                         {p.gapPoints.toFixed(1)}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * What has been delivered, judged against the ANNUAL plan.
+ *
+ * The card above compares only months that carry actuals, which is right and
+ * which silently removes every crop: cotton and wheat are planned wholly into
+ * June–December. This card exists so that "planned at 28%, delivering 1.1%"
+ * can be said at all. It compares RATES across unequal windows, which is valid
+ * because a margin is a ratio, and it never subtracts revenues across them —
+ * delivery is shown as progress against the annual plan, for the reader to
+ * weigh against how much of the year has gone.
+ */
+function AnnualCard({
+  rows,
+  t,
+}: {
+  rows: AnnualRow[]
+  t: ReturnType<typeof useTranslations<"productMargin">>
+}) {
+  const labelled = disambiguate(rows)
+  return (
+    <Card>
+      <CardContent className="p-6 space-y-3">
+        <div>
+          <h3 className="font-medium">{t("annualTitle")}</h3>
+          <p className="text-xs text-muted-foreground pt-1">{t("annualNote")}</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b">
+              <tr className="text-left">
+                <th className="py-2 font-medium">{t("product")}</th>
+                <th className="py-2 font-medium text-right">{t("annualPlan")}</th>
+                <th className="py-2 font-medium text-right">{t("delivered")}</th>
+                <th className="py-2 font-medium text-right">{t("progress")}</th>
+                <th className="py-2 font-medium text-right">{t("planRate")}</th>
+                <th className="py-2 font-medium text-right">{t("deliveredRate")}</th>
+                <th className="py-2 font-medium text-right">{t("gap")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {labelled.map((r) => (
+                <tr key={r.productCode} className="border-b last:border-0">
+                  <td className="py-2">
+                    {r.label}
+                    {r.plannedLater && (
+                      <Badge variant="outline" className="ml-2 text-[10px] font-normal">
+                        {t("plannedLater")}
+                      </Badge>
+                    )}
+                  </td>
+                  <td className="py-2 text-right tabular-nums text-muted-foreground">
+                    {money.format(r.planRevenue)}
+                  </td>
+                  <td className="py-2 text-right tabular-nums">{money.format(r.actualRevenue)}</td>
+                  <td className="py-2 text-right tabular-nums text-muted-foreground">
+                    {r.revenueProgress === null ? "—" : `${(r.revenueProgress * 100).toFixed(0)}%`}
+                  </td>
+                  <td className="py-2 text-right tabular-nums">
+                    <Pct value={r.planMarginPct} />
+                  </td>
+                  <td className="py-2 text-right tabular-nums">
+                    <Pct value={r.actualMarginPct} />
+                  </td>
+                  <td className="py-2 text-right tabular-nums">
+                    {r.marginGapPoints === null ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span
+                        style={{
+                          color:
+                            r.marginGapPoints < 0
+                              ? BUDGET_COLORS.negative
+                              : BUDGET_COLORS.positive,
+                        }}
+                      >
+                        {arrow(r.marginGapPoints)} {r.marginGapPoints >= 0 ? "+" : ""}
+                        {r.marginGapPoints.toFixed(1)}
                       </span>
                     )}
                   </td>
