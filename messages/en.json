@@ -6450,5 +6450,25 @@
     "loading": "Loading…",
     "failed": "Failed.",
     "archivedRows": "{rows} archived rows"
+  },
+  "importHistory": {
+    "title": "Recent imports",
+    "intro": "Every import is re-read from the database after the write and checked. \"Verified\" means that check passed; \"unverified\" means only the parser vouches for it, and a parser cannot notice a write that never landed.",
+    "when": "When",
+    "files": "Files",
+    "year": "Year",
+    "rows": "Rows",
+    "sheets": "Sheets verified",
+    "verdict": "Verdict",
+    "loading": "Loading…",
+    "failed": "Failed.",
+    "empty": "No imports yet.",
+    "standing": {
+      "verified": "verified",
+      "unverified": "unverified",
+      "drift": "drift reported",
+      "failed": "failed",
+      "uncommitted": "not committed"
+    }
   }
 }

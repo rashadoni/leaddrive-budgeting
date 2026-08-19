@@ -12,6 +12,7 @@ import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import { ImportDataResetPanel } from "@/features/admin/components/ImportDataResetPanel"
 import { AIImportTabs } from "./AIImportTabs"
+import { ImportHistoryPanel } from "@/components/import-history-panel"
 
 export const metadata = {
   title: "AI Import · Admin · BudgetPro",
@@ -80,6 +81,15 @@ export default async function AIImportPage({
 
       <div data-testid="ai-import-guide-workflows">
         <AIImportTabs initialYear={importYear} />
+      </div>
+
+      {/* Every import already re-reads its own write from the database and
+          records whether the sums matched. Until now nothing displayed that,
+          so the one question a person has after importing — did it land? —
+          had no answer on screen. It sits below the forms because that is
+          where the reader is standing when they ask it. */}
+      <div className="mt-6" data-testid="ai-import-guide-history">
+        <ImportHistoryPanel />
       </div>
     </div>
   )
