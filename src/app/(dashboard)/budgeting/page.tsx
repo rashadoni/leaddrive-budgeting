@@ -82,6 +82,7 @@ const TAB_NAV_KEYS: Record<string, string> = {
   workspace: "navWorkspace",
   pl: "navPnlPlan",
   forecast: "navForecast",
+  "year-end": "navYearEnd",
   comparison: "navComparison",
   plans: "navPlans",
   "sales-forecast": "navSales",
@@ -106,6 +107,7 @@ import { BudgetPnlView } from "@/components/budget-pnl-view"
 import { SalesBudgetTable } from "@/components/sales-budget-table"
 import { COGSCalculator } from "@/components/cogs-calculator"
 import { ProductMarginTable } from "@/components/product-margin-table"
+import { YearEndPanel } from "@/components/year-end-panel"
 import { BudgetBalanceSheet } from "@/components/budget-balance-sheet"
 import { BudgetAssumptions } from "@/components/budget-assumptions"
 import { toast } from "sonner"
@@ -185,6 +187,7 @@ function periodLabel(plan: BudgetPlan, t: (key: string) => string): string {
 // is a separate roadmap item (multi-table migration).
 const COMPANY_FILTERED_TABS: ReadonlySet<string> = new Set([
   "pnl-report",
+  "year-end",
   "product-margin",
   "workspace",
   "pl",
@@ -513,6 +516,7 @@ export default function BudgetingPage() {
           </div>
 
           {activeTab === "pnl-report" && <BudgetPnlView planId={resolvedPlanId} companyId={selectedCompanyId} />}
+          {activeTab === "year-end" && <YearEndPanel planId={resolvedPlanId} companyId={selectedCompanyId} />}
           {activeTab === "sales-budget" && <SalesBudgetTable planId={resolvedPlanId} />}
           {activeTab === "cogs" && <COGSCalculator planId={resolvedPlanId} />}
           {activeTab === "product-margin" && <ProductMarginTable planId={resolvedPlanId} companyId={selectedCompanyId} />}

@@ -140,7 +140,8 @@
     "tradeTower": "Trade Tower",
     "toggleBudgetingSubmenu": "Toggle budgeting sub-menu",
     "toggleAdminSubmenu": "Toggle admin sub-menu",
-    "navProductMargin": "Product margin"
+    "navProductMargin": "Product margin",
+    "navYearEnd": "Year end"
   },
   "common": {
     "toggleTheme": "Toggle theme",
@@ -6304,5 +6305,28 @@
     "drivenByBoth": "Margins and sales mix contributed to the gap in roughly equal measure.",
     "drivenByNeither": "Neither margins nor mix moved appreciably.",
     "shareShift": "{product}: share of revenue {from} → {to}, worth {points} pts of margin"
+  },
+  "yearEnd": {
+    "title": "Where the year lands",
+    "subtitle": "Closed months at actual, the rest at budget.",
+    "window": "{delivered} months delivered · {planned} months at plan",
+    "methodBadge": "Rest of year at plan",
+    "bankedOnly": "Under this method the projected variance equals the variance already banked: the remaining months are identical on both sides and cancel. This is not a model of the future — it is the miss to date, at year scale.",
+    "chartTitle": "Plan against expected landing",
+    "plan": "Plan",
+    "landing": "Expected landing",
+    "delivered": "Delivered",
+    "gap": "Gap",
+    "vsPlan": "vs plan",
+    "loading": "Loading…",
+    "failed": "Could not load the data.",
+    "noActuals": "No actuals for this year yet.",
+    "line": {
+      "header": "Line",
+      "revenue": "Revenue",
+      "grossProfit": "Gross profit",
+      "ebitda": "EBITDA",
+      "netProfit": "Net profit"
+    }
   }
 }

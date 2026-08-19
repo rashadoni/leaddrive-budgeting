@@ -148,6 +148,7 @@ const budgetSubNav = [
       { value: "workspace", icon: LayoutGrid, labelKey: "navWorkspace" },
       { value: "pl", icon: BarChart2, labelKey: "navPnlPlan" },
       { value: "forecast", icon: Brain, labelKey: "navForecast" },
+      { value: "year-end", icon: Target, labelKey: "navYearEnd" },
       { value: "comparison", icon: ChevronRight, labelKey: "navComparison" },
       { value: "plans", icon: FileSpreadsheet, labelKey: "navPlans" },
     ],
