@@ -239,6 +239,16 @@ export function ProductMarginTable({
     return <Card><CardContent className="p-6 text-muted-foreground">{t("empty")}</CardContent></Card>
   }
 
+  /**
+   * Every product the screen cannot state a margin for, largest first. These
+   * are the rows a reader should chase: on the client's 2025 consolidated
+   * actuals they are 1,921,539 of "Other Products", 398,927 of Management
+   * Services and 21,774 of land rent — all with no cost account at all.
+   */
+  const noMargin = disambiguate(
+    data.products.filter((p) => p.marginPct === null),
+  ).sort((a, b) => Math.abs(b.revenue) - Math.abs(a.revenue))
+
   const months = data.monthsCovered
   const period = months.length > 0 ? `${months[0]}–${months[months.length - 1]}` : "—"
   const grossProfit = sim.knownRevenue - sim.knownCost
@@ -464,10 +474,38 @@ export function ProductMarginTable({
 
       {(data.revenueWithoutCost !== 0 ||
         data.contraRevenue !== 0 ||
-        data.unpairedCostAccounts.length > 0) && (
+        data.unpairedCostAccounts.length > 0 ||
+        noMargin.length > 0) && (
         <Card>
           <CardContent className="p-6 space-y-2 text-sm">
             <h3 className="font-medium">{t("notCounted")}</h3>
+
+            {/* Named, not just totalled. "1,921,539 of revenue has no cost"
+                tells a reader the screen is incomplete; it does not tell them
+                where to go. The list does, and the reason says what to look
+                for — a missing cost account, a cost posted as zero, or a
+                revenue line that nets negative. */}
+            {noMargin.length > 0 && (
+              <div className="space-y-1">
+                <p className="font-medium">{t("noCostProducts", { count: noMargin.length })}</p>
+                <table className="w-full">
+                  <tbody>
+                    {noMargin.map((p) => (
+                      <tr key={p.productCode}>
+                        <td className="py-1 pr-3">{p.label}</td>
+                        <td className="py-1 pr-3 text-right tabular-nums text-muted-foreground">
+                          {money.format(p.revenue)}
+                        </td>
+                        <td className="py-1 text-right text-xs text-muted-foreground">
+                          {t(`reason.${p.reason ?? "no_cost_data"}`)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             {data.revenueWithoutCost !== 0 && (
               <p className="text-muted-foreground">
                 {t("revenueWithoutCost", { amount: money.format(data.revenueWithoutCost) })}
