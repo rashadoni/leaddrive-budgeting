@@ -6,6 +6,7 @@ import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { resolvePnlEliminationScope } from "@/lib/onboarding/ai-import/pnl-elimination-scope"
 import { buildProductMarginsFromAccounts } from "@/lib/budgeting/product-margin-accounts"
 import { buildMarginComparison } from "@/lib/budgeting/product-margin-compare"
+import { decomposeMixAndRate } from "@/lib/budgeting/product-margin-mix"
 
 /**
  * GET /api/budgeting/product-margin
@@ -187,8 +188,16 @@ export async function GET(req: NextRequest) {
           return [{ code: account.code, name: account.name, amount: t._sum.plannedAmount ?? 0 }]
         })
 
+      const cmp = buildMarginComparison(rowsOf(budgetTotals), rowsOf(actualTotals))
       return {
-        ...buildMarginComparison(rowsOf(budgetTotals), rowsOf(actualTotals)),
+        ...cmp,
+        // Free: no extra query, the decomposition is arithmetic on what the
+        // comparison already computed.
+        mixRate: decomposeMixAndRate(
+          cmp.products,
+          cmp.budget.knownMarginPct,
+          cmp.actual.knownMarginPct,
+        ),
         budgetPlan,
         actualPlan,
         // 1-based, converted once — `monthIndex` is stored 0-based.
