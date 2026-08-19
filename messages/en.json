@@ -6323,7 +6323,8 @@
     "plannedLater": "planned for later months",
     "noMarginData": "no margin data",
     "noCostData": "no data",
-    "nothingDelivered": "Nothing was sold in the selected months, so there is nothing to compare."
+    "nothingDelivered": "Nothing was sold in the selected months, so there is nothing to compare.",
+    "noCostProducts": "Products with no computable margin ({count})"
   },
   "balanceRatios": {
     "title": "Balance sheet ratios",

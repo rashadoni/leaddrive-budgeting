@@ -6323,7 +6323,8 @@
     "plannedLater": "plan ilin sonrakı aylarında",
     "noMarginData": "marja üzrə məlumat yoxdur",
     "noCostData": "məlumat yoxdur",
-    "nothingDelivered": "Seçilmiş aylarda satış yoxdur, ona görə də müqayisə üçün heç nə yoxdur."
+    "nothingDelivered": "Seçilmiş aylarda satış yoxdur, ona görə də müqayisə üçün heç nə yoxdur.",
+    "noCostProducts": "Marja hesablana bilməyən məhsullar ({count})"
   },
   "balanceRatios": {
     "title": "Balans əmsalları",
