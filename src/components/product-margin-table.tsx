@@ -515,7 +515,14 @@ function ComparisonCard({
   const gaps = disambiguate(
     c.products.filter((p) => p.gapPoints !== null),
   ).map((p) => ({ name: p.label, gap: p.gapPoints as number }))
-  const rows = disambiguate(c.products)
+  /**
+   * Only products that were actually sold. A plan figure with no delivery
+   * beside it is not a comparison — it is a number the reader has to guess
+   * the meaning of, and the guess is usually "we missed it". What was planned
+   * and not yet delivered belongs on the annual card, which is about the plan
+   * and says so.
+   */
+  const rows = disambiguate(c.products.filter((p) => p.actual !== null))
 
   return (
     <Card>
@@ -583,6 +590,10 @@ function ComparisonCard({
           </div>
         </div>
 
+        {rows.length === 0 && (
+          <p className="text-sm text-muted-foreground">{t("nothingDelivered")}</p>
+        )}
+
         {c.outsidePlan.products.length > 0 && (
           <div className="rounded-md border p-3 space-y-1 text-sm">
             <div className="font-medium">{t("outsidePlanTitle")}</div>
@@ -643,6 +654,9 @@ function ComparisonCard({
                 {/* Without size on the row, cotton at 1,387,524 and farming
                     services at 6,250 carried identical visual weight. */}
                 <th className="py-2 font-medium text-right">{t("revenue")}</th>
+                {/* Beside every percentage, the cost it came from. A negative
+                    margin with no visible cost reads as invented. */}
+                <th className="py-2 font-medium text-right">{t("cost")}</th>
                 <th className="py-2 font-medium text-right">{t("budgetSide")}</th>
                 <th className="py-2 font-medium text-right">{t("actualSide")}</th>
                 <th className="py-2 font-medium text-right">{t("gap")}</th>
@@ -653,13 +667,20 @@ function ComparisonCard({
                 <tr key={p.productCode} className="border-b last:border-0">
                   <td className="py-2">{p.label}</td>
                   <td className="py-2 text-right tabular-nums text-muted-foreground">
-                    {money.format(p.actual?.revenue ?? p.budget?.revenue ?? 0)}
+                    {money.format(p.actual?.revenue ?? 0)}
+                  </td>
+                  <td className="py-2 text-right tabular-nums text-muted-foreground">
+                    {p.actual?.cost == null ? (
+                      <span className="text-xs">{t("noCostData")}</span>
+                    ) : (
+                      money.format(p.actual.cost)
+                    )}
                   </td>
                   <td className="py-2 text-right tabular-nums">
-                    <Pct value={p.budget?.marginPct ?? null} />
+                    <Pct value={p.budget?.marginPct ?? null} noData={t("noMarginData")} />
                   </td>
                   <td className="py-2 text-right tabular-nums">
-                    <Pct value={p.actual?.marginPct ?? null} />
+                    <Pct value={p.actual?.marginPct ?? null} noData={t("noMarginData")} />
                   </td>
                   <td className="py-2 text-right tabular-nums">
                     {p.gapPoints === null ? (
@@ -744,10 +765,10 @@ function AnnualCard({
                     {r.revenueProgress === null ? "—" : `${(r.revenueProgress * 100).toFixed(0)}%`}
                   </td>
                   <td className="py-2 text-right tabular-nums">
-                    <Pct value={r.planMarginPct} />
+                    <Pct value={r.planMarginPct} noData={t("noMarginData")} />
                   </td>
                   <td className="py-2 text-right tabular-nums">
-                    <Pct value={r.actualMarginPct} />
+                    <Pct value={r.actualMarginPct} noData={t("noMarginData")} />
                   </td>
                   <td className="py-2 text-right tabular-nums">
                     {r.marginGapPoints === null ? (
@@ -863,9 +884,15 @@ function Figure({ label, pct }: { label: string; pct: number | null }) {
   )
 }
 
-/** A margin that is not known must not render as a number. */
-function Pct({ value }: { value: number | null }) {
-  if (value === null) return <span className="text-muted-foreground">—</span>
+/**
+ * A margin that is not known must not render as a number — and must not
+ * render as a dash either. A dash reads as "nothing here"; the reader needs
+ * to know the ratio was withheld, not that the row is empty.
+ */
+function Pct({ value, noData }: { value: number | null; noData: string }) {
+  if (value === null) {
+    return <span className="text-muted-foreground text-xs">{noData}</span>
+  }
   return <span style={{ color: tone(value) }}>{value.toFixed(1)}%</span>
 }
 

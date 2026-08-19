@@ -6275,7 +6275,8 @@
     "reason": {
       "no_cost_data": "maya dəyəri yoxdur",
       "no_revenue": "gəlir yoxdur",
-      "zero_cost": "maya dəyəri sıfırdır — məlumat yoxdur"
+      "zero_cost": "maya dəyəri sıfırdır — məlumat yoxdur",
+      "negative_revenue": "gəlir mənfidir — marja hesablanmır"
     },
     "basis": {
       "consolidated_computed": "Konsolidasiya edilmiş (qrupdaxili əməliyyatlar çıxılıb)",
@@ -6319,7 +6320,10 @@
     "progress": "İcra",
     "planRate": "Plan marjası",
     "deliveredRate": "Faktiki marja",
-    "plannedLater": "plan ilin sonrakı aylarında"
+    "plannedLater": "plan ilin sonrakı aylarında",
+    "noMarginData": "marja üzrə məlumat yoxdur",
+    "noCostData": "məlumat yoxdur",
+    "nothingDelivered": "Seçilmiş aylarda satış yoxdur, ona görə də müqayisə üçün heç nə yoxdur."
   },
   "balanceRatios": {
     "title": "Balans əmsalları",

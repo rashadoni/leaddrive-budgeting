@@ -45,6 +45,19 @@ export type ProductMarginReason =
   /** Cost is known but revenue is zero, so the ratio has no denominator. */
   | "no_revenue"
   /**
+   * Revenue is NEGATIVE, so the ratio has a denominator that inverts it.
+   *
+   * Elimination rows carry negative revenue and negative cost — measured on
+   * production, 2025 corn eliminates at −7,346,866 of revenue against
+   * −4,861,905 of cost, and the formula returns a confident-looking +33.8%
+   * built from two minuses. Nothing about that number is true, and unlike an
+   * absurd figure it does not announce itself.
+   *
+   * The amounts stay in the group totals, where they belong and where they
+   * reconcile to the P&L; only the per-product ratio is withheld.
+   */
+  | "negative_revenue"
+  /**
    * A cost account exists for this product and sums to exactly zero, which
    * arithmetic turns into a 100% margin. Nothing in this business sells at
    * 100% gross margin, so a zero here means the costs were not posted, not
@@ -102,6 +115,10 @@ function marginOf(input: ProductMarginInput): ProductMargin {
   if (input.revenue === 0) {
     // Cost with no revenue: the profit is real (negative), the RATIO is not.
     return { ...base, cost: input.cost, grossProfit, marginPct: null, reason: "no_revenue" }
+  }
+  if (input.revenue < 0) {
+    // See `negative_revenue`. A sign-flipped ratio is worse than none.
+    return { ...base, cost: input.cost, grossProfit, marginPct: null, reason: "negative_revenue" }
   }
   if (input.cost === 0) {
     // See `zero_cost`. Money kept, ratio withheld.
