@@ -6450,5 +6450,25 @@
     "loading": "Yüklənir…",
     "failed": "Alınmadı.",
     "archivedRows": "arxivdə {rows} sətir"
+  },
+  "importHistory": {
+    "title": "Son idxallar",
+    "intro": "Hər idxal yazılandan sonra bazadan yenidən oxunub yoxlanılır. «Təsdiqlənib» — məhz bu yoxlama keçib; «yoxlanılmayıb» — yalnız parserin öz müqayisəsi var, bu isə yazılmayan məlumatı tuta bilməz.",
+    "when": "Vaxt",
+    "files": "Fayllar",
+    "year": "İl",
+    "rows": "Sətir",
+    "sheets": "Yoxlanan vərəqlər",
+    "verdict": "Nəticə",
+    "loading": "Yüklənir…",
+    "failed": "Alınmadı.",
+    "empty": "Hələ idxal yoxdur.",
+    "standing": {
+      "verified": "təsdiqlənib",
+      "unverified": "yoxlanılmayıb",
+      "drift": "fərq var",
+      "failed": "uğursuz",
+      "uncommitted": "yazılmayıb"
+    }
   }
 }
