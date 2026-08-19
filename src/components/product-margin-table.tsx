@@ -30,7 +30,7 @@ import { useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import { useQuery } from "@tanstack/react-query"
 import {
-  Bar, BarChart, CartesianGrid, Cell, ReferenceLine,
+  Bar, BarChart, CartesianGrid, Cell, LabelList, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts"
 import { Card, CardContent } from "@/components/ui/card"
@@ -40,6 +40,11 @@ import { Slider } from "@/components/ui/slider"
 import { RotateCcw, SlidersHorizontal } from "lucide-react"
 import { BUDGET_COLORS, GRID_STYLE, AXIS_TICK } from "@/lib/budget-chart-theme"
 import type { ProductMargin } from "@/lib/budgeting/product-margin"
+import {
+  buildMarginChartRows,
+  grossProfitDomain,
+  type MarginStanding,
+} from "@/lib/budgeting/product-margin-chart"
 import {
   simulateProductMargins, priceUpliftForTarget, costCutForTarget,
   isSimulating, NO_CHANGE, type MarginKnobs,
@@ -220,17 +225,36 @@ export function ProductMarginTable({
   )
   const live = isSimulating(knobs)
 
-  const chartData = useMemo(
-    () =>
-      sim.products
-        .filter((p) => p.marginPct !== null)
-        .map((p) => ({
-          name: shortLabel(p.productName),
-          base: p.marginPct as number,
-          value: (p.simMarginPct ?? p.marginPct) as number,
-        })),
-    [sim.products],
-  )
+  /**
+   * Length is money, colour is the rate against the reader's target.
+   *
+   * The chart used to plot the RATE, which gave every product the same width
+   * whatever its size: on the 2025 actuals a 142 AZN corn line at −360.6% drew
+   * the longest bar on the plot and pushed a 29.6M business into a sliver. A
+   * rate carries no size, so no axis range could fix it — the encoding had to
+   * change.
+   */
+  const chartData = useMemo(() => {
+    const rows = buildMarginChartRows(
+      sim.products.map((p) => ({
+        productCode: p.productCode,
+        productName: p.productName,
+        revenue: live ? p.simRevenue : p.revenue,
+        cost: live ? (p.simCost ?? null) : p.cost,
+        marginPct: live ? (p.simMarginPct ?? p.marginPct) : p.marginPct,
+      })),
+      target,
+    )
+    return disambiguate(rows).map((r) => ({ ...r, name: r.label }))
+  }, [sim.products, live, target])
+
+  const chartDomain = useMemo(() => grossProfitDomain(chartData), [chartData])
+
+  const STANDING_FILL: Record<MarginStanding, string> = {
+    at_target: BUDGET_COLORS.positive,
+    below_target: BUDGET_COLORS.warning,
+    loss: BUDGET_COLORS.negative,
+  }
 
   if (!planId) return null
   if (isLoading) return <Card><CardContent className="p-6 text-muted-foreground">{t("loading")}</CardContent></Card>
@@ -367,29 +391,46 @@ export function ProductMarginTable({
 
       <Card>
         <CardContent className="p-6">
-          <h3 className="font-medium mb-4">{t("chartTitle")}</h3>
+          <h3 className="font-medium">{t("chartTitle")}</h3>
+          <p className="text-xs text-muted-foreground mb-3">{t("chartLegend", { target })}</p>
           <ResponsiveContainer width="100%" height={Math.max(240, chartData.length * 34)}>
-            <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 24 }}>
+            <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 64 }}>
               <CartesianGrid {...GRID_STYLE} horizontal={false} vertical />
-              <XAxis type="number" tick={AXIS_TICK} unit="%" />
+              <XAxis
+                type="number"
+                domain={chartDomain}
+                tick={AXIS_TICK}
+                tickFormatter={(v: number) => money.format(v)}
+              />
               <YAxis type="category" dataKey="name" width={150} tick={AXIS_TICK} />
               <Tooltip
-                formatter={(v) => (typeof v === "number" ? `${v.toFixed(1)}%` : String(v ?? ""))}
                 contentStyle={{ fontSize: 12 }}
+                formatter={(v, _n, item) => {
+                  const row = item?.payload as { marginPct?: number } | undefined
+                  const gp = typeof v === "number" ? money.format(v) : String(v ?? "")
+                  return [
+                    row?.marginPct === undefined
+                      ? gp
+                      : `${gp} · ${row.marginPct.toFixed(1)}%`,
+                    t("grossProfit"),
+                  ]
+                }}
               />
-              <ReferenceLine
-                x={target}
-                stroke={BUDGET_COLORS.planIndigo}
-                strokeDasharray="4 4"
-                label={{ value: `${target}%`, fontSize: 11, fill: BUDGET_COLORS.planIndigo }}
-              />
-              {/* The untouched figure stays on screen beneath the simulated
-                  one, so a drag reads as a change and not as the truth. */}
-              {live && <Bar dataKey="base" fill={BUDGET_COLORS.neutral} fillOpacity={0.25} radius={[0, 3, 3, 0]} />}
-              <Bar dataKey="value" radius={[0, 3, 3, 0]}>
+              {/* Zero, not the target: the target lives in the colour now,
+                  because on a money axis it is not a position. */}
+              <ReferenceLine x={0} stroke={BUDGET_COLORS.neutral} />
+              <Bar dataKey="grossProfit" radius={[0, 3, 3, 0]}>
                 {chartData.map((d) => (
-                  <Cell key={d.name} fill={tone(d.value)} />
+                  <Cell key={d.productCode} fill={STANDING_FILL[d.standing]} />
                 ))}
+                {/* The rate a reader came for, on the product they are looking
+                    at — no legend to cross-reference. */}
+                <LabelList
+                  dataKey="marginPct"
+                  position="right"
+                  fontSize={11}
+                  formatter={(v: unknown) => (typeof v === "number" ? `${v.toFixed(1)}%` : "")}
+                />
               </Bar>
             </BarChart>
           </ResponsiveContainer>

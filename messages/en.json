@@ -6291,7 +6291,7 @@
     "costKnob": "Cost of sales",
     "targetKnob": "Target margin",
     "whatIfNote": "A simulation only — nothing is saved. There is deliberately no volume slider: at a constant price and unit cost, margin percent does not move with volume.",
-    "chartTitle": "Margin by product",
+    "chartTitle": "What each product earns",
     "toTarget": "To target ({target}%)",
     "meetsTarget": "target met",
     "needs": "price {price} or cost {cost}",
@@ -6324,7 +6324,8 @@
     "noMarginData": "no margin data",
     "noCostData": "no data",
     "nothingDelivered": "Nothing was sold in the selected months, so there is nothing to compare.",
-    "noCostProducts": "Products with no computable margin ({count})"
+    "noCostProducts": "Products with no computable margin ({count})",
+    "chartLegend": "Length is gross profit in money, colour is the {target}% target, the label is the margin. Products with no cost are not drawn."
   },
   "balanceRatios": {
     "title": "Balance sheet ratios",
