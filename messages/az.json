@@ -6291,7 +6291,7 @@
     "costKnob": "Maya dəyəri",
     "targetKnob": "Hədəf marja",
     "whatIfNote": "Bu yalnız simulyasiyadır — heç nə yadda saxlanmır. Həcm sürgüsü yoxdur, çünki qiymət və vahid maya dəyəri dəyişmədikdə marja faizi həcmdən asılı deyil.",
-    "chartTitle": "Məhsullar üzrə marja",
+    "chartTitle": "Məhsulların ümumi mənfəətə töhfəsi",
     "toTarget": "Hədəfə ({target}%)",
     "meetsTarget": "hədəf tutulub",
     "needs": "qiymət {price} və ya maya dəyəri {cost}",
@@ -6324,7 +6324,8 @@
     "noMarginData": "marja üzrə məlumat yoxdur",
     "noCostData": "məlumat yoxdur",
     "nothingDelivered": "Seçilmiş aylarda satış yoxdur, ona görə də müqayisə üçün heç nə yoxdur.",
-    "noCostProducts": "Marja hesablana bilməyən məhsullar ({count})"
+    "noCostProducts": "Marja hesablana bilməyən məhsullar ({count})",
+    "chartLegend": "Uzunluq — ümumi mənfəət (pul), rəng — {target}% hədəfə münasibət, yazı — marja faizi. Maya dəyəri bilinməyən məhsullar burada göstərilmir."
   },
   "balanceRatios": {
     "title": "Balans əmsalları",
