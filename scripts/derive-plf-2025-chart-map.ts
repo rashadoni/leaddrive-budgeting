@@ -137,6 +137,10 @@ export function renderGeneratedFile(entries: readonly LegacyChartEntry[]): strin
         `storedCode: ${JSON.stringify(e.storedCode)}`,
       ]
       if (e.via) parts.push(`via: ${JSON.stringify(e.via)}`)
+      // The reason travels INTO the table. A correction whose justification
+      // lives only in a commit message is a magic line six months from now.
+      if (e.overrideReason)
+        parts.push(`overrideReason: ${JSON.stringify(e.overrideReason)}`)
       if (e.mintedBecause)
         parts.push(`mintedBecause: ${JSON.stringify(e.mintedBecause)}`)
       if (e.duplicateOfCurrentCodes)
@@ -187,6 +191,7 @@ export interface DerivationRun {
   moneyCensus: Record<string, number>
   ambiguous: { code: string; label: string; candidates: string[] }[]
   violations: { kind: string; code: string; detail: string }[]
+  unmatchedOverrides: { code: string; label: string; reason: string }[]
 }
 
 /**
@@ -197,15 +202,11 @@ export interface DerivationRun {
  * someone has LOOKED — never that the merge is right. Two of these are known
  * to be wrong and are waiting on the client:
  *
- *   PLF.02.03.99  "Other Costs"   farming −1,094,833 + plant −9,696
- *                 The farming cost belongs with `PLF.02.01.99`, whose 2026
- *                 name the client changed to "Other Products' Costs" — so the
- *                 label rule cannot see it. Its revenue stayed put, which is
- *                 why 1,921,539 of "other products" shows no cost on the
- *                 margin screen.
- *   PLF.01.03.99  "Revenue from Other Sources"  82,398 + −705,200
- *                 Lands beside the cost above; the pair printed +277.3% on a
- *                 line that lost 1,727,331.
+ * Two entries that were on this list are FIXED rather than pending, by the
+ * hand corrections in `LEGACY_CHART_OVERRIDES` — the owner approved them on
+ * 2026-08-19: farming's other-products cost returns to `PLF.02.01.99`, and the
+ * mislabelled elimination row returns to `PLF.01.01.99`. Group totals do not
+ * move; only the attribution does.
  *
  *   PLF.04.05.02  "Consulting Fees & Due Diligence"  −6,171 + −6,365
  *                 Collapses the client's Sales-&-Marketing / Head-Office
@@ -217,8 +218,6 @@ export interface DerivationRun {
  * first time was that nothing said anything at all.
  */
 const MERGES_PENDING_DECISION = new Set([
-  "PLF.02.03.99",
-  "PLF.01.03.99",
   "PLF.04.05.02",
   "PLF.05.13.01",
   "PLF.05.13.02",
@@ -233,6 +232,7 @@ export function deriveFromWorkbook(workbookPath: string): DerivationRun {
 
   const map = deriveLegacyChartMap(legacy.rows, current, CHART_YEAR)
   const violations = checkLegacyChartMap(map, current)
+  const unmatchedOverrides = map.unmatchedOverrides ?? []
 
   const census: Record<string, number> = {
     identical: 0,
@@ -257,6 +257,7 @@ export function deriveFromWorkbook(workbookPath: string): DerivationRun {
     moneyCensus,
     ambiguous: map.ambiguous,
     violations,
+    unmatchedOverrides,
   }
 }
 
@@ -296,6 +297,17 @@ function main(): void {
     console.log(`\nwrote ${OUT}`)
   }
 
+  if (run.unmatchedOverrides.length > 0) {
+    console.error("\nA hand correction matched no row on the sheet:")
+    for (const o of run.unmatchedOverrides) {
+      console.error(`   ${o.code} "${o.label}" — ${o.reason}`)
+    }
+    console.error(
+      "\nThe workbook moved under it, or the override is mistyped. Fix or remove it;" +
+        " a correction that silently stops applying is how the mapping it fixes came back.",
+    )
+  }
+
   const unknownMerges = run.violations.filter(
     (v) => v.kind === "merge" && !MERGES_PENDING_DECISION.has(v.code),
   )
@@ -314,7 +326,8 @@ function main(): void {
   if (
     run.ambiguous.length > 0 ||
     run.violations.some((v) => v.kind !== "duplicate" && v.kind !== "merge") ||
-    unknownMerges.length > 0
+    unknownMerges.length > 0 ||
+    run.unmatchedOverrides.length > 0
   ) {
     process.exit(1)
   }

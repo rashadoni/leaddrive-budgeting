@@ -52,35 +52,44 @@ describe.skipIf(!AVAILABLE)("the 2025 chart map re-derives from the workbook", (
     ])
   })
 
-  it("names the five places two 2025 accounts become one", () => {
+  it("names the three places two 2025 accounts still become one", () => {
     /**
-     * These were invisible until the check learned that a source account is
-     * (code, label): all five pairs share a label, and the old comparison
-     * looked at the label alone. Pinned rather than fixed, because which 2026
-     * account each pair belongs in is the client's decision, not the rule's.
+     * Five were found when the check learned that a source account is
+     * (code, label); the owner settled two of them on 2026-08-19 and they are
+     * now hand corrections in `LEGACY_CHART_OVERRIDES`:
      *
-     * Two carry real money, and they are the cause of the product-margin
-     * defects chased on 2026-08-19:
+     *   PLF.02.01.99 "Other Costs" → back to PLF.02.01.99, beside the revenue
+     *     it belongs to. The 2026 chart renamed that account to "Other
+     *     Products' Costs", which is the whole reason the label rule missed it.
+     *   PLF.01.01.99 "Revenue from Other Sources" → back to PLF.01.01.99. The
+     *     elimination block pairs it with PLF.02.01.99 by adjacency, exactly
+     *     as it pairs corn with corn costs; the label is the workbook's typo.
      *
-     *   Other Costs                 −1,094,833 (farm) + −9,696 (plant)
-     *     Farming cost left PLF.02.01.99 while its revenue PLF.01.01.99 stayed,
-     *     so 1,921,539 of "other products" revenue showed no cost at all.
-     *   Revenue from Other Sources     82,398 + −705,200
-     *     Landed on PLF.01.03.99 beside the cost above, and the screen printed
-     *     +277.3% on a line that lost 1,727,331.
+     * Group totals did not move — 1,298,737 of revenue and 1,104,528 of cost
+     * before and after — only which account carries them.
      *
-     * One is small — Consulting Fees, −6,171 + −6,365 — but it collapses the
-     * client's Sales-&-Marketing / Head-Office split, which the section
-     * tie-break exists to protect: the tie-break chooses between two TARGETS,
-     * and cannot stop two SOURCES converging. The last two are empty.
+     * The three below remain the client's to settle. Consulting Fees is the
+     * one that matters: it collapses the Sales-&-Marketing / Head-Office split
+     * the section tie-break exists to protect, because that tie-break chooses
+     * between two TARGETS and cannot stop two SOURCES converging. The two
+     * revaluation pairs are empty.
      */
     expect(run!.violations.filter((v) => v.kind === "merge").map((v) => v.code)).toEqual([
       "PLF.04.05.02",
       "PLF.05.13.01",
       "PLF.05.13.02",
-      "PLF.02.03.99",
-      "PLF.01.03.99",
     ])
+  })
+
+  it("applies both hand corrections, each carrying its reason into the table", () => {
+    const overrides = run!.entries.filter((e) => e.via === "override")
+    expect(overrides.map((e) => [e.code, e.storedCode])).toEqual([
+      ["PLF.02.01.99", "PLF.02.01.99"],
+      ["PLF.01.01.99", "PLF.01.01.99"],
+    ])
+    // A correction whose justification lives only in a commit message is a
+    // magic line to whoever reads the table next.
+    for (const e of overrides) expect(e.overrideReason).toBeTruthy()
   })
 
   it("classifies every 2025 leaf, and 148 of them carry money", () => {
@@ -105,9 +114,16 @@ describe.skipIf(!AVAILABLE)("the 2025 chart map re-derives from the workbook", (
     //
     //   PLF.07.02.04  Farming / Investment / Product  →  .02 / .03 / .04
     //                 (verified: one mapping to .02; 4,977,039 mislabelled)
-    //   PLF.01.01.99  "Revenue from Sale of Other Products" stays,
-    //                 "Revenue from Other Sources" → PLF.01.03.99
-    //                 (verified: identical; 705,200 mislabelled)
+    //   PLF.01.01.99  BOTH wordings now stay at PLF.01.01.99. The owner's
+    //                 table and the label rule both sent the "Other Sources"
+    //                 wording to PLF.01.03.99; on 2026-08-19 the owner
+    //                 approved correcting that. It is an elimination row the
+    //                 workbook mislabelled — the elimination block pairs it
+    //                 with PLF.02.01.99 by adjacency, exactly as it pairs
+    //                 corn with corn costs — and sending it to other sources
+    //                 took 705,200 of elimination out of the branch it
+    //                 belongs to, turning that branch's revenue negative and
+    //                 printing +277.3% on a line that lost money.
     //   PLF.12.03.04  the "Provision - G&A" wording — which is the one that
     //                 carries the −44,049 — matches PLF.12.01.04, the 2026
     //                 home of the whole `Provisions - G&A` block. The empty
@@ -124,7 +140,7 @@ describe.skipIf(!AVAILABLE)("the 2025 chart map re-derives from the workbook", (
       "PLF.07.02.03",
       "PLF.07.02.04",
     ])
-    expect(byCode.get("PLF.01.01.99")).toEqual(["PLF.01.01.99", "PLF.01.03.99"])
+    expect(byCode.get("PLF.01.01.99")).toEqual(["PLF.01.01.99", "PLF.01.01.99"])
     expect(byCode.get("PLF.12.03.04")).toEqual(["PLF.12.01.04", "PLF.12.03.04"])
   })
 })

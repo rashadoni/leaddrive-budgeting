@@ -268,6 +268,60 @@ describe("minting an own account", () => {
   })
 })
 
+describe("hand corrections", () => {
+  it("does not report a declared correction as a collision", () => {
+    // The correction lands two labels on one code deliberately — one of them
+    // is a typo in the workbook. Reporting that as an accident would file the
+    // fix as the fault it repairs.
+    const withOverride = {
+      entries: [
+        { code: "A", label: "Real name", kind: "identical" as const, storedCode: "X" },
+        {
+          code: "A",
+          label: "Typo",
+          kind: "renumbered" as const,
+          storedCode: "X",
+          via: "override" as const,
+          overrideReason: "the workbook mislabelled this row",
+        },
+      ],
+      ambiguous: [],
+    }
+    expect(checkLegacyChartMap(withOverride, [])).toEqual([])
+  })
+
+  it("does not report a declared correction as a mislabel", () => {
+    // Landing on a code the current chart names differently IS the correction:
+    // the renaming is why the label rule failed.
+    const current = [leaf("PLF.02.01.99", "Other Products' Costs")]
+    const withOverride = {
+      entries: [
+        {
+          code: "PLF.02.01.99",
+          label: "Other Costs",
+          kind: "renumbered" as const,
+          storedCode: "PLF.02.01.99",
+          via: "override" as const,
+          overrideReason: "renamed in 2026",
+        },
+      ],
+      ambiguous: [],
+    }
+    expect(checkLegacyChartMap(withOverride, current)).toEqual([])
+  })
+
+  it("still reports an accidental collision that no correction covers", () => {
+    const bad = {
+      entries: [
+        { code: "A", label: "One", kind: "own_account" as const, storedCode: "X" },
+        { code: "B", label: "Two", kind: "own_account" as const, storedCode: "X" },
+      ],
+      ambiguous: [],
+    }
+    expect(checkLegacyChartMap(bad, []).map((v) => v.kind)).toEqual(["collision"])
+  })
+})
+
 describe("checkLegacyChartMap", () => {
   it("catches a mislabel — a row landing where the current chart says otherwise", () => {
     const current = [leaf("PLF.01.01.06", "Revenue from Sale of Almond")]
