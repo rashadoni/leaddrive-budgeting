@@ -429,7 +429,14 @@ export function resolveLegacyAccount(
  *               a new code.
  */
 export interface LegacyChartViolation {
-  kind: "collision" | "mislabel" | "duplicate"
+  /**
+   * `collision`  two DIFFERENT labels post to one stored code.
+   * `merge`      two different 2025 CODES carrying the SAME label post to one
+   *              stored code, so two source accounts become one.
+   * `mislabel`   a row lands where the current chart names something else.
+   * `duplicate`  an own-account row whose label already exists elsewhere.
+   */
+  kind: "collision" | "merge" | "mislabel" | "duplicate"
   code: string
   detail: string
 }
@@ -452,20 +459,46 @@ export function checkLegacyChartMap(
   }
 
   const violations: LegacyChartViolation[] = []
-  const landed = new Map<string, { from: string; name: string }>()
+  const landed = new Map<string, { from: string; name: string; key: string }>()
 
   for (const entry of map.entries) {
     const name = normaliseChartLabel(entry.label)
+    /**
+     * The identity of a SOURCE account, which this module states plainly is
+     * (code, label) and not either alone. The check below used to compare
+     * labels only, so two different 2025 codes sharing one label landed on one
+     * stored code in silence — the exact shape of the miss found on 2026-08-19:
+     *
+     *   PLF.02.01.99 "Other Costs"  (farming)    ─┐
+     *                                             ├─→ PLF.02.03.99
+     *   PLF.02.02.99 "Other Costs"  (processing) ─┘
+     *
+     * Two accounts of the client's became one, the farm/plant split on that
+     * line stopped existing, and — because the paired revenue `PLF.01.01.99`
+     * stayed where it was — the product-margin screen showed 1,921,539 of
+     * revenue with no cost against it. Nothing failed; the money simply moved
+     * branch. A merge is reported whether or not the labels agree, because
+     * agreeing labels are what makes it invisible.
+     */
+    const key = legacyEntryKey(entry.code, entry.label)
 
     const prior = landed.get(entry.storedCode)
-    if (prior && normaliseChartLabel(prior.name) !== name) {
-      violations.push({
-        kind: "collision",
-        code: entry.storedCode,
-        detail: `${prior.from} ("${prior.name}") and ${entry.code} ("${entry.label}") both post to ${entry.storedCode}`,
-      })
+    if (prior && prior.key !== key) {
+      if (normaliseChartLabel(prior.name) !== name) {
+        violations.push({
+          kind: "collision",
+          code: entry.storedCode,
+          detail: `${prior.from} ("${prior.name}") and ${entry.code} ("${entry.label}") both post to ${entry.storedCode}`,
+        })
+      } else {
+        violations.push({
+          kind: "merge",
+          code: entry.storedCode,
+          detail: `${prior.from} and ${entry.code} both carry "${entry.label}" and both post to ${entry.storedCode}: two 2025 accounts become one`,
+        })
+      }
     } else if (!prior) {
-      landed.set(entry.storedCode, { from: entry.code, name: entry.label })
+      landed.set(entry.storedCode, { from: entry.code, name: entry.label, key })
     }
 
     const currentNames = currentLabelsByCode.get(entry.storedCode)

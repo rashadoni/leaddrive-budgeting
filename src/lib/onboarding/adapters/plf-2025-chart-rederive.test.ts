@@ -42,13 +42,44 @@ describe.skipIf(!AVAILABLE)("the 2025 chart map re-derives from the workbook", (
     // the mapping: five 2025 accounts share a name with a 2026 account that
     // sits at another code, and three of those are `.R` region rows whose
     // 2026 twin is a parent. They are reported and warned on, never merged.
-    expect(run!.violations.filter((v) => v.kind !== "duplicate")).toEqual([])
-    expect(run!.violations.map((v) => v.code)).toEqual([
+    expect(run!.violations.filter((v) => v.kind !== "duplicate" && v.kind !== "merge")).toEqual([])
+    expect(run!.violations.filter((v) => v.kind === "duplicate").map((v) => v.code)).toEqual([
       "PLF.05.11.R",
       "PLF.05.17.R",
       "PLF.05.18.R",
       "PLF.08.02",
       "PLF.08.03",
+    ])
+  })
+
+  it("names the five places two 2025 accounts become one", () => {
+    /**
+     * These were invisible until the check learned that a source account is
+     * (code, label): all five pairs share a label, and the old comparison
+     * looked at the label alone. Pinned rather than fixed, because which 2026
+     * account each pair belongs in is the client's decision, not the rule's.
+     *
+     * Two carry real money, and they are the cause of the product-margin
+     * defects chased on 2026-08-19:
+     *
+     *   Other Costs                 −1,094,833 (farm) + −9,696 (plant)
+     *     Farming cost left PLF.02.01.99 while its revenue PLF.01.01.99 stayed,
+     *     so 1,921,539 of "other products" revenue showed no cost at all.
+     *   Revenue from Other Sources     82,398 + −705,200
+     *     Landed on PLF.01.03.99 beside the cost above, and the screen printed
+     *     +277.3% on a line that lost 1,727,331.
+     *
+     * One is small — Consulting Fees, −6,171 + −6,365 — but it collapses the
+     * client's Sales-&-Marketing / Head-Office split, which the section
+     * tie-break exists to protect: the tie-break chooses between two TARGETS,
+     * and cannot stop two SOURCES converging. The last two are empty.
+     */
+    expect(run!.violations.filter((v) => v.kind === "merge").map((v) => v.code)).toEqual([
+      "PLF.04.05.02",
+      "PLF.05.13.01",
+      "PLF.05.13.02",
+      "PLF.02.03.99",
+      "PLF.01.03.99",
     ])
   })
 

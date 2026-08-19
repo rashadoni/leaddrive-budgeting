@@ -291,6 +291,62 @@ describe("checkLegacyChartMap", () => {
     ])
   })
 
+  it("catches two 2025 codes merging under one label", () => {
+    // The miss found on 2026-08-19. Both rows say "Other Costs" — farming's
+    // and the plant's — so the label-only check saw one account and stayed
+    // quiet while two of the client's accounts became one.
+    const merged = {
+      entries: [
+        { code: "PLF.02.01.99", label: "Other Costs", kind: "renumbered" as const, storedCode: "PLF.02.03.99" },
+        { code: "PLF.02.02.99", label: "Other Costs", kind: "renumbered" as const, storedCode: "PLF.02.03.99" },
+      ],
+      ambiguous: [],
+    }
+    expect(checkLegacyChartMap(merged, [])).toEqual([
+      {
+        kind: "merge",
+        code: "PLF.02.03.99",
+        detail: expect.stringContaining("PLF.02.01.99 and PLF.02.02.99"),
+      },
+    ])
+  })
+
+  it("does not call one account arriving once a merge", () => {
+    const fine = {
+      entries: [
+        { code: "PLF.02.01.99", label: "Other Costs", kind: "renumbered" as const, storedCode: "PLF.02.03.99" },
+      ],
+      ambiguous: [],
+    }
+    expect(checkLegacyChartMap(fine, [])).toEqual([])
+  })
+
+  it("does not fire when the same entry is listed twice", () => {
+    // Identical (code, label) is one account, however many times it appears.
+    const dup = {
+      entries: [
+        { code: "A", label: "One", kind: "identical" as const, storedCode: "X" },
+        { code: "A", label: "One", kind: "identical" as const, storedCode: "X" },
+      ],
+      ambiguous: [],
+    }
+    expect(checkLegacyChartMap(dup, [])).toEqual([])
+  })
+
+  it("still calls a differing label a collision, not a merge", () => {
+    // The two are distinct findings: a collision says the money is mislabelled,
+    // a merge says two accounts became one. Reporting both as one kind would
+    // lose which question to ask.
+    const bad = {
+      entries: [
+        { code: "A", label: "One", kind: "own_account" as const, storedCode: "X" },
+        { code: "B", label: "Two", kind: "own_account" as const, storedCode: "X" },
+      ],
+      ambiguous: [],
+    }
+    expect(checkLegacyChartMap(bad, []).map((v) => v.kind)).toEqual(["collision"])
+  })
+
   it("catches two meanings landing on one stored code", () => {
     const bad = {
       entries: [

@@ -189,6 +189,41 @@ export interface DerivationRun {
   violations: { kind: string; code: string; detail: string }[]
 }
 
+/**
+ * Merges already seen by a person, keyed by the code they land on.
+ *
+ * A merge means two of the client's 2025 accounts post to one 2026 account, so
+ * the split between them stops existing. Being on this list records only that
+ * someone has LOOKED — never that the merge is right. Two of these are known
+ * to be wrong and are waiting on the client:
+ *
+ *   PLF.02.03.99  "Other Costs"   farming −1,094,833 + plant −9,696
+ *                 The farming cost belongs with `PLF.02.01.99`, whose 2026
+ *                 name the client changed to "Other Products' Costs" — so the
+ *                 label rule cannot see it. Its revenue stayed put, which is
+ *                 why 1,921,539 of "other products" shows no cost on the
+ *                 margin screen.
+ *   PLF.01.03.99  "Revenue from Other Sources"  82,398 + −705,200
+ *                 Lands beside the cost above; the pair printed +277.3% on a
+ *                 line that lost 1,727,331.
+ *
+ *   PLF.04.05.02  "Consulting Fees & Due Diligence"  −6,171 + −6,365
+ *                 Collapses the client's Sales-&-Marketing / Head-Office
+ *                 split. Small, but the split is deliberate.
+ *   PLF.05.13.01  "Revaluation of Fixed & Intangible Assets"   both zero
+ *   PLF.05.13.02  "Revaluation of Inventory"                   both zero
+ *
+ * A merge NOT on this list fails the run, because the way this was missed the
+ * first time was that nothing said anything at all.
+ */
+const MERGES_PENDING_DECISION = new Set([
+  "PLF.02.03.99",
+  "PLF.01.03.99",
+  "PLF.04.05.02",
+  "PLF.05.13.01",
+  "PLF.05.13.02",
+])
+
 /** The whole derivation, workbook path in, everything the test needs out. */
 export function deriveFromWorkbook(workbookPath: string): DerivationRun {
   const wb = XLSX.readFile(workbookPath)
@@ -261,9 +296,26 @@ function main(): void {
     console.log(`\nwrote ${OUT}`)
   }
 
+  const unknownMerges = run.violations.filter(
+    (v) => v.kind === "merge" && !MERGES_PENDING_DECISION.has(v.code),
+  )
+  if (unknownMerges.length > 0) {
+    console.error("\nNEW merge — two 2025 accounts would become one, and nobody has decided that:")
+    for (const v of unknownMerges) console.error(`   ${v.detail}`)
+    console.error(
+      "\nAdd it to MERGES_PENDING_DECISION with a note, or change the mapping so the two stay apart.",
+    )
+  }
+
   // A `duplicate` violation is a statement about the client's chart, not a bug
   // in the derivation: it is reported, warned on at import, and does not block.
-  if (run.ambiguous.length > 0 || run.violations.some((v) => v.kind !== "duplicate")) {
+  // A `merge` blocks unless it is already on the list above — the list records
+  // that a human has SEEN it, never that it is correct.
+  if (
+    run.ambiguous.length > 0 ||
+    run.violations.some((v) => v.kind !== "duplicate" && v.kind !== "merge") ||
+    unknownMerges.length > 0
+  ) {
     process.exit(1)
   }
 }
