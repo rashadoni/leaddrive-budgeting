@@ -139,7 +139,8 @@
     "alerts": "Alerts",
     "tradeTower": "Trade Tower",
     "toggleBudgetingSubmenu": "Toggle budgeting sub-menu",
-    "toggleAdminSubmenu": "Toggle admin sub-menu"
+    "toggleAdminSubmenu": "Toggle admin sub-menu",
+    "navProductMargin": "Product margin"
   },
   "common": {
     "toggleTheme": "Toggle theme",
@@ -6249,6 +6250,33 @@
       "conflict": "The data changed meanwhile — reload and retry",
       "validation": "Check the entered values",
       "generic": "Something went wrong — try again"
+    }
+  },
+  "productMargin": {
+    "title": "Gross margin by product",
+    "subtitle": "Per product: (revenue − cost of sales) / revenue. Where the cost is unknown the reason is shown instead of a number.",
+    "period": "Months: {period} · {count} months",
+    "product": "Product",
+    "revenue": "Revenue",
+    "cost": "Cost of sales",
+    "grossProfit": "Gross profit",
+    "margin": "Margin",
+    "groupTotal": "Products with a known cost",
+    "notCounted": "Not counted above",
+    "revenueWithoutCost": "{amount} of revenue has no cost stated — its margin is unknown.",
+    "contraRevenue": "Returns and discounts: {amount} — not attributable to any one product.",
+    "unpairedCost": "{name} ({code}): {amount} — a cost with no revenue beside it.",
+    "loading": "Loading…",
+    "failed": "Could not load the data.",
+    "empty": "This plan has no product lines.",
+    "reason": {
+      "no_cost_data": "no cost data",
+      "no_revenue": "no revenue"
+    },
+    "basis": {
+      "consolidated_computed": "Consolidated (intragroup eliminated)",
+      "sum_of_entities": "Sum of entities (intragroup not eliminated)",
+      "single_entity": "Single entity"
     }
   }
 }

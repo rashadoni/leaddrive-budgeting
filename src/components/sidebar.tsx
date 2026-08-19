@@ -31,6 +31,7 @@ import {
   Bell,
   ChevronDown,
   Store,
+  Percent,
 } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
@@ -135,6 +136,7 @@ const budgetSubNav = [
       { value: "pnl-report", icon: BarChart2, labelKey: "navPnl" },
       { value: "sales-budget", icon: TrendingUp, labelKey: "navSales" },
       { value: "cogs", icon: DollarSign, labelKey: "navCogs" },
+      { value: "product-margin", icon: Percent, labelKey: "navProductMargin" },
       { value: "balance-sheet", icon: List, labelKey: "navBalanceSheet" },
       { value: "cash-flow", icon: Banknote, labelKey: "navCashFlow" },
       { value: "assumptions", icon: Target, labelKey: "navAssumptions" },
