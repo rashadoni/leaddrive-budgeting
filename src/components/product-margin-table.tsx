@@ -37,7 +37,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import { RotateCcw, SlidersHorizontal } from "lucide-react"
+import { ChevronDown, ChevronRight, RotateCcw, SlidersHorizontal } from "lucide-react"
 import { BUDGET_COLORS, GRID_STYLE, AXIS_TICK } from "@/lib/budget-chart-theme"
 import type { ProductMargin } from "@/lib/budgeting/product-margin"
 import {
@@ -134,6 +134,9 @@ interface ProductMarginResponse {
 
 const money = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 })
 
+/** Where the target slider rests. The client's own working figure. */
+const DEFAULT_TARGET = 30
+
 /** A loss is not a small positive and must not read as one. */
 function tone(pct: number): string {
   if (pct < 0) return BUDGET_COLORS.negative
@@ -196,6 +199,83 @@ function disambiguate<T extends { productCode: string; productName: string }>(
   })
 }
 
+/**
+ * A per-product table, folded away until asked for.
+ *
+ * This screen carries four of them, and with a dozen products each the cards
+ * that summarise — the comparison, the annual view, the chart — end up below
+ * the fold. The owner found the second chart only after scrolling, which is
+ * the tell: the tables were pushing the reading off screen. Rows are for
+ * checking a specific product, so they open on request; the count sits on the
+ * button so nothing looks empty.
+ */
+function Disclosure({
+  label,
+  count,
+  children,
+}: {
+  label: string
+  count: number
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        <span>{label}</span>
+        <span className="tabular-nums">({count})</span>
+      </button>
+      {open && <div className="pt-3">{children}</div>}
+    </div>
+  )
+}
+
+/**
+ * The margin percent, always just clear of the bar's zero end.
+ *
+ * Recharts' own `position="right"` puts a negative bar's label at its outer
+ * end, which is the far side of the plot — on the client's 2025 data that laid
+ * "−27.4%" straight over the words "Laboratory Services" on the axis. Both
+ * signs are anchored off the ZERO line instead, so a label always lands in
+ * empty space and never over the category names.
+ */
+function BarPct(props: {
+  // Recharts' own label props are wider than the numbers they carry here
+  // (string | number | null | false), so they are taken as unknown and
+  // narrowed rather than re-declared and chased every time it changes.
+  x?: unknown
+  y?: unknown
+  width?: unknown
+  height?: unknown
+  value?: unknown
+}) {
+  const num = (v: unknown) => (typeof v === "number" ? v : Number(v) || 0)
+  const x = num(props.x)
+  const y = num(props.y)
+  const width = num(props.width)
+  const height = num(props.height)
+  const { value } = props
+  if (typeof value !== "number") return null
+  return (
+    <text
+      x={x + width + 6}
+      y={y + height / 2}
+      dy={4}
+      fontSize={11}
+      textAnchor="start"
+      className="fill-muted-foreground"
+    >
+      {value.toFixed(1)}%
+    </text>
+  )
+}
+
 export function ProductMarginTable({
   planId,
   companyId,
@@ -205,7 +285,7 @@ export function ProductMarginTable({
 }) {
   const t = useTranslations("productMargin")
   const [knobs, setKnobs] = useState<MarginKnobs>(NO_CHANGE)
-  const [target, setTarget] = useState(30)
+  const [target, setTarget] = useState(DEFAULT_TARGET)
 
   const { data, isLoading, error } = useQuery<ProductMarginResponse>({
     queryKey: ["product-margin", planId, companyId ?? null],
@@ -351,8 +431,8 @@ export function ProductMarginTable({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => { setKnobs(NO_CHANGE); setTarget(30) }}
-              disabled={!live && target === 30}
+              onClick={() => { setKnobs(NO_CHANGE); setTarget(DEFAULT_TARGET) }}
+              disabled={!live && target === DEFAULT_TARGET}
             >
               <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
               {t("reset")}
@@ -363,17 +443,34 @@ export function ProductMarginTable({
             <Knob
               label={t("priceKnob")}
               value={knobs.price}
+              resetLabel={t("resetOne")}
               onChange={(price) => setKnobs((k) => ({ ...k, price }))}
             />
             <Knob
               label={t("costKnob")}
               value={knobs.cost}
+              resetLabel={t("resetOne")}
               onChange={(cost) => setKnobs((k) => ({ ...k, cost }))}
             />
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">{t("targetKnob")}</span>
-                <span className="font-medium tabular-nums">{target}%</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="font-medium tabular-nums">{target}%</span>
+                  {/* The target's rest position is DEFAULT_TARGET, not zero:
+                      a zero target would paint every product green. */}
+                  {target !== DEFAULT_TARGET && (
+                    <button
+                      type="button"
+                      onClick={() => setTarget(DEFAULT_TARGET)}
+                      title={t("resetOne")}
+                      aria-label={t("resetOne")}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                    </button>
+                  )}
+                </span>
               </div>
               <Slider
                 value={[target]}
@@ -425,12 +522,7 @@ export function ProductMarginTable({
                 ))}
                 {/* The rate a reader came for, on the product they are looking
                     at — no legend to cross-reference. */}
-                <LabelList
-                  dataKey="marginPct"
-                  position="right"
-                  fontSize={11}
-                  formatter={(v: unknown) => (typeof v === "number" ? `${v.toFixed(1)}%` : "")}
-                />
+                <LabelList dataKey="marginPct" content={BarPct} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -438,7 +530,9 @@ export function ProductMarginTable({
       </Card>
 
       <Card>
-        <CardContent className="p-0 overflow-x-auto">
+        <CardContent className="p-6">
+          <Disclosure label={t("allProducts")} count={sim.products.length}>
+            <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40">
               <tr className="text-left">
@@ -510,6 +604,8 @@ export function ProductMarginTable({
               </tr>
             </tfoot>
           </table>
+            </div>
+          </Disclosure>
         </CardContent>
       </Card>
 
@@ -725,6 +821,7 @@ function ComparisonCard({
           </ResponsiveContainer>
         )}
 
+        <Disclosure label={t("byProduct")} count={rows.length}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b">
@@ -781,6 +878,7 @@ function ComparisonCard({
             </tbody>
           </table>
         </div>
+        </Disclosure>
       </CardContent>
     </Card>
   )
@@ -812,6 +910,7 @@ function AnnualCard({
           <h3 className="font-medium">{t("annualTitle")}</h3>
           <p className="text-xs text-muted-foreground pt-1">{t("annualNote")}</p>
         </div>
+        <Disclosure label={t("byProduct")} count={labelled.length}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b">
@@ -871,6 +970,7 @@ function AnnualCard({
             </tbody>
           </table>
         </div>
+        </Disclosure>
       </CardContent>
     </Card>
   )
@@ -979,17 +1079,34 @@ function Knob({
   label,
   value,
   onChange,
+  resetLabel,
 }: {
   label: string
   value: number
   onChange: (v: number) => void
+  resetLabel: string
 }) {
   const pct = Math.round(value * 100)
   return (
     <div className="space-y-2">
       <div className="flex justify-between text-sm">
         <span className="text-muted-foreground">{label}</span>
-        <span className="font-medium tabular-nums">{pct >= 0 ? "+" : ""}{pct}%</span>
+        <span className="flex items-center gap-1.5">
+          <span className="font-medium tabular-nums">{pct >= 0 ? "+" : ""}{pct}%</span>
+          {/* Dragging a slider back to exactly zero by hand is fiddly, and the
+              card-level reset also clears the other two. This undoes one. */}
+          {pct !== 0 && (
+            <button
+              type="button"
+              onClick={() => onChange(0)}
+              title={resetLabel}
+              aria-label={resetLabel}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <RotateCcw className="h-3 w-3" />
+            </button>
+          )}
+        </span>
       </div>
       <Slider
         value={[pct]}

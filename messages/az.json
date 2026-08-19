@@ -6308,7 +6308,7 @@
     "drivenByRate": "Fərqin böyük hissəsi marjalara görədir: səbət demək olar ki, dəyişməyib, məhsulların özü planlaşdırılandan az qazanır.",
     "drivenByBoth": "Fərqə həm marjalar, həm də satış strukturu təxminən eyni dərəcədə təsir edib.",
     "drivenByNeither": "Nə marjalar, nə struktur nəzərəçarpan dərəcədə dəyişməyib.",
-    "shareShift": "{product}: paket payı {from} → {to}, marjaya {points} f.p.",
+    "shareShift": "{product}: gəlirdə payı {from} → {to}, marjaya {points} f.p.",
     "comparableCount": "{count} müqayisə oluna bilən məhsul",
     "outsidePlanTitle": "Bu aylarda planda olmayan satış",
     "outsidePlanNote": "Bu məhsullar üçün seçilmiş aylarda plan yoxdur, ona görə də yuxarıdakı müqayisəyə daxil edilmir. Aşağıdakı illik cədvələ baxın.",
@@ -6316,7 +6316,7 @@
     "annualTitle": "İllik plana qarşı",
     "annualNote": "Marja nisbətdir, ona görə də müxtəlif dövrlər üçün müqayisə edilə bilər. Gəlir isə yox: o, fərq kimi deyil, illik planın icrası kimi göstərilir. Payız məhsulları bütövlükdə iyun–dekabra planlaşdırılıb.",
     "annualPlan": "İllik plan",
-    "delivered": "Çatdırılıb",
+    "delivered": "Satılıb",
     "progress": "İcra",
     "planRate": "Plan marjası",
     "deliveredRate": "Faktiki marja",
@@ -6325,7 +6325,10 @@
     "noCostData": "məlumat yoxdur",
     "nothingDelivered": "Seçilmiş aylarda satış yoxdur, ona görə də müqayisə üçün heç nə yoxdur.",
     "noCostProducts": "Marja hesablana bilməyən məhsullar ({count})",
-    "chartLegend": "Uzunluq — ümumi mənfəət (pul), rəng — {target}% hədəfə münasibət, yazı — marja faizi. Maya dəyəri bilinməyən məhsullar burada göstərilmir."
+    "chartLegend": "Uzunluq — ümumi mənfəət (pul), rəng — {target}% hədəfə münasibət, yazı — marja faizi. Maya dəyəri bilinməyən məhsullar burada göstərilmir.",
+    "allProducts": "Bütün məhsullar",
+    "byProduct": "Məhsullar üzrə",
+    "resetOne": "Sıfırla"
   },
   "balanceRatios": {
     "title": "Balans əmsalları",
