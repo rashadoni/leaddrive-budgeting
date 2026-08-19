@@ -6334,7 +6334,9 @@
     "yoyPrior": "{year}",
     "yoyCurrent": "This year",
     "revenueChange": "revenue {pct}",
-    "yoyNotComparable": "{count} products cannot be compared: last year used a different chart of accounts (processing was one line, now it is seven)."
+    "yoyNotComparable": "{count} products cannot be compared: last year used a different chart of accounts (processing was one line, now it is seven).",
+    "emptyBudgetPlan": "This year's budget plan holds no lines — there is nothing to compare against. That is not the same as actual matching plan.",
+    "emptyAnnualPlan": "The annual plan holds no lines, so there is nothing to compare against."
   },
   "balanceRatios": {
     "title": "Balance sheet ratios",

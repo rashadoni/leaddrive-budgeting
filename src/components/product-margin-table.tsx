@@ -126,8 +126,9 @@ interface MarginComparison {
     actual: ComparedSide | null
     gapPoints: number | null
   }[]
-  budget: { knownMarginPct: number | null }
-  actual: { knownMarginPct: number | null }
+  budget: { knownRevenue: number; knownMarginPct: number | null }
+  actual: { knownRevenue: number; knownMarginPct: number | null }
+  budgetPlan?: { name: string; year: number } | null
   gapPoints: number | null
   common: {
     productCodes: string[]
@@ -713,6 +714,16 @@ function ComparisonCard({
    * not a pricing one — and it now has its own block rather than being folded
    * into a percentage that looks like performance.
    */
+  /**
+   * A plan can EXIST and hold nothing. The client's "Azərşəkər 2025 Budget"
+   * has zero lines, and on that plan this card drew "Büdcə —, 0 · Fərq +0",
+   * which reads as "actual equals plan" — the opposite of the truth, which is
+   * that there is no plan to compare against. Nothing here is wrong with the
+   * arithmetic; the arithmetic simply has nothing to say, and saying so is a
+   * different sentence from saying zero.
+   */
+  const nothingToCompare = c.common.productCodes.length === 0
+  const emptyBudget = c.budget.knownRevenue === 0
   const b = c.common.budget
   const a = c.common.actual
   const gp = a.grossProfit - b.grossProfit
@@ -743,6 +754,11 @@ function ComparisonCard({
           </p>
         </div>
 
+        {nothingToCompare ? (
+          <p className="text-sm text-muted-foreground">
+            {emptyBudget ? t("emptyBudgetPlan") : t("nothingDelivered")}
+          </p>
+        ) : (
         <div className="flex flex-wrap gap-8 text-sm">
           <div>
             <div className="text-xs text-muted-foreground">{t("budgetSide")}</div>
@@ -793,12 +809,11 @@ function ComparisonCard({
             </div>
           </div>
         </div>
-
-        {rows.length === 0 && (
-          <p className="text-sm text-muted-foreground">{t("nothingDelivered")}</p>
         )}
 
-        {c.outsidePlan.products.length > 0 && (
+        {/* With no comparable basket, "sold outside the plan" is just "sold",
+            and the mix decomposition has nothing to decompose. */}
+        {!nothingToCompare && c.outsidePlan.products.length > 0 && (
           <div className="rounded-md border p-3 space-y-1 text-sm">
             <div className="font-medium">{t("outsidePlanTitle")}</div>
             <p className="text-xs text-muted-foreground">{t("outsidePlanNote")}</p>
@@ -823,9 +838,9 @@ function ComparisonCard({
         )}
 
         {/* Rates or the basket, within the compared set. */}
-        <WhyMoved m={c.mixRate} t={t} />
+        {!nothingToCompare && <WhyMoved m={c.mixRate} t={t} />}
 
-        {gaps.length > 0 && (
+        {!nothingToCompare && gaps.length > 0 && (
           <ResponsiveContainer width="100%" height={Math.max(180, gaps.length * 30)}>
             <BarChart data={gaps} layout="vertical" margin={{ left: 8, right: 24 }}>
               <CartesianGrid {...GRID_STYLE} horizontal={false} vertical />
@@ -850,6 +865,7 @@ function ComparisonCard({
           </ResponsiveContainer>
         )}
 
+        {!nothingToCompare && (
         <Disclosure label={t("byProduct")} count={rows.length}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -908,6 +924,7 @@ function ComparisonCard({
           </table>
         </div>
         </Disclosure>
+        )}
       </CardContent>
     </Card>
   )
@@ -1071,6 +1088,9 @@ function AnnualCard({
   t: ReturnType<typeof useTranslations<"productMargin">>
 }) {
   const labelled = disambiguate(rows)
+  // Same trap as the comparison card: an annual plan that exists and holds
+  // nothing would draw a table of dashes rather than say it is empty.
+  const noPlan = rows.every((r) => r.planRevenue === 0)
   return (
     <Card>
       <CardContent className="p-6 space-y-3">
@@ -1078,6 +1098,8 @@ function AnnualCard({
           <h3 className="font-medium">{t("annualTitle")}</h3>
           <p className="text-xs text-muted-foreground pt-1">{t("annualNote")}</p>
         </div>
+        {noPlan && <p className="text-sm text-muted-foreground">{t("emptyAnnualPlan")}</p>}
+        {!noPlan && (
         <Disclosure label={t("byProduct")} count={labelled.length}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -1139,6 +1161,7 @@ function AnnualCard({
           </table>
         </div>
         </Disclosure>
+        )}
       </CardContent>
     </Card>
   )

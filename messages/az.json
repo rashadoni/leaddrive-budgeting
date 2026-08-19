@@ -6334,7 +6334,9 @@
     "yoyPrior": "{year}",
     "yoyCurrent": "Bu il",
     "revenueChange": "gəlir {pct}",
-    "yoyNotComparable": "{count} məhsulu müqayisə etmək mümkün deyil: keçən il hesablar planı başqa idi (emal bir sətir idi, indi yeddi)."
+    "yoyNotComparable": "{count} məhsulu müqayisə etmək mümkün deyil: keçən il hesablar planı başqa idi (emal bir sətir idi, indi yeddi).",
+    "emptyBudgetPlan": "Bu ilin büdcə planında heç bir sətir yoxdur — müqayisə etmək üçün heç nə yoxdur. Bu, «fakt plana bərabərdir» demək deyil.",
+    "emptyAnnualPlan": "İllik planda sətir yoxdur, ona görə də plana qarşı müqayisə mümkün deyil."
   },
   "balanceRatios": {
     "title": "Balans əmsalları",
