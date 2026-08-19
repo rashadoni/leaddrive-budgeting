@@ -11,20 +11,22 @@
  * seasonality the budget already encodes, which matters in farming, where a
  * run-rate off January–May would smear pre-harvest months across the year.
  *
- * ## Where the numbers come from
+ * ## Why the arithmetic is not done here
  *
- * The monthly series on `/api/budgeting/pnl` — the payload that already draws
- * the P&L screen — summed over three windows and composed by `computeEbitda`,
- * the same function that screen uses. Nothing is re-derived from accounts, so
- * the landing cannot disagree with the statement it projects from.
+ * The first version of this panel composed the landing client-side from the
+ * P&L payload. That payload carries budget REVENUE and COGS at the top level
+ * but not budget opex, D&A or below-EBITDA — those sit under
+ * `comparison.budget`. Read from the top level they came back empty, budget
+ * costs counted as zero, and this screen reported an EBITDA gap of −5.7M where
+ * the P&L showed +888k for the same months. It shipped, and only looking at it
+ * caught it.
  *
- * Sign handling mirrors `budget-pnl-view`: budget COGS arrives signed and is
- * taken as a magnitude, actual COGS arrives already positive. If that payload
- * convention ever changes, this file and that one change together — which is
- * why the dependency is written down here rather than left to be rediscovered.
+ * So the aggregation moved to `/api/budgeting/year-end`, which classifies the
+ * rows with `pnlSectionFromCode` and composes with `computeEbitda` — the same
+ * two the P&L uses. There is a test that this reproduces 255,942, the EBITDA
+ * the client's own workbook states for January–May.
  */
 
-import { useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
@@ -33,65 +35,16 @@ import {
   Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts"
 import { BUDGET_COLORS, GRID_STYLE, AXIS_TICK, fmtK } from "@/lib/budget-chart-theme"
-import type { PnlSectionTotals } from "@/lib/budgeting/ebitda"
-import { projectYearEnd } from "@/lib/budgeting/year-end-landing"
+import type { YearEndLanding } from "@/lib/budgeting/year-end-landing"
 
-type Monthly = Record<number, number> | undefined
-
-interface PnlResponse {
-  year?: number
-  hasActuals?: boolean
-  monthlyRevenue?: Monthly
-  monthlyCogs?: Monthly
-  monthlyOpex?: Monthly
-  monthlyOtherOperating?: Monthly
-  monthlyDa?: Monthly
-  monthlyBelowEbitda?: Monthly
-  monthlyActualRevenue?: Monthly
-  monthlyActualCogs?: Monthly
-  monthlyActualOpex?: Monthly
-  monthlyActualOtherOperating?: Monthly
-  monthlyActualDa?: Monthly
-  monthlyActualBelowEbitda?: Monthly
+interface YearEndResponse {
+  success: true
+  plan: { id: string; name: string; year: number; kind: string }
+  landing: YearEndLanding | null
+  basis: string
 }
 
 const money = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 })
-const ALL_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-function sum(series: Monthly, months: number[], abs = false): number {
-  let total = 0
-  for (const m of months) {
-    const v = series?.[m] ?? 0
-    total += abs ? Math.abs(v) : v
-  }
-  return total
-}
-
-function budgetTotals(d: PnlResponse, months: number[]): PnlSectionTotals {
-  return {
-    totalRevenue: sum(d.monthlyRevenue, months),
-    // Budget COGS arrives signed; the P&L screen takes its magnitude here too.
-    totalCogs: sum(d.monthlyCogs, months, true),
-    totalOpex: sum(d.monthlyOpex, months),
-    totalOtherOperating: sum(d.monthlyOtherOperating, months),
-    totalBelowEbitda: sum(d.monthlyBelowEbitda, months),
-    // computeEbitda only ever reads the sum of the two D&A buckets.
-    daInCogs: sum(d.monthlyDa, months),
-    daInOpex: 0,
-  }
-}
-
-function actualTotals(d: PnlResponse, months: number[]): PnlSectionTotals {
-  return {
-    totalRevenue: sum(d.monthlyActualRevenue, months),
-    totalCogs: sum(d.monthlyActualCogs, months),
-    totalOpex: sum(d.monthlyActualOpex, months),
-    totalOtherOperating: sum(d.monthlyActualOtherOperating, months),
-    totalBelowEbitda: sum(d.monthlyActualBelowEbitda, months),
-    daInCogs: sum(d.monthlyActualDa, months),
-    daInOpex: 0,
-  }
-}
 
 export function YearEndPanel({
   planId,
@@ -102,37 +55,19 @@ export function YearEndPanel({
 }) {
   const t = useTranslations("yearEnd")
 
-  const { data, isLoading, error } = useQuery<PnlResponse>({
-    queryKey: ["pnl-year-end", planId, companyId ?? null],
+  const { data, isLoading, error } = useQuery<YearEndResponse>({
+    queryKey: ["year-end", planId, companyId ?? null],
     enabled: Boolean(planId),
     queryFn: async () => {
       const q = new URLSearchParams({ planId })
       if (companyId) q.set("companyId", companyId)
-      const res = await fetch(`/api/budgeting/pnl?${q.toString()}`)
+      const res = await fetch(`/api/budgeting/year-end?${q.toString()}`)
       if (!res.ok) throw new Error(String(res.status))
       return res.json()
     },
   })
 
-  const model = useMemo(() => {
-    if (!data) return null
-    // A month counts as delivered when it carries any actual movement at all.
-    const delivered = ALL_MONTHS.filter(
-      (m) =>
-        (data.monthlyActualRevenue?.[m] ?? 0) !== 0 ||
-        (data.monthlyActualCogs?.[m] ?? 0) !== 0 ||
-        (data.monthlyActualOpex?.[m] ?? 0) !== 0,
-    )
-    if (delivered.length === 0) return null
-    const remaining = ALL_MONTHS.filter((m) => !delivered.includes(m))
-    return projectYearEnd({
-      actualToDate: actualTotals(data, delivered),
-      budgetToDate: budgetTotals(data, delivered),
-      budgetRemaining: budgetTotals(data, remaining),
-      monthsActual: delivered,
-      monthsRemaining: remaining,
-    })
-  }, [data])
+  const model = data?.landing ?? null
 
   if (!planId) return null
   if (isLoading) return <Card><CardContent className="p-6 text-muted-foreground">{t("loading")}</CardContent></Card>
