@@ -61,6 +61,8 @@ const TOTALS = [
 ]
 
 const BUDGET_PLAN = { id: "plan_2", name: "Azərşəkər 2026 Budget", year: 2026, kind: "budget" }
+/** Last year's actuals, for the year-over-year read. */
+const PRIOR_PLAN = { id: "plan_0", name: "Azərşəkər 2025 Actuals", year: 2025, kind: "actual" }
 
 /** Every groupBy the route made, with the args it used. */
 function groupByCalls() {
@@ -201,6 +203,7 @@ describe("budget against actual, like for like", () => {
     prismaMock.budgetPlan.findFirst
       .mockResolvedValueOnce(PLAN)
       .mockResolvedValueOnce(BUDGET_PLAN)
+      .mockResolvedValueOnce(PRIOR_PLAN)
 
     const res = await GET(makeRequest("http://x/api/budgeting/product-margin?planId=plan_1"))
     const body = await res.json()
@@ -208,14 +211,23 @@ describe("budget against actual, like for like", () => {
     const windowed = groupByCalls().filter(
       ([a]) => a.by.includes("accountId") && a.where.monthIndex !== undefined,
     )
-    expect(windowed).toHaveLength(2)
+    // Three reads now carry the window: budget, actual, and LAST YEAR. The
+    // prior year needs the same cut for the same reason — five months against
+    // twelve would be a volume comparison wearing a performance label.
+    expect(windowed).toHaveLength(3)
     for (const [a] of windowed) {
       expect(a.where.monthIndex).toEqual({ in: [0, 1, 2, 3, 4] })
     }
-    // One read per side, and they are the two different plans.
+    // One read per side, and they are three different plans.
     expect(new Set(windowed.map(([a]) => a.where.planId))).toEqual(
-      new Set(["plan_1", "plan_2"]),
+      new Set(["plan_1", "plan_2", "plan_0"]),
     )
+    // And the prior year was looked up as the year before the actuals.
+    expect(
+      prismaMock.budgetPlan.findFirst.mock.calls.some(
+        ([a]) => a?.where?.year === 2025 && a?.where?.kind === "actual",
+      ),
+    ).toBe(true)
     // Stated back 1-based, so January–May is not reported as February–June.
     expect(body.comparison.monthsCompared).toEqual([1, 2, 3, 4, 5])
   })
