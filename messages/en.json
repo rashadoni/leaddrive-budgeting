@@ -6366,5 +6366,40 @@
       "ebitda": "EBITDA",
       "netProfit": "Net profit"
     }
+  },
+  "cashFlow": {
+    "title": "Cash flow (indirect)",
+    "subtitle": "Built from balance-sheet movements: because the balance sheet balances at every month, the statement always ties to the movement in cash.",
+    "window": "From the end of month {from} to the end of month {to}",
+    "openingCash": "Opening cash",
+    "closingCash": "Closing cash",
+    "netChange": "Net change",
+    "unreconciled": "Unreconciled",
+    "unreconciledHint": "should be zero while the balance sheet balances",
+    "disagreementBadge": "Disagrees with the P&L",
+    "disagreement": "The result derived from the balance sheet is {derived} while the P&L says {pnl} — a difference of {diff}. The statement does not hide it.",
+    "loading": "Loading…",
+    "failed": "Could not load the data.",
+    "empty": "This plan has no balance-sheet movement.",
+    "section": {
+      "operating": "Operating activities",
+      "investing": "Investing activities",
+      "financing": "Financing activities"
+    },
+    "line": {
+      "result": "Result for the period",
+      "depreciation": "Depreciation added back",
+      "receivables": "Change in receivables",
+      "inventory": "Change in inventory",
+      "biological": "Change in biological assets",
+      "otherCurrentAssets": "Other current assets",
+      "payables": "Change in payables",
+      "otherCurrentLiabilities": "Other current liabilities",
+      "nonCurrentAssets": "Investment in non-current assets",
+      "debtShort": "Short-term debt",
+      "debtLong": "Long-term debt",
+      "otherLongLiabilities": "Other long-term liabilities",
+      "contributions": "Owners' contributions"
+    }
   }
 }

@@ -6366,5 +6366,40 @@
       "ebitda": "EBITDA",
       "netProfit": "Xalis mənfəət"
     }
+  },
+  "cashFlow": {
+    "title": "Pul vəsaitlərinin hərəkəti (dolayı üsul)",
+    "subtitle": "Balansın hərəkətindən qurulub: mövqe hər ay tutduğuna görə hesabat həmişə pul qalığının dəyişməsi ilə üst-üstə düşür.",
+    "window": "{from}-ci ayın sonundan {to}-ci ayın sonuna",
+    "openingCash": "Dövrün əvvəlinə pul",
+    "closingCash": "Dövrün sonuna pul",
+    "netChange": "Xalis dəyişmə",
+    "unreconciled": "Uyğunlaşdırılmayan",
+    "unreconciledHint": "balans tutursa sıfır olmalıdır",
+    "disagreementBadge": "Mənfəət hesabatı ilə uyğunsuzluq",
+    "disagreement": "Balansdan çıxan nəticə {derived}, mənfəət hesabatı isə {pnl} deyir — fərq {diff}. Hesabat bu fərqi gizlətmir.",
+    "loading": "Yüklənir…",
+    "failed": "Məlumat alınmadı.",
+    "empty": "Bu plan üzrə balans hərəkəti yoxdur.",
+    "section": {
+      "operating": "Əməliyyat fəaliyyəti",
+      "investing": "İnvestisiya fəaliyyəti",
+      "financing": "Maliyyə fəaliyyəti"
+    },
+    "line": {
+      "result": "Dövrün nəticəsi",
+      "depreciation": "Amortizasiyanın geri əlavəsi",
+      "receivables": "Debitor borcun dəyişməsi",
+      "inventory": "Ehtiyatların dəyişməsi",
+      "biological": "Bioloji aktivlərin dəyişməsi",
+      "otherCurrentAssets": "Digər dövriyyə aktivləri",
+      "payables": "Kreditor borcun dəyişməsi",
+      "otherCurrentLiabilities": "Digər qısamüddətli öhdəliklər",
+      "nonCurrentAssets": "Uzunmüddətli aktivlərə investisiya",
+      "debtShort": "Qısamüddətli borc",
+      "debtLong": "Uzunmüddətli borc",
+      "otherLongLiabilities": "Digər uzunmüddətli öhdəliklər",
+      "contributions": "Səhmdar qoyuluşları"
+    }
   }
 }
