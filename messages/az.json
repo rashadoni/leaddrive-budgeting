@@ -141,7 +141,8 @@
     "toggleBudgetingSubmenu": "Büdcə alt menyusunu aç/bağla",
     "toggleAdminSubmenu": "Admin alt menyusunu aç/bağla",
     "navProductMargin": "Məhsul marjası",
-    "navBalanceRatios": "Əmsallar"
+    "navBalanceRatios": "Əmsallar",
+    "navYearEnd": "İlin yekunu"
   },
   "common": {
     "toggleTheme": "Temanı dəyiş",
@@ -6340,6 +6341,29 @@
       "quick": "1.0-dan yuxarı — rahat",
       "equityRatio": "0.5-dən yuxarı — rahat",
       "netDebtToEquity": "aşağı olması yaxşıdır"
+    }
+  },
+  "yearEnd": {
+    "title": "İl harada bitir",
+    "subtitle": "Bağlanmış aylar fakt üzrə, qalan aylar büdcə üzrə.",
+    "window": "{delivered} ay fakt · {planned} ay plan üzrə",
+    "methodBadge": "Qalan aylar plan üzrə",
+    "bankedOnly": "Bu üsulda proqnoz fərqi artıq yığılmış fərqə bərabərdir: qalan aylar hər iki tərəfdə eynidir və bir-birini ödəyir. Bu gələcəyin modeli deyil, indiyə qədər yığılmış fərqin il miqyasında göstərilməsidir.",
+    "chartTitle": "Plan və gözlənilən yekun",
+    "plan": "Plan",
+    "landing": "Gözlənilən yekun",
+    "delivered": "Fakt",
+    "gap": "Fərq",
+    "vsPlan": "plana nisbətən",
+    "loading": "Yüklənir…",
+    "failed": "Məlumat alınmadı.",
+    "noActuals": "Bu ildə hələ fakt yoxdur.",
+    "line": {
+      "header": "Göstərici",
+      "revenue": "Gəlir",
+      "grossProfit": "Ümumi mənfəət",
+      "ebitda": "EBITDA",
+      "netProfit": "Xalis mənfəət"
     }
   }
 }
