@@ -33,6 +33,7 @@ import { PLTab } from "@/features/budgeting/components/PLTab"
 import { PlansTab } from "@/features/budgeting/components/PlansTab"
 import { ImportTab } from "@/features/budgeting/components/ImportTab"
 import { CashFlowTab } from "@/features/budgeting/components/CashFlowTab"
+import { CashFlowIndirectPanel } from "@/components/cash-flow-indirect-panel"
 import { RollingTab } from "@/features/budgeting/components/RollingTab"
 import { WorkspaceTab } from "@/features/budgeting/components/WorkspaceTab"
 import { ForecastTab } from "@/features/budgeting/components/ForecastTab"
@@ -189,6 +190,7 @@ function periodLabel(plan: BudgetPlan, t: (key: string) => string): string {
 // is a separate roadmap item (multi-table migration).
 const COMPANY_FILTERED_TABS: ReadonlySet<string> = new Set([
   "pnl-report",
+  "cash-flow",
   "balance-ratios",
   "year-end",
   "product-margin",
@@ -525,7 +527,14 @@ export default function BudgetingPage() {
           {activeTab === "product-margin" && <ProductMarginTable planId={resolvedPlanId} companyId={selectedCompanyId} />}
           {activeTab === "balance-sheet" && <BudgetBalanceSheet planId={resolvedPlanId} />}
           {activeTab === "balance-ratios" && <BalanceRatiosPanel planId={resolvedPlanId} companyId={selectedCompanyId} />}
-          {activeTab === "cash-flow" && <CashFlowTab />}
+          {activeTab === "cash-flow" && (
+            <div className="space-y-4">
+              {/* The indirect statement first: the direct one below needs
+                  cash_flow_entries, and this client's workbook has none. */}
+              <CashFlowIndirectPanel planId={resolvedPlanId} companyId={selectedCompanyId} />
+              <CashFlowTab />
+            </div>
+          )}
           {activeTab === "assumptions" && <BudgetAssumptions planId={resolvedPlanId} />}
           {activeTab === "workspace" && <WorkspaceTab planId={resolvedPlanId} companyId={selectedCompanyId} onNavigateTab={setActiveTab} />}
           {activeTab === "pl" && <PLTab planId={resolvedPlanId} companyId={selectedCompanyId} />}
