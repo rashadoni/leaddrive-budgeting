@@ -22,6 +22,7 @@ import {
   FileSpreadsheet,
   CalendarRange,
   Settings2,
+  Eraser,
   BarChart3,
   Activity,
   Upload,
@@ -177,6 +178,9 @@ const budgetSubNav = [
     groupKey: "navGroupSettings",
     items: [
       { value: "config", icon: Settings2, labelKey: "navConfiguration" },
+      // Retiring a dictionary entry changes what every user sees, so it
+      // is not a viewer's screen; the write itself is admin-only.
+      { value: "chart-hygiene", icon: Eraser, labelKey: "navChartHygiene", minRole: "manager" },
     ],
   },
 ]

@@ -393,6 +393,19 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
         verbose: parts.join(' · '),
       };
     }
+    case 'chart_entry_deactivate': {
+      // "12 accounts retired · 1 refused". The refusal count is shown
+      // even when zero-valued elsewhere, because a non-zero one is the
+      // signal that someone acted on a stale list.
+      const approved = Array.isArray(m.approved) ? m.approved.length : 0;
+      const refused = Array.isArray(m.refused) ? m.refused.length : 0;
+      const kind = m.kind === 'product' ? 'products' : 'accounts';
+      const tail = refused > 0 ? ` · ${refused} refused` : '';
+      return {
+        compact: e.action,
+        verbose: `${approved} ${kind} retired${tail}`,
+      };
+    }
     default: {
       // Compile-time exhaustiveness: assigning the narrowed `e.action`
       // (now type `never` because every other AuditAction member was

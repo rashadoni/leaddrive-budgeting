@@ -560,6 +560,21 @@ export type AuditEventInput =
       };
     }
   | {
+      // 2026-08-19 — admin retired dead entries via the chart-hygiene
+      // screen. `entityId` is the organisation, not a row: one event
+      // covers the whole batch, because the interesting unit is the
+      // decision ("retired 93 accounts"), not each account.
+      action: 'chart_entry_deactivate';
+      entityType: 'ChartOfAccount';
+      entityId: string;
+      metadata: {
+        kind: 'account' | 'product';
+        approved: Array<{ code: string; name: string }>;
+        /** Recorded as well: a refusal means the list was already stale. */
+        refused: Array<{ code: string; reason: string; rows?: number }>;
+      };
+    }
+  | {
       // Phase 7.F sub-group RBAC admin v2 — admin updated a user's
       // allowedSubGroupIds. `entityId` = target user id; `before`/`after`
       // arrays let the audit feed render diffs cleanly.

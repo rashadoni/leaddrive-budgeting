@@ -91,6 +91,7 @@ const TAB_NAV_KEYS: Record<string, string> = {
   "expense-forecast": "navExpenses",
   rolling: "navRolling",
   config: "navConfiguration",
+  "chart-hygiene": "navChartHygiene",
 }
 
 const AI_SECTION_NAV_KEYS: Record<Section, string> = {
@@ -111,6 +112,7 @@ import { COGSCalculator } from "@/components/cogs-calculator"
 import { ProductMarginTable } from "@/components/product-margin-table"
 import { BalanceRatiosPanel } from "@/components/balance-ratios-panel"
 import { YearEndPanel } from "@/components/year-end-panel"
+import { ChartHygienePanel } from "@/components/chart-hygiene-panel"
 import { BudgetBalanceSheet } from "@/components/budget-balance-sheet"
 import { BudgetAssumptions } from "@/components/budget-assumptions"
 import { toast } from "sonner"
@@ -527,6 +529,9 @@ export default function BudgetingPage() {
           {activeTab === "product-margin" && <ProductMarginTable planId={resolvedPlanId} companyId={selectedCompanyId} />}
           {activeTab === "balance-sheet" && <BudgetBalanceSheet planId={resolvedPlanId} />}
           {activeTab === "balance-ratios" && <BalanceRatiosPanel planId={resolvedPlanId} companyId={selectedCompanyId} />}
+          {/* Org-wide and plan-independent: neither a plan nor a company
+              narrows what "never used" means. */}
+          {activeTab === "chart-hygiene" && <ChartHygienePanel />}
           {activeTab === "cash-flow" && (
             <div className="space-y-4">
               {/* The indirect statement first: the direct one below needs

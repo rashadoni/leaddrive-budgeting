@@ -142,7 +142,8 @@
     "toggleAdminSubmenu": "Admin alt menyusunu aç/bağla",
     "navProductMargin": "Məhsul marjası",
     "navBalanceRatios": "Əmsallar",
-    "navYearEnd": "İlin yekunu"
+    "navYearEnd": "İlin yekunu",
+    "navChartHygiene": "Soraqçaların təmizlənməsi"
   },
   "common": {
     "toggleTheme": "Temanı dəyiş",
@@ -6401,5 +6402,23 @@
       "otherLongLiabilities": "Digər uzunmüddətli öhdəliklər",
       "contributions": "Səhmdar qoyuluşları"
     }
+  },
+  "chartHygiene": {
+    "title": "Soraqçaların təmizlənməsi",
+    "intro": "Burada heç bir planda sətri olmayan yazılar var. Onlar heç bir məbləği dəyişmir — məhz buna görə də ölüdürlər — lakin hər siyahıda görünür. Qeyd edin və arxivləşdirin; yazı silinmir, sadəcə gizlədilir.",
+    "accountsTitle": "Hesablar planı",
+    "productsTitle": "Məhsul sətirləri",
+    "summary": "{dead} ölü / {total} aktiv · {live} sətri var",
+    "retire": "Arxivləşdir ({count})",
+    "retired": "Arxivləşdirildi: {count}",
+    "refusedHeading": "İmtina edildi: {count}",
+    "refusedNoLongerDead": "artıq ölü deyil — {rows} sətir",
+    "refusedNotEligible": "yazı tapılmadı və ya artıq arxivdədir",
+    "nothingDead": "Ölü yazı yoxdur.",
+    "shadow_of_live_sibling": "canlı hesabın .R kölgəsi",
+    "duplicate_name": "ad təkrarlanır",
+    "loading": "Yüklənir…",
+    "failed": "Alınmadı.",
+    "archivedRows": "arxivdə {rows} sətir"
   }
 }
