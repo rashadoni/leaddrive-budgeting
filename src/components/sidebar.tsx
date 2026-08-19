@@ -138,6 +138,7 @@ const budgetSubNav = [
       { value: "cogs", icon: DollarSign, labelKey: "navCogs" },
       { value: "product-margin", icon: Percent, labelKey: "navProductMargin" },
       { value: "balance-sheet", icon: List, labelKey: "navBalanceSheet" },
+      { value: "balance-ratios", icon: Percent, labelKey: "navBalanceRatios" },
       { value: "cash-flow", icon: Banknote, labelKey: "navCashFlow" },
       { value: "assumptions", icon: Target, labelKey: "navAssumptions" },
     ],

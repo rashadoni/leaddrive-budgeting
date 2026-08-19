@@ -141,6 +141,7 @@
     "toggleBudgetingSubmenu": "Toggle budgeting sub-menu",
     "toggleAdminSubmenu": "Toggle admin sub-menu",
     "navProductMargin": "Product margin",
+    "navBalanceRatios": "Ratios",
     "navYearEnd": "Year end"
   },
   "common": {
@@ -6305,6 +6306,42 @@
     "drivenByBoth": "Margins and sales mix contributed to the gap in roughly equal measure.",
     "drivenByNeither": "Neither margins nor mix moved appreciably.",
     "shareShift": "{product}: share of revenue {from} → {to}, worth {points} pts of margin"
+  },
+  "balanceRatios": {
+    "title": "Balance sheet ratios",
+    "subtitle": "Liquidity, capital structure and working capital, from the imported balance sheet.",
+    "asOf": "As at the end of month {month}, {year}",
+    "position": "Position",
+    "workingCapital": "Working capital",
+    "totalAssets": "Total assets",
+    "equity": "Equity",
+    "currentLiabilities": "Current liabilities",
+    "netDebt": "Net debt",
+    "netCash": "Net debt is negative: cash exceeds borrowings.",
+    "daysUnit": "days",
+    "doesNotBalance": "The balance sheet does not balance",
+    "balanceCheck": "Assets against equity plus liabilities differ by {amount}. Every ratio here stands on that balance.",
+    "unmapped": "Accounts the map does not know",
+    "biologicalNote": "Short-term biological assets are kept out of inventory turnover: including them puts this client at 499 days, which is the growing season, not a supply-chain problem.",
+    "loading": "Loading…",
+    "failed": "Could not load the data.",
+    "empty": "This plan has no balance sheet lines.",
+    "ratio": {
+      "current": "Current ratio",
+      "quick": "Quick ratio",
+      "equityRatio": "Equity ratio",
+      "netDebtToEquity": "Net debt / equity",
+      "dso": "Debtor days",
+      "dio": "Stock days",
+      "dpo": "Creditor days",
+      "cashCycle": "Cash cycle"
+    },
+    "hint": {
+      "current": "above 1.5 is comfortable",
+      "quick": "above 1.0 is comfortable",
+      "equityRatio": "above 0.5 is comfortable",
+      "netDebtToEquity": "lower is better"
+    }
   },
   "yearEnd": {
     "title": "Where the year lands",
