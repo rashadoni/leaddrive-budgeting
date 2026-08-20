@@ -27,6 +27,8 @@ const ALL_AUDIT_ACTIONS: readonly AuditAction[] = [
   'indicator_override_create',
   'indicator_override_update',
   'indicator_override_delete',
+  'user_password_reset',
+  'user_password_change',
 ];
 
 /** The set of entity-type strings the existing wirings emit. New types

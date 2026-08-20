@@ -91,6 +91,9 @@ model User {
   email              String
   name               String
   passwordHash       String
+  // Incremented whenever a password is changed or reset. JWTs carry the
+  // version observed at sign-in and are rejected after it changes.
+  authVersion        Int          @default(0)
   role               String       @default("viewer")
   // Phase 7.F sub-group RBAC. Empty array = full org access (admins,
   // CFO). Non-empty = user can only see these sub-group Company IDs
@@ -2195,6 +2198,7 @@ enum AuditAction {
   user_role_change // Phase 7.F admin v2 — admin promoted/demoted a user's role
   user_create // Phase 7.F admin v3 — admin created a new user account
   user_password_reset // Phase 7.F admin v3 — admin generated a new temp password
+  user_password_change // Self-service password change with current-password verification
   user_active_toggle // Phase 7.F admin v3 — admin enabled/disabled a user account
   ai_news_summary_run // Phase 7.H Feature 1 — Today's Brief AI news summary LLM call
   ai_morning_brief_run // Phase 7.E AI Morning Brief — composed narrative LLM call

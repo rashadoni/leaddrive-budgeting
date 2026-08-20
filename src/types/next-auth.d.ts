@@ -45,5 +45,7 @@ declare module "next-auth/jwt" {
     role?: string
     organizationId?: string
     organizationName?: string
+    authVersion?: number
+    invalidated?: boolean
   }
 }

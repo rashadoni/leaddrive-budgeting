@@ -14,10 +14,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [passwordChanged, setPasswordChanged] = useState(false)
   const [loading, setLoading] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
+    setPasswordChanged(
+      new URLSearchParams(window.location.search).get("passwordChanged") === "1",
+    )
     const video = videoRef.current
     if (!video) return
     video.muted = true
@@ -83,6 +87,14 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {passwordChanged && (
+            <div
+              className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-100"
+              role="status"
+            >
+              {t("passwordChanged")}
+            </div>
+          )}
           {error && (
             <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
               {error}

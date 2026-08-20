@@ -97,7 +97,10 @@ describe("PATCH /api/users/[id]/password-reset", () => {
     expect(prismaMock.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "u-target" },
-        data: { passwordHash: expect.any(String) },
+        data: {
+          passwordHash: expect.any(String),
+          authVersion: { increment: 1 },
+        },
       }),
     )
   })

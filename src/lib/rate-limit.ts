@@ -83,9 +83,14 @@ export function checkRateLimit(identity: string, cfg: RateLimitConfig): RateLimi
  * Behind a proxy, expects `x-forwarded-for` to be set by the reverse proxy.
  */
 export function getClientIp(req: NextRequest): string {
+  // Our nginx edge overwrites X-Real-IP with `$remote_addr`; prefer it over
+  // X-Forwarded-For, whose left-most value can be supplied by the client when
+  // nginx uses `$proxy_add_x_forwarded_for`.
+  const realIp = req.headers.get("x-real-ip")?.trim()
+  if (realIp) return realIp
   const xff = req.headers.get("x-forwarded-for")
   if (xff) return xff.split(",")[0].trim()
-  return req.headers.get("x-real-ip") || "unknown"
+  return "unknown"
 }
 
 /**

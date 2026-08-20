@@ -262,6 +262,7 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
     case 'user_role_change':
     case 'user_create':
     case 'user_password_reset':
+    case 'user_password_change':
     case 'user_active_toggle':
     case 'ai_news_summary_run':
     case 'ai_morning_brief_run':
