@@ -619,6 +619,15 @@ export type AuditEventInput =
       };
     }
   | {
+      action: 'user_password_change';
+      entityType: 'User';
+      entityId: string;
+      metadata: {
+        targetEmail: string;
+        sessionsRevoked: true;
+      };
+    }
+  | {
       action: 'user_active_toggle';
       entityType: 'User';
       entityId: string;

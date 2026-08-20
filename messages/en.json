@@ -10,6 +10,32 @@
     "unavailableBody": "The written step-by-step guide for this section is already available. When the video file is added, it will play here.",
     "unavailableHint": "For now, open Help and follow the text tutorial."
   },
+  "accountSettings": {
+    "title": "Settings",
+    "password": {
+      "title": "Change password",
+      "description": "Choose a password for your own account. After the change, all active sessions are signed out and you will log in again.",
+      "current": "Current password",
+      "new": "New password",
+      "confirm": "Confirm new password",
+      "policy": "Use 12–64 characters. A longer passphrase is easier to remember and harder to guess.",
+      "submit": "Change password",
+      "saving": "Changing…",
+      "secureRequired": "Password changes are available only over a protected HTTPS connection.",
+      "errors": {
+        "mismatch": "The new passwords do not match.",
+        "invalidPassword": "Use a new password containing 12–64 characters.",
+        "tooManyBytes": "This password is too long for secure storage. Use a shorter passphrase.",
+        "reuse": "Choose a password different from your current password.",
+        "currentIncorrect": "The current password is incorrect.",
+        "rateLimited": "Too many attempts. Wait 15 minutes and try again.",
+        "sessionInvalid": "Your session is no longer valid. Sign in again.",
+        "conflict": "The password changed in another session. Sign in again.",
+        "secureRequired": "Open BudgetPro over HTTPS before changing your password.",
+        "generic": "The password could not be changed. Try again."
+      }
+    }
+  },
   "industries": {
     "agro_crops": "Agro — Crops",
     "beverage": "Beverage",
@@ -1934,6 +1960,7 @@
     "signInToAccount": "Sign in to your account",
     "invalidCredentials": "Invalid email or password",
     "signingIn": "Signing in...",
+    "passwordChanged": "Password changed. Sign in with your new password.",
     "or": "or",
     "signInWithGoogle": "Sign in with Google",
     "signInWithMicrosoft": "Sign in with Microsoft",

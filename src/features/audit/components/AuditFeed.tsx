@@ -42,6 +42,7 @@ const ALL_ACTIONS = [
   "user_role_change",
   "user_create",
   "user_password_reset",
+  "user_password_change",
   "user_active_toggle",
   "ai_news_summary_run",
   "ai_morning_brief_run",
@@ -442,4 +443,3 @@ function formatTimestamp(iso: string): string {
     second: "2-digit",
   })
 }
-

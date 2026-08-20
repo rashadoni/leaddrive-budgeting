@@ -4,7 +4,7 @@
 > Update **Status** column (`⬜ Todo` → `🟡 In progress` → `✅ Done`) after completing a task.
 > Append a note to the **Changelog** section at the bottom when a phase/task is completed.
 
-**Last updated:** 2026-07-29
+**Last updated:** 2026-08-20
 **Owner:** Rashad Rahimov
 **Context:** Multi-phase refactoring of BudgetPro (leaddrive-budgeting) from AAC-specific prototype → multi-tenant SaaS.
 
@@ -37,6 +37,7 @@ Main pain points that drive the roadmap:
 | 0.5 | Role-based access on plan mutation endpoints | 2h | ✅ |
 | 0.6 | Check git history for leaked secrets, purge if found | 1h | ✅ |
 | 0.7 | **NEW** — `git init` + setup remote, add pre-commit secret scanner (gitleaks/detect-secrets) | 2h | ✅ — secret scanner Turn XXXVI (`.githooks/pre-commit-secrets.sh`, 11 regex patterns, 16-case test gate); GitHub remote live since Phase 7.M Tier 7 commit-per-task workflow; CI workflow `.github/workflows/ci.yml` shipped 2026-05-26 with tsc + M7 + vitest + Next.js build + secret-scan-all-tracked stages |
+| 0.8 | Self-service password change in Settings: current-password verification, rate limit, session revocation, audit and HTTPS gate | 4h | 🟡 — implementation complete on `codex/self-service-password`; targeted tests/typecheck pending because host `user.slice` remains near its 8 GiB high-water mark and Node.js is unavailable in this session |
 
 ---
 

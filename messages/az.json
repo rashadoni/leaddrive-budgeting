@@ -10,6 +10,32 @@
     "unavailableBody": "Bu bölmə üçün mətn təlimatı artıq mövcuddur. Video faylı əlavə ediləndə burada oynadılacaq.",
     "unavailableHint": "Hələlik yardım bölməsindəki addım-addım təlimatdan istifadə edin."
   },
+  "accountSettings": {
+    "title": "Parametrlər",
+    "password": {
+      "title": "Şifrəni dəyiş",
+      "description": "Öz hesabınız üçün yeni şifrə seçin. Dəyişiklikdən sonra bütün aktiv sessiyalar bağlanacaq və yenidən daxil olacaqsınız.",
+      "current": "Cari şifrə",
+      "new": "Yeni şifrə",
+      "confirm": "Yeni şifrəni təsdiqləyin",
+      "policy": "12–64 simvoldan istifadə edin. Uzun şifrə ifadəsini yadda saxlamaq asan, tapmaq isə çətindir.",
+      "submit": "Şifrəni dəyiş",
+      "saving": "Dəyişdirilir…",
+      "secureRequired": "Şifrə yalnız qorunan HTTPS bağlantısı üzərindən dəyişdirilə bilər.",
+      "errors": {
+        "mismatch": "Yeni şifrələr uyğun gəlmir.",
+        "invalidPassword": "Yeni şifrə 12–64 simvoldan ibarət olmalıdır.",
+        "tooManyBytes": "Bu şifrə təhlükəsiz saxlama üçün çox uzundur. Daha qısa ifadə seçin.",
+        "reuse": "Yeni şifrə cari şifrədən fərqli olmalıdır.",
+        "currentIncorrect": "Cari şifrə yanlışdır.",
+        "rateLimited": "Həddən çox cəhd edildi. 15 dəqiqə gözləyib yenidən sınayın.",
+        "sessionInvalid": "Sessiya artıq etibarlı deyil. Yenidən daxil olun.",
+        "conflict": "Şifrə başqa sessiyada dəyişdirilib. Yenidən daxil olun.",
+        "secureRequired": "Şifrəni dəyişmək üçün BudgetPro-nu HTTPS üzərindən açın.",
+        "generic": "Şifrəni dəyişmək mümkün olmadı. Yenidən cəhd edin."
+      }
+    }
+  },
   "industries": {
     "agro_crops": "Bitkiçilik",
     "beverage": "İçki istehsalı",
@@ -1934,6 +1960,7 @@
     "signInToAccount": "Hesabınıza daxil olun",
     "invalidCredentials": "Yanlış email və ya şifrə",
     "signingIn": "Daxil olunur...",
+    "passwordChanged": "Şifrə dəyişdirildi. Yeni şifrə ilə daxil olun.",
     "or": "və ya",
     "signInWithGoogle": "Google ilə daxil ol",
     "signInWithMicrosoft": "Microsoft ilə daxil ol",

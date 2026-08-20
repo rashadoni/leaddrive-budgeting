@@ -48,11 +48,11 @@ export async function PATCH(
   // bcrypt.hash is CPU-bound (~100ms) — run it OUTSIDE the tx so the scope
   // tx isn't held open during hashing.
   const tempPassword = randomBytes(9).toString("base64url")
-  const passwordHash = await bcrypt.hash(tempPassword, 10)
+  const passwordHash = await bcrypt.hash(tempPassword, 12)
   await withOrgScope(orgId, (tx) =>
     tx.user.update({
       where: { id: targetUserId },
-      data: { passwordHash },
+      data: { passwordHash, authVersion: { increment: 1 } },
     }),
   )
 

@@ -14,6 +14,7 @@ import { getLogger } from "./log"
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
 const log = getLogger("auth")
 import bcrypt from "bcryptjs"
+import { isSessionVersionCurrent } from "./auth/session-version"
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -75,30 +76,55 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   callbacks: {
     async jwt({ token, user }) {
-      // Re-read role / organization from DB on every refresh, not just at
-      // login. Otherwise renaming an org (or changing role) never surfaces
-      // until logout — the `if (user)` guard meant subsequent requests
-      // returned the cached token verbatim, defeating the 1h maxAge.
-      // Refreshes every ~30s via a stamp on the token to avoid hammering
-      // the DB on every API hit while still surfacing changes quickly.
-      const REFRESH_MS = 30_000
-      const stamp = (token as { _refreshedAt?: number })._refreshedAt ?? 0
-      const fresh = user != null || Date.now() - stamp > REFRESH_MS
-      if (fresh && token.email) {
-        const dbUser = await prisma.user.findFirst({
-          where: { email: token.email },
-          include: { organization: true },
+      const initialSignIn = user != null
+      if (user) {
+        token.invalidated = false
+      }
+
+      // Password revocation is an authentication boundary, so it is checked
+      // on every auth() evaluation. The lookup is by immutable primary key,
+      // never email: emails are unique only inside an organization.
+      const subject = token.sub ?? user?.id
+      if (subject) {
+        token.sub = subject
+        const dbUser = await prisma.user.findUnique({
+          where: { id: subject },
+          select: {
+            role: true,
+            isActive: true,
+            authVersion: true,
+            organizationId: true,
+            organization: { select: { name: true } },
+          },
         })
-        if (dbUser) {
+        const current = initialSignIn
+          ? Boolean(dbUser?.isActive)
+          : isSessionVersionCurrent(token.authVersion, dbUser)
+
+        if (!current || !dbUser) {
+          // Missing authVersion means this JWT predates the session-revocation
+          // contract. Fail closed once so old sessions cannot silently adopt a
+          // newer password version after a password change.
+          token.invalidated = true
+        } else {
+          token.invalidated = false
+          token.authVersion = dbUser.authVersion
           token.role = dbUser.role
           token.organizationId = dbUser.organizationId
           token.organizationName = dbUser.organization?.name || ""
-          ;(token as { _refreshedAt?: number })._refreshedAt = Date.now()
         }
+      } else {
+        token.invalidated = true
       }
       return token
     },
     async session({ session, token }) {
+      if (token.invalidated) {
+        // Runtime contract consumed by proxy.ts/getSession: no user means the
+        // request is unauthenticated. The cast is needed because our ambient
+        // Session type intentionally models only valid authenticated sessions.
+        return { ...session, user: undefined } as unknown as typeof session
+      }
       return {
         ...session,
         user: {
