@@ -46,6 +46,10 @@ prisma/.env
 # Misc
 .DS_Store
 *.pem
+deploy/nginx/certs/letsencrypt/
+deploy/nginx/certs/letsencrypt-staging/
+deploy/nginx/acme/*
+!deploy/nginx/acme/.gitkeep
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
