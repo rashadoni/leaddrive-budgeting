@@ -1,48 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
-const { authMock, resolveRequestAuthMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  resolveRequestAuthMock: vi.fn(),
+const { getTokenMock, userFindUniqueMock } = vi.hoisted(() => ({
+  getTokenMock: vi.fn(),
+  userFindUniqueMock: vi.fn(),
 }))
 
-vi.mock("./auth", () => ({
-  auth: authMock,
+vi.mock("next-auth/jwt", () => ({
+  getToken: getTokenMock,
+}))
+
+vi.mock("./db/prisma-admin", () => ({
+  prismaAdmin: { user: { findUnique: userFindUniqueMock } },
 }))
 
 import { getSession } from "./api-auth"
 
-function request() {
+function request(cookie = "__Secure-authjs.session-token=opaque") {
   return new NextRequest("https://budget.example/api/users", {
-    headers: { cookie: "__Secure-authjs.session-token=opaque" },
-  })
-}
-
-function sessionResponse(
-  user: Record<string, unknown> | null | undefined,
-) {
-  return new Response(JSON.stringify({ user }), {
-    headers: { "content-type": "application/json" },
+    headers: { cookie },
   })
 }
 
 describe("getSession", () => {
   beforeEach(() => {
-    authMock.mockReset()
-    authMock.mockReturnValue(resolveRequestAuthMock)
-    resolveRequestAuthMock.mockReset()
+    getTokenMock.mockReset()
+    userFindUniqueMock.mockReset()
+    vi.stubEnv("NEXTAUTH_SECRET", "test-secret")
   })
 
-  it("resolves auth from the explicit App Router request", async () => {
-    resolveRequestAuthMock.mockResolvedValue(
-      sessionResponse({
-        id: "user-1",
-        email: "admin@example.com",
-        name: "Admin",
-        role: "admin",
-        organizationId: "org-1",
-      }),
-    )
+  it("decodes the explicit secure request cookie and revalidates the user", async () => {
+    getTokenMock.mockResolvedValue({ sub: "user-1", authVersion: 4 })
+    userFindUniqueMock.mockResolvedValue({
+      id: "user-1",
+      email: "admin@example.com",
+      name: "Admin",
+      role: "admin",
+      organizationId: "org-1",
+      isActive: true,
+      authVersion: 4,
+    })
     const req = request()
 
     await expect(getSession(req)).resolves.toEqual({
@@ -52,24 +49,58 @@ describe("getSession", () => {
       email: "admin@example.com",
       name: "Admin",
     })
-    expect(resolveRequestAuthMock).toHaveBeenCalledWith(req, {
-      params: expect.any(Promise),
+    expect(getTokenMock).toHaveBeenCalledWith({
+      req,
+      secret: "test-secret",
+      cookieName: "__Secure-authjs.session-token",
+      secureCookie: true,
     })
   })
 
   it.each([
-    ["missing user", null],
-    ["missing organization", { id: "user-1", organizationId: "" }],
-    ["missing user id", { id: "", organizationId: "org-1" }],
-  ])("fails closed for %s", async (_label, user) => {
-    resolveRequestAuthMock.mockResolvedValue(sessionResponse(user))
+    ["plain cookie", "authjs.session-token=opaque", "authjs.session-token", false],
+    ["chunked secure cookie", "__Secure-authjs.session-token.0=part; __Secure-authjs.session-token.1=part", "__Secure-authjs.session-token", true],
+  ])("detects the %s name", async (_label, cookie, cookieName, secureCookie) => {
+    getTokenMock.mockResolvedValue(null)
+    const req = request(cookie)
+
+    await expect(getSession(req)).resolves.toBeNull()
+    expect(getTokenMock).toHaveBeenCalledWith({
+      req,
+      secret: "test-secret",
+      cookieName,
+      secureCookie,
+    })
+  })
+
+  it.each([
+    ["stale password version", { sub: "user-1", authVersion: 3 }, true, 4],
+    ["inactive user", { sub: "user-1", authVersion: 4 }, false, 4],
+    ["legacy token without version", { sub: "user-1" }, true, 4],
+  ])("fails closed for %s in the explicit-token fallback", async (_label, token, isActive, authVersion) => {
+    getTokenMock.mockResolvedValue(token)
+    userFindUniqueMock.mockResolvedValue({
+      id: "user-1",
+      email: "admin@example.com",
+      name: "Admin",
+      role: "admin",
+      organizationId: "org-1",
+      isActive,
+      authVersion,
+    })
 
     await expect(getSession(request())).resolves.toBeNull()
   })
 
-  it("fails closed when Auth.js session resolution throws", async () => {
-    resolveRequestAuthMock.mockRejectedValue(new Error("request context lost"))
+  it("fails closed without a recognized session cookie", async () => {
+    await expect(getSession(request("other=value"))).resolves.toBeNull()
+    expect(getTokenMock).not.toHaveBeenCalled()
+    expect(userFindUniqueMock).not.toHaveBeenCalled()
+  })
 
+  it("fails closed when token decoding throws", async () => {
+    getTokenMock.mockRejectedValue(new Error("bad token"))
     await expect(getSession(request())).resolves.toBeNull()
+    expect(userFindUniqueMock).not.toHaveBeenCalled()
   })
 })
