@@ -1,0 +1,11 @@
+[Unit]
+Description=Check BudgetPro IP TLS certificate twice daily
+
+[Timer]
+OnCalendar=*-*-* 00,12:17:00 UTC
+RandomizedDelaySec=30m
+Persistent=true
+Unit=budgetpro-cert-renew.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Renew BudgetPro short-lived IP TLS certificate
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/budgetpro
+ExecStart=/opt/budgetpro/deploy/renew-ip-certificate.sh
+Nice=10
+IOSchedulingClass=idle
