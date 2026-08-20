@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "./auth"
 import { hasRole, type Role } from "./permissions"
+import { getLogger } from "./log"
 
 // Preserve the existing server-side import surface while keeping the pure
 // hierarchy in a client-safe module for components such as Sidebar.
@@ -14,26 +15,31 @@ interface AuthResult {
   name: string
 }
 
+const log = getLogger("api-auth")
+
 export async function getSession(req: NextRequest): Promise<AuthResult | null> {
   try {
-    const session = await auth()
+    // Auth.js v5's documented App Router API is `auth(handler)`: it resolves
+    // the signed cookie from the concrete request and exposes the validated
+    // result as `request.auth`. Build the wrapper for this request instead of
+    // relying on zero-argument `auth()`, whose implicit next/headers context
+    // is not preserved in this nested helper under Next.js 16.
+    const resolveRequestAuth = auth((request) =>
+      NextResponse.json(request.auth ?? null),
+    )
+    if (typeof resolveRequestAuth !== "function") return null
+    const response = await resolveRequestAuth(req, {
+      params: Promise.resolve({}),
+    })
+    if (!(response instanceof Response)) return null
+    const session = await response.json()
     if (!session?.user) return null
     // Treat an authenticated user without an organization as unauthenticated
     // for org-scoped endpoints — otherwise all such users would share an
     // implicit `organizationId = ""` scope.
     if (!session.user.organizationId) return null
-    // Phase 7.G Turn O — same defensive shape as orgId: empty userId
-    // (NextAuth session-callback misconfig leaving id unset) is treated
-    // as unauthenticated. Closes the side-discovery from Turn-38-sub8
-    // architect ⚠️: previously `userId: session.user.id || ""` allowed
-    // empty-string userId to flow into 8 audit-emission sites where
-    // `|| null` fallbacks mapped it to null at the audit-log layer.
-    // Now both the empty-string flow AND those fallbacks are dead.
-    //
-    // Why empty `id` is reachable: `auth.ts:81` casts `token.sub as string`
-    // (NextAuth's `JWT.sub` is typed as `string | undefined`). On a
-    // corrupt-token edge or session-callback misconfig, this guard
-    // catches the resulting empty string before it propagates.
+    // Empty userId is treated as unauthenticated so it cannot flow into audit
+    // records or org-scoped data access.
     if (!session.user.id) return null
 
     return {
@@ -43,7 +49,10 @@ export async function getSession(req: NextRequest): Promise<AuthResult | null> {
       email: session.user.email || "",
       name: session.user.name || "",
     }
-  } catch {
+  } catch (error) {
+    log.error("Session resolution failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
     return null
   }
 }

@@ -50,8 +50,10 @@ export interface MockedSession {
 }
 
 /**
- * Configure what the next `auth()` call (inside `requireAuth` /
- * `requireRole`) will see. `null` simulates an unauthenticated caller.
+ * Configure what the next Auth.js lookup (inside `requireAuth` /
+ * `requireRole`) will see. Supports both the Server Component `auth()` form
+ * and the App Router `auth(handler)` form used by the shared API helper.
+ * `null` simulates an unauthenticated caller.
  *
  * Resolves the mocked `@/lib/auth` module dynamically so callers don't
  * have to import the mock symbol themselves.
@@ -72,9 +74,21 @@ export async function mockSession(session: MockedSession | null): Promise<void> 
         },
       }
     : null;
-  // `auth` is mocked at the test file's top via `vi.mock('@/lib/auth', ...)`
-  // — here we just reach into the mock and reset its return value.
-  (authModule.auth as unknown as MockInstance).mockResolvedValue(value);
+  // `auth` is mocked at the test file's top via `vi.mock('@/lib/auth', ...)`.
+  // Preserve the zero-arg behavior for Server Components, while the handler
+  // overload decorates the explicit request exactly as Auth.js does.
+  (authModule.auth as unknown as MockInstance).mockImplementation(
+    (handler?: unknown) => {
+      if (typeof handler !== 'function') return Promise.resolve(value);
+      return async (req: NextRequest, context: unknown) => {
+        const authenticatedRequest = Object.assign(req, { auth: value });
+        return (handler as (
+          request: NextRequest & { auth: typeof value },
+          context: unknown,
+        ) => unknown)(authenticatedRequest, context);
+      };
+    },
+  );
 }
 
 export interface MakeRequestInit extends Omit<RequestInit, 'body'> {
