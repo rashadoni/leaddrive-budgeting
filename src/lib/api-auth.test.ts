@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
-const { getTokenMock, userFindUniqueMock } = vi.hoisted(() => ({
+const { authMock, resolveRequestAuthMock, getTokenMock, userFindUniqueMock } = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  resolveRequestAuthMock: vi.fn(),
   getTokenMock: vi.fn(),
   userFindUniqueMock: vi.fn(),
+}))
+
+vi.mock("./auth", () => ({
+  auth: authMock,
 }))
 
 vi.mock("next-auth/jwt", () => ({
@@ -24,6 +30,14 @@ function request(cookie = "__Secure-authjs.session-token=opaque") {
 
 describe("getSession", () => {
   beforeEach(() => {
+    authMock.mockReset()
+    authMock.mockReturnValue(resolveRequestAuthMock)
+    resolveRequestAuthMock.mockReset()
+    resolveRequestAuthMock.mockResolvedValue(
+      new Response(JSON.stringify(null), {
+        headers: { "content-type": "application/json" },
+      }),
+    )
     getTokenMock.mockReset()
     userFindUniqueMock.mockReset()
     vi.stubEnv("NEXTAUTH_SECRET", "test-secret")
@@ -92,10 +106,11 @@ describe("getSession", () => {
     await expect(getSession(request())).resolves.toBeNull()
   })
 
-  it("fails closed without a recognized session cookie", async () => {
+  it("does not decode without a recognized session cookie", async () => {
     await expect(getSession(request("other=value"))).resolves.toBeNull()
     expect(getTokenMock).not.toHaveBeenCalled()
     expect(userFindUniqueMock).not.toHaveBeenCalled()
+    expect(resolveRequestAuthMock).toHaveBeenCalled()
   })
 
   it("fails closed when token decoding throws", async () => {

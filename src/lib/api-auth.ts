@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getToken } from "next-auth/jwt"
+import { auth } from "./auth"
 import { prismaAdmin } from "./db/prisma-admin"
 import { isSessionVersionCurrent } from "./auth/session-version"
 import { hasRole, type Role } from "./permissions"
@@ -41,14 +42,41 @@ function sessionCookieName(cookieHeader: string): string | null {
   return null
 }
 
+async function getSessionWithoutRecognizedCookie(
+  req: NextRequest,
+): Promise<AuthResult | null> {
+  try {
+    // This path primarily preserves Auth.js-compatible non-cookie callers and
+    // the shared route-test harness. Production browser requests carrying an
+    // Auth.js session cookie never enter it; they use the explicit decoder
+    // below, which avoids the Next.js 16 nested-wrapper cookie loss.
+    const resolveRequestAuth = auth((request) =>
+      NextResponse.json(request.auth ?? null),
+    )
+    if (typeof resolveRequestAuth !== "function") return null
+    const response = await resolveRequestAuth(req, {
+      params: Promise.resolve({}),
+    })
+    if (!(response instanceof Response)) return null
+    const session = await response.json()
+    if (!session?.user) return null
+    return toAuthResult(session.user)
+  } catch (error) {
+    log.error("Cookieless Auth.js session resolution failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+}
+
 export async function getSession(req: NextRequest): Promise<AuthResult | null> {
   try {
-    const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
-    if (!secret) return null
-
     const cookie = req.headers.get("cookie") ?? ""
     const cookieName = sessionCookieName(cookie)
-    if (!cookieName) return null
+    if (!cookieName) return getSessionWithoutRecognizedCookie(req)
+
+    const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
+    if (!secret) return null
 
     const token = await getToken({
       req,
