@@ -1,0 +1,35 @@
+name: Production image transfer
+
+on:
+  push:
+    branches: [codex/prod-image-74276117]
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact release candidate
+        uses: actions/checkout@v4
+
+      - name: Build production image off-host
+        run: |
+          docker build \
+            --label org.opencontainers.image.revision="${GITHUB_SHA}" \
+            --tag budgetpro-app:latest \
+            .
+
+      - name: Export compressed image
+        run: docker save budgetpro-app:latest | gzip -1 > budgetpro-app-74276117.tar.gz
+
+      - name: Upload transfer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: budgetpro-app-74276117
+          path: budgetpro-app-74276117.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
