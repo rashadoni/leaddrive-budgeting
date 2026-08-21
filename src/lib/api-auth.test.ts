@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
-const { authMock, resolveRequestAuthMock, getTokenMock, userFindUniqueMock } = vi.hoisted(() => ({
+const { authMock, resolveRequestAuthMock, handlersGetMock, getTokenMock, userFindUniqueMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   resolveRequestAuthMock: vi.fn(),
+  handlersGetMock: vi.fn(),
   getTokenMock: vi.fn(),
   userFindUniqueMock: vi.fn(),
 }))
 
 vi.mock("./auth", () => ({
   auth: authMock,
+  handlers: { GET: handlersGetMock },
 }))
 
 vi.mock("next-auth/jwt", () => ({
@@ -38,9 +40,16 @@ describe("getSession", () => {
         headers: { "content-type": "application/json" },
       }),
     )
+    handlersGetMock.mockReset()
+    handlersGetMock.mockResolvedValue(
+      new Response(JSON.stringify(null), {
+        headers: { "content-type": "application/json" },
+      }),
+    )
     getTokenMock.mockReset()
     userFindUniqueMock.mockReset()
     vi.stubEnv("NEXTAUTH_SECRET", "test-secret")
+    vi.stubEnv("NEXTAUTH_URL", "https://budget.example")
   })
 
   it("decodes the explicit secure request cookie and revalidates the user", async () => {
@@ -117,5 +126,35 @@ describe("getSession", () => {
     getTokenMock.mockRejectedValue(new Error("bad token"))
     await expect(getSession(request())).resolves.toBeNull()
     expect(userFindUniqueMock).not.toHaveBeenCalled()
+  })
+
+  it("uses the direct Auth.js session route when bundled JWT decoding returns null", async () => {
+    getTokenMock.mockResolvedValue(null)
+    handlersGetMock.mockResolvedValue(
+      new Response(JSON.stringify({
+        user: {
+          id: "user-1",
+          email: "admin@example.com",
+          name: "Admin",
+          role: "admin",
+          organizationId: "org-1",
+        },
+      }), { headers: { "content-type": "application/json" } }),
+    )
+    const req = request()
+
+    await expect(getSession(req)).resolves.toEqual({
+      orgId: "org-1",
+      userId: "user-1",
+      role: "admin",
+      email: "admin@example.com",
+      name: "Admin",
+    })
+    expect(handlersGetMock).toHaveBeenCalledTimes(1)
+    const internalRequest = handlersGetMock.mock.calls[0][0] as NextRequest
+    expect(internalRequest.url).toBe("https://budget.example/api/auth/session")
+    expect(internalRequest.headers.get("cookie")).toBe(
+      "__Secure-authjs.session-token=opaque",
+    )
   })
 })

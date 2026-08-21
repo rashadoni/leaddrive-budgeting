@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getToken } from "next-auth/jwt"
-import { auth } from "./auth"
+import { auth, handlers } from "./auth"
 import { prismaAdmin } from "./db/prisma-admin"
 import { isSessionVersionCurrent } from "./auth/session-version"
 import { hasRole, type Role } from "./permissions"
@@ -57,12 +57,47 @@ async function getSessionWithoutRecognizedCookie(
     const response = await resolveRequestAuth(req, {
       params: Promise.resolve({}),
     })
-    if (!(response instanceof Response)) return null
+    // Next.js can bundle Auth.js with a different Web Response realm. An
+    // `instanceof Response` check then rejects a perfectly valid response in
+    // production even though its body is readable. Check the contract rather
+    // than constructor identity.
+    if (!response || typeof response.json !== "function") return null
     const session = await response.json()
     if (!session?.user) return null
     return toAuthResult(session.user)
   } catch (error) {
     log.error("Cookieless Auth.js session resolution failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+}
+
+async function getSessionFromAuthRoute(
+  req: NextRequest,
+): Promise<AuthResult | null> {
+  try {
+    const configuredOrigin = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL
+    if (!configuredOrigin) return null
+    const endpoint = new URL("/api/auth/session", configuredOrigin)
+    if (endpoint.protocol !== "https:" && endpoint.protocol !== "http:") return null
+
+    // Call the exact Auth.js route handler that powers the proven public
+    // `/api/auth/session` endpoint, but keep the fallback in-process: no
+    // network loop, nginx dependency, Host-header trust, or recursive API call.
+    const internalRequest = new NextRequest(endpoint, {
+      headers: { cookie: req.headers.get("cookie") ?? "" },
+    })
+    const response = await handlers.GET(internalRequest)
+    if (!response || typeof response.json !== "function") return null
+    if (typeof response.status === "number" && (response.status < 200 || response.status >= 300)) {
+      return null
+    }
+    const session = await response.json()
+    if (!session?.user) return null
+    return toAuthResult(session.user)
+  } catch (error) {
+    log.error("Direct Auth.js session route resolution failed", {
       error: error instanceof Error ? error.message : String(error),
     })
     return null
@@ -75,38 +110,43 @@ export async function getSession(req: NextRequest): Promise<AuthResult | null> {
     const cookieName = sessionCookieName(cookie)
     if (!cookieName) return getSessionWithoutRecognizedCookie(req)
 
+    const wrappedSession = await getSessionWithoutRecognizedCookie(req)
+    if (wrappedSession) return wrappedSession
+
     const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
-    if (!secret) return null
+    if (secret) {
+      const token = await getToken({
+        req,
+        secret,
+        cookieName,
+        secureCookie: cookieName.startsWith("__Secure-"),
+      })
+      if (token && typeof token.sub === "string" && token.sub) {
+        const user = await prismaAdmin.user.findUnique({
+          where: { id: token.sub },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            organizationId: true,
+            isActive: true,
+            authVersion: true,
+          },
+        })
+        const tokenAuthVersion =
+          typeof token.authVersion === "number" ? token.authVersion : undefined
+        if (isSessionVersionCurrent(tokenAuthVersion, user) && user) {
+          // The database is authoritative for current role and organization.
+          return toAuthResult(user)
+        }
+      }
+    }
 
-    const token = await getToken({
-      req,
-      secret,
-      cookieName,
-      secureCookie: cookieName.startsWith("__Secure-"),
-    })
-    if (!token || typeof token.sub !== "string" || !token.sub) return null
-
-    const user = await prismaAdmin.user.findUnique({
-      where: { id: token.sub },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        organizationId: true,
-        isActive: true,
-        authVersion: true,
-      },
-    })
-    const tokenAuthVersion =
-      typeof token.authVersion === "number" ? token.authVersion : undefined
-    if (!isSessionVersionCurrent(tokenAuthVersion, user)) return null
-    if (!user) return null
-
-    // The database is authoritative for current role and organization. This
-    // prevents a valid but stale JWT from retaining privileges after an admin
-    // changes the account between token refreshes.
-    return toAuthResult(user)
+    // Auth.js's own public session handler is the final authority when the
+    // standalone bundle's JWT decoder is not byte-compatible with the issuer.
+    // The origin is deployment configuration, never the request Host header.
+    return getSessionFromAuthRoute(req)
   } catch (error) {
     log.error("Explicit-request token session resolution failed", {
       error: error instanceof Error ? error.message : String(error),
