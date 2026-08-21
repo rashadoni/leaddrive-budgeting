@@ -55,6 +55,11 @@ jobs:
         run: npx prisma generate
 
       - name: TypeScript check
+        env:
+          # The project-wide graph now crosses Node's ~2 GiB default heap
+          # ceiling on hosted runners. Match the existing production-build
+          # allowance so tsc fails on types, not an arbitrary V8 limit.
+          NODE_OPTIONS: '--max-old-space-size=4096'
         run: npx tsc --noEmit
 
       - name: RLS coverage gate
