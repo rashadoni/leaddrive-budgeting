@@ -20,6 +20,8 @@ const {
   renderResponseMock,
   locatorMock,
   enforceRateLimitMock,
+  getTokenMock,
+  userFindUniqueMock,
 } = vi.hoisted(
   () => {
     const renderResponseMock = {
@@ -48,6 +50,8 @@ const {
     };
     const chromiumLaunchMock = vi.fn().mockResolvedValue(browserMock);
     const enforceRateLimitMock = vi.fn().mockReturnValue(null);
+    const getTokenMock = vi.fn();
+    const userFindUniqueMock = vi.fn();
     return {
       chromiumLaunchMock,
       browserMock,
@@ -56,11 +60,17 @@ const {
       renderResponseMock,
       locatorMock,
       enforceRateLimitMock,
+      getTokenMock,
+      userFindUniqueMock,
     };
   },
 );
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
+vi.mock("next-auth/jwt", () => ({ getToken: getTokenMock }));
+vi.mock("@/lib/db/prisma-admin", () => ({
+  prismaAdmin: { user: { findUnique: userFindUniqueMock } },
+}));
 vi.mock("playwright", () => ({
   chromium: { launch: chromiumLaunchMock },
 }));
@@ -77,7 +87,21 @@ const USER_ID = "u1";
 
 beforeEach(() => {
   process.env.NEXTAUTH_URL = "http://trusted-budgetpro.test:3000";
+  process.env.NEXTAUTH_SECRET = "board-deck-test-secret";
   delete process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+  getTokenMock.mockReset().mockResolvedValue({
+    sub: USER_ID,
+    authVersion: 1,
+  });
+  userFindUniqueMock.mockReset().mockResolvedValue({
+    id: USER_ID,
+    email: "manager@test.local",
+    name: "Test Manager",
+    role: "manager",
+    organizationId: ORG_ID,
+    isActive: true,
+    authVersion: 1,
+  });
   chromiumLaunchMock.mockReset().mockResolvedValue(browserMock);
   enforceRateLimitMock.mockReset().mockReturnValue(null);
   browserMock.newContext.mockClear();
