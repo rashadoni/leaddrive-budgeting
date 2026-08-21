@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
+import { getToken } from "next-auth/jwt"
 import { auth } from "./auth"
+import { prismaAdmin } from "./db/prisma-admin"
+import { isSessionVersionCurrent } from "./auth/session-version"
 import { hasRole, type Role } from "./permissions"
 import { getLogger } from "./log"
 
@@ -17,13 +20,36 @@ interface AuthResult {
 
 const log = getLogger("api-auth")
 
-export async function getSession(req: NextRequest): Promise<AuthResult | null> {
+function toAuthResult(user: Record<string, unknown>): AuthResult | null {
+  if (typeof user.organizationId !== "string" || !user.organizationId) return null
+  if (typeof user.id !== "string" || !user.id) return null
+
+  return {
+    orgId: user.organizationId,
+    userId: user.id,
+    role: typeof user.role === "string" ? user.role : "viewer",
+    email: typeof user.email === "string" ? user.email : "",
+    name: typeof user.name === "string" ? user.name : "",
+  }
+}
+
+function sessionCookieName(cookieHeader: string): string | null {
+  const names = cookieHeader.split(";").map((part) => part.trim().split("=", 1)[0])
+  const secure = "__Secure-authjs.session-token"
+  const plain = "authjs.session-token"
+  if (names.some((name) => name === secure || name.startsWith(`${secure}.`))) return secure
+  if (names.some((name) => name === plain || name.startsWith(`${plain}.`))) return plain
+  return null
+}
+
+async function getSessionWithoutRecognizedCookie(
+  req: NextRequest,
+): Promise<AuthResult | null> {
   try {
-    // Auth.js v5's documented App Router API is `auth(handler)`: it resolves
-    // the signed cookie from the concrete request and exposes the validated
-    // result as `request.auth`. Build the wrapper for this request instead of
-    // relying on zero-argument `auth()`, whose implicit next/headers context
-    // is not preserved in this nested helper under Next.js 16.
+    // This path primarily preserves Auth.js-compatible non-cookie callers and
+    // the shared route-test harness. Production browser requests carrying an
+    // Auth.js session cookie never enter it; they use the explicit decoder
+    // below, which avoids the Next.js 16 nested-wrapper cookie loss.
     const resolveRequestAuth = auth((request) =>
       NextResponse.json(request.auth ?? null),
     )
@@ -34,23 +60,55 @@ export async function getSession(req: NextRequest): Promise<AuthResult | null> {
     if (!(response instanceof Response)) return null
     const session = await response.json()
     if (!session?.user) return null
-    // Treat an authenticated user without an organization as unauthenticated
-    // for org-scoped endpoints — otherwise all such users would share an
-    // implicit `organizationId = ""` scope.
-    if (!session.user.organizationId) return null
-    // Empty userId is treated as unauthenticated so it cannot flow into audit
-    // records or org-scoped data access.
-    if (!session.user.id) return null
-
-    return {
-      orgId: session.user.organizationId,
-      userId: session.user.id,
-      role: session.user.role || "viewer",
-      email: session.user.email || "",
-      name: session.user.name || "",
-    }
+    return toAuthResult(session.user)
   } catch (error) {
-    log.error("Session resolution failed", {
+    log.error("Cookieless Auth.js session resolution failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+}
+
+export async function getSession(req: NextRequest): Promise<AuthResult | null> {
+  try {
+    const cookie = req.headers.get("cookie") ?? ""
+    const cookieName = sessionCookieName(cookie)
+    if (!cookieName) return getSessionWithoutRecognizedCookie(req)
+
+    const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
+    if (!secret) return null
+
+    const token = await getToken({
+      req,
+      secret,
+      cookieName,
+      secureCookie: cookieName.startsWith("__Secure-"),
+    })
+    if (!token || typeof token.sub !== "string" || !token.sub) return null
+
+    const user = await prismaAdmin.user.findUnique({
+      where: { id: token.sub },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        organizationId: true,
+        isActive: true,
+        authVersion: true,
+      },
+    })
+    const tokenAuthVersion =
+      typeof token.authVersion === "number" ? token.authVersion : undefined
+    if (!isSessionVersionCurrent(tokenAuthVersion, user)) return null
+    if (!user) return null
+
+    // The database is authoritative for current role and organization. This
+    // prevents a valid but stale JWT from retaining privileges after an admin
+    // changes the account between token refreshes.
+    return toAuthResult(user)
+  } catch (error) {
+    log.error("Explicit-request token session resolution failed", {
       error: error instanceof Error ? error.message : String(error),
     })
     return null
