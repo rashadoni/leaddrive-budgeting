@@ -1,6 +1,7 @@
 import { getToken } from "next-auth/jwt"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { isSecureCookieName, sessionCookieName } from "@/lib/auth/session-cookie"
 
 /**
  * Phase 8 G3 F3 (nginx variant) — lightweight session validator for nginx's
@@ -26,6 +27,20 @@ import type { NextRequest } from "next/server"
  * explicitly so getToken verifies against the same key auth.ts signs with.
  */
 export async function GET(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+  // Имя куки читаем из самого запроса. Раньше здесь стоял голый
+  // `getToken({ req, secret })`, а он без `secureCookie` подставляет
+  // неprefixed `authjs.session-token`. После переезда прода на https Auth.js
+  // выдаёт `__Secure-authjs.session-token`, имена перестали совпадать, токен
+  // не находился НИКОГДА — и nginx рубил каждый /api/* запрос своим 401,
+  // не пуская его в приложение (в логах при этом пусто).
+  const cookieName = sessionCookieName(req.headers.get("cookie") ?? "")
+  if (!cookieName) return new NextResponse(null, { status: 401 })
+
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+    cookieName,
+    secureCookie: isSecureCookieName(cookieName),
+  })
   return new NextResponse(null, { status: token ? 204 : 401 })
 }
