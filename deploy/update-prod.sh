@@ -93,8 +93,18 @@ ssh "$PROD_HOST" "set -e
     echo '✗ App did not become healthy within 150 seconds' >&2
     exit 1
   fi
-  code=\$(curl -sS --connect-timeout 5 --max-time 15 -o /dev/null -w '%{http_code}' http://localhost/login)
-  printf 'HTTP /login: %s\n' \"\$code\"
+  # Прод отдаётся по HTTPS, а http отвечает 301 на https. Проверка стучалась
+  # по http и ждала 200: с переезда на TLS она валилась ВСЕГДА, обрывая скрипт
+  # до записи .deploy-revision — штамп на сервере застрял на 2026-08-20, хотя
+  # деплои шли. Теперь проверяем обе стороны: что http редиректит и что по
+  # https страница логина реально отдаётся.
+  redirect=\$(curl -sS --connect-timeout 5 --max-time 15 -o /dev/null -w '%{http_code}' http://localhost/login)
+  code=\$(curl -ksS --connect-timeout 5 --max-time 15 -o /dev/null -w '%{http_code}' -H 'Host: 46.225.60.142' https://localhost/login)
+  printf 'HTTP /login: %s → HTTPS /login: %s\n' \"\$redirect\" \"\$code\"
+  case \"\$redirect\" in
+    301|302|307|308) ;;
+    *) echo \"✗ Plain HTTP no longer redirects to HTTPS (got \$redirect)\" >&2; exit 1 ;;
+  esac
   if [ \"\$code\" != 200 ]; then
     echo '✗ Login smoke check failed' >&2
     exit 1
