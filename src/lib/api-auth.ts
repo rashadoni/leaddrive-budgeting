@@ -3,6 +3,7 @@ import { getToken } from "next-auth/jwt"
 import { auth } from "./auth"
 import { prismaAdmin } from "./db/prisma-admin"
 import { isSessionVersionCurrent } from "./auth/session-version"
+import { isSecureCookieName, sessionCookieName } from "./auth/session-cookie"
 import { hasRole, type Role } from "./permissions"
 import { getLogger } from "./log"
 
@@ -33,14 +34,6 @@ function toAuthResult(user: Record<string, unknown>): AuthResult | null {
   }
 }
 
-function sessionCookieName(cookieHeader: string): string | null {
-  const names = cookieHeader.split(";").map((part) => part.trim().split("=", 1)[0])
-  const secure = "__Secure-authjs.session-token"
-  const plain = "authjs.session-token"
-  if (names.some((name) => name === secure || name.startsWith(`${secure}.`))) return secure
-  if (names.some((name) => name === plain || name.startsWith(`${plain}.`))) return plain
-  return null
-}
 
 async function getSessionWithoutRecognizedCookie(
   req: NextRequest,
@@ -82,7 +75,7 @@ export async function getSession(req: NextRequest): Promise<AuthResult | null> {
       req,
       secret,
       cookieName,
-      secureCookie: cookieName.startsWith("__Secure-"),
+      secureCookie: isSecureCookieName(cookieName),
     })
     if (!token || typeof token.sub !== "string" || !token.sub) return null
 
