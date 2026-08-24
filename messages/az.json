@@ -1960,7 +1960,7 @@
     "signInToAccount": "Hesabınıza daxil olun",
     "invalidCredentials": "Yanlış email və ya şifrə",
     "signingIn": "Daxil olunur...",
-    "passwordChanged": "Şifrə dəyişdirildi. Yeni şifrə ilə daxil olun.",
+    "passwordChanged": "Şifrə uğurla dəyişdirildi",
     "or": "və ya",
     "signInWithGoogle": "Google ilə daxil ol",
     "signInWithMicrosoft": "Microsoft ilə daxil ol",
@@ -1976,7 +1976,6 @@
     "backToLogin": "Girişə qayıt",
     "passwordMinLength": "Şifrə ən azı 6 simvol olmalıdır",
     "passwordsDoNotMatch": "Şifrələr uyğun gəlmir",
-    "passwordChanged": "Şifrə uğurla dəyişdirildi",
     "twoFactorAuth": "İki faktorlu autentifikasiya",
     "enterAuthCode": "Autentifikasiya tətbiqindən kodu daxil edin",
     "enterBackupCode": "Ehtiyat kodlardan birini daxil edin",
@@ -3946,6 +3945,12 @@
       "parentCoverage": "{total} törəmə şirkətdən {scored}-i qiymətləndirilib · holdinq gəlirinin {revenuePct}%-i",
       "parentNoScore": "Holdinq balı yoxdur — {total} törəmə şirkətdən heç birinin qiymətləndirmə üçün kifayət qədər məlumatı yoxdur.",
       "subscriptionCoverageNote": "Bu qayda {min}-dən az göstəricidə rəqəmi olan şirkət üçün işə düşmür — həmin şirkət üzrə bal dərc olunmur."
+    },
+    "aiOutageAdmin": {
+      "ai_credits": "Səbəb (yalnız administrator görür): Anthropic hesabında vəsait qalmayıb. Balansı artırın — məlumatların və ayarların bununla əlaqəsi yoxdur.",
+      "ai_rate_limit": "Səbəb (yalnız administrator görür): provayder sorğu sayını məhdudlaşdırır. Bir neçə dəqiqə gözləyib təkrarlayın.",
+      "ai_unavailable": "Səbəb (yalnız administrator görür): provayderə müraciət alınmadı. Açarı və xidmətin əlçatanlığını yoxlayın.",
+      "ai_bad_response": "Səbəb (yalnız administrator görür): model bizim analizatorun qəbul etmədiyi formada cavab verdi. Bu bizim tərəfdə qüsurdur, jurnala yazılıb."
     }
   },
   "usersAdmin": {

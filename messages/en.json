@@ -1960,7 +1960,7 @@
     "signInToAccount": "Sign in to your account",
     "invalidCredentials": "Invalid email or password",
     "signingIn": "Signing in...",
-    "passwordChanged": "Password changed. Sign in with your new password.",
+    "passwordChanged": "Password changed successfully",
     "or": "or",
     "signInWithGoogle": "Sign in with Google",
     "signInWithMicrosoft": "Sign in with Microsoft",
@@ -1976,7 +1976,6 @@
     "backToLogin": "Back to login",
     "passwordMinLength": "Password must be at least 6 characters",
     "passwordsDoNotMatch": "Passwords do not match",
-    "passwordChanged": "Password changed successfully",
     "twoFactorAuth": "Two-Factor Authentication",
     "enterAuthCode": "Enter the code from your authenticator app",
     "enterBackupCode": "Enter one of your backup codes",
@@ -3946,6 +3945,12 @@
       "parentCoverage": "{scored} of {total} subsidiaries scored · {revenuePct}% of holding revenue",
       "parentNoScore": "No holding score — none of the {total} subsidiaries has enough data to score.",
       "subscriptionCoverageNote": "This rule does not fire for a company with figures for fewer than {min} indicators — no score is published for it."
+    },
+    "aiOutageAdmin": {
+      "ai_credits": "Cause (admins only): the Anthropic account is out of credit. Top the balance up — your data and settings are not involved.",
+      "ai_rate_limit": "Cause (admins only): the provider is rate-limiting requests. Wait a few minutes and retry.",
+      "ai_unavailable": "Cause (admins only): the provider could not be reached. Check the API key and the service status.",
+      "ai_bad_response": "Cause (admins only): the model replied in a shape our parser rejected. That is a defect on our side; it is logged."
     }
   },
   "usersAdmin": {

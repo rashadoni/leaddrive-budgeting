@@ -20,6 +20,8 @@ import React, {
   useState,
 } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { useSession } from "next-auth/react";
+import { aiOutageHintKey } from "../lib/ai-outage-hint";
 import { useTerminalStore } from "../store/terminalStore";
 import { CompanySnapshot } from "./CompanySnapshot";
 import { localizeFactCheckFlag } from "../lib/localize-fact-check";
@@ -65,6 +67,9 @@ export interface VarianceExplainerHandle {
 export const VarianceExplainerPanel = forwardRef<VarianceExplainerHandle>(
 function VarianceExplainerPanel(_props, ref) {
   const t = useTranslations("terminal");
+  const { data: session } = useSession();
+  const isAdmin =
+    (session?.user as { role?: string } | undefined)?.role === "admin";
   const ivId = useTerminalStore((s) => s.activeIndicatorValueId);
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
 
@@ -321,6 +326,8 @@ function VarianceExplainerPanel(_props, ref) {
       ? statusShape("amber")
       : statusShape("red");
 
+  const adminHintKey = aiOutageHintKey(errorCode, isAdmin);
+
   return (
     <div className="font-mono text-[11px] text-muted-foreground w-full h-full flex flex-col gap-2 overflow-auto">
       <header className="shrink-0 flex items-center justify-between gap-2 pb-1.5 border-b border-border/60">
@@ -393,6 +400,12 @@ function VarianceExplainerPanel(_props, ref) {
                    returns a sanitized code). */
                 t("aiUnavailable")}
           </div>
+          {/* Администратору дополнительно — точная причина: нейтральная фраза
+              выше не даёт понять, чинить ли ключ, ждать лимит или пополнить
+              счёт. Обычный пользователь этой строки не видит. */}
+          {adminHintKey && (
+            <div className="text-amber-300/90 text-[10px] mt-1">{t(adminHintKey)}</div>
+          )}
         </div>
       )}
 
