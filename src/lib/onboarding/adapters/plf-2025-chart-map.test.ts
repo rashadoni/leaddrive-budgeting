@@ -32,16 +32,41 @@ describe("the 2025 chart map as shipped", () => {
     expect(codes.size).toBeLessThan(PLF_2025_CHART_ENTRIES.length)
   })
 
-  it("never lets two meanings share a stored code", () => {
+  it("never lets two meanings share a stored code, except where a person said so", () => {
+    /**
+     * Two labels on one code is normally a merge of two accounts into one and
+     * the invariant this file guards. A hand correction is the one case where
+     * it is intended: `PLF.01.01.99` "Revenue from Other Sources" is an
+     * elimination row the workbook mislabelled, and it belongs with the
+     * "Revenue from Sale of Other Products" already there — the elimination
+     * block pairs it with `PLF.02.01.99` by adjacency, exactly as it pairs
+     * corn with corn costs. Approved by the owner on 2026-08-19; the entry
+     * carries `via: "override"` and its reason.
+     *
+     * Only a declared correction is exempt, and its own reason must be
+     * present — an unexplained exemption is indistinguishable from the bug.
+     */
     const byStored = new Map<string, string>()
     const clashes: string[] = []
     for (const e of PLF_2025_CHART_ENTRIES) {
       const prior = byStored.get(e.storedCode)
       if (prior !== undefined && prior !== e.label) {
+        if (e.via === "override") {
+          expect(e.overrideReason).toBeTruthy()
+          continue
+        }
         clashes.push(`${e.storedCode}: "${prior}" vs "${e.label}"`)
       } else byStored.set(e.storedCode, e.label)
     }
     expect(clashes).toEqual([])
+  })
+
+  it("keeps the exemption to exactly the corrections that were approved", () => {
+    const overrides = PLF_2025_CHART_ENTRIES.filter((e) => e.via === "override")
+    expect(overrides.map((e) => `${e.code} → ${e.storedCode}`)).toEqual([
+      "PLF.02.01.99 → PLF.02.01.99",
+      "PLF.01.01.99 → PLF.01.01.99",
+    ])
   })
 
   it("mints only where something else claims the code, and says what", () => {

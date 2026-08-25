@@ -119,6 +119,42 @@ export interface LegacyChartRow {
 
 export type LegacyMappingKind = "identical" | "renumbered" | "own_account"
 
+/**
+ * A row the LABEL rule cannot get right, corrected by hand with its reason.
+ *
+ * The rule matches on the client's own wording, which is right nearly always
+ * and wrong when the client RENAMES one half of a pair. Both cases below are
+ * that, found on 2026-08-19 by reconciling the workbook against the database.
+ *
+ * Keyed on (code, label) like everything else here, so a correction cannot
+ * catch a row it was not meant for. An override matching nothing is an error,
+ * not a no-op: a rule nobody notices has stopped applying is how the first
+ * mistake survived.
+ */
+export interface LegacyChartOverride {
+  code: string
+  label: string
+  storedCode: string
+  reason: string
+}
+
+export const LEGACY_CHART_OVERRIDES: readonly LegacyChartOverride[] = [
+  {
+    code: "PLF.02.01.99",
+    label: "Other Costs",
+    storedCode: "PLF.02.01.99",
+    reason:
+      "Farming's other-products cost. The 2026 chart renamed it to \"Other Products' Costs\", so the label rule sent it to the only remaining \"Other Costs\" — PLF.02.03.99, which is the OTHER-SOURCES cost account. Its revenue PLF.01.01.99 stayed put, which is why 1,921,539 of other products showed no cost at all. The 2025 elimination block pairs it with PLF.01.01.99 by adjacency, exactly as it pairs corn with corn costs.",
+  },
+  {
+    code: "PLF.01.01.99",
+    label: "Revenue from Other Sources",
+    storedCode: "PLF.01.01.99",
+    reason:
+      "An elimination row the workbook mislabelled. It sits at PLF.01.01.99 and is paired with PLF.02.01.99 in the elimination block, like every other pair there; the three company blocks call the same code \"Revenue from Sale of Other Products\". Read by its label it landed in other sources, taking 705,200 of elimination away from the branch it belongs to and turning that branch's revenue negative — which is what printed +277.3% on a line that lost money.",
+  },
+]
+
 export interface LegacyChartEntry {
   /** Code as written on the legacy sheet. */
   code: string
@@ -128,7 +164,9 @@ export interface LegacyChartEntry {
   /** The account this row posts to. Equals `code` unless it had to move. */
   storedCode: string
   /** `renumbered` only — whether a tie had to be broken, and how. */
-  via?: "unique" | "section-kept"
+  via?: "unique" | "section-kept" | "override"
+  /** `override` only — why a person overruled the rule for this row. */
+  overrideReason?: string
   /**
    * `own_account` only — what already claimed `code`, forcing the mint. Kept
    * as prose because it is the answer to "why is there a `.FY2025` account in
@@ -151,6 +189,12 @@ export interface LegacyChartAmbiguity {
 }
 
 export interface LegacyChartMap {
+  /**
+   * Hand corrections that matched no row. Empty on the chart they were written
+   * for; non-empty means the workbook moved under them, or another client's
+   * chart is being derived.
+   */
+  unmatchedOverrides?: LegacyChartOverride[]
   entries: LegacyChartEntry[]
   /**
    * Legacy leaves whose label matched several current leaves in several
@@ -364,7 +408,26 @@ export function deriveLegacyChartMap(
     entries.push(entry)
   }
 
-  return { entries, ambiguous }
+  // Hand corrections last, so they overrule whatever the rule concluded.
+  const unmatchedOverrides: LegacyChartOverride[] = []
+  for (const o of LEGACY_CHART_OVERRIDES) {
+    const key = legacyEntryKey(o.code, o.label)
+    const target = entries.find((e) => legacyEntryKey(e.code, e.label) === key)
+    if (!target) {
+      // Reported, not thrown. This module describes ONE client's chart and
+      // must not fire on another's — a chart without these rows is a different
+      // chart, not a fault. The derive script, which runs against the real
+      // workbook, is where an unmatched correction has to fail: a rule that
+      // silently stopped applying is how the mapping it fixes came back.
+      unmatchedOverrides.push(o)
+      continue
+    }
+    target.storedCode = o.storedCode
+    target.via = "override"
+    target.overrideReason = o.reason
+  }
+
+  return { entries, ambiguous, unmatchedOverrides }
 }
 
 /** Where a legacy row's money ends up, and under what name. */
@@ -459,7 +522,10 @@ export function checkLegacyChartMap(
   }
 
   const violations: LegacyChartViolation[] = []
-  const landed = new Map<string, { from: string; name: string; key: string }>()
+  const landed = new Map<
+    string,
+    { from: string; name: string; key: string; via?: string }
+  >()
 
   for (const entry of map.entries) {
     const name = normaliseChartLabel(entry.label)
@@ -483,7 +549,9 @@ export function checkLegacyChartMap(
     const key = legacyEntryKey(entry.code, entry.label)
 
     const prior = landed.get(entry.storedCode)
-    if (prior && prior.key !== key) {
+    // A hand correction carries its own reason and was made deliberately; it
+    // is reported by the derive script, not raised as an accident here.
+    if (prior && prior.key !== key && entry.via !== "override" && prior.via !== "override") {
       if (normaliseChartLabel(prior.name) !== name) {
         violations.push({
           kind: "collision",
@@ -498,11 +566,20 @@ export function checkLegacyChartMap(
         })
       }
     } else if (!prior) {
-      landed.set(entry.storedCode, { from: entry.code, name: entry.label, key })
+      landed.set(entry.storedCode, {
+        from: entry.code,
+        name: entry.label,
+        key,
+        via: entry.via,
+      })
     }
 
     const currentNames = currentLabelsByCode.get(entry.storedCode)
-    if (currentNames && !currentNames.has(name)) {
+    // A hand correction lands on a code the current chart names differently
+    // ON PURPOSE — that renaming is precisely why the label rule failed and
+    // the correction exists. Reporting it as a mislabel would file the fix as
+    // the fault it repairs.
+    if (currentNames && !currentNames.has(name) && entry.via !== "override") {
       violations.push({
         kind: "mislabel",
         code: entry.storedCode,

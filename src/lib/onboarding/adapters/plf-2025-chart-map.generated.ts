@@ -20,7 +20,7 @@ export const PLF_LEGACY_CHART_YEAR = 2025
 
 export const PLF_2025_CHART_ENTRIES: readonly LegacyChartEntry[] = [
   { code: "PLF.01.01.99", label: "Revenue from Sale of Other Products", kind: "identical", storedCode: "PLF.01.01.99" },
-  { code: "PLF.02.01.99", label: "Other Costs", kind: "renumbered", storedCode: "PLF.02.03.99", via: "unique" },
+  { code: "PLF.02.01.99", label: "Other Costs", kind: "renumbered", storedCode: "PLF.02.01.99", via: "override", overrideReason: "Farming's other-products cost. The 2026 chart renamed it to \"Other Products' Costs\", so the label rule sent it to the only remaining \"Other Costs\" — PLF.02.03.99, which is the OTHER-SOURCES cost account. Its revenue PLF.01.01.99 stayed put, which is why 1,921,539 of other products showed no cost at all. The 2025 elimination block pairs it with PLF.01.01.99 by adjacency, exactly as it pairs corn with corn costs." },
   { code: "PLF.04.02.01", label: "Subscription Fee", kind: "renumbered", storedCode: "PLF.04.01.01", via: "unique" },
   { code: "PLF.04.02.02", label: "Participation in Forums & Exhibitions", kind: "renumbered", storedCode: "PLF.04.01.02", via: "unique" },
   { code: "PLF.04.02.04", label: "Charity & Donations", kind: "renumbered", storedCode: "PLF.04.01.04", via: "section-kept" },
@@ -218,7 +218,7 @@ export const PLF_2025_CHART_ENTRIES: readonly LegacyChartEntry[] = [
   { code: "PLF.07.02.04", label: "Subsidies - Investment", kind: "renumbered", storedCode: "PLF.07.02.03", via: "unique" },
   { code: "PLF.07.02.04", label: "Subsidies - Product", kind: "identical", storedCode: "PLF.07.02.04" },
   { code: "PLF.05.15.09", label: "Depreciation - Machinery & Equipment", kind: "renumbered", storedCode: "PLF.09.03.09", via: "unique" },
-  { code: "PLF.01.01.99", label: "Revenue from Other Sources", kind: "renumbered", storedCode: "PLF.01.03.99", via: "unique" },
+  { code: "PLF.01.01.99", label: "Revenue from Other Sources", kind: "renumbered", storedCode: "PLF.01.01.99", via: "override", overrideReason: "An elimination row the workbook mislabelled. It sits at PLF.01.01.99 and is paired with PLF.02.01.99 in the elimination block, like every other pair there; the three company blocks call the same code \"Revenue from Sale of Other Products\". Read by its label it landed in other sources, taking 705,200 of elimination away from the branch it belongs to and turning that branch's revenue negative — which is what printed +277.3% on a line that lost money." },
   { code: "PLF.01.01.06", label: "Revenue from Sale of Processed Corn Products", kind: "own_account", storedCode: "PLF.01.01.06.FY2025", mintedBecause: "the current chart names PLF.01.01.06 \"Revenue from Sale of Almond\"" },
   { code: "PLF.01.02.03", label: "Revenue from Management Services", kind: "own_account", storedCode: "PLF.01.02.03.FY2025", mintedBecause: "the current chart names PLF.01.02.03 \"Revenue from Sale of Fructose\"" },
   { code: "PLF.01.10.01", label: "Sales Return", kind: "own_account", storedCode: "PLF.01.10.01" },
