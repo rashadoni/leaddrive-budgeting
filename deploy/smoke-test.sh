@@ -32,8 +32,9 @@
 
 set -u
 
-# --via-prod: run these same checks ON the production host, against its own
-# nginx at http://localhost.
+# --via-prod: run these same checks ON the production host, against its public
+# HTTPS IP. This keeps the certificate, HTTPS server block and auth gates in
+# the path while avoiding a dependency on external DNS.
 #
 # Why this mode exists
 # ────────────────────
@@ -43,22 +44,23 @@ set -u
 # DOWN and proves nothing about the auth gates. That is an honest result and
 # a useless one.
 #
-# The host itself can always answer, so the script is piped over ssh and run
-# there. Same file, same logic, no second copy to drift.
+# The host itself can answer its public IP, so the script is piped over ssh and
+# run there. Same file, same logic, no second copy to drift.
 #
 # WHAT THIS DOES NOT COVER — it is a weaker check than the external one, and
 # passing it is not the same claim:
-#   • no DNS resolution, no TLS, no external firewall path;
-#   • it enters nginx on :80 from inside, so an nginx rule that only applies
-#     to the public listener is not exercised.
+#   • no DNS resolution and no proof that a separate external network can
+#     traverse the provider edge/firewall;
+#   • it still covers the real TLS certificate and the HTTPS nginx listener.
 # It DOES cover what was actually unverified: the application's auth gates and
 # nginx's routing to them. Run the external form as well when you can.
 if [ "${1:-}" = "--via-prod" ]; then
   PROD_HOST="${PROD_HOST:-root@75.119.156.234}"
-  echo "Running smoke-test ON ${PROD_HOST} against http://localhost"
-  echo "  (weaker than the external run: no DNS, no TLS, no public firewall path)"
+  PROD_URL="${PROD_URL:-https://75.119.156.234}"
+  echo "Running smoke-test ON ${PROD_HOST} against ${PROD_URL}"
+  echo "  (weaker than the external run: no DNS or external ingress proof)"
   echo
-  exec ssh "$PROD_HOST" 'bash -s -- http://localhost' < "$0"
+  exec ssh "$PROD_HOST" "bash -s -- '$PROD_URL'" < "$0"
 fi
 
 BASE_URL="${1:-${SMOKE_BASE_URL:-}}"
