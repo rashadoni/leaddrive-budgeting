@@ -11,7 +11,7 @@
 # as check-migrations.sh.
 set -euo pipefail
 
-PROD_HOST="${PROD_HOST:-root@46.225.60.142}"
+PROD_HOST="${PROD_HOST:-root@75.119.156.234}"
 APP_DIR="/opt/budgetpro"
 
 ssh "$PROD_HOST" "bash -lc 'cd \"$APP_DIR\" \

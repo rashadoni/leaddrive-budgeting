@@ -54,7 +54,7 @@ set -u
 # It DOES cover what was actually unverified: the application's auth gates and
 # nginx's routing to them. Run the external form as well when you can.
 if [ "${1:-}" = "--via-prod" ]; then
-  PROD_HOST="${PROD_HOST:-root@46.225.60.142}"
+  PROD_HOST="${PROD_HOST:-root@75.119.156.234}"
   echo "Running smoke-test ON ${PROD_HOST} against http://localhost"
   echo "  (weaker than the external run: no DNS, no TLS, no public firewall path)"
   echo

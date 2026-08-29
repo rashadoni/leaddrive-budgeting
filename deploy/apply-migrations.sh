@@ -48,7 +48,7 @@
 # timestamp-prefixed names sort correctly under `LC_ALL=C sort`.
 set -euo pipefail
 
-PROD_HOST="root@46.225.60.142"
+PROD_HOST="root@75.119.156.234"
 APP_DIR="/opt/budgetpro"
 APPLY=0
 [ "${1:-}" = "--apply" ] && APPLY=1

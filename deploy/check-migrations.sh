@@ -21,7 +21,7 @@
 # Reads `_prisma_migrations` and nothing else. Writes nothing, anywhere.
 set -euo pipefail
 
-PROD_HOST="root@46.225.60.142"
+PROD_HOST="root@75.119.156.234"
 APP_DIR="/opt/budgetpro"
 
 echo "→ Migration directories in this checkout:"

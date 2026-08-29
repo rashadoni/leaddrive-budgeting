@@ -4,7 +4,7 @@ set -euo pipefail
 
 APP_DIR="/opt/budgetpro"
 CERTBOT_IMAGE="certbot/certbot:v5.4.0"
-CERT_NAME="46.225.60.142"
+CERT_NAME="75.119.156.234"
 
 exec 9>/run/lock/budgetpro-cert-renew.lock
 if ! flock -n 9; then

@@ -29,7 +29,7 @@
 # `overrides->'adjustments'` on a row, exactly as the Prisma runner does.
 set -euo pipefail
 
-PROD_HOST="root@46.225.60.142"
+PROD_HOST="root@75.119.156.234"
 APP_DIR="/opt/budgetpro"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 

@@ -10,7 +10,7 @@
 # check-migrations.sh: reviewable, reads logs, writes nothing.
 set -euo pipefail
 
-PROD_HOST="${PROD_HOST:-root@46.225.60.142}"
+PROD_HOST="${PROD_HOST:-root@75.119.156.234}"
 APP_DIR="/opt/budgetpro"
 LINES="${1:-300}"
 PATTERN="${2:-.}"

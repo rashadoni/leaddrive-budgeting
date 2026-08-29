@@ -32,7 +32,7 @@
 
 set -euo pipefail
 
-PROD_HOST="root@46.225.60.142"
+PROD_HOST="root@75.119.156.234"
 APP_DIR="/opt/budgetpro"
 
 echo "→ Checking financial tables for duplicate rows…"

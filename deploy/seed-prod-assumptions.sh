@@ -26,7 +26,7 @@
 # leaves one copy, not two.
 set -euo pipefail
 
-PROD_HOST="root@46.225.60.142"
+PROD_HOST="root@75.119.156.234"
 APP_DIR="/opt/budgetpro"
 # The budget plan the tab opens on. Read from prod on 2026-08-06; the script
 # re-resolves it by NAME at run time so a recreated plan does not silently make

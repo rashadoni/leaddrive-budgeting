@@ -208,8 +208,9 @@ If FO has an internal CA, ask IT for a cert + key for `budget.fo.az` (or whateve
 
 ## 4. Subsequent updates
 
-> **Reality check (2026-07-06):** the actual prod VM (Hetzner `root@46.225.60.142`)
-> was provisioned as a plain file copy, NOT a git clone, and the repo is private
+> **Migration note (2026-08-29):** the production target is now the Contabo VM
+> `root@75.119.156.234`. It was provisioned as a plain file copy, NOT a git
+> clone, and the repo is private
 > (the VM has no GitHub credentials). The supported update path is therefore
 > **push-based** — the developer machine pushes over SSH; the server never talks
 > to GitHub. Everything below assumes that model.
@@ -228,12 +229,12 @@ waits for health, prints a smoke line.
 One-time setup (dev machine, once per clone; server part once ever):
 
 ```bash
-ssh root@46.225.60.142 'cd /opt/budgetpro && git init -b main -q \
+ssh root@75.119.156.234 'cd /opt/budgetpro && git init -b main -q \
   && git config receive.denyCurrentBranch ignore \
   && git config --global --add safe.directory /opt/budgetpro'
-git remote add prod ssh://root@46.225.60.142/opt/budgetpro
+git remote add prod ssh://root@75.119.156.234/opt/budgetpro
 git push prod main
-ssh root@46.225.60.142 'cd /opt/budgetpro && git reset --hard main -q \
+ssh root@75.119.156.234 'cd /opt/budgetpro && git reset --hard main -q \
   && git config receive.denyCurrentBranch updateInstead'
 ```
 

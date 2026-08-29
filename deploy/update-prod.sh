@@ -11,12 +11,12 @@
 # successfully deployed revision.
 #
 # ONE-TIME SETUP (already documented in deploy/README.md §4):
-#   ssh root@46.225.60.142 'cd /opt/budgetpro && git init -b main -q \
+#   ssh root@75.119.156.234 'cd /opt/budgetpro && git init -b main -q \
 #     && git config receive.denyCurrentBranch ignore \
 #     && git config --global --add safe.directory /opt/budgetpro'
-#   git remote add prod ssh://root@46.225.60.142/opt/budgetpro
+#   git remote add prod ssh://root@75.119.156.234/opt/budgetpro
 #   git push prod main
-#   ssh root@46.225.60.142 'cd /opt/budgetpro && git reset --hard main -q \
+#   ssh root@75.119.156.234 'cd /opt/budgetpro && git reset --hard main -q \
 #     && git config receive.denyCurrentBranch updateInstead'
 #
 # No credentials live on the server: the VM never talks to GitHub (repo is
@@ -24,7 +24,7 @@
 
 set -euo pipefail
 
-PROD_HOST="root@46.225.60.142"
+PROD_HOST="root@75.119.156.234"
 APP_DIR="/opt/budgetpro"
 
 SHA=$(git rev-parse HEAD)
@@ -99,7 +99,7 @@ ssh "$PROD_HOST" "set -e
   # деплои шли. Теперь проверяем обе стороны: что http редиректит и что по
   # https страница логина реально отдаётся.
   redirect=\$(curl -sS --connect-timeout 5 --max-time 15 -o /dev/null -w '%{http_code}' http://localhost/login)
-  code=\$(curl -ksS --connect-timeout 5 --max-time 15 -o /dev/null -w '%{http_code}' -H 'Host: 46.225.60.142' https://localhost/login)
+  code=\$(curl -ksS --connect-timeout 5 --max-time 15 -o /dev/null -w '%{http_code}' -H 'Host: 75.119.156.234' https://localhost/login)
   printf 'HTTP /login: %s → HTTPS /login: %s\n' \"\$redirect\" \"\$code\"
   case \"\$redirect\" in
     301|302|307|308) ;;
