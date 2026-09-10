@@ -62,6 +62,8 @@ const SOURCE_DOCS: Record<
   },
 }
 
+import { AiFeaturesToggle } from "./ai-features-toggle"
+
 export default async function ApiKeysPage() {
   const t = await getTranslations("adminApiKeys")
   const session = await auth()
@@ -73,6 +75,16 @@ export default async function ApiKeysPage() {
   if (!orgId) {
     redirect("/budgeting")
   }
+
+  // Согласие платить хранится отдельно от ключа: ключ у организации почти
+  // всегда «есть» (общий ключ развёртывания), поэтому его наличие ничего не
+  // говорит о том, хотели ли платить. По умолчанию — выключено.
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { settings: true },
+  })
+  const aiEnabled =
+    ((org?.settings ?? {}) as Record<string, unknown>).aiEnabled === true
 
   const raw = await listApiKeys(prisma, orgId)
   const initial = KNOWN_API_KEY_SOURCES.map((src) => {
@@ -96,6 +108,8 @@ export default async function ApiKeysPage() {
           })}
         </p>
       </header>
+
+      <AiFeaturesToggle enabled={aiEnabled} />
 
       <ApiKeysForm initial={initial} />
 

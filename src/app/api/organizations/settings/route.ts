@@ -50,11 +50,18 @@ const patchBodySchema = z.object({
    * (`POST /api/intel/refresh`) этим ключом не управляется.
    */
   intelCrawlEnabled: z.boolean().optional(),
+  /**
+   * Главный выключатель платных ИИ-функций организации. Выключено по
+   * умолчанию: ключ у организации почти всегда «есть» (общий ключ
+   * развёртывания), поэтому наличие ключа не значит согласия платить.
+   */
+  aiEnabled: z.boolean().optional(),
 });
 
 type OrgSettings = {
   alertThresholds?: AlertThresholdsConfig;
   intelCrawlEnabled?: boolean;
+  aiEnabled?: boolean;
   [key: string]: unknown;
 };
 
@@ -136,6 +143,9 @@ export async function PATCH(request: NextRequest) {
   }
   if (parsed.data.intelCrawlEnabled !== undefined) {
     nextSettings.intelCrawlEnabled = parsed.data.intelCrawlEnabled;
+  }
+  if (parsed.data.aiEnabled !== undefined) {
+    nextSettings.aiEnabled = parsed.data.aiEnabled;
   }
 
   await prisma.organization.update({
