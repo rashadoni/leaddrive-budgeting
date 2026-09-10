@@ -51,10 +51,47 @@ export function hasAnthropicKey(): boolean {
 // tests pass a 2-method stub via `as never`.
 type PrismaLike = Pick<PrismaClientType, "organization">
 
+/**
+ * Включены ли платные ИИ-функции у организации.
+ *
+ * Зачем это отдельный переключатель, а не «есть ключ / нет ключа». Ключ здесь
+ * почти всегда есть: если организация свой не завела, берётся общий ключ
+ * развёртывания, то есть счёт владельца. Поэтому «ключ настроен» ничего не
+ * говорит о том, ХОТЕЛИ ли платить прямо сейчас — а платные функции идут и
+ * сами по себе, по расписанию, без единого пользователя в приложении.
+ *
+ * Значение по умолчанию — ВЫКЛЮЧЕНО. Организация, которой функцию не включали
+ * осознанно, не должна тратить. Проверка строго `=== true`: отсутствующий
+ * ключ, `null` и строка "true" из формы одинаково значат «не включали».
+ */
+export async function isAiEnabledForOrg(
+  prisma: PrismaLike,
+  orgId: string,
+): Promise<boolean> {
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { settings: true },
+  })
+  const settings = (org?.settings ?? {}) as Record<string, unknown>
+  return settings.aiEnabled === true
+}
+
+/** Ошибка выключенной функции — отличима от «ключа нет вовсе». */
+export class AiDisabledError extends Error {
+  constructor(orgId: string) {
+    super(
+      `AI features are switched off for org ${orgId}. Enable them at /budgeting/admin/api-keys.`,
+    )
+    this.name = "AiDisabledError"
+  }
+}
+
 export async function getAnthropicClientForOrg(
   prisma: PrismaLike,
   orgId: string,
 ): Promise<Anthropic> {
+  // Выключено — значит платить нельзя, даже если ключ под рукой.
+  if (!(await isAiEnabledForOrg(prisma, orgId))) throw new AiDisabledError(orgId)
   const orgKey = await getApiKey(prisma, orgId, "anthropic")
   const key = orgKey ?? process.env.ANTHROPIC_API_KEY ?? null
   if (!key) {
@@ -82,6 +119,10 @@ export async function hasAnthropicKeyForOrg(
   prisma: PrismaLike,
   orgId: string,
 ): Promise<boolean> {
+  // Порядок важен: выключатель проверяется ПЕРВЫМ и до env. Иначе общий ключ
+  // развёртывания сделает ответ «да» у любой организации, и интерфейс покажет
+  // кнопку, которая упадёт при нажатии.
+  if (!(await isAiEnabledForOrg(prisma, orgId))) return false
   if (process.env.ANTHROPIC_API_KEY) return true
   const orgKey = await getApiKey(prisma, orgId, "anthropic")
   return Boolean(orgKey)

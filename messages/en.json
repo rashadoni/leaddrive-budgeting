@@ -5023,6 +5023,14 @@
       "usda": "Free; email-verified. Drives BROILER / EGG / CHICK-PLACEMENT feeds (poultry sector).",
       "gtrends": "Paid (SerpAPI has free tier ~100 searches/mo). Drives AZ search-trend signals (retail / beverage demand).",
       "anthropic": "Paid (~$3 / 1M input tokens for Sonnet 4.5). Powers AI Variance Explainer, Forecast Explainer, Board Deck narration, Morning Brief, and impact-forecast scans. When set, your org's key replaces the global server key — spend hits your Anthropic billing."
+    },
+    "aiFeatures": {
+      "title": "Paid AI features",
+      "on": "On — AI features are available and billable",
+      "off": "Off — AI features are unavailable and cost nothing",
+      "hintOn": "Analysis, forecasts and the intel crawl work and are billed to whichever key applies: this organization's own, or the deployment's shared one.",
+      "hintOff": "Every AI feature shows its usual «unavailable» state and nothing is billed. Turn it on when a client needs it.",
+      "saveFailed": "Could not save. Nothing changed — try again."
     }
   },
   "adminIntelHealth": {

@@ -5023,6 +5023,14 @@
       "usda": "Pulsuz; e-poçt təsdiqi tələb olunur. BROILER / EGG / CHICK-PLACEMENT axınlarını qidalandırır (quşçuluq sektoru).",
       "gtrends": "Ödənişli (SerpAPI-də ayda təxminən 100 sorğuluq pulsuz paket var). AZ axtarış trendi siqnallarını qidalandırır (pərakəndə / içki tələbi).",
       "anthropic": "Ödənişli (Sonnet 4.5 üçün 1 mln. giriş tokeni təxminən 3 $). AI Kənarlaşma İzahçısı, Proqnoz İzahçısı, İdarə heyəti təqdimatının mətni, Səhər icmalı və təsir proqnozu skanlarını işlədir. Açar təyin edildikdə təşkilatınızın açarı qlobal server açarını əvəz edir — xərc sizin Anthropic hesabınıza yazılır."
+    },
+    "aiFeatures": {
+      "title": "Ödənişli süni intellekt funksiyaları",
+      "on": "Aktiv — funksiyalar əlçatandır və ödənişlidir",
+      "off": "Söndürülüb — funksiyalar əlçatan deyil və heç nəyə başa gəlmir",
+      "hintOn": "Təhlil, proqnozlar və xəbər gəzintisi işləyir; hesab tətbiq olunan açıra yazılır: təşkilatın öz açarı və ya ümumi açar.",
+      "hintOff": "Bütün funksiyalar adi «əlçatan deyil» ekranını göstərir, xərc sıfırdır. Müştəriyə lazım olanda aktivləşdirin.",
+      "saveFailed": "Yadda saxlanmadı. Heç nə dəyişmədi — yenidən cəhd edin."
     }
   },
   "adminIntelHealth": {

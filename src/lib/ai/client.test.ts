@@ -16,7 +16,11 @@ function makePrisma(
       findUnique: vi.fn(async (args: { where: { id: string } }) => {
         const settings = orgSettingsByOrgId[args.where.id]
         if (settings === undefined) return null
-        return { settings }
+        // Согласие платить включено по умолчанию ВО ВСЕХ этих тестах: они про
+        // то, какой ключ выбирается, а не про сам выключатель. Тест, которому
+        // нужно выключенное состояние, задаёт aiEnabled явно и перекрывает
+        // это значение.
+        return { settings: { aiEnabled: true, ...(settings ?? {}) } }
       }),
       update: vi.fn(),
     },
@@ -99,13 +103,63 @@ describe("getAnthropicClientForOrg", () => {
   })
 })
 
+describe("выключатель платных функций", () => {
+  it("по умолчанию выключено: пустые настройки не разрешают тратить", async () => {
+    // Ключ здесь ЕСТЬ — общий, из окружения. Именно поэтому «есть ключ» не
+    // может быть согласием: иначе любая новая организация начинает тратить
+    // деньги владельца молча.
+    Object.assign(process.env, { ANTHROPIC_API_KEY: "sk-ant-env-aaa" })
+    const prisma = makePrisma({ orgX: { aiEnabled: false } })
+    const { getAnthropicClientForOrg, AiDisabledError } = await import("./client")
+    await expect(
+      getAnthropicClientForOrg(prisma as never, "orgX"),
+    ).rejects.toBeInstanceOf(AiDisabledError)
+  })
+
+  it("не принимает за согласие ничего, кроме настоящего true", async () => {
+    Object.assign(process.env, { ANTHROPIC_API_KEY: "sk-ant-env-aaa" })
+    const { isAiEnabledForOrg } = await import("./client")
+    for (const value of ["true", 1, null, "yes", {}]) {
+      const prisma = makePrisma({ orgY: { aiEnabled: value } })
+      expect(
+        await isAiEnabledForOrg(prisma as never, "orgY"),
+        `значение ${JSON.stringify(value)}`,
+      ).toBe(false)
+    }
+  })
+
+  it("выключено — даже собственный ключ организации не спасает", async () => {
+    // Иначе клиент, который завёл свой ключ, продолжал бы тратить после того,
+    // как функцию ему выключили.
+    delete process.env.ANTHROPIC_API_KEY
+    const prisma = makePrisma({
+      orgZ: { aiEnabled: false, apiKeys: { anthropic: "sk-ant-org-own" } },
+    })
+    const { getAnthropicClientForOrg, AiDisabledError } = await import("./client")
+    await expect(
+      getAnthropicClientForOrg(prisma as never, "orgZ"),
+    ).rejects.toBeInstanceOf(AiDisabledError)
+  })
+})
+
 describe("hasAnthropicKeyForOrg", () => {
-  it("returns true when env key is set (short-circuits Prisma)", async () => {
+  it("общий ключ развёртывания больше не отвечает «да» за всех", async () => {
+    // Раньше наличие env-ключа замыкало проверку и Prisma не спрашивали. Но
+    // env-ключ есть всегда, поэтому такой ответ означал «да» у любой
+    // организации — включая ту, которой функцию не включали. Теперь согласие
+    // спрашивается первым, и без него ответ «нет».
     Object.assign(process.env, { ANTHROPIC_API_KEY: "sk-ant-env-set-bbb" })
-    const prisma = makePrisma({})
+    const prisma = makePrisma({ "any-org": { aiEnabled: false } })
+    const { hasAnthropicKeyForOrg } = await import("./client")
+    expect(await hasAnthropicKeyForOrg(prisma as never, "any-org")).toBe(false)
+    expect(prisma.organization.findUnique).toHaveBeenCalled()
+  })
+
+  it("с согласием общий ключ развёртывания годится", async () => {
+    Object.assign(process.env, { ANTHROPIC_API_KEY: "sk-ant-env-set-bbb" })
+    const prisma = makePrisma({ "any-org": {} })
     const { hasAnthropicKeyForOrg } = await import("./client")
     expect(await hasAnthropicKeyForOrg(prisma as never, "any-org")).toBe(true)
-    expect(prisma.organization.findUnique).not.toHaveBeenCalled()
   })
 
   it("returns true when only the per-org key is set", async () => {
