@@ -362,7 +362,7 @@ describe("E.2e — runBreachScan opt-in flag", () => {
 describe("D.5c — language resolution from settings", () => {
   it("settings.intelLanguage='ru' overrides input.language='en'", async () => {
     prismaMock.organization.findUnique.mockResolvedValue({
-      settings: { intelLanguage: "ru" },
+      settings: { intelCrawlEnabled: true, intelLanguage: "ru" },
     })
     await runScheduledIntelCrawl(prismaMock as never, ORG, {
       buildInput: buildInputOk, // input.language="en"
@@ -376,7 +376,7 @@ describe("D.5c — language resolution from settings", () => {
 
   it("settings.intelLanguage='az' propagates to crawl input", async () => {
     prismaMock.organization.findUnique.mockResolvedValue({
-      settings: { intelLanguage: "az" },
+      settings: { intelCrawlEnabled: true, intelLanguage: "az" },
     })
     await runScheduledIntelCrawl(prismaMock as never, ORG, {
       buildInput: buildInputOk,
@@ -389,7 +389,7 @@ describe("D.5c — language resolution from settings", () => {
 
   it("invalid settings.intelLanguage value falls back to input.language", async () => {
     prismaMock.organization.findUnique.mockResolvedValue({
-      settings: { intelLanguage: "fr" }, // not in en/ru/az
+      settings: { intelCrawlEnabled: true, intelLanguage: "fr" }, // not in en/ru/az
     })
     await runScheduledIntelCrawl(prismaMock as never, ORG, {
       buildInput: buildInputOk, // input.language="en"
@@ -401,7 +401,9 @@ describe("D.5c — language resolution from settings", () => {
   })
 
   it("missing settings.intelLanguage falls back to input.language", async () => {
-    prismaMock.organization.findUnique.mockResolvedValue({ settings: {} })
+    prismaMock.organization.findUnique.mockResolvedValue({
+      settings: { intelCrawlEnabled: true },
+    })
     await runScheduledIntelCrawl(prismaMock as never, ORG, {
       buildInput: buildInputOk, // input.language="en"
       now: fakeNow,
@@ -412,7 +414,9 @@ describe("D.5c — language resolution from settings", () => {
   })
 
   it("missing both settings AND input.language → 'en' default", async () => {
-    prismaMock.organization.findUnique.mockResolvedValue({ settings: {} })
+    prismaMock.organization.findUnique.mockResolvedValue({
+      settings: { intelCrawlEnabled: true },
+    })
     const buildInputNoLang = async () => ({
       organizationId: ORG,
       industries: ["hospitality"],
