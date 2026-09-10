@@ -49,7 +49,7 @@ import * as XLSX from "xlsx"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { checkBudget, recordUsage } from "@/lib/llm/cost-budget"
-import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client"
+import { getAnthropicClientForOrg, AI_MODEL } from "@/lib/ai/client"
 import { aiErrorBody } from "@/lib/ai/ai-error"
 import { extractWorkbookMeta } from "@/lib/onboarding/ai-import/sheet-meta-extractor"
 import { classifySheets } from "@/lib/onboarding/ai-import/sheet-classifier"
@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
         knownEntityCodes,
         orgIndustry,
       },
-      getAnthropicClient(),
+      await getAnthropicClientForOrg(prisma, orgId),
       AI_MODEL,
     )
   } catch (err) {

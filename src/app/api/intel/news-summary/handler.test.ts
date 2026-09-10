@@ -29,7 +29,7 @@ vi.mock("@/lib/db/with-org-scope", () => ({
   withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
     fn(prismaMock),
 }))
-vi.mock("@/lib/ai/client", () => ({ hasAnthropicKey: hasAnthropicKeyMock }))
+vi.mock("@/lib/ai/client", () => ({ hasAnthropicKeyForOrg: async () => hasAnthropicKeyMock()}))
 vi.mock("@/lib/intel/news-summary", () => ({
   runNewsSummary: runNewsSummaryMock,
 }))

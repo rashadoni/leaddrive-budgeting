@@ -51,7 +51,7 @@ import { getLogger } from "@/lib/log"
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
 const log = getLogger("api:import:ai-auto-multi")
 import { checkBudget, recordUsage } from "@/lib/llm/cost-budget"
-import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client"
+import { getAnthropicClientForOrg, AI_MODEL } from "@/lib/ai/client"
 import { classifyAiError } from "@/lib/ai/ai-error"
 import { buildProductionAdapterRegistry } from "@/lib/onboarding/ai-import/production-adapter-registry"
 import {
@@ -1264,7 +1264,7 @@ export async function POST(request: NextRequest) {
         },
         {
           prisma,
-          anthropicClient: getAnthropicClient(),
+          anthropicClient: await getAnthropicClientForOrg(prisma, orgId),
           model: AI_MODEL,
           registry: buildProductionAdapterRegistry(prisma),
           XLSX,

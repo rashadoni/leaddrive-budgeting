@@ -44,7 +44,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 vi.mock("@/lib/onboarding/ai-import/multi-file-orchestrator", () => orchestratorMock)
 vi.mock("@/lib/llm/cost-budget", () => budgetMock)
 vi.mock("@/lib/ai/client", () => ({
-  getAnthropicClient: () => ({ messages: { create: vi.fn() } }),
+  getAnthropicClientForOrg: async () => ({ messages: { create: vi.fn() } }),
   AI_MODEL: "claude-test",
 }))
 vi.mock("@/lib/rate-limit", () => ({

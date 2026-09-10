@@ -20,8 +20,8 @@ vi.mock("@/lib/rate-limit", () => ({
 }))
 vi.mock("@/lib/ai/client", () => ({
   AI_MODEL: "claude-test",
-  hasAnthropicKey: () => aiMock.hasKey(),
-  getAnthropicClient: () => ({ messages: { create: aiMock.create } }),
+  hasAnthropicKeyForOrg: async () => aiMock.hasKey(),
+  getAnthropicClientForOrg: async () => ({ messages: { create: aiMock.create } }),
 }))
 
 import { mockSession, makeRequest } from "@/test/api-harness"

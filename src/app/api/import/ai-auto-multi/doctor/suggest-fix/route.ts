@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { getLogger } from "@/lib/log"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
-import { getAnthropicClient, AI_MODEL, hasAnthropicKey } from "@/lib/ai/client"
+import { getAnthropicClientForOrg, AI_MODEL, hasAnthropicKeyForOrg } from "@/lib/ai/client"
+// Клиент организации резолвится по её настройкам, поэтому маршруту нужен
+// доступ к Organization. Запрос orgId-скоупнут в коде — тот же BYPASSRLS
+// клиент, что и у соседних маршрутов импорта.
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 import { aiErrorBody } from "@/lib/ai/ai-error"
 import { checkBudget, recordUsage } from "@/lib/llm/cost-budget"
 import {
@@ -54,7 +58,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  if (!hasAnthropicKey()) {
+  if (!(await hasAnthropicKeyForOrg(prisma, session.orgId))) {
     return NextResponse.json(
       { ok: false, error: "ai_unavailable", code: "ai_unavailable" },
       { status: 503 },
@@ -78,7 +82,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await runImportDoctorFixSuggestion({
-      client: getAnthropicClient(),
+      client: await getAnthropicClientForOrg(prisma, session.orgId),
       model: AI_MODEL,
       payload: parsed.payload,
     })

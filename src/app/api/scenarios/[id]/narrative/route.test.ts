@@ -15,7 +15,7 @@ vi.mock('@/lib/db/with-org-scope', () => ({
 const runCrisisBrief = vi.fn()
 vi.mock('@/lib/risk/scenario-narrative', () => ({ runCrisisBrief: (...a: unknown[]) => runCrisisBrief(...a) }))
 let keyPresent = true
-vi.mock('@/lib/ai/client', () => ({ hasAnthropicKey: () => keyPresent }))
+vi.mock('@/lib/ai/client', () => ({ hasAnthropicKeyForOrg: async () => keyPresent}))
 
 import { POST } from './route'
 

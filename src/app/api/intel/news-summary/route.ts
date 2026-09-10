@@ -19,7 +19,7 @@ import { prisma } from "@/lib/prisma"
 import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
-import { hasAnthropicKey } from "@/lib/ai/client"
+import { hasAnthropicKeyForOrg } from "@/lib/ai/client"
 import { getLogger } from "@/lib/log"
 import { aiErrorBody } from "@/lib/ai/ai-error"
 
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  if (!hasAnthropicKey()) {
+  if (!(await hasAnthropicKeyForOrg(prisma, session.orgId))) {
     return NextResponse.json(
       {
         error:

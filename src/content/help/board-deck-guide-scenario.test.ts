@@ -97,7 +97,7 @@ describe("Board Deck evidence-boundary help-video scenario", () => {
     expect(pptx).not.toMatch(/all systems green/i)
     expect(post).toContain('requireRole(req, "manager")')
     expect(post).toContain("body.userInitiated !== true")
-    expect(post.indexOf("body.userInitiated !== true")).toBeLessThan(post.indexOf("hasAnthropicKey()"))
+    expect(post.indexOf("body.userInitiated !== true")).toBeLessThan(post.indexOf("hasAnthropicKeyForOrg("))
     expect(post).toContain("getCompanyScope")
     expect(post).toContain("getOrCreateNarration")
     expect(pdf).toContain("process.env.NEXTAUTH_URL")

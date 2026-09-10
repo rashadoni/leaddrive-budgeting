@@ -108,7 +108,7 @@ describe("Risk Terminal help-video scenario", () => {
     expect(panel).not.toContain("terminal:run-explainer")
     const intentGate = route.indexOf("body.userInitiated !== true")
     expect(intentGate).toBeGreaterThan(0)
-    expect(intentGate).toBeLessThan(route.indexOf("hasAnthropicKey()"))
+    expect(intentGate).toBeLessThan(route.indexOf("hasAnthropicKeyForOrg("))
     expect(intentGate).toBeLessThan(route.indexOf("enforceRateLimit("))
     expect(intentGate).toBeLessThan(route.indexOf("prisma.organization.findUnique"))
   })

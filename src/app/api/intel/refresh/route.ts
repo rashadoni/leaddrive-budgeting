@@ -31,7 +31,7 @@ import { prisma } from "@/lib/prisma";
 import { withOrgScope } from "@/lib/db/with-org-scope";
 import { requireRole, isAuthError } from "@/lib/api-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { hasAnthropicKey } from "@/lib/ai/client";
+import { hasAnthropicKeyForOrg } from "@/lib/ai/client";
 import { getLogger } from "@/lib/log";
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
@@ -52,7 +52,12 @@ const RATE_LIMIT = {
 };
 
 export async function POST(request: NextRequest) {
-  if (!hasAnthropicKey()) {
+  const session = await requireRole(request, "admin");
+  if (isAuthError(session)) return session;
+  // Проверка доступности переехала сюда из начала обработчика: она
+  // теперь спрашивает согласие ОРГАНИЗАЦИИ, а значит требует сессии.
+  // Раньше смотрели только переменную окружения, и порядок был не важен.
+  if (!(await hasAnthropicKeyForOrg(prisma, session.orgId))) {
     return NextResponse.json(
       {
         error:
@@ -62,8 +67,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const session = await requireRole(request, "admin");
-  if (isAuthError(session)) return session;
   const orgId = session.orgId;
   if (!orgId) {
     return NextResponse.json(

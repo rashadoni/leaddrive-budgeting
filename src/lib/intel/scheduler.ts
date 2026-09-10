@@ -31,6 +31,7 @@
 import { createHash } from "node:crypto"
 import type { PrismaClient } from "@prisma/client"
 import { runIntelCrawl } from "./crawler"
+import { getAnthropicClientForOrg } from "@/lib/ai/client"
 import { getLogger } from "@/lib/log"
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger for the
@@ -223,9 +224,16 @@ export async function runScheduledIntelCrawl(
       settingsLanguage ?? input.language ?? "en"
 
     // 4. Run the crawl
+    //
+    // Клиент берём для КОНКРЕТНОЙ организации, а не глобальный. Две причины,
+    // и обе существенные: счёт уходит на ключ этой организации, если он у неё
+    // есть, а не на общий ключ владельца; и выключатель платных функций
+    // (`settings.aiEnabled`) действует именно здесь — без согласия
+    // `getAnthropicClientForOrg` бросит AiDisabledError и обхода не будет.
+    const client = await getAnthropicClientForOrg(prisma, orgId)
     const result = await runIntelCrawl(
       { ...input, language: effectiveLanguage },
-      { prisma },
+      { prisma, client },
     )
 
     // 5. Update settings.intelLastRunAt (best-effort — crawl already wrote

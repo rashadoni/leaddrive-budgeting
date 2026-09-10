@@ -34,7 +34,7 @@ vi.mock('@/lib/db/with-org-scope', () => ({
 }));
 
 const { aiClientMock } = vi.hoisted(() => ({
-  aiClientMock: { hasAnthropicKey: vi.fn().mockReturnValue(true) },
+  aiClientMock: { hasAnthropicKeyForOrg: vi.fn(async () => true) },
 }));
 vi.mock('@/lib/ai/client', () => aiClientMock);
 
@@ -86,13 +86,18 @@ beforeEach(() => {
   ]);
   prismaMock.auditEvent.create.mockReset().mockResolvedValue({ id: 'audit_1' });
   runIntelCrawlMock.mockReset().mockResolvedValue(HAPPY_RESULT);
-  aiClientMock.hasAnthropicKey.mockReturnValue(true);
+  aiClientMock.hasAnthropicKeyForOrg.mockReset().mockResolvedValue(true);
   rateLimitMock.enforceRateLimit.mockReset().mockReturnValue(null);
 });
 
 describe('POST /api/intel/refresh — auth + gate', () => {
-  it('returns 503 when ANTHROPIC_API_KEY is missing — short-circuits before auth', async () => {
-    aiClientMock.hasAnthropicKey.mockReturnValue(false);
+  it('returns 503 when the organization has not switched paid AI on', async () => {
+    // Проверка больше НЕ идёт раньше авторизации, и это осознанно: согласие
+    // принадлежит организации, а узнать её можно только из сессии. Прежняя
+    // версия смотрела переменную окружения и потому обходилась без сессии —
+    // но она же отвечала «можно» за любую организацию, раз общий ключ есть.
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: 'admin' });
+    aiClientMock.hasAnthropicKeyForOrg.mockResolvedValue(false);
     const res = await POST(makeRequest('/api/intel/refresh', { method: 'POST' }));
     expect(res.status).toBe(503);
     expect(prismaMock.company.findMany).not.toHaveBeenCalled();
