@@ -20,7 +20,10 @@ import { LOCALE_COOKIE_NAME } from "@/i18n/routing"
 // (503 when unconfigured, 401 on mismatch), so the middleware must let
 // the VM crontab curl through. Without this the trade-digest cron was
 // 401'd HERE before its own auth ever ran.
-const publicPaths = ["/login", "/api/auth", "/api/telemetry/guide-view", "/api/cron"]
+// R? (2026-09-10): /api/health публичный по необходимости — Cloud Run и
+// шаг выкатки дёргают его без сессии, до того как ревизия получила трафик.
+// Отдаёт только «да/нет» и SHA релиза.
+const publicPaths = ["/login", "/api/auth", "/api/telemetry/guide-view", "/api/cron", "/api/health"]
 
 // Rate limit tiers for budget mutation endpoints.
 // First matching rule wins. Keyed by org id so quota is per-tenant.
