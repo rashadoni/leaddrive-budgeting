@@ -78,6 +78,8 @@ export interface ScheduledCommodityIngestCounts {
 }
 
 export type ScheduledCrawlResult =
+  /** Платный обход выключен для этой организации (`settings.intelCrawlEnabled`). */
+  | { skipped: "disabled" }
   | { skipped: "too-recent"; lastRunAt: string }
   | { skipped: "lock-busy" }
   | { skipped: "no-input" }
@@ -161,6 +163,25 @@ export async function runScheduledIntelCrawl(
   if (!org) return { ok: false, error: `Organization ${orgId} not found` }
 
   const settings = (org.settings ?? {}) as Record<string, unknown>
+
+  // Платная работа — только по явному согласию.
+  //
+  // Этот обход тратит деньги на каждый запуск: один round-trip модели плюс до
+  // пяти `web_search` на организацию, каждый день. Пока ключ настроен, он идёт
+  // сам по себе — пользователи в приложении для этого не нужны, и по счёту
+  // видно только «списано», а не «кто просил».
+  //
+  // Поэтому расписание по умолчанию ВЫКЛЮЧЕНО и включается тумблером на
+  // странице Intel Health. Проверка строго на `=== true`: отсутствующий ключ,
+  // `null` и строка "false" одинаково значат «не включали».
+  //
+  // Гейт стоит только здесь, в ПЛАНОВОМ пути. Ручной запуск админа
+  // (`POST /api/intel/refresh`) зовёт `runIntelCrawl` напрямую и остаётся
+  // рабочим: человек, нажавший кнопку, знает, что тратит.
+  if (settings.intelCrawlEnabled !== true) {
+    return { skipped: "disabled" }
+  }
+
   const lastRunIso = typeof settings.intelLastRunAt === "string" ? settings.intelLastRunAt : null
   if (lastRunIso) {
     const lastRun = new Date(lastRunIso).getTime()

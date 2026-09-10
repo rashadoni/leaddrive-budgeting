@@ -43,10 +43,18 @@ const RATE_LIMIT = { name: 'org-settings-patch', max: 10, windowMs: 60_000 };
 
 const patchBodySchema = z.object({
   alertThresholds: alertThresholdsConfigSchema.optional(),
+  /**
+   * Расписание платного intel-обхода. Выключено по умолчанию: обход тратит
+   * деньги сам, без участия пользователей, поэтому включение — осознанное
+   * действие админа, а не состояние по умолчанию. Ручной запуск
+   * (`POST /api/intel/refresh`) этим ключом не управляется.
+   */
+  intelCrawlEnabled: z.boolean().optional(),
 });
 
 type OrgSettings = {
   alertThresholds?: AlertThresholdsConfig;
+  intelCrawlEnabled?: boolean;
   [key: string]: unknown;
 };
 
@@ -125,6 +133,9 @@ export async function PATCH(request: NextRequest) {
   const nextSettings: OrgSettings = { ...currentSettings };
   if (parsed.data.alertThresholds !== undefined) {
     nextSettings.alertThresholds = parsed.data.alertThresholds;
+  }
+  if (parsed.data.intelCrawlEnabled !== undefined) {
+    nextSettings.intelCrawlEnabled = parsed.data.intelCrawlEnabled;
   }
 
   await prisma.organization.update({
