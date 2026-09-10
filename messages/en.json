@@ -5037,7 +5037,8 @@
       "status": "Status",
       "lastRun": "Last run",
       "outputLanguage": "Output language",
-      "itemsLast30d": "Items (last 30d)"
+      "itemsLast30d": "Items (last 30d)",
+      "crawlSchedule": "Crawl schedule"
     },
     "relative": {
       "never": "never"
@@ -5056,7 +5057,16 @@
       "title": "Top industries (by item count, last 30d)",
       "empty": "No tagged items."
     },
-    "footer": "Crawl schedule: every 24h via Postgres advisory-lock-deduped scheduler. Configure language via <code>Organization.settings.intelLanguage</code> (en / ru / az)."
+    "footer": "Crawl schedule: every 24h via Postgres advisory-lock-deduped scheduler. Configure language via <code>Organization.settings.intelLanguage</code> (en / ru / az).",
+    "crawlSchedule": {
+      "label": "Paid intel crawl schedule",
+      "on": "On",
+      "off": "Off",
+      "hintOn": "Runs once a day per organization and costs money on every run, whether or not anyone opens the app.",
+      "hintOff": "The daily crawl does not run and costs nothing. An admin can still start a crawl by hand.",
+      "adminOnly": "Only an org admin can change this.",
+      "saveFailed": "Could not save. Nothing changed — try again."
+    }
   },
   "adminLanding": {
     "pageTitle": "Admin Tools",

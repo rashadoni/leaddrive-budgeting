@@ -40,7 +40,12 @@ const buildInputOk = async () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
-  prismaMock.organization.findUnique.mockReset().mockResolvedValue({ settings: {} })
+  // Обход включён по умолчанию ВО ВСЕХ этих тестах: они про расписание,
+  // локи и вход, а не про сам тумблер. Выключенное состояние проверяется
+  // отдельным блоком ниже.
+  prismaMock.organization.findUnique
+    .mockReset()
+    .mockResolvedValue({ settings: { intelCrawlEnabled: true } })
   prismaMock.organization.update.mockReset().mockResolvedValue({})
   prismaMock.$queryRawUnsafe.mockReset().mockResolvedValue([{ pg_try_advisory_lock: true }])
   runIntelCrawlMock.mockReset().mockResolvedValue({
@@ -69,6 +74,51 @@ describe("orgIdToLockKey", () => {
   })
 })
 
+describe("runScheduledIntelCrawl — платный обход по согласию", () => {
+  it("не запускается, пока расписание не включили", async () => {
+    // Главное свойство: обход тратит деньги сам, без пользователей. Пустые
+    // настройки — это «не включали», а не «включено по умолчанию».
+    prismaMock.organization.findUnique.mockResolvedValue({ settings: {} })
+    const buildInput = vi.fn()
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG_ID, {
+      buildInput,
+      skipLock: true,
+    })
+    expect(result).toEqual({ skipped: "disabled" })
+    // Ни входа не строили, ни крауля не звали — денег не потратили.
+    expect(buildInput).not.toHaveBeenCalled()
+    expect(runIntelCrawlMock).not.toHaveBeenCalled()
+  })
+
+  it("не принимает за включение ничего, кроме настоящего true", async () => {
+    // Строка "true" из формы, 1 из старой миграции и null одинаково значат
+    // «не включали»: платить по недоразумению нельзя.
+    for (const value of ["true", 1, null, undefined, "yes", {}]) {
+      prismaMock.organization.findUnique.mockResolvedValue({
+        settings: { intelCrawlEnabled: value },
+      })
+      const result = await runScheduledIntelCrawl(prismaMock as never, ORG_ID, {
+        buildInput: vi.fn(),
+        skipLock: true,
+      })
+      expect(result, `значение ${JSON.stringify(value)}`).toEqual({ skipped: "disabled" })
+    }
+    expect(runIntelCrawlMock).not.toHaveBeenCalled()
+  })
+
+  it("выключенное расписание проверяется раньше срока и лока", async () => {
+    // Иначе выключенная организация всё равно ходила бы в базу за локом.
+    prismaMock.organization.findUnique.mockResolvedValue({
+      settings: { intelLastRunAt: new Date(0).toISOString() },
+    })
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG_ID, {
+      buildInput: vi.fn(),
+    })
+    expect(result).toEqual({ skipped: "disabled" })
+    expect(prismaMock.$queryRawUnsafe).not.toHaveBeenCalled()
+  })
+})
+
 describe("runScheduledIntelCrawl", () => {
   it("happy path: no lastRunAt → runs crawl + updates settings", async () => {
     const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
@@ -79,14 +129,14 @@ describe("runScheduledIntelCrawl", () => {
     expect(runIntelCrawlMock).toHaveBeenCalledOnce()
     expect(prismaMock.organization.update).toHaveBeenCalledWith({
       where: { id: ORG },
-      data: { settings: { intelLastRunAt: NOW_ISO } },
+      data: { settings: { intelCrawlEnabled: true, intelLastRunAt: NOW_ISO } },
     })
   })
 
   it("skip too-recent: lastRunAt < 24h ago", async () => {
     const recentRun = new Date(NOW_MS - 60 * 60 * 1000).toISOString() // 1h ago
     prismaMock.organization.findUnique.mockResolvedValue({
-      settings: { intelLastRunAt: recentRun },
+      settings: { intelCrawlEnabled: true, intelLastRunAt: recentRun },
     })
     const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
       buildInput: buildInputOk,
@@ -99,7 +149,7 @@ describe("runScheduledIntelCrawl", () => {
   it("runs after 24h elapsed", async () => {
     const oldRun = new Date(NOW_MS - 25 * 60 * 60 * 1000).toISOString() // 25h ago
     prismaMock.organization.findUnique.mockResolvedValue({
-      settings: { intelLastRunAt: oldRun },
+      settings: { intelCrawlEnabled: true, intelLastRunAt: oldRun },
     })
     const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
       buildInput: buildInputOk,
@@ -164,7 +214,7 @@ describe("runScheduledIntelCrawl", () => {
   it("custom intervalMs override", async () => {
     const recentRun = new Date(NOW_MS - 30 * 1000).toISOString() // 30s ago
     prismaMock.organization.findUnique.mockResolvedValue({
-      settings: { intelLastRunAt: recentRun },
+      settings: { intelCrawlEnabled: true, intelLastRunAt: recentRun },
     })
     // 1-minute interval — 30s ago counts as too-recent
     const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {

@@ -5037,7 +5037,8 @@
       "status": "Status",
       "lastRun": "Son işləmə",
       "outputLanguage": "Çıxış dili",
-      "itemsLast30d": "Elementlər (son 30 gün)"
+      "itemsLast30d": "Elementlər (son 30 gün)",
+      "crawlSchedule": "Gəzinti cədvəli"
     },
     "relative": {
       "never": "heç vaxt"
@@ -5056,7 +5057,16 @@
       "title": "Top sektorlar (element sayına görə, 30 gün)",
       "empty": "Etiketli element yoxdur."
     },
-    "footer": "Tarama cədvəli: Postgres advisory-lock dedup planlayıcısı vasitəsilə hər 24 saatda bir. Dili <code>Organization.settings.intelLanguage</code> ilə konfiqurasiya edin (en / ru / az)."
+    "footer": "Tarama cədvəli: Postgres advisory-lock dedup planlayıcısı vasitəsilə hər 24 saatda bir. Dili <code>Organization.settings.intelLanguage</code> ilə konfiqurasiya edin (en / ru / az).",
+    "crawlSchedule": {
+      "label": "Ödənişli kəşfiyyat gəzintisinin cədvəli",
+      "on": "Aktiv",
+      "off": "Söndürülüb",
+      "hintOn": "Hər təşkilat üçün gündə bir dəfə işləyir və hər işə düşməsi pula başa gəlir — tətbiqə heç kim girməsə belə.",
+      "hintOff": "Gündəlik gəzinti işləmir və heç nəyə başa gəlmir. Admin yenə də gəzintini əl ilə başlada bilər.",
+      "adminOnly": "Yalnız təşkilat admini dəyişə bilər.",
+      "saveFailed": "Yadda saxlanmadı. Heç nə dəyişmədi — yenidən cəhd edin."
+    }
   },
   "adminLanding": {
     "pageTitle": "Admin Alətləri",

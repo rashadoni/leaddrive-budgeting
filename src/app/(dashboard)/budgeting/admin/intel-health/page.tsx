@@ -61,6 +61,8 @@ const LANGUAGE_LABEL: Record<string, string> = {
   az: "Azərbaycanca",
 }
 
+import { IntelCrawlToggle } from "./intel-crawl-toggle"
+
 export default async function IntelHealthPage() {
   const t = await getTranslations("adminIntelHealth")
   const tAge = await getTranslations(RELATIVE_AGE_NAMESPACE)
@@ -95,6 +97,9 @@ export default async function IntelHealthPage() {
   ])
 
   const settings = (org?.settings ?? {}) as Record<string, unknown>
+  // Строго `=== true`: отсутствующий ключ, null и "false" одинаково значат
+  // «расписание не включали». Платное по умолчанию выключено.
+  const intelCrawlEnabled = settings.intelCrawlEnabled === true
   const intelLastRunAt =
     typeof settings.intelLastRunAt === "string" ? settings.intelLastRunAt : null
   const intelLanguage =
@@ -130,9 +135,16 @@ export default async function IntelHealthPage() {
 
       {/* Status row */}
       <section
-        className="grid grid-cols-1 md:grid-cols-4 gap-4"
+        className="grid grid-cols-1 md:grid-cols-5 gap-4"
         data-testid="data-control-intel-health-summary"
       >
+        <Card>
+          <Label>{t("labels.crawlSchedule")}</Label>
+          <IntelCrawlToggle
+            enabled={intelCrawlEnabled}
+            canEdit={hasRole(role, "admin")}
+          />
+        </Card>
         <Card>
           <Label>{t("labels.status")}</Label>
           <span
