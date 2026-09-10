@@ -63,7 +63,11 @@ beforeEach(() => {
     promptVersion: "v1",
   });
   getClientMock.mockReset().mockResolvedValue({});
-  hasOrgKeyMock.mockReset().mockResolvedValue(false);
+  // Согласие по умолчанию ЕСТЬ: большинство тестов здесь про лимит,
+  // снапшот и regenerate. Раньше умолчание могло быть false, потому что
+  // проверку всё равно спасал общий ключ развёртывания — тот самый обход,
+  // которого больше нет. Тест про 503 задаёт отказ явно.
+  hasOrgKeyMock.mockReset().mockResolvedValue(true);
 });
 
 describe("POST /api/budgeting/board-deck/narration", () => {
@@ -101,6 +105,7 @@ describe("POST /api/budgeting/board-deck/narration", () => {
   });
 
   it("returns 503 without a configured paid provider key before tenant reads", async () => {
+    hasOrgKeyMock.mockResolvedValue(false);
     await mockSession({ orgId: "org", userId: "manager", role: "manager" });
     hasKeyMock.mockReturnValue(false);
     const res = await POST(makeRequest("/api/budgeting/board-deck/narration", {
