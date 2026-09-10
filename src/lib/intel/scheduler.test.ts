@@ -80,7 +80,7 @@ describe("runScheduledIntelCrawl — платный обход по соглас
     // настройки — это «не включали», а не «включено по умолчанию».
     prismaMock.organization.findUnique.mockResolvedValue({ settings: {} })
     const buildInput = vi.fn()
-    const result = await runScheduledIntelCrawl(prismaMock as never, ORG_ID, {
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
       buildInput,
       skipLock: true,
     })
@@ -97,7 +97,7 @@ describe("runScheduledIntelCrawl — платный обход по соглас
       prismaMock.organization.findUnique.mockResolvedValue({
         settings: { intelCrawlEnabled: value },
       })
-      const result = await runScheduledIntelCrawl(prismaMock as never, ORG_ID, {
+      const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
         buildInput: vi.fn(),
         skipLock: true,
       })
@@ -111,7 +111,7 @@ describe("runScheduledIntelCrawl — платный обход по соглас
     prismaMock.organization.findUnique.mockResolvedValue({
       settings: { intelLastRunAt: new Date(0).toISOString() },
     })
-    const result = await runScheduledIntelCrawl(prismaMock as never, ORG_ID, {
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
       buildInput: vi.fn(),
     })
     expect(result).toEqual({ skipped: "disabled" })
