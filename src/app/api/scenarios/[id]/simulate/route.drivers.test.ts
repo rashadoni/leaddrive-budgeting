@@ -38,7 +38,7 @@ const simulateByDrivers = vi.fn()
 vi.mock('@/lib/risk/scenario-rederive', () => ({ simulateByDrivers: (...a: unknown[]) => simulateByDrivers(...a) }))
 const runCrisisBrief = vi.fn()
 vi.mock('@/lib/risk/scenario-narrative', () => ({ runCrisisBrief: (...a: unknown[]) => runCrisisBrief(...a) }))
-vi.mock('@/lib/ai/client', () => ({ hasAnthropicKey: () => true }))
+vi.mock('@/lib/ai/client', () => ({ hasAnthropicKeyForOrg: async () => true}))
 
 import { GET } from './route'
 

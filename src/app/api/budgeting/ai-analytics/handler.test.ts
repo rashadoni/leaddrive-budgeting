@@ -27,8 +27,8 @@ const {
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 vi.mock("@/lib/ai/client", () => ({
-  hasAnthropicKey: hasAnthropicKeyMock,
-  getAnthropicClient: getAnthropicClientMock,
+  hasAnthropicKeyForOrg: async () => hasAnthropicKeyMock(),
+  getAnthropicClientForOrg: async () => getAnthropicClientMock(),
   AI_MODEL: "claude-test-model",
 }))
 vi.mock("@/lib/ai/prompts", () => ({

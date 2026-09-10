@@ -34,7 +34,7 @@ vi.mock('@/lib/db/with-org-scope', () => ({
 }));
 
 const { aiClientMock } = vi.hoisted(() => ({
-  aiClientMock: { hasAnthropicKey: vi.fn().mockReturnValue(true) },
+  aiClientMock: { hasAnthropicKeyForOrg: async () => true },
 }));
 vi.mock('@/lib/ai/client', () => aiClientMock);
 

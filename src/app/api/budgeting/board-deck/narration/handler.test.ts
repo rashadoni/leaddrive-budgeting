@@ -22,7 +22,6 @@ const {
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/ai/client", () => ({
-  hasAnthropicKey: hasKeyMock,
   hasAnthropicKeyForOrg: hasOrgKeyMock,
   getAnthropicClientForOrg: getClientMock,
 }));
