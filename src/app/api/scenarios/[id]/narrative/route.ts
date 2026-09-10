@@ -10,6 +10,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { withOrgScope } from '@/lib/db/with-org-scope'
+// Согласие организации читается из Organization — запрос orgId-скоупнут
+// в коде, поэтому тот же BYPASSRLS клиент, что и у соседей.
+import { prismaAdmin as prisma } from '@/lib/db/prisma-admin'
 import { requireAuth, isAuthError } from '@/lib/api-auth'
 import { hasAnthropicKeyForOrg } from '@/lib/ai/client'
 import { aiErrorBody } from '@/lib/ai/ai-error'

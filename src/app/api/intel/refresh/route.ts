@@ -52,6 +52,11 @@ const RATE_LIMIT = {
 };
 
 export async function POST(request: NextRequest) {
+  const session = await requireRole(request, "admin");
+  if (isAuthError(session)) return session;
+  // Проверка доступности переехала сюда из начала обработчика: она
+  // теперь спрашивает согласие ОРГАНИЗАЦИИ, а значит требует сессии.
+  // Раньше смотрели только переменную окружения, и порядок был не важен.
   if (!(await hasAnthropicKeyForOrg(prisma, session.orgId))) {
     return NextResponse.json(
       {
@@ -62,8 +67,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const session = await requireRole(request, "admin");
-  if (isAuthError(session)) return session;
   const orgId = session.orgId;
   if (!orgId) {
     return NextResponse.json(

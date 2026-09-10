@@ -34,6 +34,11 @@ export const maxDuration = 600
 const RATE_LIMIT = { name: "crossing-scan", max: 3, windowMs: 60_000 }
 
 export async function POST(request: NextRequest) {
+  const session = await requireRole(request, "admin")
+  if (isAuthError(session)) return session
+  // Проверка доступности переехала сюда из начала обработчика: она
+  // теперь спрашивает согласие ОРГАНИЗАЦИИ, а значит требует сессии.
+  // Раньше смотрели только переменную окружения, и порядок был не важен.
   if (!(await hasAnthropicKeyForOrg(prisma, session.orgId))) {
     return NextResponse.json(
       {
@@ -44,8 +49,6 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const session = await requireRole(request, "admin")
-  if (isAuthError(session)) return session
   if (!session.orgId) {
     return NextResponse.json(
       { error: "User has no organization" },
