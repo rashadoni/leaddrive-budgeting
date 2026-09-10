@@ -23,7 +23,7 @@ import { getLogger } from "@/lib/log"
 // Phase 8 D4 final (2026-05-29) — structured logger.
 const log = getLogger("api:admin:run-crossing-scan")
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
-import { hasAnthropicKey } from "@/lib/ai/client"
+import { hasAnthropicKeyForOrg } from "@/lib/ai/client"
 import { runCrossingScan } from "@/lib/intel/crossing-scan-runner"
 
 // Phase 7.L 2026-05-18 — 3× language passes mean total runtime can
@@ -34,7 +34,7 @@ export const maxDuration = 600
 const RATE_LIMIT = { name: "crossing-scan", max: 3, windowMs: 60_000 }
 
 export async function POST(request: NextRequest) {
-  if (!hasAnthropicKey()) {
+  if (!(await hasAnthropicKeyForOrg(prisma, session.orgId))) {
     return NextResponse.json(
       {
         error:

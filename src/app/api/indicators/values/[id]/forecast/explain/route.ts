@@ -39,7 +39,6 @@ import { getLogger } from "@/lib/log";
 const log = getLogger("api:forecast-explain");
 import {
   getAnthropicClientForOrg,
-  hasAnthropicKey,
   hasAnthropicKeyForOrg,
 } from "@/lib/ai/client";
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log";
@@ -108,7 +107,7 @@ export async function POST(
   }
   const orgId = session.orgId;
   // Phase 8 C4 — per-org Anthropic key check. Env fallback covered.
-  if (!hasAnthropicKey() && !(await hasAnthropicKeyForOrg(prisma, orgId))) {
+  if (!(await hasAnthropicKeyForOrg(prisma, orgId))) {
     return NextResponse.json(
       {
         error:

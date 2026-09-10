@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withOrgScope } from '@/lib/db/with-org-scope'
 import { requireAuth, isAuthError } from '@/lib/api-auth'
-import { hasAnthropicKey } from '@/lib/ai/client'
+import { hasAnthropicKeyForOrg } from '@/lib/ai/client'
 import { aiErrorBody } from '@/lib/ai/ai-error'
 import { runCrisisBrief } from '@/lib/risk/scenario-narrative'
 import { parseNarrativeBody } from '@/lib/risk/crisis-brief-input'
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
   const body = parseNarrativeBody(rawBody)
 
-  if (!hasAnthropicKey()) {
+  if (!(await hasAnthropicKeyForOrg(prisma, session.orgId))) {
     return NextResponse.json({ narrative: null, mitigations: [], narrativeError: 'No Anthropic API key configured.' })
   }
 

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole, isAuthError } from "@/lib/api-auth";
 import {
   getAnthropicClientForOrg,
-  hasAnthropicKey,
   hasAnthropicKeyForOrg,
 } from "@/lib/ai/client";
 import { prismaAdmin } from "@/lib/db/prisma-admin";
@@ -78,7 +77,6 @@ export async function POST(req: NextRequest) {
   const language: NarrationLanguage = body.language;
 
   if (
-    !hasAnthropicKey() &&
     !(await hasAnthropicKeyForOrg(prismaAdmin, session.orgId))
   ) {
     return NextResponse.json(

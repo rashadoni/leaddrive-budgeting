@@ -12,6 +12,13 @@ const { prismaMock, runIntelCrawlMock } = vi.hoisted(() => ({
   runIntelCrawlMock: vi.fn(),
 }))
 
+// Планировщик теперь резолвит клиент организации — это и есть место, где
+// действует согласие на платные функции. В тестах про расписание сам клиент
+// не нужен, важно лишь, что он резолвится.
+vi.mock("@/lib/ai/client", () => ({
+  getAnthropicClientForOrg: vi.fn(async () => ({}) as never),
+}))
+
 vi.mock("./crawler", async () => {
   const actual = await vi.importActual<typeof import("./crawler")>("./crawler")
   return {

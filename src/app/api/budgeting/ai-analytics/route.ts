@@ -11,7 +11,7 @@ import { z } from "zod"
 import type Anthropic from "@anthropic-ai/sdk"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
-import { AI_MODEL, getAnthropicClient, hasAnthropicKey } from "@/lib/ai/client"
+import { AI_MODEL, getAnthropicClientForOrg, hasAnthropicKeyForOrg } from "@/lib/ai/client"
 import { buildKickoffUserMessage, buildSystemPrompt } from "@/lib/ai/prompts"
 import { collectSectionContext } from "@/lib/ai/section-context"
 import type { Section } from "@/lib/ai/section-meta"
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth
 
-  if (!hasAnthropicKey()) {
+  if (!(await hasAnthropicKeyForOrg(prisma, auth.orgId))) {
     return NextResponse.json(
       { error: "AI analytics is not configured on this server (ANTHROPIC_API_KEY missing)." },
       { status: 503 },
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
     ? messages
     : [{ role: "user", content: buildKickoffUserMessage(section as Section, language) }]
 
-  const client = getAnthropicClient()
+  const client = await getAnthropicClientForOrg(prisma, auth.orgId)
 
   // Stream responses as SSE. Events emitted per line:
   //   { type: "text", text }

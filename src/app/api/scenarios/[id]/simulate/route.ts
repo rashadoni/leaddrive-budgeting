@@ -44,7 +44,7 @@ import { resolveAssumption } from '@/lib/budgeting/assumption-resolver'
 import { simulateByDrivers } from '@/lib/risk/scenario-rederive'
 import { aiErrorBody } from '@/lib/ai/ai-error'
 import { runCrisisBrief, type BriefLanguage } from '@/lib/risk/scenario-narrative'
-import { hasAnthropicKey } from '@/lib/ai/client'
+import { hasAnthropicKeyForOrg } from '@/lib/ai/client'
 import {
   loadPairApplicabilityResolver,
   type PairApplicabilityDefinition,
@@ -462,7 +462,7 @@ export async function GET(
     let narrative: string | null = null
     let mitigations: string[] = []
     let narrativeError: string | null = null
-    if (wantNarrative && hasAnthropicKey()) {
+    if (wantNarrative && (await hasAnthropicKeyForOrg(prisma, session.orgId))) {
       try {
         const brief = await runCrisisBrief({
           scenarioCode: scenario.code,

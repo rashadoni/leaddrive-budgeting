@@ -25,7 +25,7 @@ import { prisma } from "@/lib/prisma"
 import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
-import { hasAnthropicKey } from "@/lib/ai/client"
+import { hasAnthropicKeyForOrg } from "@/lib/ai/client"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import {
   runMorningBrief,
@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  if (!hasAnthropicKey()) {
+  if (!(await hasAnthropicKeyForOrg(prisma, session.orgId))) {
     return NextResponse.json(
       { error: "AI Morning Brief unavailable: ANTHROPIC_API_KEY not configured." },
       { status: 503 },
