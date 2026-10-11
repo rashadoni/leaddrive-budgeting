@@ -94,7 +94,8 @@
 #   - look at the required job on `main` and on an open pull request first.
 #     Once this is written, a pull request whose required job is red — or never
 #     starts — cannot be merged by anyone, administrators included. It was
-#     green on `main` on 2026-09-10.
+#     green on `main` on 2026-09-10 and on the pull request that brought this
+#     change (#5, 2026-10-11).
 #   - use the file from `origin/main` after a `git fetch`, not a local `main`
 #     and not another branch. Every branch and worktree cut before this change
 #     was merged carries the old file, whatever its date. The old file is the
