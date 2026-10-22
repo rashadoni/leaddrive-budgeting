@@ -1,10 +1,11 @@
 name: Agent review
 
 # Layer 2 of docs/DELIVERY-ARCHITECTURE.md: every pull request is read by an
-# agent that did not write it. This is the ONLY required check on main, so it
-# must run for every pull request — including documentation-only ones, which
-# heavier workflows deliberately skip. It is therefore cheap by construction:
-# one short job, no build, no install, ~30 seconds.
+# agent that did not write it. It is NOT a required check — `ci` is, since
+# 2026-10-22 — because this job is green by design whenever its own API call
+# fails, and a gate that passes on its own failure gates nothing. It still runs
+# on every pull request, documentation-only ones included, and stays cheap by
+# construction: one short job, no build, no install, ~30 seconds.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]

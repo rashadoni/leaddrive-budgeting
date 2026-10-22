@@ -15,12 +15,13 @@
 # the same name from another source does not count — is GitHub's description
 # of them. Nobody here tried.
 #
-# THIS IS NOT WHAT GITHUB HAS TODAY, and that is known (read 2026-10-11). The
-# pull-request requirement, `enforce_admins` and the two "no" rules are on
-# GitHub as written here. The required check is not: GitHub has the single
-# context `agent-review`. So `--check` ends in "RESULT: MISMATCH" with exit
-# code 1, naming `required_status_checks`, until the owner says to write. The
-# test keeps that reading (scripts/ci/tests/fixtures/).
+# THIS IS WHAT GITHUB HAS TODAY (written 2026-10-22 by this script's own
+# `--apply`, read back twice): the pull-request requirement, `enforce_admins`,
+# the two "no" rules, and the single required context `ci`. So `--check` ends
+# in "RESULT: match" with exit code 0 unless somebody changes protection by
+# hand. The test fixtures still carry the older reading, where the required
+# check is `agent-review` — that is the mismatch-then-write scenario, which is
+# the one worth a test.
 #
 # Why `agent-review` is not in the payload. The owner's decision for all his
 # repositories (2026-09-11): the gate before `main` is the CI that GitHub
@@ -75,19 +76,17 @@
 # comparison of what GitHub returns with the payload, and writing takes an
 # explicit flag.
 #
-# NOT VERIFIED BY A RUN, as of 2026-10-11: `--apply` has never sent its write
-# to GitHub — branch protection is not changed for the sake of a test. What was
-# checked instead: the payload against the live protection, by reading it (it
-# differs in the required check only, as said above); the comparison filter in
-# gh's own jq, on that same read; and the script against a stand-in `gh` that
-# never reaches the network (scripts/ci/tests/test_main_protection_script.py —
-# run by hand, see its first lines; no workflow of this repository runs it).
-# After the first real write, rewrite this paragraph and the "NOT WHAT GITHUB
-# HAS TODAY" one, and in the same pull request everything that still names
-# `agent-review` as the required check: docs/DELIVERY-ARCHITECTURE.md (the
-# note in Layer 1, Layers 1 and 2, rule 3 at the end), the delivery section
-# at the top of AGENTS.md / CLAUDE.md, and the comment at the top of
-# .github/workflows/agent-review.yml ("the ONLY required check on main").
+# VERIFIED BY A RUN, 2026-10-22: on the owner's word («запусти скрипт защиты
+# main с --apply»), `--apply` sent its write to GitHub for the first time and
+# the read-back matched — required check `ci`, pull request required,
+# `enforce_admins` on, no approvals. Before that the payload had only been
+# compared with the live protection, with the comparison filter running in gh's
+# own jq, and the script exercised against a stand-in `gh` that never reaches
+# the network (scripts/ci/tests/test_main_protection_script.py — run by hand,
+# see its first lines; no workflow of this repository runs it). Everything that
+# named `agent-review` as the required check was rewritten in the same pull
+# request: docs/DELIVERY-ARCHITECTURE.md, AGENTS.md / CLAUDE.md and the head of
+# .github/workflows/agent-review.yml.
 #
 # Before `--apply`:
 #   - it is the owner's call for this repository, not an agent's
