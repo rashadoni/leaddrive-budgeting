@@ -32,7 +32,11 @@ async function main() {
 
   const user = await prisma.user.upsert({
     where: { organizationId_email: { organizationId: org.id, email } },
-    update: { passwordHash },
+    // Re-running this against an existing account is a password reset, so it
+    // owes the same session revocation as every other reset path — see the
+    // `authVersion` note in `scripts/rotate-admin-password.ts`. On the create
+    // branch the schema default (0) applies and there is nothing to revoke.
+    update: { passwordHash, authVersion: { increment: 1 } },
     create: {
       organizationId: org.id,
       email,
