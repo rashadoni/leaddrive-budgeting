@@ -154,6 +154,12 @@ per RLS_RUNBOOK §1.
 
 ## Progress log
 
+- 2026-10-22 — **the stored credential below is out of date.** The owner was locked
+  out and `admin@fo.az` was reset again (value not recorded here either), so
+  `/root/.budgetpro/admin-fo-az.password` now holds the superseded July secret.
+  Rotation also no longer leaves old sessions alive — `authVersion` is incremented
+  by `scripts/rotate-admin-password.ts` and by the `update` branch of
+  `scripts/create-admin.ts`, matching the two UI reset paths.
 - 2026-07-16 — **Credential/session follow-up COMPLETE; TLS remains a separate
   external gate.** Production `admin@fo.az` was rotated to a new strong
   password and authenticated smoke passed. The value is absent from git/chat
